@@ -4,6 +4,7 @@
   "description": "L5 Business OS MVP - AI-powered Founder Operating System",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@9.15.0",
   "scripts": {
     "install:all": "pnpm install",
     "dev:all": "pnpm -r dev",
@@ -17,6 +18,9 @@
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f",
     "demo": "tsx scripts/demo-mvp-loop.ts"
+  },
+  "dependencies": {
+    "@l5/core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.3.0",

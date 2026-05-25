@@ -23,16 +23,21 @@ export function decideToolCandidate(input: ToolRequestInput): ToolCandidateDecis
   const reasons: string[] = [];
   let score = 0;
 
-  // Check 1: PMF Signal
+  // Hard gates: all must pass for an idea to be a tool candidate.
+  let gatesPassed = true;
+
+  // Gate 1: PMF Signal
   if (input.pmf_score < 60) {
+    gatesPassed = false;
     reasons.push(`Low PMF score (${input.pmf_score}). Need PMF >= 60.`);
   } else {
     score += 20;
     reasons.push(`Good PMF signal (${input.pmf_score}).`);
   }
 
-  // Check 2: Repetition
+  // Gate 2: Repetition
   if (input.repetition_count < 3) {
+    gatesPassed = false;
     reasons.push(`Only ${input.repetition_count} repetitions. Need 3+ to justify tool.`);
   } else if (input.repetition_count >= 10) {
     score += 25;
@@ -42,8 +47,9 @@ export function decideToolCandidate(input: ToolRequestInput): ToolCandidateDecis
     reasons.push(`Moderately repetitive (${input.repetition_count} times).`);
   }
 
-  // Check 3: Time Investment
+  // Gate 3: Time Investment
   if (input.time_to_complete < 5) {
+    gatesPassed = false;
     reasons.push(`Only ${input.time_to_complete} min per instance. ROI too low.`);
   } else if (input.time_to_complete >= 30) {
     score += 25;
@@ -77,8 +83,8 @@ export function decideToolCandidate(input: ToolRequestInput): ToolCandidateDecis
     );
   }
 
-  // Final decision
-  const is_tool_candidate = score >= 40;
+  // Final decision: all hard gates must pass, and combined score must clear the bar.
+  const is_tool_candidate = gatesPassed && score >= 40;
 
   const priorityMap = {
     high: score >= 80,

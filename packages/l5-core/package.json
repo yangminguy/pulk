@@ -2,6 +2,7 @@
   "name": "@l5/core",
   "version": "0.1.0",
   "description": "L5 Business OS - Core Business Logic Package",
+  "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "private": false,

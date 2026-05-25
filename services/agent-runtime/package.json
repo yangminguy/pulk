@@ -1,0 +1,29 @@
+{
+  "name": "@l5/agent-runtime",
+  "version": "0.1.0",
+  "description": "L5 Business OS - Agent Runtime (Mastra agents and workflows)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "l5",
+    "agent",
+    "mastra",
+    "runtime"
+  ],
+  "author": "L5 Team",
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "@l5/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "@types/node": "catalog:"
+  }
+}
