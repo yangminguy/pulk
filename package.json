@@ -1,0 +1,35 @@
+{
+  "name": "l5-business-os",
+  "version": "0.1.0",
+  "description": "L5 Business OS MVP - AI-powered Founder Operating System",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install:all": "pnpm install",
+    "dev:all": "pnpm -r dev",
+    "build:all": "pnpm -r build",
+    "test:all": "pnpm -r test",
+    "lint:all": "pnpm -r lint",
+    "typecheck:all": "pnpm -r typecheck",
+    "validate": "bash scripts/validate.sh",
+    "check-env": "bash scripts/check-env.sh",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "demo": "tsx scripts/demo-mvp-loop.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0"
+  },
+  "keywords": [
+    "founder",
+    "operating-system",
+    "ai-agents",
+    "pmf",
+    "business-automation"
+  ],
+  "author": "L5 Team",
+  "license": "AGPL-3.0-or-later"
+}

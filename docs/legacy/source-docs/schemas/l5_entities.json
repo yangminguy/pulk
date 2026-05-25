@@ -1,0 +1,49 @@
+{
+  "project": "L5 Business OS",
+  "version": "0.1.0",
+  "entities": [
+    "FounderDNA",
+    "FounderDNAUpdateSuggestion",
+    "CompanyCulture",
+    "DecisionRule",
+    "BusinessIdea",
+    "Business",
+    "Workflow",
+    "WorkflowStep",
+    "Agent",
+    "AgentAssignment",
+    "PMFExperiment",
+    "PMFExperimentMetric",
+    "HermesAlert",
+    "DecisionQueue",
+    "BPRLog",
+    "ToolRequest",
+    "MemoryEntry",
+    "WorkflowImprovementProposal",
+    "CustomerProfile",
+    "CustomerConsent",
+    "CustomerInteraction",
+    "BusinessInsight"
+  ],
+  "source_of_truth": "PostgreSQL / NocoBase collections / L5 Core schemas",
+  "portable_logic_package": "packages/l5-core",
+  "required_common_fields": [
+    "id",
+    "created_at",
+    "updated_at",
+    "source_ref"
+  ],
+  "customer_data_required_fields": [
+    "pii_level",
+    "consent_status",
+    "allowed_usage",
+    "source_ref"
+  ],
+  "external_action_required_fields": [
+    "risk_level",
+    "approval_status",
+    "approved_by",
+    "approved_at",
+    "audit_log_ref"
+  ]
+}

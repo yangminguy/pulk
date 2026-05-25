@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: l5-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-l5_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-l5_secure_password}
+      POSTGRES_DB: ${POSTGRES_DB:-l5_business_os}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-l5_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: Langfuse for LLM Observability (self-hosted)
+  # Uncomment to enable local Langfuse
+  # langfuse:
+  #   image: langfuse/langfuse:latest
+  #   container_name: l5-langfuse
+  #   environment:
+  #     DATABASE_URL: postgres://l5_user:l5_secure_password@postgres:5432/langfuse
+  #   ports:
+  #     - "8081:3000"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+  # Optional: Adminer for database management UI
+  adminer:
+    image: adminer:latest
+    container_name: l5-adminer
+    ports:
+      - "8888:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: l5-network
