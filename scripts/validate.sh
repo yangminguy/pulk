@@ -26,10 +26,10 @@ run_check() {
   echo -n "${BLUE}→${NC} $check_name: "
   if eval "$check_cmd" > /dev/null 2>&1; then
     echo -e "${GREEN}PASS${NC}"
-    ((passed++))
+    ((passed+=1))
   else
     echo -e "${RED}FAIL${NC}"
-    ((failed++))
+    ((failed+=1))
   fi
 }
 
@@ -37,7 +37,7 @@ run_check() {
 echo "Step 1: Environment Checks"
 echo "────────────────────────────────────────"
 run_check "Node.js installed" "node --version"
-run_check "pnpm installed" "pnpm --version"
+run_check "pnpm installed" "pnpm --version || corepack pnpm --version"
 run_check "Docker available" "docker --version"
 run_check ".env.example exists" "[ -f .env.example ]"
 echo ""

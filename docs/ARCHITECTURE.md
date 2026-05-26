@@ -2,26 +2,33 @@
 
 ## System Overview
 
-L5 Business OS는 NocoBase를 MVP Shell로 사용하지만, 핵심 판단 로직은 `packages/l5-core`에 분리한다.
+L5 Business OS는 Founder-facing 경험을 chat-first로 설계한다. Founder는 CEO Agent와 대화하고, CEO Agent가 Executive Agent들을 병렬 orchestration한다. NocoBase는 MVP Shell로 사용하지만 Founder의 최종 UI가 아니라 Agent 작업 상태, 승인, memory, BPR, audit log를 저장하고 모니터링하는 내부 shell이다. 핵심 판단 로직은 `packages/l5-core`에 분리한다.
 
 ```text
 User / Founder
   ↓
-NocoBase L5 Shell
+Founder Chat Interface
   ↓
-L5 NocoBase Plugins
+CEO Agent Orchestrator
+  ↓
+Executive Agent Runtime
   ↓
 packages/l5-core
   ↓
-Mastra Agent Runtime / Trigger.dev Hermes Runtime
+NocoBase Internal Shell / PostgreSQL
   ↓
-PostgreSQL / Langfuse / Formbricks / Activepieces
+Trigger.dev Hermes Runtime
+  ↓
+Langfuse / Formbricks / Activepieces
 ```
 
 ## Core Architecture Principle
 
 ```text
-NocoBase = Shell
+Founder Chat = Primary UX
+CEO Agent = Orchestrator
+Executive Agents = Operators
+NocoBase = Internal Shell
 L5 Core = Brain
 Mastra = Agent Runtime
 Trigger.dev = Hermes Runtime
@@ -85,8 +92,9 @@ project-root/
 
 Use for:
 
-- Internal admin UI
-- Rooms and boards
+- Agent-readable/writable internal records
+- Task, handoff, approval, memory, BPR collections
+- Internal admin/debug UI
 - CRUD collections
 - Approval queue UI
 - Plugin host
@@ -98,6 +106,7 @@ Avoid:
 - Long-running jobs
 - Durable agent loops
 - Final customer-facing SaaS UX
+- Founder-facing primary workflow UX
 
 ### L5 Core
 
@@ -205,19 +214,33 @@ Avoid:
 - Business OS brain
 - Broad customer data fan-out
 
-## Data Flow — Business Creation
+## Data Flow — Founder Direction To Agent Execution
 
 ```text
-1. Founder enters BusinessIdea in NocoBase
-2. Plugin calls l5-core Founder Fit logic
-3. Plugin calls Mastra CEO Agent for Business Brief
-4. Mastra retrieves Memory through controlled API
-5. Workflow Factory creates PMF plan and workflows
-6. Results are stored in PostgreSQL/NocoBase collections
-7. Trigger.dev registers Hermes monitoring tasks
-8. Hermes creates alerts, BPR logs, Tool Request candidates
-9. Memory Engine stores reusable insights
-10. Workflow Evolution proposes process improvements
+1. Founder sends direction through chat
+2. CEO Agent stores FounderInstruction
+3. CEO Agent creates CEOInterpretation with goal, phase, assumptions, success criteria
+4. CEO Agent decomposes work into parallel AgentTasks
+5. Executive Agents run tasks and update status
+6. Agents create AgentHandoffs when another owner is needed
+7. NocoBase/PostgreSQL stores task state, outputs, approvals, BPR, memory candidates
+8. Executive Monitor reads task/handoff state for Founder monitoring
+9. Hermes detects stalled tasks, approval needs, deadlines, and recurring bottlenecks
+10. CEO/Chief of Staff synthesize Founder brief and next decisions
+```
+
+## Data Flow — Business / PMF Workstream
+
+```text
+CEO Agent task
+→ CPO/CMO/CRO Agent workstream
+→ BusinessIdea / Business records if needed
+→ Founder Fit / PMF rules in l5-core
+→ PMFExperiment
+→ PMFExperimentMetric
+→ PMF Score calculation
+→ Tool Candidate check only after PMF/repetition signals
+→ Memory/BPR update
 ```
 
 ## Data Flow — PMF Signal

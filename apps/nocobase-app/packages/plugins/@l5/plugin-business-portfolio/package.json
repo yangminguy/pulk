@@ -1,0 +1,23 @@
+{
+  "name": "@l5/plugin-business-portfolio",
+  "version": "0.0.1",
+  "main": "server.js",
+  "exports": {
+    ".": {
+      "import": "./server.js",
+      "require": "./server.js",
+      "default": "./server.js",
+      "types": "./server.d.ts"
+    },
+    "./client": {
+      "import": "./client.js",
+      "require": "./client.js",
+      "default": "./client.js",
+      "types": "./client.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@l5/core": "file:../../../../../../packages/l5-core"
+  }
+}

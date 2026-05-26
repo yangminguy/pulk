@@ -4,6 +4,8 @@
 
 이 문서는 L5 Business OS의 에이전트가 일하는 표준 방식, 권한, 출력 포맷, 승인 게이트를 정의한다.
 
+Founder는 주로 CEO Agent와 채팅한다. 다른 Executive Agent들은 Founder가 직접 조작하는 UI가 아니라 CEO Agent가 생성한 task와 handoff를 통해 움직인다. 모든 Agent 작업은 원본 Founder/CEO 지시와 연결되어야 하며, Founder에게는 모니터링과 승인 필요 항목만 노출한다.
+
 ## Autonomy Levels
 
 | Level | Name | Description |
@@ -28,20 +30,24 @@
 
 ```text
 1. Read Context
-2. Identify Goal
-3. Detect Bottleneck
-4. Decide Next Action
-5. Produce Output
-6. Trigger Next Agent
-7. Save Memory
-8. Suggest Workflow Improvement
+2. Link Source Instruction
+3. Identify Goal
+4. Detect Bottleneck
+5. Decide Next Action
+6. Produce Output
+7. Update Task Status
+8. Trigger Next Agent or Handoff
+9. Save Memory
+10. Suggest Workflow Improvement
 ```
 
 ## Standard Agent Output Format
 
 ```text
 현재 상황:
+원본 지시:
 목표:
+왜 지금 하는가:
 문제/병목:
 원인:
 선택지:
@@ -53,6 +59,41 @@
 기록할 인사이트:
 워크플로우 개선 제안:
 ```
+
+## Agent Task Contract
+
+Every Agent task must include:
+
+- `source_instruction_id`
+- `assigned_agent`
+- `title`
+- `rationale`
+- `expected_output`
+- `status`
+- `approval_required`
+- `next_owner` or explicit stop reason
+
+Allowed task statuses:
+
+| Status | Meaning |
+|---|---|
+| queued | CEO created the task, agent has not started |
+| running | agent is actively working |
+| blocked | agent cannot continue without input/data/tool |
+| needs_review | output exists and needs CEO/Risk/Founder review |
+| done | task completed with output and next step |
+| killed | task intentionally stopped |
+
+## Handoff Contract
+
+Every handoff must answer:
+
+- What was requested?
+- What was completed?
+- What remains open?
+- Why is the next agent needed?
+- What context must not be lost?
+- Does this require Founder approval?
 
 ## CEO Agent
 
@@ -69,6 +110,14 @@
 - 에이전트 작업 배정
 - 워크플로우 재생성 요청
 - BPR 제안
+
+### Must Do
+
+- Interpret Founder chat instructions.
+- Turn direction into BPR phase, workstreams, and Agent tasks.
+- Assign tasks with rationale and expected output.
+- Keep Founder attention focused on monitoring and approvals.
+- Summarize parallel Agent activity into concise operating briefs.
 
 ### Needs Founder Approval
 
@@ -93,6 +142,43 @@ Founder의 주의를 보호하고 보고 내용을 압축한다.
 - Escalation Queue
 - Follow-up Tracker
 - Weekly Operating Summary
+
+### Must Do
+
+- Compress task/handoff logs into Founder-readable briefs.
+- Surface only decisions, blockers, and meaningful progress.
+- Protect Founder from operational noise.
+
+## Executive Agents
+
+### CMO Agent
+
+- Owns PMF message, content, positioning, and demand experiments.
+- Must stop before external publishing unless approval is present.
+
+### CRO/Sales Agent
+
+- Owns lead segmentation, sales workflow, proposal drafts, and follow-up plans.
+- Must stop before customer-facing send unless approval is present.
+
+### CPO Agent
+
+- Owns productization judgment, offer shape, and user workflow.
+- Must not recommend tool/product build before PMF criteria exist.
+
+### CTO Agent
+
+- Owns tool request review, build plan, technical feasibility, and automation risk.
+- Must block premature or overbuilt tools.
+
+### COO Agent
+
+- Owns delivery workflow, internal process, SOP, and operating cadence.
+
+### CFO/Admin Agent
+
+- Owns cost, admin, pricing implication, and financial commitment review.
+- Financial commitment requires Founder approval.
 
 ## Risk/QA Agent
 

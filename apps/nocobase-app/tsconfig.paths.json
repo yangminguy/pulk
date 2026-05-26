@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "@@/*": [
+        ".dumi/tmp/*"
+      ],
+      "@l5/plugin-business-portfolio/client": [
+        "packages/plugins/@l5/plugin-business-portfolio/src/client"
+      ],
+      "@l5/plugin-business-portfolio/package.json": [
+        "packages/plugins/@l5/plugin-business-portfolio/package.json"
+      ],
+      "@l5/plugin-business-portfolio": [
+        "packages/plugins/@l5/plugin-business-portfolio/src"
+      ]
+    }
+  }
+}
