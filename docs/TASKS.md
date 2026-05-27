@@ -1,7 +1,7 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-05-28 (Phase 9 Founder UI 완성 — CEO 채팅 승인 플로우 + BPR Phase 패널 + 필드명 버그 수정). 제품 방향은 chat-first CEO orchestration + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-05-28 (Phase 9.5 완료 — Agent 실제 실행 연결 완료. 지시 → 승인 → Agent 실행 → Monitor 결과 반영 전체 자동화됨). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
 
 ## QA 검증 현황 (2026-05-27)
 
@@ -266,24 +266,46 @@
   - 도메인: `l5-core` `validateTransition()` / `buildTransitionResult()` 사용
   - 모든 phase 전환은 requires_approval=true (D5 수준)
 
-- [ ] P1 실제 Agent 실행 연결 ← **다음 세션**
-  - `queued` 상태 태스크를 Mastra agent-runtime이 픽업
-  - `executeAgentTask()` 호출 → 핸들러 실행 → output/handoff 저장 → status 업데이트
-  - 현재: `services/agent-runtime/` placeholder 상태
+- [x] P1 실제 Agent 실행 연결 (2026-05-28 완료)
+  - `/api/agent:executeTask` 액션 구현 (plugin-orchestration)
+    * task_id 기반 executeAgentTask() 호출
+    * AgentOutput + AgentHandoff DB 저장
+    * task status 업데이트 (queued → needs_review/done/blocked)
+  - Founder UI 자동 실행 연결
+    * approvePlan 후 각 task 자동 호출 (api.executeTask)
+    * 승인 후 모든 queued 태스크 병렬 실행
+  - 검증: CEO 채팅 → 승인 → executeTask 자동 호출 → Monitor 결과 반영 ✅
 
 - [ ] P2 Implement Phase Transition Summary
   - reference: `docs/FOUNDER_BRIEF_SPEC.md` section "Phase Transition Summary"
   - include results, learnings, metrics, next phase plan
 
+## Phase 10 — Next: Hermes Monitoring 연동 (Priority 1, 3-4시간)
+
+- [ ] P1 Trigger.dev Hermes daily-brief 실제 연동
+  - `services/hermes-runtime/src/tasks/daily-brief-generator.ts` 실제 구현
+  - 매일 09:00 `/api/monitor:currentTasks` 조회 → CEO/Founder brief 생성
+  - brief 전달 경로 (email/slack/NocoBase)
+
+- [ ] P1 Trigger.dev Hermes stalled-task 감시
+  - `services/hermes-runtime/src/tasks/stalled-task-detector.ts` 실제 구현
+  - 1시간마다 status=blocked 또는 overdue task 확인
+  - blocker 있는 task에 대해 CEO/Founder alert 발송
+
+## Phase 11 — Memory → CEO 컨텍스트 재주입 (Priority 2, 2-3시간)
+
+- [ ] P2 Memory retrieval in CEO orchestrator
+  - CEO interpretFounderInstruction에서 founder_memory 조회
+  - 과거 패턴/결정/학습 내용 컨텍스트 주입 (동일 도메인 매칭)
+  - LLM 호출 시 memory context 포함
+
 ## Phase 8 — Future: Real LLM & Advanced Logic
 
-- [ ] P1 Add real Claude/Mastra API to CEO orchestrator
-  - replace stub LLMClient with actual implementation
-- [ ] P1 Implement executive agent business logic
-  - replace handler stubs with real CMO/CRO/CPO/CTO/COO/CFO/RiskQA logic
+- [ ] P2 Replace stub LLMClient with actual Anthropic Claude API
+  - replace stub buildDeterministicLLM with real createOpenAIClient/createClaudeClient
 - [ ] P2 Add real PMF metric ingestion path
-- [ ] P2 Add Tool Request workflow after repeated task/PMF signals
-- [ ] P2 Add Formbricks adapter when actual PMF surveys are needed
+- [ ] P3 Add Tool Request workflow after repeated task/PMF signals
+- [ ] P3 Add Formbricks adapter when actual PMF surveys are needed
 
 ## Documentation — Phase 5 Complete ✅
 

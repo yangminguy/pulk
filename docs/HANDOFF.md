@@ -1,12 +1,12 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-28 (Phase 9 Founder UI 완성 + CEO 채팅 승인 플로우 구현)
+최종 업데이트: 2026-05-28 (Phase 9.5 Agent 실제 실행 연결 완료)
 
 ---
 
 ## Current State
 
-**Phase 0-9 구현 완료 (단, 실제 Agent 실행은 미구현)**
+**Phase 0-9.5 구현 완료 (Agent 실제 실행 연결 완료)**
 
 - `@l5/core`: 19 suites / 174 tests PASS
 - `@l5/hermes-runtime`: 2 suites / 13 tests PASS
@@ -15,21 +15,24 @@
 - LLM: OpenAI GPT-4o 연결 (`OPENAI_API_KEY` → `apps/nocobase-app/.env`)
 - DB: 로컬 PostgreSQL (`nocobase` DB, user: `wonminyang`)
 
-### ⚠️ 중요: 현재 구현 범위
+### ✅ Phase 9.5: Agent 실제 실행 연결 완료
 
-**구현됨 (DB 저장/상태 전환까지):**
-- Founder → CEO 채팅 → `proposed` 태스크 생성
-- Founder 승인 클릭 → `queued` 상태로 전환
-- Founder 거절 클릭 → `killed` 상태로 전환
-- D3-D5 태스크 → `approval_required=true` 플래그 자동 설정
-- BPR Phase 표시 + 다음 Phase 전환 요청 (D5 승인 대기 태스크 생성)
+**구현됨:**
+- `/api/agent:executeTask` 액션 추가 (plugin-orchestration)
+  * executeAgentTask() 호출 → AgentOutput + AgentHandoff 저장
+  * 태스크 상태 업데이트 (queued → needs_review/done/blocked)
+- Founder UI 자동 실행
+  * approvePlan 후 각 task 자동 호출 (`api.executeTask()`)
+  * 승인 후 모든 queued 태스크 병렬 실행
+- Monitor에 실행 결과 반영
+  * status: needs_review (D2 태스크는 completed 대신 needs_review로 표시 — 검토 후 완료로 전환)
+  * blocker 정보 저장 (AgentOutput.bottleneck)
 
 **미구현 (다음 단계):**
-- 실제 Executive Agent 실행 — `queued` 태스크를 Mastra 런타임이 픽업해서 수행
-- Trigger.dev Hermes cron 실제 연동 (daily-brief, stalled-task)
+- Trigger.dev Hermes cron 실제 연동 (daily-brief, stalled-task 자동 모니터링)
 - Memory → CEO 컨텍스트 재주입 (founder_memory 조회 후 해석 컨텍스트 활용)
 
-**한 줄 요약:** 태스크는 DB에 쌓이고 상태는 바뀌지만, 에이전트가 실제로 일을 하지는 않는다.
+**한 줄 요약:** 지시 입력 → 승인 → 각 Agent 자동 실행 → 결과 저장 → Monitor 표시까지 완전 자동화됨
 
 ---
 
@@ -43,6 +46,7 @@
 | `POST /api/chat:approvePlan` | instruction_id 기준 proposed → **queued** 일괄 전환 |
 | `POST /api/chat:rejectPlan` | instruction_id 기준 proposed → **killed** 일괄 전환 |
 | `POST /api/chat:generateWorkflow` | 아이디어 → Brief + PMF Plan + Staffing |
+| `POST /api/agent:executeTask` | task_id 기반 executeAgentTask() → AgentOutput/Handoff 저장 + status 업데이트 **✅ NEW** |
 | `GET /api/bpr:currentPhase` | 현재 BPR Phase + 다음 Phase 정보 |
 | `POST /api/bpr:requestTransition` | Phase 전환 요청 → D5 승인 태스크 생성 |
 | `GET /api/monitor:currentTasks` | 활성 task 목록 (queued/running/blocked/needs_review) |
