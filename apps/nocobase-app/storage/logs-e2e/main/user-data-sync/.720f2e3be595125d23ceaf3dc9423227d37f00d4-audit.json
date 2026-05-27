@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/Users/wonminyang/Desktop/pulk/apps/nocobase-app/storage/logs-e2e/main/user-data-sync/.720f2e3be595125d23ceaf3dc9423227d37f00d4-audit.json",
+    "files": [
+        {
+            "date": 1779869904895,
+            "name": "/Users/wonminyang/Desktop/pulk/apps/nocobase-app/storage/logs-e2e/main/user-data-sync/2026-05-27.log",
+            "hash": "552eaaa1179a33ec5b0f541b6cf5b5f3f6e759323105be210d94cbf9ea50bba0"
+        }
+    ],
+    "hashType": "sha256"
+}

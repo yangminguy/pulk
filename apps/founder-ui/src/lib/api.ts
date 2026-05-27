@@ -138,4 +138,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ from_phase, to_phase, reason }),
     }).then(r => r.data),
+
+  executeTask: (task_id: string) =>
+    request<{ data: { ok: boolean; data: { task_id: string; status: string; approval_required: boolean; output: Record<string, unknown>; handoff: Record<string, unknown> } } }>('/api/agent:executeTask', {
+      method: 'POST',
+      body: JSON.stringify({ task_id }),
+    }).then(r => unwrap(r)),
 }

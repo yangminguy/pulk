@@ -6,6 +6,42 @@
 
 이 리포트는 보고서 인용이 아니라 worker-6가 직접 실행한 명령 결과에 기반한다.
 
+## 0. Current QA Addendum — 2026-05-27
+
+작성자: Codex  
+범위: 현재 개발 문서 기준 구조 정리 후 전체 QA/e2e 회귀
+
+### 최종 판정
+
+PASS. 다음 UI/Phase Summary 작업으로 넘어갈 수 있는 상태다. 단, Docker CLI는 이 로컬 환경에 없어 `validate`에서 optional warning으로 분리했다. 현재 SQLite 기반 NocoBase e2e와 authenticated smoke에는 Docker가 필요하지 않았다.
+
+### 직접 실행 결과
+
+| 검증 | 명령 | 결과 |
+|------|------|------|
+| Workspace typecheck | `corepack pnpm -r typecheck` | PASS |
+| Workspace lint | `corepack pnpm -r --if-present lint` | PASS |
+| Workspace build | `corepack pnpm -r build` | PASS |
+| Workspace tests | `corepack pnpm -r test` | PASS (`@l5/core`: 19 suites / 174 tests, `hermes-runtime`: 2 suites / 13 tests, `nocobase-app`: 1 test) |
+| Authenticated NocoBase smoke | `corepack pnpm smoke:nocobase-auth` | PASS (`auth`, `chat:submitInstruction`, monitor endpoints) |
+| NocoBase e2e | `corepack pnpm --dir apps/nocobase-app nocobase e2e test` | PASS (1 passed) |
+| Validate | `corepack pnpm validate` | PASS (22 passed / 1 optional Docker warning / 0 failed) |
+
+### 이번 QA에서 정리한 항목
+
+| 항목 | 상태 |
+|------|------|
+| `apps/nocobase-app` 실행 플러그인 server entry 구조 | fixed |
+| `plugin-orchestration` build-time workspace dependency 경로 문제 | fixed |
+| `sqlite3` e2e dependency 누락 | fixed |
+| NocoBase e2e auth state 파일 생성 경로 | fixed |
+| Playwright auth setup 30초 타임아웃 | fixed |
+| SQLite에서 PostgreSQL 전용 `ALTER TABLE` 경고 | fixed |
+| Recursive lint용 `@l5/core` ESLint config 부재 | fixed |
+| Docker CLI 부재로 인한 validate 실패 | fixed as optional warning |
+
+아래 섹션은 이전 QA 기록이며, 현재 상태는 이 addendum을 우선한다.
+
 ## 1. Verification Results (직접 실행)
 
 | 검증 | 명령 | 결과 | Exit |

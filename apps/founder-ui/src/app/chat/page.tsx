@@ -203,6 +203,18 @@ function ChatContent() {
       setMessages(prev => prev.map(m =>
         m.instructionId === instructionId ? { ...m, planStatus: 'approved' } : m
       ))
+
+      // Execute each task automatically after approval
+      const msg = messages.find(m => m.instructionId === instructionId)
+      if (msg?.proposedTasks) {
+        for (const task of msg.proposedTasks) {
+          try {
+            await api.executeTask(task.id)
+          } catch (err) {
+            console.error(`Failed to execute task ${task.id}:`, err)
+          }
+        }
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '승인 실패')
     }

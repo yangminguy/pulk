@@ -13,6 +13,10 @@ const {
   generateWorkflow,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/workflow-factory'));
 
+const {
+  executeAgentTask,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/executive-runtime'));
+
 type ActionContext = {
   app?: any;
   db: any;
@@ -42,6 +46,7 @@ export default class PluginOrchestrationServer extends Plugin {
     registerCrudResources(this.app);
 
     this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow'], 'loggedIn');
+    this.app.acl.allow('agent', ['executeTask'], 'loggedIn');
     this.app.acl.allow('founder_instructions', '*', 'loggedIn');
     this.app.acl.allow('ceo_interpretations', '*', 'loggedIn');
     this.app.acl.allow('agent_tasks', '*', 'loggedIn');
@@ -358,6 +363,70 @@ function registerCrudResources(app: any) {
       listByTaskId: async (ctx: ActionContext, next: () => Promise<void>) => {
         const { task_id } = ctx.action?.params ?? {};
         ctx.body = await ctx.db.getRepository('agent_handoffs').find({ filter: { task_id } });
+        await next();
+      },
+    },
+  });
+
+  app.resourcer.define({
+    name: 'agent',
+    actions: {
+      executeTask: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const { task_id } = getValues(ctx);
+        if (!task_id) ctx.throw(400, 'task_id is required');
+
+        const taskRepo = ctx.db.getRepository('agent_tasks');
+        const handoffRepo = ctx.db.getRepository('agent_handoffs');
+
+        const task = await taskRepo.findOne({ filter: { id: task_id } });
+        if (!task) ctx.throw(404, `Task ${task_id} not found`);
+
+        try {
+          const result = executeAgentTask(task);
+
+          // D3-D5 approval_required 유지: queued → needs_review 상태에서도 approval_required 유지
+          let approval_required = result.approval_required;
+
+          // Save handoff if present
+          if (result.handoff) {
+            await handoffRepo.create({
+              values: {
+                id: randomUUID(),
+                ...result.handoff,
+              },
+            });
+          }
+
+          // Update task status
+          await taskRepo.update({
+            filterByTk: task_id,
+            values: {
+              status: result.updated_status,
+              approval_required,
+              blocker: result.output.bottleneck || null,
+            },
+          });
+
+          const updatedTask = await taskRepo.findOne({ filter: { id: task_id } });
+
+          ctx.body = {
+            ok: true,
+            data: {
+              task_id,
+              status: result.updated_status,
+              approval_required,
+              approval_routing: result.approval_routing,
+              validation_errors: result.validation_errors,
+              output: result.output,
+              handoff: result.handoff,
+              updated_task: updatedTask,
+            },
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          ctx.throw(500, `Failed to execute task: ${message}`);
+        }
+
         await next();
       },
     },

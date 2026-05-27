@@ -1,5 +1,21 @@
 # Implementation Status Matrix — L5 Business OS MVP (May 27, 2026)
 
+## Current Status Addendum — May 27, 2026
+
+This file contains earlier status snapshots below. The current verified state is:
+
+| Area | Current State |
+|------|---------------|
+| Core orchestration/runtime | Implemented and verified (`@l5/core`: 19 suites / 174 tests PASS) |
+| NocoBase executable app path | `apps/nocobase-app/packages/plugins/@l5/*` builds and loads |
+| Founder-facing app shell | `apps/founder-ui` builds successfully |
+| Authenticated backend flow | PASS via `corepack pnpm smoke:nocobase-auth` |
+| E2E | PASS via `corepack pnpm --dir apps/nocobase-app nocobase e2e test` |
+| Full workspace QA | typecheck/lint/build/test all PASS |
+| Validate | PASS with Docker reported as optional local warning |
+
+Remaining work should start from the open Phase 9+ UI/phase summary and Phase 8 advanced integrations in `docs/TASKS.md`.
+
 ## Overview
 
 | Status | Count | Details |
