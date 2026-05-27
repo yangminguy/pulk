@@ -1,7 +1,7 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-05-27 (QA 통과 — 빌드/유닛 174개/e2e green. 다음: Phase 9 Founder UI). 제품 방향은 chat-first CEO orchestration + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-05-27 (QA 통과 — typecheck/lint/build/unit/smoke/e2e/validate green. 다음: 남은 Phase 9+ UI/phase summary 작업). 제품 방향은 chat-first CEO orchestration + executive monitoring으로 고정한다.
 
 ## QA 검증 현황 (2026-05-27)
 
@@ -10,6 +10,9 @@
 | `@l5/core` 유닛 테스트 (19 suites) | ✅ 174 tests PASS |
 | NocoBase e2e auth setup | ✅ 1 passed |
 | `corepack pnpm -r build` | ✅ 통과 |
+| `corepack pnpm -r typecheck` / lint | ✅ 통과 |
+| Authenticated NocoBase smoke | ✅ 통과 |
+| `corepack pnpm validate` | ✅ 22 PASS / 1 optional Docker WARN / 0 FAIL |
 | PR | [#1 feat/nocobase-real-mvp](https://github.com/yangminguy/pulk/pull/1) |
 
 **다음 세션 진입점:** Phase 9 — Founder UI 앱 구축 (`[ ] P0` 항목부터)
@@ -245,9 +248,12 @@
   - 탭 구성: CEO 채팅 / 현황 모니터 / 승인 대기 / 워크플로 팩토리 / Memory Review
   - TypeScript 에러 0개 (`npm run typecheck` 통과)
   - 실행: `cd apps/founder-ui && npm run dev`
-- [ ] P1 Add phase transition rules
-  - phase changes require all success_criteria met
-  - phase transition requires Founder approval (D5 decision)
+- [x] P1 Add phase transition rules
+  - 구현: `GET /api/bpr:currentPhase` — 활성 task 기반 현재 BPR 단계 도출
+  - 구현: `POST /api/bpr:requestTransition` — 전환 검증 후 D5 승인 task 생성
+  - UI: `monitor/page.tsx` PhaseTransitionPanel — 진행 바, 다음 단계 전환 폼, D5 표시
+  - 도메인: `l5-core` `validateTransition()` / `buildTransitionResult()` 사용
+  - 모든 phase 전환은 requires_approval=true (D5 수준)
 - [ ] P2 Implement Phase Transition Summary
   - reference: `docs/FOUNDER_BRIEF_SPEC.md` section "Phase Transition Summary"
   - include results, learnings, metrics, next phase plan
@@ -284,7 +290,7 @@
 - [x] P0 Validate `l5-core` runs without NocoBase ✅
 - [x] P0 Validate NocoBase plugin build ✅ (13 suites / 110 tests)
 - [x] P0 Validate full orchestration flow smoke test ✅ (authenticated chat + task creation + monitor + approval queue)
-- [x] P0 Validate `scripts/validate.sh`: 22 passed ✅ (Docker CLI missing is environment issue)
+- [x] P0 Validate `scripts/validate.sh`: 22 passed / 1 optional Docker warning / 0 failed ✅
   - current local command when `pnpm` is not on PATH: `corepack pnpm validate`
 - [x] P0 Validate every task has source instruction reference ✅
 - [x] P0 Validate every handoff has next owner or explicit stop reason ✅
