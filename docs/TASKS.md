@@ -235,15 +235,16 @@
 - [ ] P2 PMF Score 실제 계산 (Formbricks 연동)
 - [ ] P2 Tool Request 워크플로
 
-## Phase 9 — Founder UI (신규, 최우선)
+## Phase 9 — Founder UI ✅ (2026-05-27 완료)
 
 **배경:** NocoBase 프론트엔드 플러그인이 "paths[1] null" 에러로 동작 안함. NocoBase는 backend API만으로 사용하고, 별도 UI 앱 구축.
 
-- [ ] P0 별도 Founder UI 앱 구축
-  - 선택지: Next.js 앱 (port 3000) 또는 단순 HTML 프로토타입
-  - 기능: CEO 채팅, Executive Monitor, Approval Queue, Workflow Factory
-  - API: `localhost:13001` 호출 (JWT 인증 포함)
+- [x] P0 별도 Founder UI 앱 구축
+  - 구현: `apps/founder-ui/` — Next.js 14 App Router (port 3000)
+  - API: `localhost:13001` 호출 (JWT 인증, localStorage 토큰 관리)
   - 탭 구성: CEO 채팅 / 현황 모니터 / 승인 대기 / 워크플로 팩토리 / Memory Review
+  - TypeScript 에러 0개 (`npm run typecheck` 통과)
+  - 실행: `cd apps/founder-ui && npm run dev`
 - [ ] P1 Add phase transition rules
   - phase changes require all success_criteria met
   - phase transition requires Founder approval (D5 decision)

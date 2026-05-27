@@ -73,13 +73,36 @@
 
 ---
 
-## 다음 세션에서 할 일 (Founder UI)
+## Phase 9 Founder UI 완료 (2026-05-27)
 
-1. **Founder UI 앱 신설** — NocoBase 없이 동작하는 별도 프론트엔드 (Next.js 또는 HTML/Vite)
-2. **채팅 화면** — `POST /api/chat:submitInstruction` 연결, CEO 응답 렌더링
-3. **Task Monitor 화면** — `GET /api/monitor:currentTasks` 연결, 상태별 필터
-4. **Approval Queue 화면** — `GET /api/monitor:approvalQueue` + approve/reject 버튼
-5. **Memory Review 화면** — 후보 목록 + save/discard
+**앱 위치:** `apps/founder-ui/` (Next.js 14 App Router, port 3000)
+
+**실행:**
+```bash
+cd apps/founder-ui && npm run dev   # → http://localhost:3000
+```
+
+**구현된 페이지:**
+
+| 경로 | 기능 | API |
+|---|---|---|
+| `/chat` | CEO Agent 채팅 | `POST /api/chat:submitInstruction` |
+| `/monitor` | Executive Monitor (30초 자동갱신) | `GET /api/monitor:currentTasks` + `blockedTasks` |
+| `/approval` | 승인 대기 + approve/reject | `GET /api/monitor:approvalQueue` |
+| `/workflow` | Workflow Factory | `POST /api/chat:generateWorkflow` |
+| `/memory` | Memory Review + save/discard | `GET /api/monitor:memoryCandidates` |
+
+**공통 인프라:**
+- `src/lib/api.ts` — NocoBase API 클라이언트 (Bearer 토큰 자동 주입)
+- `src/lib/auth-context.tsx` — JWT 토큰 Context (localStorage 영속)
+- `src/components/AuthGate.tsx` — 미인증 시 로그인 폼 자동 표시
+- TypeScript 에러 0개 (`npm run typecheck` 통과)
+
+## 다음 세션에서 할 일
+
+1. **Phase 9 계속** — BPR Phase Transition Rules (P1)
+2. **Memory → CEO 컨텍스트 주입** — `founder_memory` 조회 → CEO 해석 컨텍스트 (P2)
+3. **Trigger.dev 실제 연동** — Hermes daily-brief, stalled-task cron 실행
 
 ---
 
