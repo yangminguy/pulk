@@ -1,7 +1,7 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-05-27 (QA 통과 — typecheck/lint/build/unit/smoke/e2e/validate green. 다음: 남은 Phase 9+ UI/phase summary 작업). 제품 방향은 chat-first CEO orchestration + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-05-28 (Phase 9 Founder UI 완성 — CEO 채팅 승인 플로우 + BPR Phase 패널 + 필드명 버그 수정). 제품 방향은 chat-first CEO orchestration + executive monitoring으로 고정한다.
 
 ## QA 검증 현황 (2026-05-27)
 
@@ -238,9 +238,11 @@
 - [ ] P2 PMF Score 실제 계산 (Formbricks 연동)
 - [ ] P2 Tool Request 워크플로
 
-## Phase 9 — Founder UI ✅ (2026-05-27 완료)
+## Phase 9 — Founder UI ✅ (2026-05-28 완료)
 
 **배경:** NocoBase 프론트엔드 플러그인이 "paths[1] null" 에러로 동작 안함. NocoBase는 backend API만으로 사용하고, 별도 UI 앱 구축.
+
+**⚠️ 현재 범위:** UI + DB 상태 전환까지만 구현. 실제 Executive Agent 실행(Mastra 런타임)은 미구현.
 
 - [x] P0 별도 Founder UI 앱 구축
   - 구현: `apps/founder-ui/` — Next.js 14 App Router (port 3000)
@@ -248,12 +250,27 @@
   - 탭 구성: CEO 채팅 / 현황 모니터 / 승인 대기 / 워크플로 팩토리 / Memory Review
   - TypeScript 에러 0개 (`npm run typecheck` 통과)
   - 실행: `cd apps/founder-ui && npm run dev`
-- [x] P1 Add phase transition rules
+
+- [x] P1 CEO 채팅 승인 플로우 (2026-05-28)
+  - `submitInstruction` → `proposed` 상태로 태스크 생성 (즉시 queued 아님)
+  - `ProposedTasksPanel`: 에이전트별 색상, Risk 배지(D1-D5), 성공 기준 표시
+  - "승인" → `approvePlan` → `proposed` → `queued` 일괄 전환
+  - "거절" → `rejectPlan` → `proposed` → `killed` 일괄 전환
+  - D3-D5 태스크: queued 전환 후 `approval_required=true` 유지 → 승인 큐 진입
+  - 버그 수정: 필드명 `agent` / `task_title` / `task_id` 일치 (이전: `assigned_agent` / `title` / `id`)
+
+- [x] P1 BPR Phase Transition Panel (2026-05-28)
   - 구현: `GET /api/bpr:currentPhase` — 활성 task 기반 현재 BPR 단계 도출
   - 구현: `POST /api/bpr:requestTransition` — 전환 검증 후 D5 승인 task 생성
-  - UI: `monitor/page.tsx` PhaseTransitionPanel — 진행 바, 다음 단계 전환 폼, D5 표시
+  - UI: `monitor/page.tsx` PhaseTransitionPanel — 6단계 진행 바, 다음 단계 전환 폼
   - 도메인: `l5-core` `validateTransition()` / `buildTransitionResult()` 사용
   - 모든 phase 전환은 requires_approval=true (D5 수준)
+
+- [ ] P1 실제 Agent 실행 연결 ← **다음 세션**
+  - `queued` 상태 태스크를 Mastra agent-runtime이 픽업
+  - `executeAgentTask()` 호출 → 핸들러 실행 → output/handoff 저장 → status 업데이트
+  - 현재: `services/agent-runtime/` placeholder 상태
+
 - [ ] P2 Implement Phase Transition Summary
   - reference: `docs/FOUNDER_BRIEF_SPEC.md` section "Phase Transition Summary"
   - include results, learnings, metrics, next phase plan

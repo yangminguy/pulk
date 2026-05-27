@@ -1,23 +1,35 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-27 (QA 통과 — 빌드/유닛/e2e 전부 그린)
+최종 업데이트: 2026-05-28 (Phase 9 Founder UI 완성 + CEO 채팅 승인 플로우 구현)
 
 ---
 
 ## Current State
 
-**Phase 0-6 전체 구현 완료 + 검증**
+**Phase 0-9 구현 완료 (단, 실제 Agent 실행은 미구현)**
 
 - `@l5/core`: 19 suites / 174 tests PASS
 - `@l5/hermes-runtime`: 2 suites / 13 tests PASS
 - NocoBase 서버: `http://localhost:13001` (port 13001, `yarn dev`로 실행)
+- Founder UI: `http://localhost:3000` (Next.js, `npm run dev`로 실행)
 - LLM: OpenAI GPT-4o 연결 (`OPENAI_API_KEY` → `apps/nocobase-app/.env`)
 - DB: 로컬 PostgreSQL (`nocobase` DB, user: `wonminyang`)
 
-**핵심 아키텍처 결정 (2026-05-27):**
-- NocoBase = **backend 전용** (API 서버 + DB + 인증 + 어드민). Founder UI 아님
-- Founder-facing UI = **별도 앱으로 분리 예정** (Next.js 또는 HTML)
-- NocoBase 프론트엔드 플러그인 방식 포기 (브라우저 "paths[1] null" 에러 미해결)
+### ⚠️ 중요: 현재 구현 범위
+
+**구현됨 (DB 저장/상태 전환까지):**
+- Founder → CEO 채팅 → `proposed` 태스크 생성
+- Founder 승인 클릭 → `queued` 상태로 전환
+- Founder 거절 클릭 → `killed` 상태로 전환
+- D3-D5 태스크 → `approval_required=true` 플래그 자동 설정
+- BPR Phase 표시 + 다음 Phase 전환 요청 (D5 승인 대기 태스크 생성)
+
+**미구현 (다음 단계):**
+- 실제 Executive Agent 실행 — `queued` 태스크를 Mastra 런타임이 픽업해서 수행
+- Trigger.dev Hermes cron 실제 연동 (daily-brief, stalled-task)
+- Memory → CEO 컨텍스트 재주입 (founder_memory 조회 후 해석 컨텍스트 활용)
+
+**한 줄 요약:** 태스크는 DB에 쌓이고 상태는 바뀌지만, 에이전트가 실제로 일을 하지는 않는다.
 
 ---
 
@@ -27,11 +39,15 @@
 | 엔드포인트 | 역할 |
 |---|---|
 | `POST /api/auth:signIn` | JWT 인증 |
-| `POST /api/chat:submitInstruction` | CEO 채팅 → GPT 해석 → AgentTask 생성 |
+| `POST /api/chat:submitInstruction` | CEO 채팅 → GPT 해석 → AgentTask[] **proposed** 상태로 생성 |
+| `POST /api/chat:approvePlan` | instruction_id 기준 proposed → **queued** 일괄 전환 |
+| `POST /api/chat:rejectPlan` | instruction_id 기준 proposed → **killed** 일괄 전환 |
 | `POST /api/chat:generateWorkflow` | 아이디어 → Brief + PMF Plan + Staffing |
-| `GET /api/monitor:currentTasks` | 활성 task 목록 |
+| `GET /api/bpr:currentPhase` | 현재 BPR Phase + 다음 Phase 정보 |
+| `POST /api/bpr:requestTransition` | Phase 전환 요청 → D5 승인 태스크 생성 |
+| `GET /api/monitor:currentTasks` | 활성 task 목록 (queued/running/blocked/needs_review) |
 | `GET /api/monitor:blockedTasks` | blocked task 목록 |
-| `GET /api/monitor:approvalQueue` | 승인 대기 목록 |
+| `GET /api/monitor:approvalQueue` | 승인 대기 목록 (approval_required=true) |
 | `POST /api/monitor:approveTask` | task 승인 (status → done) |
 | `POST /api/monitor:rejectTask` | task 거절 (status → killed) |
 | `GET /api/monitor:memoryCandidates` | 메모리 후보 목록 |
@@ -73,7 +89,7 @@
 
 ---
 
-## Phase 9 Founder UI 완료 (2026-05-27)
+## Phase 9 Founder UI 완료 (2026-05-28)
 
 **앱 위치:** `apps/founder-ui/` (Next.js 14 App Router, port 3000)
 
@@ -84,23 +100,30 @@ cd apps/founder-ui && npm run dev   # → http://localhost:3000
 
 **구현된 페이지:**
 
-| 경로 | 기능 | API |
+| 경로 | 기능 | 핵심 동작 |
 |---|---|---|
-| `/chat` | CEO Agent 채팅 | `POST /api/chat:submitInstruction` |
-| `/monitor` | Executive Monitor (30초 자동갱신) | `GET /api/monitor:currentTasks` + `blockedTasks` |
-| `/approval` | 승인 대기 + approve/reject | `GET /api/monitor:approvalQueue` |
-| `/workflow` | Workflow Factory | `POST /api/chat:generateWorkflow` |
-| `/memory` | Memory Review + save/discard | `GET /api/monitor:memoryCandidates` |
+| `/chat` | CEO Agent 채팅 + 태스크 승인 | 지시 → proposed 태스크 생성 → 인라인 승인/거절 → queued/killed |
+| `/monitor` | Executive Monitor (30초 자동갱신) | BPR Phase 진행바 + 전환 요청, 태스크 필터(전체/진행중/차단/승인필요) |
+| `/approval` | 승인 대기 큐 + approve/reject | D3-D5 approval_required 태스크 처리 |
+| `/workflow` | Workflow Factory | 아이디어 → Brief + PMF Plan + Staffing |
+| `/memory` | Memory Review + save/discard | founder_memory 후보 검토 |
+
+**채팅 플로우 (2026-05-28 개편):**
+1. Founder가 지시 입력 → `submitInstruction` → CEO 해석 + `proposed` 태스크 생성
+2. 채팅창에 `ProposedTasksPanel` 인라인 표시 (에이전트별 색상, Risk 배지, 성공 기준)
+3. "승인" 클릭 → `approvePlan` → `proposed` → `queued` 일괄 전환
+4. "거절" 클릭 → `rejectPlan` → `proposed` → `killed` 일괄 전환
+5. D3-D5 태스크는 queued 전환 후에도 `approval_required=true` 유지 → 승인 큐로 진입
 
 **공통 인프라:**
-- `src/lib/api.ts` — NocoBase API 클라이언트 (Bearer 토큰 자동 주입)
+- `src/lib/api.ts` — unwrap() 헬퍼 포함, 모든 NocoBase 이중 래핑 처리
 - `src/lib/auth-context.tsx` — JWT 토큰 Context (localStorage 영속)
 - `src/components/AuthGate.tsx` — 미인증 시 로그인 폼 자동 표시
 - TypeScript 에러 0개 (`npm run typecheck` 통과)
 
 ## 다음 세션에서 할 일
 
-1. **Phase 9 계속** — BPR Phase Transition Rules (P1)
+1. **실제 Agent 실행 연결** — `queued` 태스크를 Mastra 런타임이 픽업해서 핸들러 실행
 2. **Memory → CEO 컨텍스트 주입** — `founder_memory` 조회 → CEO 해석 컨텍스트 (P2)
 3. **Trigger.dev 실제 연동** — Hermes daily-brief, stalled-task cron 실행
 
