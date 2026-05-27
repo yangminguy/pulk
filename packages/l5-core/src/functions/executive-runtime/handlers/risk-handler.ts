@@ -2,16 +2,27 @@
 
 import type { HandlerInput, HandlerResult } from '../protocol';
 import { buildHandoff } from '../protocol';
+import type { RiskLevel } from '../../../types/entities';
 
 export function riskHandler(input: HandlerInput): HandlerResult {
   const { task } = input;
+  const text = `${task.title} ${task.rationale} ${task.expected_output}`;
+  const hasPii = /(pii|personal data|email|phone|customer data|private|privacy)/i.test(text);
+  const externalSend = /(send|publish|customer|client|lead|outreach|proposal|public)/i.test(text);
+  const elevatedRisk = task.risk_level === 'D3' || task.risk_level === 'D4' || task.risk_level === 'D5';
+  const missingApprovalGate = (externalSend || elevatedRisk || hasPii) && !task.approval_required;
+  const blocked = missingApprovalGate || task.risk_level === 'D5';
+  const approvalRequired = task.approval_required || externalSend || elevatedRisk || hasPii;
+  const riskLevel: RiskLevel = hasPii || task.risk_level === 'D5' ? 'D5' : externalSend || task.risk_level === 'D4' ? 'D4' : 'D2';
 
   const output = {
     current_situation: `Risk/QA task received: ${task.title}`,
     source_instruction: task.rationale,
     goal: 'Validate risk level, PII handling, approval gates, and LLM trace safety',
     why_now: 'Every external action must pass risk review before execution',
-    bottleneck: 'Risk flags must be resolved before any D3-D5 action proceeds',
+    bottleneck: blocked
+      ? 'PII/external/elevated-risk action is missing an adequate approval gate'
+      : 'Risk flags must be resolved before any D3-D5 action proceeds',
     root_cause: 'Unreviewed external actions expose company to legal and reputational risk',
     options: [
       'Approve action with documented risk level and approval gate',
@@ -43,8 +54,29 @@ export function riskHandler(input: HandlerInput): HandlerResult {
   });
 
   return {
+    status: blocked ? 'blocked' : 'needs_review',
+    created_tasks: [{
+      title: `Risk/QA gate: ${task.title}`,
+      assigned_agent: 'RiskQA' as const,
+      expected_output: 'PII, external-send, approval-gate, and D3/D4/D5 risk review',
+      details: {
+        pii: hasPii ? 'flagged' : 'not detected',
+        external_send: externalSend ? 'flagged' : 'not detected',
+        approval_gate: missingApprovalGate ? 'missing' : approvalRequired ? 'required' : 'not required',
+        elevated_risk: elevatedRisk ? String(task.risk_level) : 'not detected',
+      },
+      approval_required: approvalRequired,
+      risk_level: riskLevel,
+    }],
+    approval_required: approvalRequired,
+    blocked,
+    reason: blocked
+      ? 'Blocked or routed to approval because PII/external/elevated-risk work cannot execute silently.'
+      : 'Risk review completed without a blocking approval gap.',
+    risk_level: riskLevel,
+    source_ref: task.source_ref,
     output,
-    updated_status: 'needs_review',
+    updated_status: blocked ? 'blocked' : 'needs_review',
     handoff,
   };
 }

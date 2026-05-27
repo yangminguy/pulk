@@ -5,6 +5,20 @@ import { buildHandoff } from '../protocol';
 
 export function croHandler(input: HandlerInput): HandlerResult {
   const { task } = input;
+  const sourceRef = task.source_ref ?? `task:${task.id}`;
+  const salesTask = {
+    title: `Sales workflow/proposal draft: ${task.title}`,
+    assigned_agent: 'CRO' as const,
+    expected_output: 'Sales workflow or proposal draft stopped before customer send',
+    details: {
+      lead: 'Target lead from CEO instruction or PMF experiment segment',
+      source_ref: sourceRef,
+      offer_angle: 'Manual founder workflow relief before software commitment',
+      next_action: 'Draft proposal and route to approval before external send',
+    },
+    approval_required: true,
+    risk_level: 'D3' as const,
+  };
 
   const output = {
     current_situation: `CRO task received: ${task.title}`,
@@ -20,10 +34,10 @@ export function croHandler(input: HandlerInput): HandlerResult {
     ],
     recommendation: 'Draft proposal template and sales sequence — stop before sending to any customer without approval',
     action_items: [
-      'Define lead segment criteria',
-      'Draft sales proposal template',
+      `Lead/source_ref: ${salesTask.details.lead} (${salesTask.details.source_ref})`,
+      `Offer angle: ${salesTask.details.offer_angle}`,
       'Map 3-step follow-up sequence',
-      'Submit to CEO — do not send to customers without approval',
+      `Next action: ${salesTask.details.next_action}`,
     ],
     next_owner: 'ceo' as const,
     required_tools: [],
@@ -42,6 +56,13 @@ export function croHandler(input: HandlerInput): HandlerResult {
   });
 
   return {
+    status: 'needs_review',
+    created_tasks: [salesTask],
+    approval_required: true,
+    blocked: false,
+    reason: 'Customer-facing sales work is draft-only until approval.',
+    risk_level: 'D3',
+    source_ref: sourceRef,
     output,
     updated_status: 'needs_review',
     handoff,

@@ -4,7 +4,7 @@ export default defineCollection({
   name: 'founder_instructions',
   title: 'Founder Instructions',
   fields: [
-    { name: 'id', type: 'uuid', primaryKey: true, defaultValue: { $fn: 'uuidv4' } },
+    { name: 'id', type: 'uuid', primaryKey: true },
     { name: 'raw_text', type: 'text', allowNull: false },
     { name: 'source', type: 'string', allowNull: false, defaultValue: 'manual' },
     { name: 'intent', type: 'text' },

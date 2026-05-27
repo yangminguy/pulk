@@ -12,6 +12,7 @@ function makeWs(over: Partial<Workstream> = {}): Workstream {
     expected_output: 'message variants',
     approval_required: true,
     risk_level: 'D3',
+    phase: 'pmf_diagnosis',
     ...over,
   };
 }
@@ -31,6 +32,9 @@ describe('assignExecutiveTasks', () => {
     expect(task.rationale).toBe('routed to CMO');
     expect(task.expected_output).toBe('message variants');
     expect(task.approval_required).toBe(true);
+    expect(task.risk_level).toBe('D3');
+    expect(task.phase).toBe('pmf_diagnosis');
+    expect(task.source_ref).toBe('founder_instruction:fi_1');
   });
 
   it('stamps created_at and updated_at with the same value', () => {

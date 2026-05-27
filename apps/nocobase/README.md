@@ -52,6 +52,12 @@ NocoBase is the MVP shell for L5 Business OS. It provides:
 
 ### Plugin Development
 
+Current source-of-truth note:
+
+- The runnable local NocoBase app lives in `apps/nocobase-app`.
+- Plugin packages under `apps/nocobase/packages/plugins/@l5/*` are scaffold/source references unless explicitly copied or built into `apps/nocobase-app`.
+- For the current CEO Chat E2E path, use `apps/nocobase-app/packages/plugins/@l5/plugin-orchestration` and the `/api/chat:submitInstruction` action.
+
 L5 Plugins extend NocoBase functionality. Create plugins in `packages/plugins/`:
 
 ```bash

@@ -3,6 +3,15 @@
 import type { AgentTask, AgentHandoff, AgentRole } from '../../types/orchestration';
 import type { RiskLevel } from '../../types/entities';
 
+export interface CreatedTaskCandidate {
+  title: string;
+  assigned_agent: AgentRole;
+  expected_output: string;
+  details: Record<string, string>;
+  approval_required: boolean;
+  risk_level: RiskLevel;
+}
+
 export interface AgentOutput {
   current_situation: string;
   source_instruction: string;
@@ -28,6 +37,13 @@ export interface HandlerInput {
 }
 
 export interface HandlerResult {
+  status: 'completed' | 'needs_review' | 'blocked';
+  created_tasks: CreatedTaskCandidate[];
+  approval_required: boolean;
+  blocked: boolean;
+  reason: string;
+  risk_level: RiskLevel;
+  source_ref?: string;
   output: AgentOutput;
   updated_status: AgentTask['status'];
   handoff?: Omit<AgentHandoff, 'id' | 'created_at'>;

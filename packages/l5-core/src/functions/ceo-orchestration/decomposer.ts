@@ -97,6 +97,7 @@ function buildWorkstream(
     approval_required:
       rule.approval_required || interp.approval_required || elevatedRisk(interp.risk_level),
     risk_level: interp.risk_level,
+    phase: interp.phase,
   };
   return ws;
 }

@@ -14,6 +14,9 @@ export type { StalledTaskReport, StalledTaskDetectorResult } from "./tasks/stall
 export { runApprovalChecker } from "./tasks/approval-checker.js";
 export type { PendingApprovalItem, DailyApprovalBrief, ApprovalCheckerResult } from "./tasks/approval-checker.js";
 
+export { runDailyBriefGenerator } from "./tasks/daily-brief-generator.js";
+export type { DailyBrief, DailyBriefResult } from "./tasks/daily-brief-generator.js";
+
 export { getApprovalQueue, approveTask, rejectTask } from "./api/approval-queue.js";
 export type {
   ApprovalQueueItem,
@@ -22,5 +25,8 @@ export type {
   RejectTaskRequest,
   ApprovalActionResponse,
 } from "./api/approval-queue.js";
+
+export { runMemoryReviewGenerator } from "./tasks/memory-review-generator.js";
+export type { MemoryReviewGeneratorResult } from "./tasks/memory-review-generator.js";
 
 export { HERMES_SCHEDULES } from "./tasks/trigger-schedules.js";

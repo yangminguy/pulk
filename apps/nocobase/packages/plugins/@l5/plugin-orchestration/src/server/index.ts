@@ -13,6 +13,14 @@ export class PluginOrchestrationServer extends Plugin {
     this.db.collection(agentHandoffsCollection);
 
     this.app.resource({
+      name: 'chat',
+      actions: {
+        submitInstruction: instructionActions.submitChatInstruction,
+        generateWorkflow: instructionActions.generateWorkflowAction,
+      },
+    });
+
+    this.app.resource({
       name: 'founder_instructions',
       actions: {
         create: instructionActions.createInstruction,
@@ -43,6 +51,8 @@ export class PluginOrchestrationServer extends Plugin {
         listByTaskId: instructionActions.listByTaskId,
       },
     });
+
+    this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow'], 'loggedIn');
 
     await this.db.sync({ alter: { drop: false } });
   }

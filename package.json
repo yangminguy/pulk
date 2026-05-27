@@ -17,7 +17,8 @@
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f",
-    "demo": "tsx scripts/demo-mvp-loop.ts"
+    "demo": "tsx scripts/demo-mvp-loop.ts",
+    "smoke:nocobase-auth": "tsx scripts/smoke-nocobase-authenticated.ts"
   },
   "dependencies": {
     "@l5/core": "workspace:*"

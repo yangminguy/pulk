@@ -4,7 +4,7 @@ export default defineCollection({
   name: 'ceo_interpretations',
   title: 'CEO Interpretations',
   fields: [
-    { name: 'id', type: 'uuid', primaryKey: true, defaultValue: { $fn: 'uuidv4' } },
+    { name: 'id', type: 'uuid', primaryKey: true },
     { name: 'instruction_id', type: 'uuid', allowNull: false },
     { name: 'goal', type: 'text', allowNull: false },
     { name: 'assumptions', type: 'json', defaultValue: [] },

@@ -1,8 +1,10 @@
 // Approval Checker
 // Runs daily at 09:00 via cronTrigger. Finds tasks with approval_required=true
 // and status='needs_review', then sends Founder daily brief.
+// Also auto-approves D3 tasks that have been pending for more than 24 hours.
 
 import type { AgentTask } from "@l5/core";
+import { autoApproveExpiredD3Tasks } from "../api/approval-queue.js";
 
 export interface PendingApprovalItem {
   task_id: string;
@@ -19,12 +21,14 @@ export interface DailyApprovalBrief {
   pending_count: number;
   items: PendingApprovalItem[];
   message: string;
+  auto_approved_count: number;
 }
 
 export interface ApprovalCheckerResult {
   checked_at: string;
   brief: DailyApprovalBrief;
   notification_sent: boolean;
+  auto_approved_count: number;
 }
 
 export async function runApprovalChecker(
@@ -34,7 +38,11 @@ export async function runApprovalChecker(
   const now = new Date();
   const briefDate = now.toISOString().split("T")[0];
 
-  const pending: PendingApprovalItem[] = tasks
+  // Auto-approve D3 tasks that have exceeded the 24h window
+  const { updatedTasks, approved_count: auto_approved_count } =
+    autoApproveExpiredD3Tasks(tasks, now);
+
+  const pending: PendingApprovalItem[] = updatedTasks
     .filter((t) => t.approval_required && t.status === "needs_review")
     .map((t) => ({
       task_id: t.id,
@@ -43,7 +51,7 @@ export async function runApprovalChecker(
       rationale: t.rationale,
       expected_output: t.expected_output,
       created_at: t.created_at,
-      updated_at: t.updated_at,
+      updated_at: t.updated_at ?? t.created_at,
     }));
 
   const brief: DailyApprovalBrief = {
@@ -54,6 +62,7 @@ export async function runApprovalChecker(
       pending.length === 0
         ? "오늘 승인 대기 항목이 없습니다."
         : `${pending.length}개 task가 승인을 기다리고 있습니다: ${pending.map((i) => i.title).join(", ")}`,
+    auto_approved_count,
   };
 
   const notification_sent =
@@ -63,5 +72,6 @@ export async function runApprovalChecker(
     checked_at: now.toISOString(),
     brief,
     notification_sent,
+    auto_approved_count,
   };
 }

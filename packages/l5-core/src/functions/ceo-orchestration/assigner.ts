@@ -22,6 +22,9 @@ export function assignExecutiveTasks(
     expected_output: ws.expected_output,
     status: 'queued' as const,
     approval_required: ws.approval_required,
+    risk_level: ws.risk_level,
+    phase: ws.phase,
+    source_ref: `founder_instruction:${ws.instruction_id}`,
     created_at: now,
     updated_at: now,
   }));

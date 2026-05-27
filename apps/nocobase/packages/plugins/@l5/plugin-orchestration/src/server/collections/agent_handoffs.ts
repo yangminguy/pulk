@@ -4,7 +4,7 @@ export default defineCollection({
   name: 'agent_handoffs',
   title: 'Agent Handoffs',
   fields: [
-    { name: 'id', type: 'uuid', primaryKey: true, defaultValue: { $fn: 'uuidv4' } },
+    { name: 'id', type: 'uuid', primaryKey: true },
     { name: 'task_id', type: 'uuid', allowNull: false },
     { name: 'from_agent', type: 'string', allowNull: false },
     { name: 'to_agent', type: 'string' },

@@ -29,6 +29,54 @@ Tool Candidate:  YES (priority=high)
 루프 경로 `Idea → FounderFit → Brief → PMF → Approval Gate → Tool Candidate`가
 end-to-end로 동작함을 확인했다.
 
+## 1-A. Regression QA Addendum — 2026-05-27
+
+작성자: Codex  
+대상: Antigravity Founder-facing UI 변경 후 최종 회귀 QA
+
+### 범위
+
+- Executive Monitor Phase View
+- Approval Queue readability
+- Founder Brief preview
+- Memory Candidate Review surface
+- `protocol.ts` handler contract, `executeAgentTask()` integration, Executive runtime tests, authenticated NocoBase smoke path
+
+### 발견 사항
+
+| ID | 항목 | 설명 | 상태 |
+|----|------|------|------|
+| RQA-1 | Monitor route mismatch | UI가 `/api/monitor/currentTasks`를 호출했지만 NocoBase action route는 `/api/monitor:currentTasks`다. | fixed |
+| RQA-2 | Monitor response field 누락 | `risk_level`, `phase`, `source_ref`가 server 응답에서 누락되어 UI 표시/필터와 맞지 않았다. | fixed |
+| RQA-3 | Approval Queue parser | `any` 기반 mapping이 stale field name을 가릴 수 있었다. | fixed |
+| RQA-4 | Memory Candidate 상태 | Review surface는 pending 후보만 표시해야 한다. | fixed |
+| RQA-5 | Auth smoke 환경 | `localhost:13000` NocoBase 서버 미기동으로 authenticated smoke가 `fetch failed`에서 중단됐다. | blocked by local runtime |
+| RQA-6 | Lint tooling | `@l5/core` ESLint config 부재로 recursive lint가 실패했다. | tooling gap |
+
+### 수정 파일
+
+- `apps/nocobase/packages/plugins/@l5/plugin-executive-monitor/src/client/components/TaskMonitorView.tsx`
+- `apps/nocobase/packages/plugins/@l5/plugin-executive-monitor/src/client/components/FounderBriefPreview.tsx`
+- `apps/nocobase/packages/plugins/@l5/plugin-executive-monitor/src/client/components/ApprovalQueueView.tsx`
+- `apps/nocobase/packages/plugins/@l5/plugin-executive-monitor/src/client/components/MemoryReview.tsx`
+- `apps/nocobase/packages/plugins/@l5/plugin-executive-monitor/src/server/index.ts`
+
+### 검증 결과
+
+| 검증 | 명령 | 결과 |
+|------|------|------|
+| Core typecheck | `corepack pnpm --filter @l5/core typecheck` | PASS |
+| Workspace typecheck | `corepack pnpm -r typecheck` | PASS |
+| Core tests | `corepack pnpm --filter @l5/core test -- --runInBand` | PASS, 13 suites / 110 tests |
+| Executive Monitor plugin typecheck | `corepack pnpm exec tsc -p apps/nocobase/packages/plugins/@l5/plugin-executive-monitor/tsconfig.json --noEmit` | PASS |
+| Orchestration plugin typecheck | `corepack pnpm exec tsc -p apps/nocobase/packages/plugins/@l5/plugin-orchestration/tsconfig.json --noEmit` | PASS |
+| Authenticated smoke | `corepack pnpm smoke:nocobase-auth` | BLOCKED: no server on `localhost:13000` |
+| App-specific lint | `corepack pnpm -r --if-present lint` | BLOCKED: missing ESLint config in `@l5/core` |
+
+### Verdict
+
+Conditional Pass. Runtime/core contracts and plugin typechecks pass. UI/server schema mismatches found during review were fixed. Authenticated NocoBase smoke must be rerun after the local NocoBase server is started on port 13000.
+
 ## 2. Issues
 
 ### Critical

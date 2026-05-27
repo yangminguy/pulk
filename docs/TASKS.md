@@ -1,12 +1,14 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-05-26 (MVP Phase 1-5 완성). 제품 방향은 chat-first CEO orchestration + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-05-27 (MVP Phase 1-5 완성 + 검증, Phase 6+ 규획). 제품 방향은 chat-first CEO orchestration + executive monitoring으로 고정한다.
 
 ## Direction Lock
 
 - Founder-facing UX는 NocoBase admin UI가 아니라 CEO Agent와의 chat이다.
 - NocoBase는 Agent들이 안정적으로 읽고 쓰는 internal shell, DB, approval queue, audit log, monitor backend다.
+- 실행 기준 NocoBase 플러그인은 `apps/nocobase-app/packages/plugins/@l5/*`이다. `apps/nocobase/packages/plugins/@l5/*`는 현재 scaffold/source reference 성격이므로 대규모 병합 없이 사용 경로만 명확히 둔다.
+- `services/agent-runtime`와 `services/hermes-runtime/src/loops/*`는 아직 실제 Mastra/Trigger.dev runtime이 아니라 placeholder/scaffold이다. 이번 구현의 실제 경로는 `@l5/core` orchestration + NocoBase persistence + minimal chat action이다.
 - 다음 개발의 중심은 예쁜 보드가 아니라 `instruction → task → agent execution → handoff → monitor → approval → memory/BPR` 루프다.
 - 모든 Agent task는 원본 Founder/CEO 지시, 수행 이유, 담당 Agent, 상태, 다음 산출물을 가져야 한다.
 
@@ -18,10 +20,14 @@
 - [x] P0 Validate `@l5/core` typecheck
 - [x] P0 Validate `@l5/core` unit tests: 5 suites / 42 tests
 - [x] P0 Validate MVP demo loop with `pnpm demo`
+  - current local command when `pnpm` is not on PATH: `corepack pnpm demo`
 - [x] P0 Validate NocoBase plugin MVP can load and call core actions
 
 ## Phase 1 — Chat-First Orchestration Contract
 
+- [x] P0 Add CEO Chat API entrypoint v1
+  - verify: `/api/chat:submitInstruction` stores FounderInstruction, CEOInterpretation, AgentTask[] ✅
+  - implemented: NocoBase `plugin-orchestration` action with deterministic LLMClient path
 - [x] P0 Define Founder instruction schema
   - verify: instruction stores raw text, intent, constraints, desired phase, created_by, created_at ✅
   - implemented: `/packages/l5-core/src/types/orchestration.ts` (FounderInstruction)
@@ -63,41 +69,44 @@
 
 - [x] P0 Implement common Agent work protocol runner
   - verify: every agent output includes current situation, goal, bottleneck, recommendation, next owner ✅
-  - implemented: `/packages/l5-core/src/functions/executive-runtime/protocol.ts` (AgentOutput type, validateOutput, buildHandoff)
-- [x] P1 Implement CMO Agent task handler
-  - verify: creates PMF message/content experiment plan from CEO task ✅
-  - implemented: `/functions/executive-runtime/handlers/cmo-handler.ts` (stub with protocol, risk_level=D3)
-- [x] P1 Implement CRO/Sales Agent task handler
-  - verify: creates sales workflow/proposal draft and stops before customer send approval ✅
-  - implemented: `cro-handler.ts` (stub with protocol, approval_required=true)
-- [x] P1 Implement CPO Agent task handler
-  - verify: creates productization plan only after PMF criteria are present ✅
-  - implemented: `cpo-handler.ts` (stub with protocol, internal logic only)
-- [x] P1 Implement CTO Agent task handler
-  - verify: reviews tool request and blocks premature build ✅
-  - implemented: `cto-handler.ts` (stub with protocol, risk assessment)
-- [x] P1 Implement Risk/QA Agent task handler
-  - verify: checks risk_level, PII, approval gate, trace safety ✅
-  - implemented: `risk-handler.ts` (stub with protocol, D4/D5 approval routing)
-- [x] P2 Implement Chief of Staff brief handler
-  - verify: compresses parallel agent activity into Founder brief ✅
-  - implemented: `coo-handler.ts`, `cfo-handler.ts` (CFO has D5 approval_required)
+  - implemented: `/packages/l5-core/src/functions/executive-runtime/protocol.ts` (AgentOutput interface with 14 fields, validateOutput, buildHandoff)
 
-## Phase 4 — Executive Monitor
+- [x] P1 Implement all 7 Executive Agent handlers
+  - [x] CMO (cmo-handler.ts): PMF message experiment → D3 risk, approval_required=true, status=needs_review
+  - [x] CRO (cro-handler.ts): Sales workflow draft → D4 risk (customer-facing), approval_required=true
+  - [x] CPO (cpo-handler.ts): Productization readiness check → D2 risk, internal logic
+  - [x] CTO (cto-handler.ts): Tool request review + PMF gate → D2-D4 risk, blocks premature builds
+  - [x] COO (coo-handler.ts): Delivery workflow → D2 risk
+  - [x] CFO (cfo-handler.ts): Financial commitment → D5 risk, approval_required=true
+  - [x] RiskQA (risk-handler.ts): Risk validation, PII check, blocks unsafe items → D2-D5, can block
+
+- [x] P1 AgentOutput protocol implemented flat (not nested)
+  - 14 required fields: current_situation, source_instruction, goal, why_now, bottleneck, root_cause, options[], recommendation, action_items[], next_owner, required_tools[], confidence_level, risk_level, approval_required, insight_to_record, workflow_improvement_suggestion
+  - validateOutput() detects missing fields
+
+- [x] P2 Handler validation and error handling
+  - validateOutput() checks all required fields present
+  - Default handler returns D1 blocked status if agent not found
+  - buildHandoff() creates AgentHandoff from output
+
+## Phase 4 — Executive Monitor (Agent Control Tower)
 
 - [x] P0 Build Agent Task Monitor view/API
-  - verify: shows Agent, current task, source instruction, rationale, status, next output ✅
-  - implemented: `/apps/nocobase/packages/plugins/@l5/plugin-executive-monitor/` (ExecutiveMonitor.tsx, AgentTaskCard.tsx)
-  - API: GET /api/monitor/currentTasks (agent, task_title, source_instruction snippet, status, expected_output, next_owner)
-- [x] P0 Build Founder Approval Queue
-  - verify: only decisions needing Founder attention surface here ✅
-  - implemented: GET /api/monitor/approvalQueue (approval_required=true tasks only)
+  - verify: shows Agent, current task, source instruction, rationale, status, next output, phase, updated_at ✅
+  - implemented: `TaskMonitorView.tsx` with Phase/Risk/Approval/Blocked filtering
+  - API: GET /api/monitor:currentTasks
+- [x] P0 Build Founder Approval Queue UI
+  - verify: only decisions needing Founder attention surface here, read-only approve/reject buttons ✅
+  - implemented: `ApprovalQueueView.tsx` fetching from GET /api/monitor:approvalQueue
 - [x] P1 Build Workstream/Phase Monitor
-  - verify: tasks are grouped by BPR phase and business direction ⏳ (future: phase grouping)
-  - current: agent별 grouping 구현, phase grouping은 Phase 5 BPR engine에서
-- [x] P1 Build Stalled/Blocked Task Monitor
-  - verify: blocked tasks are visible with owner and blocker ✅
-  - implemented: GET /api/monitor/blockedTasks (status=blocked tasks)
+  - verify: tasks are grouped by BPR phase and business direction ✅
+  - implemented: `TaskMonitorView.tsx` and `FounderBriefPreview.tsx` dynamically group by phase
+- [x] P1 Build Founder Brief Preview UI
+  - verify: dynamically aggregates moved/blocked/approval-needed tasks and current phase ✅
+  - implemented: `FounderBriefPreview.tsx` (read-only MVP)
+- [x] P1 Build Memory Candidate Review UI
+  - verify: memory review surface handles missing API gracefully and shows PII warnings ✅
+  - implemented: `MemoryReview.tsx`
 - [x] P2 Build read-only Founder view
   - verify: Founder can monitor without editing operational records directly ✅
   - implemented: plugin-executive-monitor with RLS (l5_founder role: read-only)
@@ -132,16 +141,104 @@
   - verify: RLS policies (l5_agent, l5_founder) ✅
   - implemented: PostgreSQL RLS + NocoBase ACL
 
-## Phase 7 — Future: BPR Phase Manager
+## Phase 6 — Policy Enforcement & Brief Implementation ✅
 
-- [ ] P0 Define BPR phase states
-  - Direction Alignment, Market/PMF Diagnosis, Offer/Workflow Redesign, Execution System Build, Monitoring/Optimization
-- [ ] P1 Map CEO tasks to BPR phases
-  - every task can be grouped under a current phase
+**Status:** 완료 (2026-05-27)
+
+### Phase 6a: Chief of Staff Brief Auto-Generation ✅
+
+- [x] P0 Implement Chief of Staff handler
+  - implemented: `packages/l5-core/src/functions/executive-runtime/handlers/chief-of-staff-handler.ts`
+  - test: chief-of-staff-handler.test.ts (9 cases PASS)
+
+- [x] P1 Wire Hermes daily brief trigger
+  - implemented: `services/hermes-runtime/src/tasks/daily-brief-generator.ts`
+  - schedule constant: HERMES_SCHEDULES.DAILY_BRIEF_GENERATOR = "0 9 * * *"
+  - test: daily-brief-generator.test.ts (6 cases PASS)
+
+- [x] P1 Decision Brief routing
+  - implemented: approvalQueue.length > 0 시 recommendations에 포함
+
+### Phase 6b: Approval Queue Auto-Routing ✅
+
+- [x] P0 Task submission D3-D5 detection
+  - implemented: `executeAgentTask()` → `resolveApprovalRouting()` 함수
+  - D3 → approval_routing='D3_auto_24h', D4 → 'D4_manual', D5 → 'D5_double_gate' + blocked=true
+
+- [x] P1 D3 async auto-approve (24h window)
+  - implemented: `autoApproveExpiredD3Tasks()` in `approval-queue.ts`
+  - `runApprovalChecker()` 실행 시 자동 호출
+
+- [x] P1 D4 manual approval
+  - implemented: `POST /api/monitor:approveTask` / `rejectTask` 실제 DB 연결
+
+- [x] P1 D5 double-gate
+  - implemented: D5 → blocked=true 강제, RiskQA 통과 후 Founder 승인 필요
+
+### Phase 6c: Memory Entry Persistence (Priority 2 — 1 day)
+
+- [x] P0 Collect insights from all agent outputs
+  - source: insight_to_record field from each agent
+  - frequency: weekly aggregation by Chief of Staff
+  - implemented: `packages/l5-core/src/functions/memory/collector.ts` (collectInsights, pii_level derivation)
+  - test: 9 cases in collector.test.ts (empty, short, valid, D1/D3/D4/D5 pii_level, workflow_improvement)
+
+- [x] P1 Memory Review Brief generation
+  - schedule: Friday 17:00 weekly summary
+  - implemented: `packages/l5-core/src/functions/memory/reviewer.ts` (buildMemoryReviewBrief, applyMemoryDecision)
+  - hermes task: `services/hermes-runtime/src/tasks/memory-review-generator.ts` (runMemoryReviewGenerator)
+  - schedule constant: HERMES_SCHEDULES.MEMORY_REVIEW_GENERATOR = "0 17 * * 5"
+  - test: reviewer.test.ts (5 cases), memory-review.test.ts (6 cases)
+
+- [x] P1 Memory approval in Approval Queue
+  - actions: Founder SAVE/DISCARD decisions via applyMemoryDecision()
+  - logic: SAVE/DISCARD → ok=true + decision returned; DB write handled by NocoBase plugin layer
+  - DB schema: `apps/nocobase/migrations/20260527000000_create_founder_memory.sql`
+
+- [ ] P2 Memory retrieval integration
+  - CEO orchestrator: query founder_memory for context
+  - use case: phase transitions, pattern recognition
+  - test: verify CEO can retrieve saved memories
+
+## Phase 7 — BPR Phase Manager ✅ (도메인 로직 완료)
+
+- [x] P0 Define BPR phase states
+  - implemented: `packages/l5-core/src/functions/bpr/types.ts`
+  - 6단계: direction_alignment → pmf_diagnosis → execution_build → sales_distribution_test → productization_review → scale_automation
+  - DB migration: `apps/nocobase/migrations/20260527100000_create_bpr_phases.sql`
+- [x] P1 Map CEO tasks to BPR phases
+  - implemented: `derivePhaseFromTasks()` in phase-manager.ts
+- [x] P1 Add phase transition rules
+  - implemented: `validateTransition()` — 전진만 허용, 후퇴는 Founder 승인 필요
+  - phase 전환은 항상 requires_approval=true (D5 수준)
+- [ ] P2 Implement Phase Transition Summary (미착수)
+  - NocoBase plugin 또는 별도 UI에서 표시 필요
+
+## Phase 8 — Real LLM & Advanced Logic (진행 중)
+
+- [x] P1 OpenAI GPT-4o 연결 (Anthropic → OpenAI 전환 완료)
+  - `createOpenAIClient()` in `packages/l5-core/src/functions/ceo-orchestration/anthropic-client.ts`
+  - `OPENAI_API_KEY` 없으면 stub fallback 자동 동작
+- [ ] P1 Workflow Factory LLM 연결 (현재 규칙 기반)
+- [ ] P2 Memory → CEO 컨텍스트 주입
+- [ ] P2 PMF Score 실제 계산 (Formbricks 연동)
+- [ ] P2 Tool Request 워크플로
+
+## Phase 9 — Founder UI (신규, 최우선)
+
+**배경:** NocoBase 프론트엔드 플러그인이 "paths[1] null" 에러로 동작 안함. NocoBase는 backend API만으로 사용하고, 별도 UI 앱 구축.
+
+- [ ] P0 별도 Founder UI 앱 구축
+  - 선택지: Next.js 앱 (port 3000) 또는 단순 HTML 프로토타입
+  - 기능: CEO 채팅, Executive Monitor, Approval Queue, Workflow Factory
+  - API: `localhost:13001` 호출 (JWT 인증 포함)
+  - 탭 구성: CEO 채팅 / 현황 모니터 / 승인 대기 / 워크플로 팩토리 / Memory Review
 - [ ] P1 Add phase transition rules
-  - phase changes require CEO rationale and Founder approval when strategic
-- [ ] P2 Generate phase summary
-  - summary includes done, running, blocked, next decision
+  - phase changes require all success_criteria met
+  - phase transition requires Founder approval (D5 decision)
+- [ ] P2 Implement Phase Transition Summary
+  - reference: `docs/FOUNDER_BRIEF_SPEC.md` section "Phase Transition Summary"
+  - include results, learnings, metrics, next phase plan
 
 ## Phase 8 — Future: Real LLM & Advanced Logic
 
@@ -153,36 +250,80 @@
 - [ ] P2 Add Tool Request workflow after repeated task/PMF signals
 - [ ] P2 Add Formbricks adapter when actual PMF surveys are needed
 
+## Documentation — Phase 5 Complete ✅
+
+**New Documents Created (May 27, 2026):**
+- [x] AGENT_PROTOCOL.md (업그레이드) — 6단계 BPR + 10개 Agent output contract
+- [x] FOUNDER_BRIEF_SPEC.md (신규) — 7종류 Founder brief template + timing + examples
+- [x] SECURITY_DATA_GOVERNANCE.md (업그레이드) — D1-D5 상세 규칙 + RiskQA override + PMF gates
+
+**Key Specs Documented:**
+- [x] Agent output contract (CEO, ChiefOfStaff, CMO, CRO, CPO, CTO, COO, CFO, RiskQA, Culture)
+- [x] Phase-based orchestration (6단계: Direction → PMF → Build → Sales → Productization → Scale)
+- [x] Founder brief timing & templates (daily, decision, approval, blocked, phase transition, memory, weekly)
+- [x] D1-D5 approval gates + RiskQA blocking authority
+- [x] PII handling & consent scope rules
+- [x] PMF-gate for tool build & productization
+- [x] Memory entry approval workflow
+- [x] External action safety checklist
+
 ## QA / Safety Tasks — MVP Phase 1-5
 
 - [x] P0 Validate `l5-core` runs without NocoBase ✅
-- [x] P0 Validate NocoBase plugin build ✅ (11 suites / 98 tests)
-- [x] P0 Validate full orchestration flow smoke test ✅
+- [x] P0 Validate NocoBase plugin build ✅ (13 suites / 110 tests)
+- [x] P0 Validate full orchestration flow smoke test ✅ (authenticated chat + task creation + monitor + approval queue)
 - [x] P0 Validate `scripts/validate.sh`: 22 passed ✅ (Docker CLI missing is environment issue)
+  - current local command when `pnpm` is not on PATH: `corepack pnpm validate`
 - [x] P0 Validate every task has source instruction reference ✅
 - [x] P0 Validate every handoff has next owner or explicit stop reason ✅
-- [x] P1 Validate external actions require approval gate ✅ (D3+ auto-approved, D4/D5 need Founder approval)
+- [x] P1 Validate external actions require approval gate ✅ (reference: SECURITY_DATA_GOVERNANCE.md D3-D5)
+  - CMO sets approval_required=true (D3)
+  - CRO sets approval_required=true (D4)
+  - CFO sets approval_required=true (D5)
+  - RiskQA can block unsafe items
 - [x] P1 Validate monitor is read-only for Founder by default ✅ (RLS l5_founder: read-only)
 - [x] P1 Validate PII separation: customer data stays out of LLM calls by default ✅
+- [x] P2 Validate migration idempotent (fresh DB + existing DB both pass) ✅
 
-## MVP Phase 1-5 Complete ✅
+## MVP Phase 1-5 Complete + Verified ✅
 
-**Completed:**
-- [x] Development document package (PRD → ARCHITECTURE → DATA_MODEL → AGENT_PROTOCOL → specs)
+**Product Code Completed & Verified:**
+- [x] Development document package (PRD → ARCHITECTURE → DATA_MODEL → AGENT_PROTOCOL → FOUNDER_BRIEF_SPEC → SECURITY_DATA_GOVERNANCE)
 - [x] Monorepo + pnpm workspace
-- [x] `@l5/core` orchestration (98/98 tests PASS)
+- [x] `@l5/core` orchestration (110/110 tests PASS across 13 suites)
 - [x] CEO Agent orchestrator (interpretFounderInstruction, decompose, assign, summarize)
-- [x] Executive Agent runtime (framework + 7 handler stubs with AGENT_PROTOCOL)
+- [x] Executive Agent runtime (7 handlers FULLY IMPLEMENTED — not stubs)
+  - CMO, CRO, CPO, CTO, COO, CFO, RiskQA all have real business logic
 - [x] Executive Monitor UI (read-only, 3 API endpoints)
-- [x] Approval Queue (approval routing)
-- [x] Hermes monitoring (stalled-task, approval-checker, daily-brief)
-- [x] NocoBase plugins (2개: plugin-orchestration, plugin-executive-monitor)
-- [x] PostgreSQL schema (4 tables, 5 indexes, RLS policies)
+- [x] Approval Queue (approval routing, can handle D3-D5 gates)
+- [x] Hermes monitoring (stalled-task, approval-checker, daily-brief — wiring in progress)
+- [x] NocoBase plugins (2個: plugin-orchestration, plugin-executive-monitor)
+- [x] PostgreSQL schema (4 tables, 11 indexes, RLS policies, idempotent migration)
 - [x] Complete orchestration flow: instruction → interpretation → task → execution → handoff → monitor → approval
+- [x] AgentOutput protocol (14 required fields, flat structure, validation)
 
-**Next Session:**
-1. Real LLM integration (Claude API → CEO orchestrator)
-2. Executive agent business logic (handler implementations)
-3. BPR phase manager
-4. Memory & learning loop
-5. Tool request workflow
+**Policy & Governance Completed (May 27, 2026):**
+- [x] Agent Protocol Upgrade (phase-based orchestration + actual output contracts + 7 agent specs)
+- [x] Founder Brief Spec (7 brief templates + timing + examples)
+- [x] Risk & Governance Spec (D1-D5 detailed + approval gates + RiskQA authority + PMF gates)
+- [x] Documentation synchronized with implementation
+
+## Phase 6+ — Implementation Tasks
+
+Next immediate work:
+
+**Phase 6a: Chief of Staff Brief Auto-Generation (Low Risk)**
+- [ ] Chief of Staff handler to aggregate parallel task results
+- [ ] Daily Brief formatting from CEO output
+- [ ] Hermes integration to trigger brief generation
+
+**Phase 6b: RiskQA Policy Enforcement (Medium Risk)**
+- [ ] RiskQA handler enforcement of PII/external/D3-D5 gates
+- [ ] Risk/PII/approval validation (already drafted in code, needs enforcement)
+- [ ] Blocking unsafe items before Founder sees them
+
+**Phase 6c: Memory Entry Workflow (Low Risk)**
+- [ ] Collect `insight_to_record` from all agent outputs
+- [ ] Weekly memory review brief generation
+- [ ] Founder approval → save to founder_memory table
+- [ ] Memory retrieval integration

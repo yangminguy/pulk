@@ -13,6 +13,9 @@ export type AgentTask = {
   stop_reason?: string;
   approval_required: boolean;
   blocker?: string;
+  phase?: string;
+  risk_level?: string;
+  source_ref?: string;
   updated_at?: string;
 };
 
@@ -55,8 +58,28 @@ export const AgentTaskCard: React.FC<{ task: AgentTask }> = ({ task }) => {
           <span style={{ fontWeight: 700, fontSize: 13, color: '#374151' }}>{task.agent}</span>
           <span style={{ margin: '0 6px', color: '#d1d5db' }}>›</span>
           <span style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>{task.task_title}</span>
+          {task.phase && (
+            <span style={{ marginLeft: 8, fontSize: 11, color: '#6b7280', background: '#f3f4f6', padding: '2px 6px', borderRadius: 4 }}>
+              {task.phase}
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {task.risk_level && (
+            <span
+              style={{
+                background: '#f3f4f6',
+                color: '#4b5563',
+                border: '1px solid #d1d5db',
+                borderRadius: 4,
+                padding: '2px 8px',
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              {task.risk_level}
+            </span>
+          )}
           {task.approval_required && (
             <span
               style={{
@@ -95,6 +118,13 @@ export const AgentTaskCard: React.FC<{ task: AgentTask }> = ({ task }) => {
         </div>
       )}
 
+      {/* 출처 참조 */}
+      {task.source_ref && (
+        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+          <span style={{ fontWeight: 600 }}>출처:</span> {task.source_ref}
+        </div>
+      )}
+
       {/* 수행 이유 */}
       {task.rationale && (
         <div style={{ fontSize: 12, color: '#374151', marginBottom: 6 }}>
@@ -126,10 +156,17 @@ export const AgentTaskCard: React.FC<{ task: AgentTask }> = ({ task }) => {
       )}
 
       {/* 다음 소유자 / 중단 이유 */}
-      {(task.next_owner || task.stop_reason) && (
-        <div style={{ fontSize: 12, color: '#6b7280' }}>
-          {task.next_owner && <span><span style={{ fontWeight: 600 }}>다음 담당:</span> {task.next_owner}</span>}
-          {task.stop_reason && <span style={{ marginLeft: 8 }}><span style={{ fontWeight: 600 }}>중단 이유:</span> {task.stop_reason}</span>}
+      {(task.next_owner || task.stop_reason || task.updated_at) && (
+        <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f3f4f6' }}>
+          <div>
+            {task.next_owner && <span><span style={{ fontWeight: 600 }}>다음 담당:</span> {task.next_owner}</span>}
+            {task.stop_reason && <span style={{ marginLeft: task.next_owner ? 8 : 0 }}><span style={{ fontWeight: 600 }}>중단 이유:</span> {task.stop_reason}</span>}
+          </div>
+          {task.updated_at && (
+            <div>
+              <span style={{ fontWeight: 600 }}>최근 이동:</span> {new Date(task.updated_at).toLocaleString('ko-KR')}
+            </div>
+          )}
         </div>
       )}
     </div>

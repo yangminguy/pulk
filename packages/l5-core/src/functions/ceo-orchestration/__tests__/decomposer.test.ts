@@ -6,7 +6,7 @@ function makeInterp(over: Partial<CEOInterpretation> = {}): CEOInterpretation {
     id: 'interp_1',
     instruction_id: 'fi_1',
     goal: 'Launch marketing campaign',
-    phase: 'execution_system_build',
+    phase: 'execution_build',
     assumptions: [],
     success_criteria: [],
     risk_level: 'D2',

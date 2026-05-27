@@ -168,7 +168,13 @@ export interface MemoryEntry extends CommonFields {
   related_entity_type?: string;
   pii_level: PIILevel;
   searchable_tags: string[];
+  suggested_tags: string[];
   reusability_score?: number;
+  approval_status: 'pending' | 'approved' | 'rejected';
+  contains_pii: boolean;
+  pii_notes?: string;
+  source_task_id?: string;
+  reusable_context?: string;
 }
 
 export interface FounderBrief extends CommonFields {

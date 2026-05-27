@@ -43,7 +43,7 @@ describe('Orchestration type compatibility', () => {
       instruction_id: 'fi-1',
       goal: 'Validate B2B SaaS PMF within 60 days',
       assumptions: ['ICP is mid-market ops teams', 'budget constraint limits paid ads'],
-      phase: 'market_pmf_diagnosis',
+      phase: 'pmf_diagnosis',
       success_criteria: ['3 paid pilots', 'NPS > 40'],
       risk_level: 'D2',
       approval_required: false,
@@ -51,7 +51,7 @@ describe('Orchestration type compatibility', () => {
     };
     expect(interpretation.instruction_id).toBe('fi-1');
     expect(interpretation.risk_level).toBe('D2');
-    expect(interpretation.phase).toBe('market_pmf_diagnosis');
+    expect(interpretation.phase).toBe('pmf_diagnosis');
   });
 
   it('CEOInterpretation approval_required is boolean', () => {
@@ -60,7 +60,7 @@ describe('Orchestration type compatibility', () => {
       instruction_id: 'fi-1',
       goal: 'Launch external paid campaign',
       assumptions: [],
-      phase: 'execution_system_build',
+      phase: 'execution_build',
       success_criteria: ['100 signups'],
       risk_level: 'D4',
       approval_required: true,
@@ -152,12 +152,13 @@ describe('Orchestration type compatibility', () => {
   it('all OrchestrationPhase values are valid strings', () => {
     const phases: OrchestrationPhase[] = [
       'direction_alignment',
-      'market_pmf_diagnosis',
-      'offer_workflow_redesign',
-      'execution_system_build',
-      'monitoring_optimization',
+      'pmf_diagnosis',
+      'execution_build',
+      'sales_distribution_test',
+      'productization_review',
+      'scale_automation'
     ];
-    expect(phases).toHaveLength(5);
+    expect(phases).toHaveLength(6);
     phases.forEach(p => expect(typeof p).toBe('string'));
   });
 

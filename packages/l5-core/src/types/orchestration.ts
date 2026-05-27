@@ -17,10 +17,22 @@ export type AgentRole =
 
 export type OrchestrationPhase =
   | 'direction_alignment'
-  | 'market_pmf_diagnosis'
-  | 'offer_workflow_redesign'
-  | 'execution_system_build'
-  | 'monitoring_optimization';
+  | 'pmf_diagnosis'
+  | 'execution_build'
+  | 'sales_distribution_test'
+  | 'productization_review'
+  | 'scale_automation';
+
+export interface PhaseTransition {
+  id: string;
+  from_phase: OrchestrationPhase | 'none';
+  to_phase: OrchestrationPhase;
+  reason: string;
+  triggered_by: string;
+  approval_required: boolean;
+  approved_by_founder: boolean;
+  created_at: string;
+}
 
 export interface FounderInstruction {
   id: string;
@@ -55,6 +67,9 @@ export interface AgentTask {
   expected_output: string;
   status: 'queued' | 'running' | 'blocked' | 'needs_review' | 'done' | 'killed';
   approval_required: boolean;
+  risk_level?: RiskLevel;
+  phase?: OrchestrationPhase;
+  source_ref?: string;
   blocker?: string;
   due_at?: string;
   created_at: string;

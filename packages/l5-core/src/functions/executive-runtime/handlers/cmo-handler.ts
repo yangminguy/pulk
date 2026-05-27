@@ -5,6 +5,19 @@ import { buildHandoff } from '../protocol';
 
 export function cmoHandler(input: HandlerInput): HandlerResult {
   const { task } = input;
+  const experiment = {
+    title: `PMF message experiment: ${task.title}`,
+    assigned_agent: 'CMO' as const,
+    expected_output: 'PMF message experiment brief',
+    details: {
+      hypothesis: 'A sharper founder workflow message will produce qualified replies before product build.',
+      target_segment: 'Founder-led operators with repeated manual workflow pain',
+      channel: 'approved outreach draft or content test',
+      success_signal: 'At least three qualified replies or interview accepts from the target segment',
+    },
+    approval_required: true,
+    risk_level: 'D3' as const,
+  };
 
   const output = {
     current_situation: `CMO task received: ${task.title}`,
@@ -20,9 +33,11 @@ export function cmoHandler(input: HandlerInput): HandlerResult {
     ],
     recommendation: 'Draft two positioning variants for CEO review before any external send',
     action_items: [
-      'Draft PMF message variant A and variant B',
-      'Define target segment and success signal',
-      'Submit to CEO for review — do not publish without approval',
+      `Hypothesis: ${experiment.details.hypothesis}`,
+      `Target segment: ${experiment.details.target_segment}`,
+      `Channel: ${experiment.details.channel}`,
+      `Success signal: ${experiment.details.success_signal}`,
+      'Submit to CEO for review before any external send or publish',
     ],
     next_owner: 'ceo' as const,
     required_tools: [],
@@ -41,6 +56,13 @@ export function cmoHandler(input: HandlerInput): HandlerResult {
   });
 
   return {
+    status: 'needs_review',
+    created_tasks: [experiment],
+    approval_required: true,
+    blocked: false,
+    reason: 'External-facing PMF message work is draft-only until approval.',
+    risk_level: 'D3',
+    source_ref: task.source_ref,
     output,
     updated_status: 'needs_review',
     handoff,

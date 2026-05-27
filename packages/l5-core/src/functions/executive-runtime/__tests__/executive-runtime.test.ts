@@ -91,6 +91,93 @@ describe('executeAgentTask', () => {
       const result = executeAgentTask(makeTask({ assigned_agent: 'CMO' }));
       expect(result.output.risk_level).toBe('D3');
     });
+
+    it('returns the structured handler contract at the top level', () => {
+      const result = executeAgentTask(makeTask({ assigned_agent: 'CMO', source_ref: 'founder_instruction:instr-001' }));
+      expect(result).toMatchObject({
+        status: 'needs_review',
+        approval_required: true,
+        blocked: false,
+        risk_level: 'D3',
+        source_ref: 'founder_instruction:instr-001',
+      });
+      expect(result.created_tasks[0].details).toMatchObject({
+        hypothesis: expect.any(String),
+        target_segment: expect.any(String),
+        channel: expect.any(String),
+        success_signal: expect.any(String),
+      });
+    });
+
+    it('CRO creates a sales/proposal task with lead, source_ref, offer angle, and next action', () => {
+      const result = executeAgentTask(makeTask({ assigned_agent: 'CRO', source_ref: 'lead:alpha' }));
+      expect(result.created_tasks[0].details).toMatchObject({
+        lead: expect.any(String),
+        source_ref: 'lead:alpha',
+        offer_angle: expect.any(String),
+        next_action: expect.any(String),
+      });
+      expect(result.approval_required).toBe(true);
+    });
+
+    it('CPO blocks productization when PMF evidence is missing', () => {
+      const result = executeAgentTask(makeTask({
+        assigned_agent: 'CPO',
+        title: 'Productize the workflow into a platform',
+        expected_output: 'Productization plan',
+      }));
+      expect(result.blocked).toBe(true);
+      expect(result.approval_required).toBe(true);
+      expect(result.updated_status).toBe('blocked');
+      expect(result.reason).toMatch(/PMF evidence/i);
+    });
+
+    it('CPO allows productization only when PMF evidence is strong', () => {
+      const result = executeAgentTask(makeTask({
+        assigned_agent: 'CPO',
+        title: 'Productize the workflow into a platform',
+        expected_output: 'Productization plan',
+      }), { pmf_evidence: 'strong' });
+      expect(result.blocked).toBe(false);
+      expect(result.updated_status).toBe('needs_review');
+    });
+
+    it('CTO blocks premature tool building before validation or allowed phase', () => {
+      const result = executeAgentTask(makeTask({
+        assigned_agent: 'CTO',
+        title: 'Build workflow automation tool',
+        phase: 'pmf_diagnosis',
+      }));
+      expect(result.blocked).toBe(true);
+      expect(result.updated_status).toBe('blocked');
+      expect(result.created_tasks[0].assigned_agent).toBe('COO');
+    });
+
+    it('RiskQA blocks elevated external work missing approval gate', () => {
+      const result = executeAgentTask(makeTask({
+        assigned_agent: 'RiskQA',
+        title: 'Send proposal using customer email data',
+        approval_required: false,
+        risk_level: 'D4',
+      }));
+      expect(result.blocked).toBe(true);
+      expect(result.approval_required).toBe(true);
+      expect(result.created_tasks[0].details.approval_gate).toBe('missing');
+      expect(result.updated_status).toBe('blocked');
+    });
+
+    it('CFO flags spend, margin, budget, or scaling risk', () => {
+      const result = executeAgentTask(makeTask({
+        assigned_agent: 'CFO',
+        title: 'Scale paid acquisition budget',
+      }));
+      expect(result.risk_level).toBe('D5');
+      expect(result.created_tasks[0].details).toMatchObject({
+        cost_risk: 'flagged',
+        margin_risk: 'review required before scaling',
+        budget_risk: 'Founder approval required before commitment',
+      });
+    });
   });
 
   describe('handoff generation', () => {

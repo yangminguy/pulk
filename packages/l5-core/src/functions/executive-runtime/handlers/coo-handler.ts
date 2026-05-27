@@ -42,6 +42,24 @@ export function cooHandler(input: HandlerInput): HandlerResult {
   });
 
   return {
+    status: 'needs_review',
+    created_tasks: [{
+      title: `Delivery workflow SOP: ${task.title}`,
+      assigned_agent: 'COO' as const,
+      expected_output: 'Internal delivery workflow and SOP checklist',
+      details: {
+        workflow: 'map current delivery steps',
+        bottleneck: 'identify highest-friction handoff',
+        validation: 'manual process before automation',
+      },
+      approval_required: false,
+      risk_level: 'D2',
+    }],
+    approval_required: false,
+    blocked: false,
+    reason: 'Internal workflow/SOP task can proceed without external approval.',
+    risk_level: 'D2',
+    source_ref: task.source_ref,
     output,
     updated_status: 'needs_review',
     handoff,

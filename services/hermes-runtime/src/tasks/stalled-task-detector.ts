@@ -32,6 +32,8 @@ export async function runStalledTaskDetector(
   const stalled = tasks
     .filter((t) => t.status !== "done" && t.status !== "killed")
     .reduce<StalledTaskReport[]>((acc, t) => {
+      const lastActivityAt = t.updated_at ?? t.created_at;
+
       if (t.status === "blocked") {
         acc.push({
           task_id: t.id,
@@ -39,13 +41,13 @@ export async function runStalledTaskDetector(
           assigned_agent: t.assigned_agent,
           status: t.status,
           blocker: t.blocker,
-          last_activity_at: t.updated_at,
+          last_activity_at: lastActivityAt,
           stall_reason: "blocked",
         });
         return acc;
       }
 
-      const lastActivity = new Date(t.updated_at).getTime();
+      const lastActivity = new Date(lastActivityAt).getTime();
       if (now.getTime() - lastActivity > OVERDUE_THRESHOLD_MS) {
         acc.push({
           task_id: t.id,
@@ -53,7 +55,7 @@ export async function runStalledTaskDetector(
           assigned_agent: t.assigned_agent,
           status: t.status,
           blocker: t.blocker,
-          last_activity_at: t.updated_at,
+          last_activity_at: lastActivityAt,
           stall_reason: "overdue",
         });
       }

@@ -9,7 +9,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest --config jest.config.cjs",
+    "test:watch": "jest --config jest.config.cjs --watch"
   },
   "keywords": [
     "l5",
@@ -20,11 +22,14 @@
   "author": "L5 Team",
   "license": "AGPL-3.0-or-later",
   "dependencies": {
-    "@l5/core": "workspace:*",
-    "@l5/agent-runtime": "workspace:*"
+    "@l5/agent-runtime": "workspace:*",
+    "@l5/core": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "catalog:",
-    "@types/node": "catalog:"
+    "@types/jest": "^29.5.14",
+    "@types/node": "catalog:",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "catalog:"
   }
 }

@@ -2,7 +2,7 @@
 // plus internal helpers used only by the CEO orchestration pipeline.
 
 import type { RiskLevel } from '../../types/entities';
-import type { AgentRole } from '../../types/orchestration';
+import type { AgentRole, OrchestrationPhase } from '../../types/orchestration';
 
 export type {
   FounderInstruction,
@@ -30,6 +30,7 @@ export interface Workstream {
   expected_output: string;
   approval_required: boolean;
   risk_level: RiskLevel;
+  phase: OrchestrationPhase;
 }
 
 export interface CompanyStatusSummary {

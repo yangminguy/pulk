@@ -5,6 +5,10 @@ import { buildHandoff } from '../protocol';
 
 export function cfoHandler(input: HandlerInput): HandlerResult {
   const { task } = input;
+  const financialRisk = /(spend|budget|cost|margin|pricing|payment|invoice|subscription|hire|scale|contract)/i.test(
+    `${task.title} ${task.rationale} ${task.expected_output}`,
+  );
+  const riskLevel = financialRisk ? 'D5' : 'D3';
 
   const output = {
     current_situation: `CFO task received: ${task.title}`,
@@ -31,7 +35,7 @@ export function cfoHandler(input: HandlerInput): HandlerResult {
     insight_to_record: 'CFO must escalate all financial commitments to Founder — no autonomous spend',
     workflow_improvement_suggestion: 'Add CFO cost review step before any tool subscription approval',
     confidence_level: 'medium' as const,
-    risk_level: 'D5' as const,
+    risk_level: riskLevel as 'D3' | 'D5',
   };
 
   const handoff = buildHandoff(task, output, {
@@ -42,6 +46,26 @@ export function cfoHandler(input: HandlerInput): HandlerResult {
   });
 
   return {
+    status: 'needs_review',
+    created_tasks: [{
+      title: `Cost/margin/budget review: ${task.title}`,
+      assigned_agent: 'CFO' as const,
+      expected_output: 'Financial risk review with explicit cost, margin, and budget flags',
+      details: {
+        cost_risk: financialRisk ? 'flagged' : 'not detected',
+        margin_risk: financialRisk ? 'review required before scaling' : 'monitor only',
+        budget_risk: financialRisk ? 'Founder approval required before commitment' : 'no spend commitment detected',
+      },
+      approval_required: financialRisk,
+      risk_level: riskLevel,
+    }],
+    approval_required: financialRisk,
+    blocked: false,
+    reason: financialRisk
+      ? 'Task implies spending, margin, budget, or scaling risk and must enter approval review.'
+      : 'No explicit spend commitment detected; CFO review remains advisory.',
+    risk_level: riskLevel,
+    source_ref: task.source_ref,
     output,
     updated_status: 'needs_review',
     handoff,
