@@ -3,6 +3,124 @@ import { useEffect, useState, useCallback } from 'react'
 import AuthGate from '@/components/AuthGate'
 import { api } from '@/lib/api'
 
+interface PhaseInfo {
+  current_phase: string
+  current_phase_label: string
+  next_phase: string | null
+  next_phase_label: string | null
+  phase_index: number
+  total_phases: number
+  requires_approval: boolean
+}
+
+function PhaseTransitionPanel() {
+  const [phase, setPhase] = useState<PhaseInfo | null>(null)
+  const [reason, setReason] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [toast, setToast] = useState('')
+  const [showForm, setShowForm] = useState(false)
+
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  useEffect(() => {
+    setLoading(true)
+    api.currentPhase().then(setPhase).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+
+  const handleRequest = async () => {
+    if (!phase?.next_phase || !reason.trim()) return
+    setSubmitting(true)
+    try {
+      await api.requestTransition(phase.current_phase, phase.next_phase, reason)
+      showToast('Phase 전환 요청이 승인 대기열에 추가됐습니다 (D5)')
+      setShowForm(false)
+      setReason('')
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : '오류')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (loading) return null
+
+  return (
+    <div className="bg-slate-800 rounded-xl p-4 mb-5 border border-slate-700">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-500 uppercase tracking-wide">BPR Phase</span>
+          <span className="bg-indigo-700 text-indigo-100 text-sm font-medium rounded px-3 py-0.5">
+            {phase?.current_phase_label ?? '로딩 중'}
+          </span>
+          {phase && (
+            <span className="text-xs text-slate-500">
+              {phase.phase_index + 1} / {phase.total_phases}
+            </span>
+          )}
+        </div>
+        {phase?.next_phase && (
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="text-xs text-indigo-400 hover:text-indigo-300 border border-indigo-700 rounded px-3 py-1 transition-colors"
+          >
+            다음 Phase로 전환 →
+          </button>
+        )}
+      </div>
+
+      {/* Phase progress bar */}
+      {phase && (
+        <div className="flex gap-1 mt-2">
+          {Array.from({ length: phase.total_phases }).map((_, i) => (
+            <div
+              key={i}
+              className={`h-1 flex-1 rounded-full ${i <= phase.phase_index ? 'bg-indigo-500' : 'bg-slate-700'}`}
+            />
+          ))}
+        </div>
+      )}
+
+      {showForm && phase?.next_phase && (
+        <div className="mt-4 space-y-3 border-t border-slate-700 pt-4">
+          <div className="text-sm text-slate-300">
+            <span className="text-indigo-400">{phase.current_phase_label}</span>
+            <span className="mx-2 text-slate-500">→</span>
+            <span className="text-green-400">{phase.next_phase_label}</span>
+            <span className="ml-2 text-xs bg-red-900 text-red-300 rounded px-2 py-0.5">D5 승인 필요</span>
+          </div>
+          <textarea
+            className="w-full bg-slate-700 rounded px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-indigo-500"
+            rows={2}
+            placeholder="전환 사유를 입력하세요 (예: PMF 신호 3개 달성, 첫 유료 전환 발생)"
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleRequest}
+              disabled={submitting || !reason.trim()}
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded px-4 py-1.5 text-sm font-medium transition-colors"
+            >
+              {submitting ? '요청 중...' : '전환 요청 (승인 대기열로)'}
+            </button>
+            <button
+              onClick={() => setShowForm(false)}
+              className="text-slate-400 hover:text-slate-200 text-sm px-3"
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="mt-3 bg-slate-700 text-white text-xs rounded px-3 py-2">{toast}</div>
+      )}
+    </div>
+  )
+}
+
 type TaskStatus = 'queued' | 'running' | 'blocked' | 'needs_review' | 'done' | 'killed'
 type RiskLevel = 'D1' | 'D2' | 'D3' | 'D4' | 'D5'
 
@@ -111,6 +229,7 @@ function MonitorContent() {
 
   return (
     <div>
+      <PhaseTransitionPanel />
       <div className="flex items-center gap-4 mb-4">
         <h1 className="text-xl font-bold">Executive Monitor</h1>
         <label className="ml-auto flex items-center gap-2 text-xs text-slate-400 cursor-pointer">

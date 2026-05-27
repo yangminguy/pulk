@@ -9,6 +9,10 @@ const {
   interpretFounderInstruction,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/ceo-orchestration'));
 
+const {
+  generateWorkflow,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/workflow-factory'));
+
 type ActionContext = {
   app?: any;
   db: any;
@@ -37,7 +41,7 @@ export default class PluginOrchestrationServer extends Plugin {
     registerChatResource(this.app, this.db);
     registerCrudResources(this.app);
 
-    this.app.acl.allow('chat', ['submitInstruction'], 'loggedIn');
+    this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow'], 'loggedIn');
     this.app.acl.allow('founder_instructions', '*', 'loggedIn');
     this.app.acl.allow('ceo_interpretations', '*', 'loggedIn');
     this.app.acl.allow('agent_tasks', '*', 'loggedIn');
@@ -51,6 +55,9 @@ export default class PluginOrchestrationServer extends Plugin {
 }
 
 async function ensureOrchestrationColumns(db: any) {
+  const dialect = db.sequelize?.getDialect?.();
+  if (dialect === 'sqlite') return;
+
   try {
     await db.sequelize.query(`
       ALTER TABLE IF EXISTS agent_tasks
@@ -194,6 +201,19 @@ function registerChatResource(app: any, db: any) {
             },
           },
         };
+        await next();
+      },
+
+      generateWorkflow: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const { idea, current_phase } = getValues(ctx);
+        if (!idea || typeof idea !== 'string') ctx.throw(400, 'idea is required');
+
+        const result = generateWorkflow({
+          business_idea: idea,
+          current_phase: current_phase ?? undefined,
+        });
+
+        ctx.body = { ok: true, data: result };
         await next();
       },
     },

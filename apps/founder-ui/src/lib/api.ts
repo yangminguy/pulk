@@ -30,16 +30,16 @@ export const api = {
     }).then(r => ({ token: r.data.token })),
 
   submitInstruction: (rawText: string) =>
-    request<unknown>('/api/chat:submitInstruction', {
+    request<{ data: { ok: boolean; data: { instruction: unknown; interpretation: unknown; tasks: unknown[] } } }>('/api/chat:submitInstruction', {
       method: 'POST',
       body: JSON.stringify({ raw_text: rawText, source: 'chat' }),
-    }),
+    }).then(r => r.data?.data ?? r.data ?? r),
 
   generateWorkflow: (idea: string) =>
-    request<unknown>('/api/chat:generateWorkflow', {
+    request<{ data: { ok: boolean; data: unknown } }>('/api/chat:generateWorkflow', {
       method: 'POST',
       body: JSON.stringify({ idea }),
-    }),
+    }).then(r => r.data?.data ?? r.data ?? r),
 
   currentTasks: () => request<unknown[]>('/api/monitor:currentTasks'),
   blockedTasks: () => request<unknown[]>('/api/monitor:blockedTasks'),
@@ -70,4 +70,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ id }),
     }),
+
+  currentPhase: () => request<{ data: {
+    current_phase: string
+    current_phase_label: string
+    next_phase: string | null
+    next_phase_label: string | null
+    phase_index: number
+    total_phases: number
+    requires_approval: boolean
+  }}>('/api/bpr:currentPhase').then(r => r.data),
+
+  requestTransition: (from_phase: string, to_phase: string, reason: string) =>
+    request<{ data: { ok: boolean; data: unknown } }>('/api/bpr:requestTransition', {
+      method: 'POST',
+      body: JSON.stringify({ from_phase, to_phase, reason }),
+    }).then(r => r.data),
 }

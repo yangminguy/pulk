@@ -25,21 +25,22 @@ function ResultPanel({ title, icon, children }: { title: string; icon: string; c
 function WorkflowResultView({ data }: { data: any }) {
   if (!data) return null
 
-  const brief = data?.brief ?? data?.data?.brief ?? data
-  const pmfPlan = data?.pmf_plan ?? data?.data?.pmf_plan
-  const staffing = data?.staffing ?? data?.data?.staffing
+  const brief = data?.business_brief ?? data?.brief ?? data?.data?.business_brief ?? data?.data?.brief
+  const pmfPlan = data?.pmf_experiment_plan ?? data?.pmf_plan ?? data?.data?.pmf_experiment_plan
+  const staffing = data?.agent_staffing_plan ?? data?.staffing ?? data?.data?.agent_staffing_plan
 
   return (
     <div className="grid gap-4 mt-4">
-      {(brief?.title || brief?.description) && (
-        <ResultPanel title="Brief" icon="📋">
-          {brief.title && <div className="font-medium mb-1">{brief.title}</div>}
-          {brief.description && <div className="text-slate-400 mb-2">{brief.description}</div>}
-          {brief.target_audience && (
-            <div className="text-xs text-slate-500">타겟: {brief.target_audience}</div>
-          )}
-          {brief.value_proposition && (
-            <div className="text-xs text-slate-500 mt-1">가치 제안: {brief.value_proposition}</div>
+      {brief && (
+        <ResultPanel title="Business Brief" icon="📋">
+          {brief.idea_summary && <div className="font-medium mb-1">{brief.idea_summary}</div>}
+          {brief.core_problem && <div className="text-slate-400 mb-2">문제: {brief.core_problem}</div>}
+          {brief.proposed_solution && <div className="text-slate-400 mb-2">해결책: {brief.proposed_solution}</div>}
+          {brief.target_customer && <div className="text-xs text-slate-500">타겟: {brief.target_customer}</div>}
+          {brief.differentiation && <div className="text-xs text-slate-500 mt-1">차별화: {brief.differentiation}</div>}
+          {brief.recommended_phase && <div className="text-xs text-indigo-400 mt-2">추천 단계: {brief.recommended_phase}</div>}
+          {typeof brief.founder_fit_score === 'number' && (
+            <div className="text-xs text-slate-500 mt-1">Founder Fit: {brief.founder_fit_score}/100</div>
           )}
         </ResultPanel>
       )}
@@ -47,19 +48,21 @@ function WorkflowResultView({ data }: { data: any }) {
       {pmfPlan && (
         <ResultPanel title="PMF Plan" icon="🎯">
           {pmfPlan.hypothesis && <div className="mb-2">가설: {pmfPlan.hypothesis}</div>}
-          {pmfPlan.experiment_type && <div className="text-xs text-slate-500">실험: {pmfPlan.experiment_type}</div>}
-          {pmfPlan.success_metric && <div className="text-xs text-slate-500 mt-1">성공 지표: {pmfPlan.success_metric}</div>}
-          {pmfPlan.timeline && <div className="text-xs text-slate-500 mt-1">기간: {pmfPlan.timeline}</div>}
+          {pmfPlan.experiment_type && <div className="text-xs text-slate-500">실험 유형: {pmfPlan.experiment_type}</div>}
+          {pmfPlan.success_signal && <div className="text-xs text-slate-500 mt-1">성공 신호: {pmfPlan.success_signal}</div>}
+          {pmfPlan.kill_criteria && <div className="text-xs text-red-400 mt-1">중단 기준: {pmfPlan.kill_criteria}</div>}
+          {pmfPlan.timeline_days && <div className="text-xs text-slate-500 mt-1">기간: {pmfPlan.timeline_days}일</div>}
         </ResultPanel>
       )}
 
-      {staffing?.roles && staffing.roles.length > 0 && (
+      {staffing && (
         <ResultPanel title="Staffing" icon="👥">
           <div className="space-y-2">
-            {staffing.roles.map((r: any, i: number) => (
+            {(staffing.roles ?? staffing.recommended_roles ?? []).map((r: any, i: number) => (
               <div key={i} className="border-l-2 border-indigo-600 pl-3">
-                <div className="font-medium text-indigo-300">{r.role}</div>
+                <div className="font-medium text-indigo-300">{r.role ?? r.agent ?? r}</div>
                 {r.rationale && <div className="text-xs text-slate-400">{r.rationale}</div>}
+                {r.responsibilities && <div className="text-xs text-slate-500">{r.responsibilities}</div>}
               </div>
             ))}
           </div>
@@ -67,7 +70,7 @@ function WorkflowResultView({ data }: { data: any }) {
       )}
 
       {/* Fallback: raw JSON if no structured fields found */}
-      {!brief?.title && !pmfPlan && !staffing && (
+      {!brief && !pmfPlan && !staffing && (
         <ResultPanel title="결과" icon="📄">
           <pre className="text-xs overflow-auto whitespace-pre-wrap">
             {JSON.stringify(data, null, 2)}

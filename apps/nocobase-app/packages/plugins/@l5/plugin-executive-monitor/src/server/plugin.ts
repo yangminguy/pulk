@@ -1,4 +1,13 @@
+import { randomUUID } from 'crypto';
+import path from 'path';
 import { Plugin } from '@nocobase/server';
+
+const {
+  derivePhaseFromTasks,
+  buildTransitionResult,
+  BPR_PHASE_ORDER,
+  BPR_PHASE_LABELS,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/bpr'));
 
 type MonitorContext = {
   app: any;
@@ -223,6 +232,59 @@ function requestValues(ctx: MonitorContext): Record<string, unknown> {
   return ctx.request?.body ?? ctx.action?.params?.values ?? {};
 }
 
+async function currentPhase(ctx: MonitorContext) {
+  const db = ctx.db || (ctx as any).app?.db;
+  const tasks = await db.getRepository('agent_tasks').find({
+    filter: { status: { $notIn: ['done', 'killed'] } },
+  });
+  const phase: string = derivePhaseFromTasks(tasks);
+  const phaseIndex: number = BPR_PHASE_ORDER.indexOf(phase);
+  const nextPhase: string | null = phaseIndex < BPR_PHASE_ORDER.length - 1 ? BPR_PHASE_ORDER[phaseIndex + 1] : null;
+  ctx.body = {
+    current_phase: phase,
+    current_phase_label: BPR_PHASE_LABELS[phase] ?? phase,
+    next_phase: nextPhase,
+    next_phase_label: nextPhase ? (BPR_PHASE_LABELS[nextPhase] ?? nextPhase) : null,
+    phase_index: phaseIndex,
+    total_phases: BPR_PHASE_ORDER.length,
+    requires_approval: true,
+  };
+}
+
+async function requestTransition(ctx: MonitorContext) {
+  const body = requestValues(ctx);
+  const { from_phase, to_phase, reason } = body as Record<string, string>;
+  if (!from_phase || !to_phase) {
+    (ctx as any).status = 400;
+    ctx.body = { ok: false, error: 'from_phase and to_phase are required' };
+    return;
+  }
+  const result = buildTransitionResult({
+    from_phase,
+    to_phase,
+    reason: reason ?? 'Founder requested phase transition',
+    triggered_by: 'founder',
+  });
+  if (result.ok) {
+    const db = ctx.db || (ctx as any).app?.db;
+    await db.getRepository('agent_tasks').create({
+      values: {
+        id: randomUUID(),
+        instruction_id: randomUUID(),
+        assigned_agent: 'CEO',
+        title: `Phase Transition: ${BPR_PHASE_LABELS[from_phase] ?? from_phase} → ${BPR_PHASE_LABELS[to_phase] ?? to_phase}`,
+        rationale: reason ?? 'Founder requested phase transition',
+        expected_output: `Phase transition to ${to_phase} approved and executed`,
+        status: 'needs_review',
+        approval_required: true,
+        risk_level: 'D5',
+        phase: to_phase,
+      },
+    });
+  }
+  ctx.body = { ok: result.ok, data: result };
+}
+
 function registerGetRoute(app: any, path: string, handler: (ctx: MonitorContext) => Promise<void>) {
   app.use(async (ctx: MonitorContext, next: () => Promise<void>) => {
     if (ctx.method !== 'GET' || ctx.path !== path) {
@@ -275,6 +337,20 @@ export default class PluginExecutiveMonitorServer extends Plugin {
       },
     });
 
+    this.app.resourcer.define({
+      name: 'bpr',
+      actions: {
+        currentPhase: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await currentPhase(ctx);
+          await next();
+        },
+        requestTransition: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await requestTransition(ctx);
+          await next();
+        },
+      },
+    });
+
     registerGetRoute(this.app, '/api/monitor/currentTasks', currentTasks);
     registerGetRoute(this.app, '/api/monitor/blockedTasks', blockedTasks);
     registerGetRoute(this.app, '/api/monitor/approvalQueue', approvalQueue);
@@ -289,6 +365,7 @@ export default class PluginExecutiveMonitorServer extends Plugin {
       'saveMemory',
       'discardMemory',
     ], 'loggedIn');
+    this.app.acl.allow('bpr', ['currentPhase', 'requestTransition'], 'loggedIn');
   }
 
   async install() {}
