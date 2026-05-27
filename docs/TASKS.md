@@ -362,3 +362,115 @@ Next immediate work:
 - [ ] Weekly memory review brief generation
 - [ ] Founder approval → save to founder_memory table
 - [ ] Memory retrieval integration
+
+---
+
+## Phase 10 — CTO Agent + Agent Control Room 연동 (실제 기술 실행 레이어)
+
+**개요:**
+
+L5 Business OS의 CTO Agent가 CEO로부터 기술 실행 태스크를 받아 Agent Control Room에 위임한다.
+Agent Control Room이 작업 성격/위험도/쿼터를 판단해 Claude CLI / Codex CLI / Antigravity CLI 중
+적합한 런타임을 자동 선택해 실행하고, 결과를 L5 모니터로 피드백하는 구조다.
+
+**레이어 구분:**
+```
+L5 Business OS (기획 레이어)
+  Founder → CEO → Executive Agents → Agent Task DB
+                                         ↓ (CTO 태스크)
+Agent Control Room (기술 실행 레이어)
+  CTO Bridge → Intent 분해 → Runtime 자동 선택 → 실행 → 결과 수집
+                                         ↓
+  Claude CLI         Codex CLI      Antigravity CLI     OMC/OMX
+  (설계/검토/스펙)    (코드 생성)      (UI/컴포넌트)       (복합 팀 작업)
+                                         ↓
+  결과 → AgentOutput → L5 monitor:currentTasks 업데이트
+```
+
+**Agent Control Room 위치:** `~/Desktop/양원민 개발자/agent_control_room_docs/` (별도 Next.js 앱, port 3000)
+**L5 Agent Control Room 브리지 위치 (구현 예정):** `services/agent-runtime/src/agents/cto.ts`
+
+---
+
+### P0: CTO Agent → ACR 브리지 구현
+
+- [ ] `services/agent-runtime/src/agents/cto.ts` 실제 구현
+  - `queued` 상태 CTO 태스크 수신
+  - 태스크를 ACR `intent` 포맷으로 변환
+  - ACR API 호출 (로컬: `http://localhost:3001/api/plan` or IPC)
+  - ACR에서 반환된 roadmap/tasks를 AgentOutput으로 변환
+  - L5 `agent_tasks` 상태 업데이트 (queued → running → done/blocked)
+
+- [ ] CTO 태스크 → ACR 런타임 매핑 규칙
+  - 아키텍처 결정 / 스펙 작성 / 코드 리뷰 → **Claude CLI**
+  - 코드 생성 / 리팩터 / 테스트 작성 → **Codex CLI**
+  - UI 컴포넌트 / 디자인 구현 → **Antigravity CLI**
+  - 복합 멀티에이전트 작업 (>3 파일 변경) → **OMC / OMX**
+  - 런타임 부재 시 자동 fallback 체인: Codex → Claude → 대기
+
+- [ ] Release Gate ↔ L5 D-level 동기화
+  - L5 D1-D2 태스크 → ACR 자동 실행
+  - L5 D3 태스크 → ACR Release Gate 생성 → 24h 자동 승인
+  - L5 D4-D5 태스크 → ACR Release Gate → Founder UI 승인 필요
+
+---
+
+### P1: Founder UI에 Agent Control Room 패널 추가
+
+- [ ] `apps/founder-ui/src/app/control-room/page.tsx` 신규
+  - 활성 CLI 세션 목록 (Claude / Codex / Antigravity / OMC)
+  - 세션별: 현재 태스크, phase 진행 상태, 마지막 출력 미리보기
+  - Release Gate 목록: D4-D5 승인 대기 항목 → approve/reject
+  - 세션 강제 종료 버튼
+
+- [ ] ACR 세션 API 연결
+  - `GET /api/cto:sessions` → 활성 CLI 세션 목록
+  - `GET /api/cto:sessionOutput` → 세션 출력 스트림 (SSE 또는 폴링)
+  - `POST /api/cto:approveGate` → Release Gate 승인
+  - `POST /api/cto:killSession` → 세션 종료
+
+- [ ] 사이드바에 "Agent Control Room" 탭 추가
+  - 현재 탭: 채팅 / 모니터 / 승인 / 워크플로 / 메모리
+  - 추가: **Control Room** (CLI 세션 현황)
+
+---
+
+### P1: ACR → L5 결과 피드백 루프
+
+- [ ] ACR 작업 완료 시 L5 webhook/callback 호출
+  - 완료 결과를 AgentOutput 14필드 포맷으로 변환
+  - `agent_tasks.status` → `done` 업데이트
+  - `agent_handoffs` 레코드 생성 (다음 담당자, 산출물 요약)
+  - `insight_to_record` → `founder_memory` 후보로 추가
+
+- [ ] ACR 실패/차단 시 L5 에스컬레이션
+  - 런타임 쿼터 부족 → `agent_tasks.status = blocked`, `blocker` 필드 기록
+  - 3회 재시도 실패 → `needs_review` + Founder 알림
+  - Hermes 이상 감지 패턴 → L5 monitor에 경고 표시
+
+---
+
+### P2: 자동 런타임 선택 고도화
+
+- [ ] ACR `Agent × Model × Runtime` 자동 판단 엔진 완성
+  - 작업 성격 분류: 설계/구현/리뷰/UI/테스트/문서
+  - 위험도 스코어링: 파일 수 × 외부 노출 × DB 변경 여부
+  - 쿼터 파서: Claude/Codex/Antigravity 잔여 한도 확인
+  - 최적 런타임 자동 선택 → Founder는 방향 결정 + 고위험 승인만
+
+- [ ] OMC / OMX 연동
+  - 3개 이상 파일을 병렬 수정하는 복합 작업 자동 감지
+  - OMC 설치 확인 → smoke test 통과 후에만 자동 선택 후보 등록
+  - OMC 팀 작업 결과 → L5 AgentOutput으로 집계
+
+---
+
+### 완료 기준
+
+| 항목 | 확인 방법 |
+|---|---|
+| CEO → CTO 태스크 → ACR 전달 | L5 채팅에서 기술 지시 → ACR `/plan`에 roadmap 생성 확인 |
+| ACR 런타임 자동 선택 | 코드 생성 태스크 → Codex 실행 자동 선택 확인 |
+| Release Gate ↔ D-level 동기화 | D4 태스크 → Founder UI Control Room에 승인 요청 표시 |
+| 결과 피드백 | ACR 완료 → L5 monitor:currentTasks에 done 상태 반영 |
+| Founder Control Room 패널 | 활성 세션 목록 + 출력 미리보기 정상 표시 |

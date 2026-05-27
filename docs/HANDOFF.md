@@ -123,9 +123,16 @@ cd apps/founder-ui && npm run dev   # → http://localhost:3000
 
 ## 다음 세션에서 할 일
 
-1. **실제 Agent 실행 연결** — `queued` 태스크를 Mastra 런타임이 픽업해서 핸들러 실행
-2. **Memory → CEO 컨텍스트 주입** — `founder_memory` 조회 → CEO 해석 컨텍스트 (P2)
-3. **Trigger.dev 실제 연동** — Hermes daily-brief, stalled-task cron 실행
+**우선순위 순서:**
+
+1. **Agent 실행 연결 (필수)** — `queued` 태스크를 agent-runtime이 픽업 → `executeAgentTask()` 실행 → status 업데이트
+2. **Phase 10 P0: CTO → Agent Control Room 브리지** — CTO 태스크를 ACR에 전달, Claude/Codex/Antigravity 자동 라우팅
+   - ACR 위치: `~/Desktop/양원민 개발자/agent_control_room_docs/` (별도 Next.js 앱)
+   - 구현 위치: `services/agent-runtime/src/agents/cto.ts`
+   - 참고 문서: `~/Downloads/agent_control_room_fast_track_prd_auto_runtime_selection.md`
+3. **Phase 10 P1: Founder UI Control Room 패널** — CLI 세션 목록, Release Gate 승인, 출력 미리보기
+4. **Memory → CEO 컨텍스트 주입** — `founder_memory` 조회 → CEO 해석 컨텍스트 (P2)
+5. **Trigger.dev 실제 연동** — Hermes daily-brief, stalled-task cron 실행
 
 ---
 
