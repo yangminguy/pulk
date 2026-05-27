@@ -22,6 +22,31 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>
 }
 
+// Unwrap NocoBase's { data: { ok, data: ... } } nesting
+function unwrap<T>(r: { data: { ok?: boolean; data?: T } | T }): T {
+  const inner = r.data
+  if (inner && typeof inner === 'object' && 'data' in inner) {
+    return (inner as { data: T }).data as T
+  }
+  return inner as T
+}
+
+export type TaskItem = {
+  task_id: string
+  agent: string
+  task_title: string
+  source_instruction: string | null
+  rationale: string
+  status: string
+  expected_output: string
+  approval_required: boolean
+  risk_level: string | null
+  phase: string | null
+  source_ref: string | null
+  blocker: string | null
+  updated_at: string
+}
+
 export const api = {
   signIn: (account: string, password: string) =>
     request<{ data: { token: string } }>('/api/auth:signIn', {
@@ -30,20 +55,43 @@ export const api = {
     }).then(r => ({ token: r.data.token })),
 
   submitInstruction: (rawText: string) =>
-    request<{ data: { ok: boolean; data: { instruction: unknown; interpretation: unknown; tasks: unknown[] } } }>('/api/chat:submitInstruction', {
+    request<{ data: { ok: boolean; data: { instruction: { id: string }; interpretation: Record<string, unknown>; tasks: unknown[] } } }>('/api/chat:submitInstruction', {
       method: 'POST',
       body: JSON.stringify({ raw_text: rawText, source: 'chat' }),
-    }).then(r => r.data?.data ?? r.data ?? r),
+    }).then(r => unwrap(r)),
+
+  approvePlan: (instruction_id: string) =>
+    request<{ data: { ok: boolean; data: { approved: number; tasks: unknown[] } } }>('/api/chat:approvePlan', {
+      method: 'POST',
+      body: JSON.stringify({ instruction_id }),
+    }).then(r => unwrap(r)),
+
+  rejectPlan: (instruction_id: string) =>
+    request<{ data: { ok: boolean; data: { rejected: boolean } } }>('/api/chat:rejectPlan', {
+      method: 'POST',
+      body: JSON.stringify({ instruction_id }),
+    }).then(r => unwrap(r)),
 
   generateWorkflow: (idea: string) =>
     request<{ data: { ok: boolean; data: unknown } }>('/api/chat:generateWorkflow', {
       method: 'POST',
       body: JSON.stringify({ idea }),
-    }).then(r => r.data?.data ?? r.data ?? r),
+    }).then(r => unwrap(r)),
 
-  currentTasks: () => request<unknown[]>('/api/monitor:currentTasks'),
-  blockedTasks: () => request<unknown[]>('/api/monitor:blockedTasks'),
-  approvalQueue: () => request<unknown[]>('/api/monitor:approvalQueue'),
+  currentTasks: () =>
+    request<{ data: { ok: boolean; data: TaskItem[] } }>('/api/monitor:currentTasks')
+      .then(r => unwrap(r) as TaskItem[])
+      .catch(() => [] as TaskItem[]),
+
+  blockedTasks: () =>
+    request<{ data: { ok: boolean; data: TaskItem[] } }>('/api/monitor:blockedTasks')
+      .then(r => unwrap(r) as TaskItem[])
+      .catch(() => [] as TaskItem[]),
+
+  approvalQueue: () =>
+    request<{ data: { ok: boolean; data: TaskItem[] } }>('/api/monitor:approvalQueue')
+      .then(r => unwrap(r) as TaskItem[])
+      .catch(() => [] as TaskItem[]),
 
   approveTask: (taskId: string) =>
     request<unknown>('/api/monitor:approveTask', {
@@ -57,7 +105,10 @@ export const api = {
       body: JSON.stringify({ taskId }),
     }),
 
-  memoryCandidates: () => request<unknown[]>('/api/monitor:memoryCandidates'),
+  memoryCandidates: () =>
+    request<{ data: { ok: boolean; data: unknown[] } }>('/api/monitor:memoryCandidates')
+      .then(r => unwrap(r) as unknown[])
+      .catch(() => []),
 
   saveMemory: (id: string) =>
     request<unknown>('/api/monitor:saveMemory', {
@@ -71,15 +122,16 @@ export const api = {
       body: JSON.stringify({ id }),
     }),
 
-  currentPhase: () => request<{ data: {
-    current_phase: string
-    current_phase_label: string
-    next_phase: string | null
-    next_phase_label: string | null
-    phase_index: number
-    total_phases: number
-    requires_approval: boolean
-  }}>('/api/bpr:currentPhase').then(r => r.data),
+  currentPhase: () =>
+    request<{ data: {
+      current_phase: string
+      current_phase_label: string
+      next_phase: string | null
+      next_phase_label: string | null
+      phase_index: number
+      total_phases: number
+      requires_approval: boolean
+    }}>('/api/bpr:currentPhase').then(r => r.data),
 
   requestTransition: (from_phase: string, to_phase: string, reason: string) =>
     request<{ data: { ok: boolean; data: unknown } }>('/api/bpr:requestTransition', {

@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import AuthGate from '@/components/AuthGate'
-import { api } from '@/lib/api'
+import { api, type TaskItem } from '@/lib/api'
 
 const RISK_COLORS: Record<string, string> = {
   D3: 'bg-yellow-700 text-yellow-100',
@@ -10,20 +10,16 @@ const RISK_COLORS: Record<string, string> = {
 }
 
 function ApprovalContent() {
-  const [items, setItems] = useState<any[]>([])
+  const [items, setItems] = useState<TaskItem[]>([])
   const [loading, setLoading] = useState(true)
   const [actionId, setActionId] = useState<string | null>(null)
   const [toast, setToast] = useState('')
 
   const load = async () => {
-    try {
-      const data = await api.approvalQueue()
-      setItems(Array.isArray(data) ? data : (data as any)?.data ?? [])
-    } catch {
-      setItems([])
-    } finally {
-      setLoading(false)
-    }
+    setLoading(true)
+    try { setItems(await api.approvalQueue()) }
+    catch { setItems([]) }
+    finally { setLoading(false) }
   }
 
   useEffect(() => { load() }, [])
@@ -33,30 +29,26 @@ function ApprovalContent() {
     setTimeout(() => setToast(''), 2500)
   }
 
-  const approve = async (id: string) => {
-    setActionId(id)
+  const approve = async (taskId: string) => {
+    setActionId(taskId)
     try {
-      await api.approveTask(id)
-      setItems(prev => prev.filter(i => i.id !== id))
+      await api.approveTask(taskId)
+      setItems(prev => prev.filter(i => i.task_id !== taskId))
       showToast('승인되었습니다 ✓')
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : '오류')
-    } finally {
-      setActionId(null)
-    }
+    } finally { setActionId(null) }
   }
 
-  const reject = async (id: string) => {
-    setActionId(id)
+  const reject = async (taskId: string) => {
+    setActionId(taskId)
     try {
-      await api.rejectTask(id)
-      setItems(prev => prev.filter(i => i.id !== id))
+      await api.rejectTask(taskId)
+      setItems(prev => prev.filter(i => i.task_id !== taskId))
       showToast('거절되었습니다')
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : '오류')
-    } finally {
-      setActionId(null)
-    }
+    } finally { setActionId(null) }
   }
 
   return (
@@ -75,17 +67,17 @@ function ApprovalContent() {
 
       <div className="space-y-4">
         {items.map(item => (
-          <div key={item.id} className="bg-slate-800 rounded-xl p-5">
-            <div className="flex items-start gap-3 mb-3">
+          <div key={item.task_id} className="bg-slate-800 rounded-xl p-5">
+            <div className="flex items-start gap-3 mb-3 flex-wrap">
               <span className="bg-indigo-700 text-xs rounded px-2 py-0.5 font-medium shrink-0">
-                {item.assigned_agent}
+                {item.agent}
               </span>
               {item.risk_level && (
                 <span className={`text-xs rounded px-2 py-0.5 shrink-0 ${RISK_COLORS[item.risk_level] ?? 'bg-slate-700'}`}>
                   {item.risk_level}
                 </span>
               )}
-              <span className="font-medium text-sm">{item.title}</span>
+              <span className="font-medium text-sm">{item.task_title}</span>
             </div>
             {item.rationale && (
               <p className="text-sm text-slate-300 mb-2">{item.rationale}</p>
@@ -93,20 +85,23 @@ function ApprovalContent() {
             {item.expected_output && (
               <p className="text-xs text-slate-500 mb-4">예상 산출물: {item.expected_output}</p>
             )}
+            {item.source_instruction && (
+              <p className="text-xs text-slate-600 mb-4">원본 지시: {item.source_instruction}</p>
+            )}
             <div className="flex gap-3">
               <button
-                onClick={() => approve(item.id)}
-                disabled={actionId === item.id}
+                onClick={() => approve(item.task_id)}
+                disabled={actionId === item.task_id}
                 className="bg-green-700 hover:bg-green-600 disabled:opacity-50 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
               >
-                ✅ 승인
+                승인
               </button>
               <button
-                onClick={() => reject(item.id)}
-                disabled={actionId === item.id}
+                onClick={() => reject(item.task_id)}
+                disabled={actionId === item.task_id}
                 className="bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
               >
-                ❌ 거절
+                거절
               </button>
             </div>
           </div>

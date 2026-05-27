@@ -3,18 +3,6 @@ import { useState, useRef, useEffect } from 'react'
 import AuthGate from '@/components/AuthGate'
 import { api } from '@/lib/api'
 
-interface Message {
-  id: string
-  role: 'founder' | 'ceo'
-  text: string
-  data?: {
-    goal?: string
-    phase?: string
-    risk_level?: string
-    tasks?: Array<{ assigned_agent: string; title: string; rationale?: string }>
-  }
-}
-
 const PHASE_LABELS: Record<string, string> = {
   direction_alignment: '방향 정렬',
   pmf_diagnosis: 'PMF 진단',
@@ -25,44 +13,133 @@ const PHASE_LABELS: Record<string, string> = {
 }
 
 const RISK_COLORS: Record<string, string> = {
-  D1: 'bg-green-700',
-  D2: 'bg-blue-700',
-  D3: 'bg-yellow-700',
-  D4: 'bg-orange-700',
-  D5: 'bg-red-700',
+  D1: 'bg-green-800 text-green-200',
+  D2: 'bg-blue-800 text-blue-200',
+  D3: 'bg-yellow-800 text-yellow-200',
+  D4: 'bg-orange-800 text-orange-200',
+  D5: 'bg-red-800 text-red-200',
 }
 
-function CEOResponse({ data }: { data: Message['data'] }) {
-  if (!data) return null
+const AGENT_COLORS: Record<string, string> = {
+  CMO: 'text-purple-400',
+  CRO: 'text-blue-400',
+  CPO: 'text-green-400',
+  CTO: 'text-cyan-400',
+  COO: 'text-orange-400',
+  CFO: 'text-yellow-400',
+  RiskQA: 'text-red-400',
+  CEO: 'text-indigo-400',
+}
+
+type ProposedTask = {
+  id: string
+  assigned_agent: string
+  title: string
+  rationale: string
+  risk_level?: string
+  approval_required?: boolean
+}
+
+type CEOMessage = {
+  id: string
+  role: 'founder' | 'ceo'
+  text: string
+  instructionId?: string
+  interpretation?: {
+    goal?: string
+    phase?: string
+    risk_level?: string
+    assumptions?: string[]
+    success_criteria?: string[]
+  }
+  proposedTasks?: ProposedTask[]
+  planStatus?: 'pending' | 'approved' | 'rejected'
+}
+
+function ProposedTasksPanel({
+  tasks,
+  instructionId,
+  planStatus,
+  onApprove,
+  onReject,
+}: {
+  tasks: ProposedTask[]
+  instructionId: string
+  planStatus: 'pending' | 'approved' | 'rejected'
+  onApprove: (id: string) => void
+  onReject: (id: string) => void
+}) {
+  const [loading, setLoading] = useState(false)
+
+  const approve = async () => {
+    setLoading(true)
+    try { onApprove(instructionId) } finally { setLoading(false) }
+  }
+  const reject = async () => {
+    setLoading(true)
+    try { onReject(instructionId) } finally { setLoading(false) }
+  }
+
   return (
-    <div className="mt-2 space-y-2">
-      {data.goal && (
-        <div className="text-sm text-slate-300">
-          <span className="text-slate-500">목표:</span> {data.goal}
+    <div className="mt-3 border border-slate-600 rounded-xl overflow-hidden">
+      <div className="bg-slate-700 px-4 py-2 text-xs text-slate-400 font-medium uppercase tracking-wide">
+        배정 예정 Task ({tasks.length}건)
+      </div>
+      <div className="divide-y divide-slate-700">
+        {tasks.map((t, i) => (
+          <div key={i} className="px-4 py-3 flex items-start gap-3">
+            <span className={`text-sm font-bold shrink-0 ${AGENT_COLORS[t.assigned_agent] ?? 'text-slate-300'}`}>
+              {t.assigned_agent}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate">{t.title}</div>
+              <div className="text-xs text-slate-400 mt-0.5 line-clamp-2">{t.rationale}</div>
+            </div>
+            <div className="flex gap-1 shrink-0">
+              {t.risk_level && (
+                <span className={`text-xs rounded px-2 py-0.5 ${RISK_COLORS[t.risk_level] ?? 'bg-slate-700'}`}>
+                  {t.risk_level}
+                </span>
+              )}
+              {t.approval_required && (
+                <span className="text-xs bg-yellow-900 text-yellow-300 rounded px-2 py-0.5">승인필요</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {planStatus === 'pending' && (
+        <div className="px-4 py-3 bg-slate-750 border-t border-slate-600 flex gap-3 items-center">
+          <span className="text-xs text-slate-400 flex-1">
+            승인하면 각 임원에게 Task가 배정됩니다. 거절하면 모든 Task가 취소됩니다.
+          </span>
+          <button
+            onClick={approve}
+            disabled={loading}
+            className="bg-green-700 hover:bg-green-600 disabled:opacity-50 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors"
+          >
+            승인 — 임원 배정
+          </button>
+          <button
+            onClick={reject}
+            disabled={loading}
+            className="bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors"
+          >
+            거절
+          </button>
         </div>
       )}
-      <div className="flex gap-2 flex-wrap">
-        {data.phase && (
-          <span className="text-xs bg-indigo-700 rounded px-2 py-0.5">
-            {PHASE_LABELS[data.phase] ?? data.phase}
-          </span>
-        )}
-        {data.risk_level && (
-          <span className={`text-xs rounded px-2 py-0.5 ${RISK_COLORS[data.risk_level] ?? 'bg-slate-700'}`}>
-            {data.risk_level}
-          </span>
-        )}
-      </div>
-      {data.tasks && data.tasks.length > 0 && (
-        <div className="space-y-1 mt-2">
-          <div className="text-xs text-slate-500 uppercase tracking-wide">배정된 Task</div>
-          {data.tasks.map((t, i) => (
-            <div key={i} className="bg-slate-700 rounded px-3 py-2 text-sm">
-              <span className="font-medium text-indigo-400">{t.assigned_agent}</span>
-              <span className="mx-2 text-slate-500">—</span>
-              <span>{t.title}</span>
-            </div>
-          ))}
+
+      {planStatus === 'approved' && (
+        <div className="px-4 py-2 bg-green-900/30 border-t border-green-700 text-xs text-green-400">
+          승인됨 — 각 임원에게 Task가 배정됐습니다
+        </div>
+      )}
+
+      {planStatus === 'rejected' && (
+        <div className="px-4 py-2 bg-red-900/30 border-t border-red-700 text-xs text-red-400">
+          거절됨 — 모든 Task가 취소됐습니다
         </div>
       )}
     </div>
@@ -70,7 +147,7 @@ function CEOResponse({ data }: { data: Message['data'] }) {
 }
 
 function ChatContent() {
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<CEOMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -86,24 +163,31 @@ function ChatContent() {
     setInput('')
     setError('')
 
-    const founderMsg: Message = { id: Date.now().toString(), role: 'founder', text }
+    const founderMsg: CEOMessage = { id: Date.now().toString(), role: 'founder', text }
     setMessages(prev => [...prev, founderMsg])
     setLoading(true)
 
     try {
       const res = await api.submitInstruction(text)
-      const interp = (res as any)?.data?.interpretation ?? (res as any)?.interpretation ?? res
-      const tasks = (res as any)?.data?.tasks ?? (res as any)?.tasks ?? []
-      const ceoMsg: Message = {
+      const interp = (res as any)?.interpretation ?? {}
+      const tasks: ProposedTask[] = ((res as any)?.tasks ?? []).map((t: any) => ({
+        id: t.id,
+        assigned_agent: t.assigned_agent,
+        title: t.title,
+        rationale: t.rationale,
+        risk_level: t.risk_level,
+        approval_required: t.approval_required,
+      }))
+      const instructionId = (res as any)?.instruction?.id ?? ''
+
+      const ceoMsg: CEOMessage = {
         id: (Date.now() + 1).toString(),
         role: 'ceo',
-        text: (interp as any)?.goal ?? '지시를 처리했습니다.',
-        data: {
-          goal: (interp as any)?.goal,
-          phase: (interp as any)?.phase,
-          risk_level: (interp as any)?.risk_level,
-          tasks,
-        },
+        text: interp?.goal ?? '지시를 분석했습니다.',
+        instructionId,
+        interpretation: interp,
+        proposedTasks: tasks,
+        planStatus: 'pending',
       }
       setMessages(prev => [...prev, ceoMsg])
     } catch (err: unknown) {
@@ -113,36 +197,92 @@ function ChatContent() {
     }
   }
 
+  const handleApprove = async (instructionId: string) => {
+    try {
+      await api.approvePlan(instructionId)
+      setMessages(prev => prev.map(m =>
+        m.instructionId === instructionId ? { ...m, planStatus: 'approved' } : m
+      ))
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '승인 실패')
+    }
+  }
+
+  const handleReject = async (instructionId: string) => {
+    try {
+      await api.rejectPlan(instructionId)
+      setMessages(prev => prev.map(m =>
+        m.instructionId === instructionId ? { ...m, planStatus: 'rejected' } : m
+      ))
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '거절 실패')
+    }
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)]">
       <div className="mb-4">
         <h1 className="text-xl font-bold">CEO Agent 채팅</h1>
-        <p className="text-sm text-slate-400">지시를 입력하면 CEO Agent가 해석하고 Executive Task를 배정합니다.</p>
+        <p className="text-sm text-slate-400">
+          지시를 입력하면 CEO Agent가 해석하고 임원 Task 플랜을 제안합니다. 승인 후 임원에게 배정됩니다.
+        </p>
       </div>
 
-      <div className="flex-1 overflow-auto space-y-4 mb-4">
+      <div className="flex-1 overflow-auto space-y-4 mb-4 pr-1">
         {messages.length === 0 && (
           <div className="text-center text-slate-500 mt-16 text-sm">
-            비즈니스 지시를 입력해보세요
+            비즈니스 지시를 입력해보세요<br/>
+            <span className="text-xs text-slate-600">예: "PMF 메시지 실험 계획해줘", "신규 고객 온보딩 프로세스 만들어줘"</span>
           </div>
         )}
+
         {messages.map(msg => (
           <div key={msg.id} className={`flex ${msg.role === 'founder' ? 'justify-end' : 'justify-start'}`}>
-            <div
-              className={`max-w-2xl rounded-xl px-4 py-3 text-sm ${
-                msg.role === 'founder'
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-800 text-slate-100'
-              }`}
-            >
+            <div className={`max-w-2xl rounded-xl px-4 py-3 text-sm ${
+              msg.role === 'founder'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-800 text-slate-100'
+            }`}>
               {msg.role === 'ceo' && (
                 <div className="text-xs text-indigo-400 mb-1 font-medium">CEO Agent</div>
               )}
               <div>{msg.text}</div>
-              {msg.role === 'ceo' && <CEOResponse data={msg.data} />}
+
+              {msg.role === 'ceo' && msg.interpretation && (
+                <div className="mt-2 space-y-1">
+                  <div className="flex flex-wrap gap-2">
+                    {msg.interpretation.phase && (
+                      <span className="text-xs bg-indigo-700 rounded px-2 py-0.5">
+                        {PHASE_LABELS[msg.interpretation.phase] ?? msg.interpretation.phase}
+                      </span>
+                    )}
+                    {msg.interpretation.risk_level && (
+                      <span className={`text-xs rounded px-2 py-0.5 ${RISK_COLORS[msg.interpretation.risk_level] ?? 'bg-slate-700'}`}>
+                        {msg.interpretation.risk_level}
+                      </span>
+                    )}
+                  </div>
+                  {msg.interpretation.success_criteria && msg.interpretation.success_criteria.length > 0 && (
+                    <div className="text-xs text-slate-400 mt-1">
+                      성공 기준: {msg.interpretation.success_criteria.join(' · ')}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {msg.role === 'ceo' && msg.proposedTasks && msg.proposedTasks.length > 0 && msg.instructionId && (
+                <ProposedTasksPanel
+                  tasks={msg.proposedTasks}
+                  instructionId={msg.instructionId}
+                  planStatus={msg.planStatus ?? 'pending'}
+                  onApprove={handleApprove}
+                  onReject={handleReject}
+                />
+              )}
             </div>
           </div>
         ))}
+
         {loading && (
           <div className="flex justify-start">
             <div className="bg-slate-800 rounded-xl px-4 py-3 text-sm text-slate-400 animate-pulse">
@@ -158,7 +298,7 @@ function ChatContent() {
       <div className="flex gap-2">
         <input
           className="flex-1 bg-slate-800 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-          placeholder="비즈니스 지시를 입력하세요... (예: PMF 메시지 실험 계획해줘)"
+          placeholder="비즈니스 지시를 입력하세요..."
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}

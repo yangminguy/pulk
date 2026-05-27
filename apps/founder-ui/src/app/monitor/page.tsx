@@ -188,9 +188,9 @@ function MonitorContent() {
       ])
       const currentArr = Array.isArray(current) ? current : (current as any)?.data ?? []
       const blockedArr = Array.isArray(blocked) ? blocked : (blocked as any)?.data ?? []
-      // deduplicate by id
+      // deduplicate by task_id
       const map = new Map<string, any>()
-      ;[...currentArr, ...blockedArr].forEach(t => map.set(t.id, t))
+      ;[...currentArr, ...blockedArr].forEach(t => map.set(t.task_id, t))
       setTasks(Array.from(map.values()))
     } catch {
       setTasks([])
@@ -216,7 +216,7 @@ function MonitorContent() {
 
   // Agent summary
   const agentCounts = tasks.reduce<Record<string, number>>((acc, t) => {
-    if (t.assigned_agent) acc[t.assigned_agent] = (acc[t.assigned_agent] ?? 0) + 1
+    if (t.agent) acc[t.agent] = (acc[t.agent] ?? 0) + 1
     return acc
   }, {})
 
@@ -282,10 +282,10 @@ function MonitorContent() {
 
       <div className="grid gap-3">
         {filtered.map(task => (
-          <div key={task.id} className="bg-slate-800 rounded-xl p-4">
+          <div key={task.task_id} className="bg-slate-800 rounded-xl p-4">
             <div className="flex flex-wrap items-center gap-2 mb-2">
-              <span className={`font-bold text-sm ${AGENT_COLORS[task.assigned_agent] ?? 'text-slate-300'}`}>
-                {task.assigned_agent}
+              <span className={`font-bold text-sm ${AGENT_COLORS[task.agent] ?? 'text-slate-300'}`}>
+                {task.agent}
               </span>
               <span className={`text-xs rounded px-2 py-0.5 ${STATUS_STYLES[task.status as TaskStatus] ?? 'bg-slate-600'}`}>
                 {STATUS_LABELS[task.status as TaskStatus] ?? task.status}
@@ -302,7 +302,7 @@ function MonitorContent() {
                 <span className="text-xs text-slate-500">{task.phase}</span>
               )}
             </div>
-            <div className="font-medium text-sm mb-1">{task.title}</div>
+            <div className="font-medium text-sm mb-1">{task.task_title}</div>
             {task.rationale && (
               <div className="text-xs text-slate-400 line-clamp-2 mb-2">{task.rationale}</div>
             )}
