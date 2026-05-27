@@ -1,7 +1,18 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-05-27 (MVP Phase 1-5 완성 + 검증, Phase 6+ 규획). 제품 방향은 chat-first CEO orchestration + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-05-27 (QA 통과 — 빌드/유닛 174개/e2e green. 다음: Phase 9 Founder UI). 제품 방향은 chat-first CEO orchestration + executive monitoring으로 고정한다.
+
+## QA 검증 현황 (2026-05-27)
+
+| 검증 항목 | 결과 |
+|---|---|
+| `@l5/core` 유닛 테스트 (19 suites) | ✅ 174 tests PASS |
+| NocoBase e2e auth setup | ✅ 1 passed |
+| `corepack pnpm -r build` | ✅ 통과 |
+| PR | [#1 feat/nocobase-real-mvp](https://github.com/yangminguy/pulk/pull/1) |
+
+**다음 세션 진입점:** Phase 9 — Founder UI 앱 구축 (`[ ] P0` 항목부터)
 
 ## Direction Lock
 

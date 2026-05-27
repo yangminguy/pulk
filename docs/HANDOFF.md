@@ -1,6 +1,6 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-27 21:00 KST (Phase 6 전체 + 1-5단계 구현 완료)
+최종 업데이트: 2026-05-27 (QA 통과 — 빌드/유닛/e2e 전부 그린)
 
 ---
 
@@ -59,28 +59,27 @@
 
 ---
 
-## Recently Changed Files (이번 세션)
+## QA 검증 결과 (2026-05-27)
 
-**신규 생성:**
-- `packages/l5-core/src/functions/executive-runtime/handlers/chief-of-staff-handler.ts`
-- `packages/l5-core/src/functions/bpr/` (types, phase-manager, index, tests)
-- `packages/l5-core/src/functions/workflow-factory/` (types, generator, index, tests)
-- `packages/l5-core/src/functions/memory/` (types, collector, reviewer, index, tests)
-- `packages/l5-core/src/functions/ceo-orchestration/anthropic-client.ts` (→ OpenAI)
-- `services/hermes-runtime/src/tasks/daily-brief-generator.ts`
-- `services/hermes-runtime/src/tasks/memory-review-generator.ts`
-- `apps/nocobase/migrations/20260527000000_create_founder_memory.sql`
-- `apps/nocobase/migrations/20260527100000_create_bpr_phases.sql`
-- `.env.local`
+| 항목 | 결과 |
+|---|---|
+| `@l5/core` 유닛 테스트 | ✅ 19 suites / 174 tests PASS |
+| NocoBase e2e auth setup | ✅ 1 passed (Playwright API 인증) |
+| `corepack pnpm -r build` | ✅ 전체 빌드 통과 |
+| plugin-orchestration core 경로 | ✅ `packages/l5-core/dist/` 직접 참조 |
+| plugin-executive-monitor src/server | ✅ NocoBase build 구조 충족 |
 
-**수정:**
-- `apps/nocobase/packages/plugins/@l5/plugin-executive-monitor/src/server/index.ts` — 5개 action 추가
-- `apps/nocobase/packages/plugins/@l5/plugin-executive-monitor/src/client/components/ApprovalQueueView.tsx` — 실제 API 연결
-- `apps/nocobase/packages/plugins/@l5/plugin-executive-monitor/src/client/components/MemoryReview.tsx` — 실제 API 연결
-- `apps/nocobase/packages/plugins/@l5/plugin-orchestration/src/server/actions/instructions.action.ts` — OpenAI 클라이언트, generateWorkflow
-- `packages/l5-core/src/functions/executive-runtime/index.ts` — ChiefOfStaff 케이스, D3/D4/D5 라우팅
-- `services/hermes-runtime/src/api/approval-queue.ts` — autoApproveExpiredD3Tasks
-- `apps/nocobase-app/.env` — OPENAI_API_KEY 추가
+**e2e 재실행 시 주의:** `apps/nocobase-app/storage/db/nocobase-e2e.sqlite` 파일이 이전 실행으로 잠겨 있으면 삭제 후 재실행.
+
+---
+
+## 다음 세션에서 할 일 (Founder UI)
+
+1. **Founder UI 앱 신설** — NocoBase 없이 동작하는 별도 프론트엔드 (Next.js 또는 HTML/Vite)
+2. **채팅 화면** — `POST /api/chat:submitInstruction` 연결, CEO 응답 렌더링
+3. **Task Monitor 화면** — `GET /api/monitor:currentTasks` 연결, 상태별 필터
+4. **Approval Queue 화면** — `GET /api/monitor:approvalQueue` + approve/reject 버튼
+5. **Memory Review 화면** — 후보 목록 + save/discard
 
 ---
 
