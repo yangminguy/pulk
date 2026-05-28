@@ -1,12 +1,12 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-28 (Phase 9.5 Agent 실제 실행 연결 완료)
+최종 업데이트: 2026-05-28 (Phase 10 P0 완료 — PMF 게이트 제거 + Hermes 반복 분석기)
 
 ---
 
 ## Current State
 
-**Phase 0-9.5 구현 완료 (Agent 실제 실행 연결 완료)**
+**Phase 0-9.5 구현 완료 (Agent 실제 실행 연결 완료) + Phase 10 P0 (PMF 개념 정정, Hermes 반복 감지 추가)**
 
 - `@l5/core`: 19 suites / 174 tests PASS
 - `@l5/hermes-runtime`: 2 suites / 13 tests PASS
@@ -28,11 +28,58 @@
   * status: needs_review (D2 태스크는 completed 대신 needs_review로 표시 — 검토 후 완료로 전환)
   * blocker 정보 저장 (AgentOutput.bottleneck)
 
-**미구현 (다음 단계):**
-- Trigger.dev Hermes cron 실제 연동 (daily-brief, stalled-task 자동 모니터링)
-- Memory → CEO 컨텍스트 재주입 (founder_memory 조회 후 해석 컨텍스트 활용)
-
 **한 줄 요약:** 지시 입력 → 승인 → 각 Agent 자동 실행 → 결과 저장 → Monitor 표시까지 완전 자동화됨
+
+---
+
+### ✅ Phase 10 P0: PMF 개념 정정 + Hermes 반복 분석기 추가
+
+**PMF 개념 명확화:**
+- **PMF (Product-Market Fit)**는 신규 사업 시작 시에만 적용 (찾기 → 구현 → 판매)
+- 모든 작업/태스크의 게이트가 **아님** (이전 구현 오류 제거됨)
+- **반복 감지**는 별개 시스템 (3회 이상 반복 작업 → CTO 도구화 요청)
+
+**구현됨:**
+
+1. **PMF 게이트 제거 (CPO, CTO Handler)**
+   - `packages/l5-core/src/functions/executive-runtime/handlers/cpo-handler.ts`:
+     * pmfEvidence, pmfScore, hasStrongEvidence 변수 제거
+     * 모든 productization 요청 → `status: 'needs_review'` (blocked 조건 제거)
+     * 단순 Offer Shape 분석으로 단순화
+   
+   - `packages/l5-core/src/functions/executive-runtime/handlers/cto-handler.ts`:
+     * PMF 점수 검증 제거
+     * Phase 기반 build 블록킹 로직 제거
+     * Tool feasibility 독립 평가 → `status: 'needs_review'`
+
+2. **Hermes 2시간 배치 반복 분석기**
+   - Schedule: `"0 */2 * * *"` (2시간마다 :00)
+   - `services/hermes-runtime/src/tasks/trigger-schedules.ts`:
+     * `REPETITION_ANALYZER` 스케줄 상수 추가
+   
+   - `services/hermes-runtime/src/tasks/repetition-analyzer.ts`:
+     * 7일 내 동일 task_title 3회 이상 감지
+     * CTO tool request 자동 생성
+     * 패턴 분석 (occurrence, agents involved, time span)
+   
+   - `@l5/core` 반복 감지 함수 (`packages/l5-core/src/functions/repetition-detection.ts`):
+     * `analyzeRepetitionPattern()` — 패턴 메타데이터 분석
+     * `generateToolRequestTask()` — CTO task 생성 페이로드
+     * `detectRepeatingTasks()` — 제목별 작업 그룹화
+
+3. **반복 감지 → 도구화 흐름**
+   - Hermes 2시간마다 실행
+   - 동일 제목 3회 이상 감지
+   - 자동으로 CTO에게 tool request 할당 (D2, needs_review)
+   - CTO가 기술 feasibility 평가
+   - CEO가 승인/거절로 도구화 진행 결정
+   - **PMF와 무관** — 반복되는 수작업이면 충분
+
+**테스트 통과:**
+- `npm run typecheck:all` — 0 errors
+- `npm run validate` — 22 PASSED
+
+**한 줄 요약:** PMF ≠ 반복 감지. 신규 사업은 PMF 먼저, 기존 작업은 반복 패턴으로 자동 도구화
 
 ---
 

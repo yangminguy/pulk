@@ -1,7 +1,7 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-05-28 (Phase 9.5 완료 — Agent 실제 실행 연결 완료. 지시 → 승인 → Agent 실행 → Monitor 결과 반영 전체 자동화됨). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-05-28 (Phase 10 P0 완료 — PMF 게이트 제거 + Hermes 반복 분석기 추가. PMF ≠ 반복 감지: 신규 사업은 PMF 먼저, 반복 작업은 자동 도구화). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
 
 ## QA 검증 현황 (2026-05-27)
 
@@ -280,8 +280,39 @@
   - reference: `docs/FOUNDER_BRIEF_SPEC.md` section "Phase Transition Summary"
   - include results, learnings, metrics, next phase plan
 
-## Phase 10 — Next: Hermes Monitoring 연동 (Priority 1, 3-4시간)
+## Phase 10 — PMF 개념 정정 + Hermes 반복 분석기 ✅ (2026-05-28 완료)
 
+### ✅ Phase 10 P0: PMF 게이트 제거 + Hermes 반복 분석기 (2시간 배치)
+
+**완료된 작업:**
+- [x] PMF 개념 명확화 (신규 사업만, 모든 태스크 게이트 아님)
+- [x] CPO Handler에서 PMF 게이트 제거 (cpo-handler.ts)
+  - pmfEvidence, pmfScore, hasStrongEvidence 제거
+  - 모든 productization → `status: 'needs_review'` (blocked 조건 제거)
+  - 단순 Offer Shape 분석으로 단순화
+- [x] CTO Handler에서 PMF 게이트 제거 (cto-handler.ts)
+  - PMF 점수 검증 제거
+  - Phase 기반 build 블록킹 제거
+  - Tool feasibility 독립 평가 → `status: 'needs_review'`
+- [x] Hermes 2시간 반복 분석기 구현 (trigger-schedules.ts)
+  - `REPETITION_ANALYZER: "0 */2 * * *"` 스케줄 추가
+- [x] 반복 분석기 작업 파일 생성 (repetition-analyzer.ts)
+  - 7일 내 동일 task_title 3회 이상 감지
+  - CTO tool request 자동 생성
+- [x] @l5/core 반복 감지 함수 추가 (repetition-detection.ts)
+  - `analyzeRepetitionPattern()` — 패턴 메타데이터 분석
+  - `generateToolRequestTask()` — CTO task 생성
+  - `detectRepeatingTasks()` — 제목별 그룹화
+- [x] 타입 체크 / 빌드 검증 통과
+- [x] 커밋 완료 (Phase 10 PMF gates + Hermes repetition analyzer)
+
+**개념 변경:**
+- **PMF (Product-Market Fit)** = 신규 사업: 찾기 → 구현 → 판매 (시작 시에만)
+- **반복 감지** = 별개 시스템: 동일 작업 3회+ → CTO 도구화 요청 (독립적)
+
+### Phase 10 P1: Trigger.dev 실제 연동 (우선순위 2, 2-3시간)
+
+- [ ] P1 Trigger.dev Hermes repetition-analyzer 실제 연동 (2h cron)
 - [ ] P1 Trigger.dev Hermes daily-brief 실제 연동
   - `services/hermes-runtime/src/tasks/daily-brief-generator.ts` 실제 구현
   - 매일 09:00 `/api/monitor:currentTasks` 조회 → CEO/Founder brief 생성
