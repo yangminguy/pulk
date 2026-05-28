@@ -1,10 +1,289 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-28 (Phase 11 완료 — Hermes Agent OpenAI 연동 완성 + 4개 cron job 정상 동작)
+최종 업데이트: 2026-05-28 (Phase 18 완료 — Clarification 헤드리스 + Risk 재평가)
+
+---
+
+## ✅ Phase 18 완료 (2026-05-28) — Clarification 헤드리스 + Risk 재평가
+
+**핵심 변경**
+1. `packages/l5-core/src/functions/cto-clarification/clarifier.ts` 신규 — `answerClarifications(input, llm?)`. D1-D3 + LLM 사용 가능 시 JSON `{answers[]}` 합성, D4-D5 또는 LLM 실패/공백 시 즉시 `escalate`. Deterministic fallback (verifier 패턴 모방).
+2. L5 plugin `taskCallback`에 신규 status 2개 추가 (`apps/nocobase-app/.../plugin-orchestration/src/server/plugin.ts`):
+   - `needs_clarification` — `questions[]` + `acr_callback_url` 수신 → CTO LLM (OPENAI_API_KEY gated) 호출 → answered면 ACR로 회신 fetch, escalate면 task `needs_review` + `approval_required=true`.
+   - `risk_reassess` — `new_risk_level` 수신 → `agent_tasks.risk_level` 업데이트, D3+면 `approval_required=true` 승격.
+3. ACR `/api/clarify-reply` 신규 라우트 — L5가 답변 회신 시 `findCTOTaskMetadataByL5Id`로 planId/taskId 해석 후 `appendPlanTaskClarification`으로 `PlanTask.clarificationAnswers[]` 누적. `L5_SHARED_SECRET` 헤더 검증.
+4. ACR `/api/l5-callback` 확장 — `needs_clarification`/`risk_reassess` status 및 `questions[]`/`acr_callback_url`/`new_risk_level` payload 통과.
+5. ACR 타입 확장: `PlanTask.clarificationAnswers?: {question, answer, answeredAt}[]`, `CTOTaskMetadata.findByL5Id` 헬퍼.
+
+**검증**
+- `@l5/core`: 194/194 PASS (+10 clarifier).
+- ACR clarify-reply: 6/6 PASS. 회귀 (llm-replanner 5 + auto-dispatcher 4) 9/9 PASS.
+- ACR `npx tsc --noEmit`: 0 errors.
+
+**미반영 (라이브 E2E 잔여)**
+- 샌드박스에서 ACR이 실제로 `needs_clarification` payload를 보내도록 ACR runner 측 trigger는 별도 작업 (현재는 endpoint/headless answer만 라이브화).
+- `risk_reassess` 트리거는 ACR packet-generator의 risk 변경 감지 후 자동 호출 wiring 필요 (Phase 18.1로 분리).
+
+---
+
+## ✅ Phase 15 라이브 E2E 완료 (2026-05-28 19:25 KST)
+
+**검증 환경**
+- 샌드박스: `/tmp/pulk-e2e-sandbox` (git init + initial commit)
+- ACR `npm run dev` port 3001 + `L5_SHARED_SECRET=l5-acr-live-e2e-2026`
+
+**End-to-end pass**
+1. `POST /api/workbench/dispatch` (project_path=/tmp/pulk-e2e-sandbox, D2 claude phase) → `auto_dispatch_scheduled: true`
+2. ACR auto-create project `l5-e2e-sandbox-1779963933` → `data/projects.json` 등록
+3. validateCwdSafety 통과 (외부 project path 허용)
+4. checkUncommittedChanges 통과 (clean sandbox)
+5. `acr/...` 브랜치 생성
+6. `claude -p "Read README.md..."` 실제 spawn → 출력 `DONE` → exit 0
+7. ExecutionLog `status: done`
+
+**결론:** Phase 14·15 모두 라이브 검증 통과. 실 `claude` CLI 호출까지 한 사이클 정상 흐름 확인.
+
+---
+
+## ✅ Phase 16.5 완료 (2026-05-28) — LLM Replan + dependsOn
+
+**ACR 측 변경**
+- `lib/types.ts`: `PlanTask.dependsOn?: string[]` 추가
+- `lib/orchestration/auto-dispatcher.ts`:
+  - `dispatchNextTask`에서 `dependsOn` 모두 `done`인 task만 후보로 선택
+  - `replanNextPrompt`로 다음 phase prompt 재작성 (priorContext 포함)
+- `lib/orchestration/llm-replanner.ts` (신규):
+  - `replanNextPrompt(input, llm?)` — OPENAI_API_KEY 시 GPT-4o, 없거나 실패·과소 응답 시 deterministic fallback (`priorContext + basePrompt`)
+  - 기본 LLM은 OpenAI SDK 직호출; 테스트는 `ReplanLLM` 시그니처로 주입
+
+**검증**
+- `__tests__/llm-replanner.test.ts` 5/5 PASS (deterministic, LLM 사용, throw, 과소 응답)
+- `__tests__/auto-dispatcher.test.ts` 4/4 PASS (회귀, OPENAI_API_KEY unset로 fallback 경로 검증)
+- `__tests__/projects-register.test.ts` 8/8 PASS (회귀)
+- `npx tsc --noEmit` 0 errors
+
+---
+
+## ✅ Phase 17.1 결선 완료 (2026-05-28) — Verifier 라이브화
+
+- Hermes gateway에 `cto-verification-loop` 등록 (`gateway.ts`, `runner.ts`)
+- launchd plist `com.l5.hermes.cto-verification-loop.plist` (10분 주기)
+- `install-launchd.sh`이 corepack pnpm fallback + 5개 plist 등록
+- L5 plugin `taskCallback`에서 `OPENAI_API_KEY` 있으면 `buildLLMClient`를 `verifyCTOPhase`에 주입
+- 사용자 환경 등록 완료: `launchctl list | grep l5.hermes` 5건 확인
+
+---
+
+## ✅ Phase 16 코드 완료 (2026-05-28) — Phase-to-Phase 자율 진행 루프
+
+**ACR 측 변경**
+- `lib/runner/git-utils.ts`: `getDiffSummary(cwd, base='main')` + `getLogTail(buffer, n=40)` 추가
+- `app/api/runner/route.ts`: onComplete 콜백 본문에 `diff_summary`, `log_tail`, `exit_code`, `branch` 첨부
+- `app/api/l5-callback/route.ts`: 새 필드 pass-through
+- `lib/orchestration/auto-dispatcher.ts`: `buildPriorPhaseContext()` 추가 — 직전 완료 task의 ExecutionLog + diff를 `[PRIOR PHASE CONTEXT]` 블록으로 묶어 다음 phase prompt 앞에 prepend
+
+**L5 측 변경**
+- `apps/nocobase-app/.../plugin-orchestration/src/server/plugin.ts` `taskCallback`:
+  - 새 필드 (`diff_summary`, `log_tail`, `exit_code`, `branch`) 수신 + phaseCtx 한 줄 요약 blocker에 기록
+  - 응답에 `accepted_context` 포함
+  - log_tail console.log
+
+**검증**
+- ACR `npx tsc --noEmit` 0 errors
+- ACR `__tests__/auto-dispatcher.test.ts` 4/4 PASS (회귀)
+- ACR `__tests__/projects-register.test.ts` 8/8 PASS (회귀)
+- L5 `corepack pnpm --filter @l5/core test` 20 suites / 184 tests PASS
+- L5 plugin typecheck PASS
+
+**제한사항 (Phase 16 후속)**
+- LLM 기반 `replanFromCallback` 미구현 — 현재는 결정론적 context 주입만. GPT-4o 기반 prompt 재설계는 Phase 16.5로 분리.
+- `dependsOn` PlanTask 필드 추가 미적용 — auto-dispatcher가 plan 순서대로 직선 처리하므로 현 모델에서는 불필요.
+
+---
+
+## ✅ Phase 17 코드 완료 (2026-05-28) — CTO 결과 검증 게이트
+
+**@l5/core 신규**
+- `packages/l5-core/src/functions/cto-verification/verifier.ts`:
+  - `verifyCTOPhaseDeterministic(input)`: exit_code, [ERROR] 토큰, diff 유무 + read-only 힌트 기반
+  - `verifyCTOPhase(input, llm?)`: LLM 보강 (GPT-4o 가정), JSON 파싱 + ```json fence 제거 + 결정론 fallback
+  - Verdict: `pass | fail | inconclusive`, `retry_recommended`, `confidence`
+- 인덱스 export 추가
+
+**L5 plugin-orchestration 변경**
+- `taskCallback`: CTO 태스크 + `all_done` 또는 `phase_complete` 시 `verifyCTOPhase()` 호출
+  - verdict='fail' → `status=needs_review`, `approval_required=true`, `blocker='verifier:fail ... retry=true'`
+  - verdict='inconclusive' → `status=needs_review` (retry 안 함)
+  - 응답 body에 `verifier` 포함
+
+**Hermes Verification Loop (신규)**
+- `services/hermes-runtime/src/tasks/cto-verification-loop.ts`:
+  - `parseRetryCount(blocker)` — blocker text의 `cto_retry=N` 파싱
+  - `shouldRetry(task)` — CTO + needs_review + `verifier:fail` + `retry=true` + retry<2
+  - `runCTOVerificationLoop(tasks, updater)` — `runCTOAgent` 재호출, blocker에 `cto_retry=N` 인코딩
+  - `MAX_RETRIES = 2`
+
+**검증**
+- @l5/core 184 tests PASS (verifier 10건 신규)
+- @l5/hermes-runtime 24 tests PASS (cto-verification-loop 8건 신규)
+- L5 plugin typecheck PASS
+
+**라이브 결선 완료 (2026-05-28 Phase 17.1)**
+- ✅ Hermes cron 등록 — `services/hermes-runtime/launchd/com.l5.hermes.cto-verification-loop.plist` (10분 주기), `gateway.ts` `TASK_RUNNERS["cto-verification-loop"]`, `runner.ts` `runCTOVerificationLoopLive`, `scripts/install-launchd.sh` PLISTS 5개로 확장
+- ✅ LLM 모드 활성화 — `plugin.ts` `taskCallback`에서 `process.env.OPENAI_API_KEY` 존재 시 `buildLLMClient(task.title)`를 `verifyCTOPhase`에 주입, 미설정 시 deterministic-only
+- 검증: `pnpm --filter @l5/hermes-runtime test` 24/24 PASS, gateway 단발 호출 정상 (401은 HERMES_TOKEN 미설정 환경 영향, wiring 자체는 정상)
+- 운영 단계: 사용자가 `bash services/hermes-runtime/scripts/install-launchd.sh` 재실행 → 5번째 cron 등록 완료
+
+---
+
+---
+
+## 🔬 Phase 15 라이브 E2E 결과 (2026-05-28)
+
+**환경**
+- ACR `npm run dev` on port 3001 (`L5_SHARED_SECRET` 적용)
+- NocoBase `yarn start` 재시작 (port 13000, `corepack pnpm -r build` 후 Phase 15 dist 반영)
+- L5 env 추가: `L5_SHARED_SECRET=l5-acr-live-e2e-2026`, `L5_DEFAULT_PROJECT_PATH=/Users/wonminyang/Desktop/pulk`, `ACR_BASE_URL=http://localhost:3001`
+
+**검증 통과 ✅**
+| 항목 | 결과 |
+|---|---|
+| `POST /api/businesses:create` → `id=2` | OK |
+| `POST /api/l5:acrRegister` → ACR upsert | `acr_project_id: business-2` |
+| ACR `data/projects.json` 등재 + path=/Users/wonminyang/Desktop/pulk | OK |
+| docs ingestion (fire-and-forget) | AGENTS.md + CLAUDE.md + README.md + `docs/*.md` 19개 = **22개** inline |
+| CTO `POST /api/workbench/dispatch` (D2 + auto_execute=true + project_path) | `auto_dispatch_scheduled: true` |
+| auto-dispatcher fire → in-process token + `/api/runner` 자동 POST | OK (token 발급 + runner 호출 도달) |
+
+**발견된 갭 ❌**
+- `/api/runner` 응답 **403** — `app/api/runner/route.ts:97`이 `projectRoot = process.cwd()` (ACR 디렉토리)로 고정 후 `validateCwdSafety(cwd, projectRoot)` 검사. L5 외부 프로젝트 cwd(`/Users/wonminyang/Desktop/pulk`)는 ACR 디렉토리 prefix가 아니므로 거부됨.
+- 즉 Phase 14의 "외부 프로젝트 cwd로 dispatch" 시나리오와 ACR runner의 path-traversal 가드가 충돌. dispatch/ingestion/token/runner 호출까지는 정상이지만 실제 CLI spawn 전에 블록됨.
+
+**다음 단계 (Phase 16 후보 P0)**
+1. ~~ACR `validateCwdSafety` 보강~~ — ✅ **2026-05-28 완료**. `app/api/runner/route.ts`에서 `process.cwd()` 단일 root 대신 `getProjects()`로 등록된 `projects[].path` 전체를 허용 목록으로 사용. 외부 프로젝트 cwd dispatch가 통과.
+2. 수정 후 동일 dispatch 재실행 → `POST /api/runner` **200** (SSE 시작) 확인 ✅. 추가 SSE body 캡처에서 `[ERROR] Uncommitted changes detected...`까지 도달 → cwd 가드 이후 spawn-runner의 git 청결도 가드가 정상 작동.
+3. (선택) pulk 루트 대신 임시 디렉토리에서 sandbox 검증으로 git uncommitted 차단 회피하거나, 변경을 stash 후 재시도하면 실제 `claude` CLI spawn까지 검증 가능.
+
+**Phase 15 라이브 E2E Verdict (2026-05-28 갱신):** ✅ Pass — 비즈니스 생성 → ACR 등록 → 22개 docs ingestion → CTO D2 dispatch → auto-dispatcher fire → cwd safety 통과 → runner SSE 시작까지 end-to-end 확인. 실제 CLI spawn은 의도된 git 가드에 의해 차단되며 별개 issue.
+
+---
+
+## ✅ Phase 15 완료 (2026-05-28) — CTO 프로젝트 부트스트랩
+
+**목표:** CTO가 새 비즈니스용 코드베이스를 ACR에 자율 등록 + AGENTS.md/CLAUDE.md/docs 자동 ingestion.
+
+**ACR 측 (`~/Desktop/양원민 개발자/agent_control_room_docs/`)**
+- `app/api/projects/route.ts` (신규): `POST` 핸들러 — `{ project_id, title, one_liner, l5_business_id, project_path? }` 받아 멱등 upsert. 위험 경로(`/etc`, `/Users` 등) 400 차단. 등록 직후 setImmediate로 ingestion fire-and-forget.
+- `lib/ingestion/project-docs-ingestor.ts` (신규): `ingestProjectDocs(projectId, projectPath)` — AGENTS.md/CLAUDE.md/README.md + `docs/*.md` 스캔, 누락 파일 silent skip, 256KB 캡.
+- `lib/storage/json-store.ts`: `upsertProjectById()` 헬퍼 추가 (멱등 키 기반 upsert).
+- `app/api/workbench/dispatch/route.ts`: `body.project_path` 있고 ACR project 없으면 dispatch 안에서 auto-create + ingestion 트리거. `projectId = l5-${l5_task_id}` 변수로 정리.
+
+**L5 측 (`/Users/wonminyang/Desktop/pulk/`)**
+- `services/agent-runtime/src/agents/cto.ts`:
+  - `ACR_BASE_URL` 환경변수 도입 (기본 `http://localhost:3001`).
+  - `registerWithACR()` payload에 `project_path: resolveProjectPath(task)` 추가.
+  - `bootstrapProjectIfMissing()` 신규: 4xx/5xx 받으면 `L5_DEFAULT_PROJECT_PATH`로 재시도. fallback path 없으면 워닝.
+- `services/hermes-runtime/src/api/acr-client.ts`: `ACRProjectRegistration`에 `project_path?` 필드 추가.
+- `apps/nocobase-app/packages/plugins/@l5/plugin-business-portfolio/src/server/plugin.ts`: `acrRegister` 액션 신규 — 비즈니스 생성 시 ACR `POST /api/projects` 호출.
+- `apps/nocobase-app/packages/plugins/@l5/plugin-business-portfolio/src/client/pages/BusinessPortfolioPage.tsx`: `handleCreateBusiness`에서 생성 직후 `api.resource('l5').acrRegister(...)` 비차단 호출.
+
+**검증**
+- ACR `npx tsc --noEmit` 0 errors
+- ACR `__tests__/projects-register.test.ts` (신규) — 8/8 PASS (ingestion 정상/누락/빈 경로, 400 validation, 멱등성, fire-and-forget 검증)
+- ACR `auto-dispatcher.test.ts` 회귀 — 4/4 PASS
+- ACR 전체 회귀 — 41/42 suites PASS (1건 사전 존재 qa-fixes-phase11 missing-doc 이슈, Phase 15 무관)
+- L5 `pnpm -r typecheck` — l5-core/founder-ui/agent-runtime/hermes-runtime 전체 통과
+- L5 `@l5/core` — 174/174 tests PASS
+
+**라이브 E2E 대기:**
+- L5_DEFAULT_PROJECT_PATH 세팅 후 비즈니스 생성 → ACR `data/projects.json` 등장 확인
+- CTO D2 태스크 dispatch → ACR project auto-create + docs ingestion 확인 + daemon이 올바른 cwd에서 CLI spawn
+
+---
+
+## ✅ Phase 14 완료 (2026-05-28) — ACR 무인 실행 루프
+
+**목표:** CTO가 dispatch한 D1-D2 phase가 사람 클릭 없이 자동 spawn → 콜백까지 흐른다.
+
+**L5 측 (`/Users/wonminyang/Desktop/pulk/`)**
+- `packages/l5-core/src/types/acr-intent.ts`: `ACRIntent.project_path?` 추가
+- `services/agent-runtime/src/agents/cto.ts`: `resolveProjectPath()` 헬퍼 — task → env(`L5_DEFAULT_PROJECT_PATH`) → undefined
+
+**ACR 측 (`~/Desktop/양원민 개발자/agent_control_room_docs/`)**
+- `lib/storage/cto-task-metadata-store.ts` (신규): planId+taskId → CTO sidecar metadata
+- `lib/orchestration/auto-dispatcher.ts` (신규): `dispatchNextTask` / `runAutoDispatchForPlan` / `scheduleAutoDispatch` — D1-D2 + gate=none 태스크를 in-process token 발급 후 `/api/runner` SSE 끝까지 소비
+- `app/api/workbench/dispatch/route.ts`: metadata 저장 + auto_execute=true 있으면 fire-and-forget
+- `app/api/orchestration/internal-token/route.ts` (신규): `x-l5-shared-secret` 인증, 외부 호출용 token 발급
+- `app/api/orchestration/auto-dispatch/route.ts` (신규): 동일 인증, plan 단위 수동 트리거
+
+**검증**
+- @l5/core typecheck/build PASS, 174/174 tests PASS
+- @l5/agent-runtime tsc --noEmit PASS
+- ACR `npx tsc --noEmit` 0 errors
+- ACR `__tests__/auto-dispatcher.test.ts` — 4/4 PASS (dispatch flow, D4 차단, internal-token 401/200/503)
+- ACR 전체 회귀: 40/41 suites PASS (1건은 사전 존재 missing doc 이슈, Phase 14 무관)
+
+**라이브 E2E 대기:**
+- ACR `npm run dev` (port 3001) + env `L5_SHARED_SECRET`, `L5_DEFAULT_PROJECT_PATH` 세팅
+- L5 NocoBase + agent-runtime 기동, D2 CTO 태스크 1건 실행 → ACR 자동 spawn → claude/codex 실제 CLI → callback까지 검증
+
+---
 
 ---
 
 ## Current State
+
+**Phase 0-13 구현 완료**
+
+### ✅ Phase 13 완료 (2026-05-28)
+
+**LLM 기반 decomposer:**
+- `packages/l5-core/src/functions/ceo-orchestration/decomposer.ts`: 키워드 → LLM 기반 역할 배분으로 교체 (키워드 fallback 유지)
+- `decomposeIntoWorkstreams`가 async로 변경, `llm?: LLMClient` 옵션 추가
+- `instructions.action.ts`: `await decomposeIntoWorkstreams(...)` + `llm` 전달
+
+**에이전트 실제 실행 (OpenAI GPT-4o, CTO 패턴 동일):**
+- `services/agent-runtime/src/agents/cmo.ts`: GTM 메시징 전략 — 외부 발송 전 승인 필수
+- `services/agent-runtime/src/agents/cpo.ts`: 제품 로드맵 · PMF 가설 설계 (신규)
+- `services/agent-runtime/src/agents/cro.ts`: 세일즈 워크플로 · 리드 전략 (신규)
+- `services/agent-runtime/src/agents/coo.ts`: 운영 프로세스 · SOP 정의 (신규)
+- `services/agent-runtime/src/agents/cfo.ts`: 비용 분석 · 예산 영향 검토 (신규)
+- `services/agent-runtime/src/agents/risk-qa.ts`: D1-D5 리스크 평가 (실제 구현)
+- `services/agent-runtime/src/agents/chief-of-staff.ts`: 에이전트 간 조율 (실제 구현)
+- 모든 에이전트: API 키 없을 때 deterministic fallback 지원
+
+**Task Dispatcher (신규 Hermes cron, 1분 주기):**
+- `services/hermes-runtime/src/tasks/task-dispatcher.ts`: `status=queued` + `approval_required=false` 태스크 자동 실행
+- `services/hermes-runtime/src/api/nocobase-client.ts`: `fetchQueuedTasks()` 추가
+- `services/hermes-runtime/src/runner.ts`: `runTaskDispatcherLive()` 추가
+- `services/hermes-runtime/src/gateway.ts`: `task-dispatcher` 태스크 추가
+- `services/hermes-runtime/launchd/com.l5.hermes.task-dispatcher.plist`: 1분 간격 launchd plist
+
+**검증:**
+- `@l5/core` 174 tests PASS ✅
+- `@l5/agent-runtime` tsc --noEmit PASS ✅
+- `@l5/hermes-runtime` tsc --noEmit PASS ✅
+
+### ✅ Phase 12 완료 (2026-05-28)
+
+**P1: Hermes gateway launchd 자동 시작**
+- `services/hermes-runtime/src/gateway.ts`: CLI 진입점 (`node dist/gateway.js <task-name>`)
+- `services/hermes-runtime/launchd/`: 4개 plist (repetition-analyzer/approval-checker/daily-brief/cto-weekly-review)
+- `services/hermes-runtime/scripts/install-launchd.sh`: 빌드 → plist 설치 → launchctl load 한 번에 처리
+- 설치: `bash services/hermes-runtime/scripts/install-launchd.sh` (repo 루트에서)
+
+**P1: Memory → CEO context 재주입**
+- `packages/l5-core/src/functions/ceo-orchestration/interpreter.ts`: `InterpretOptions.memories?` 파라미터 추가
+- `apps/nocobase/packages/plugins/@l5/plugin-orchestration/src/server/actions/instructions.action.ts`: `submitChatInstruction` 에서 `founder_memory` 조회 → CEO 해석 컨텍스트 주입
+
+**P2: ACR 프로젝트 자동 등록**
+- `services/agent-runtime/src/agents/cto.ts`: `runCTOAgent()` 시작 시 `registerWithACR()` 호출 (graceful fallback)
+
+**Trigger.dev 제거**
+- 코드 및 문서에서 Trigger.dev 참조 제거 (의도적 미구현 결정)
+- `services/hermes-runtime/src/tasks/trigger-schedules.ts`: 예시 주석 블록 제거
+
+---
 
 **Phase 0-10 구현 완료 (CTO Agent + ACR 양방향 연동 완성)**
 
@@ -199,9 +478,8 @@
 ## What Does Not Work
 
 - **NocoBase 브라우저 UI** — `http://localhost:13001` 접속 시 "App warning: paths[1] null" 에러. 원인: 플러그인 client entry 빌드 실패. **→ 별도 UI 앱으로 해결 예정**
-- **Trigger.dev 실제 연동** — Hermes 스케줄은 상수/함수만 구현. 실제 cron 실행 안됨
 - **Mastra agent-runtime** — placeholder 상태
-- **Memory → CEO 컨텍스트 주입** — `founder_memory` 저장은 되나 CEO가 조회하지 않음 (P2)
+- **NocoBase 브라우저 UI** — `http://localhost:13001` paths[1] null 에러 (별도 UI 앱으로 해결 예정)
 
 ---
 
@@ -261,8 +539,7 @@ cd apps/founder-ui && npm run dev   # → http://localhost:3000
    - 구현 위치: `services/agent-runtime/src/agents/cto.ts`
    - 참고 문서: `~/Downloads/agent_control_room_fast_track_prd_auto_runtime_selection.md`
 3. **Phase 10 P1: Founder UI Control Room 패널** — CLI 세션 목록, Release Gate 승인, 출력 미리보기
-4. **Memory → CEO 컨텍스트 주입** — `founder_memory` 조회 → CEO 해석 컨텍스트 (P2)
-5. **Trigger.dev 실제 연동** — Hermes daily-brief, stalled-task cron 실행
+4. **Memory → CEO 컨텍스트 주입** — ✅ 완료 (`interpretFounderInstruction` memories 파라미터)
 
 ---
 
@@ -426,7 +703,7 @@ corepack pnpm exec tsc -p apps/nocobase/packages/plugins/@l5/plugin-orchestratio
 
 **Partially Implemented / Placeholder:**
 - `services/agent-runtime/` — Mastra integration placeholder (not yet connected to CEO orchestrator)
-- `services/hermes-runtime/src/loops/*` — Trigger.dev Hermes placeholder (structure exists, not yet live)
+- `services/hermes-runtime/src/loops/*` — Hermes loop scaffold (structure exists, not yet live)
 - Brief generation (Founder Brief templates documented, auto-generation in Chief of Staff not yet wired)
 - Memory entry workflow (insight_to_record field exists, approval/persist flow not yet implemented)
 
@@ -471,7 +748,7 @@ corepack pnpm exec tsc -p apps/nocobase/packages/plugins/@l5/plugin-orchestratio
 - Approval Queue: approval_required task 조회/승인/거절
 - stalled-task-detector: 1시간마다 blocked/overdue task 감시
 - approval-checker: 매일 09:00 daily brief 생성
-- Trigger.dev 스케줄 설정
+- launchd 스케줄 설정 (macOS 자동 시작)
 
 ## Complete Orchestration Flow (MVP Ready)
 

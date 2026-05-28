@@ -7,6 +7,7 @@ const {
   assignExecutiveTasks,
   decomposeIntoWorkstreams,
   interpretFounderInstruction,
+  createOpenAIClient,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/ceo-orchestration'));
 
 const {
@@ -16,6 +17,14 @@ const {
 const {
   executeAgentTask,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/executive-runtime'));
+
+const {
+  verifyCTOPhase,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cto-verification'));
+
+const {
+  answerClarifications,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cto-clarification'));
 
 type ActionContext = {
   app?: any;
@@ -171,8 +180,9 @@ function registerChatResource(app: any, db: any) {
         };
         const instructionRecord = await instructionRepo.create({ values: instruction });
 
+        const llm = buildLLMClient(raw_text);
         const interpretationDraft = await interpretFounderInstruction(instruction as any, {
-          llm: buildDeterministicLLM(raw_text),
+          llm,
           now: () => new Date(now),
           idGenerator: randomUUID,
         });
@@ -184,8 +194,9 @@ function registerChatResource(app: any, db: any) {
           values: { status: 'interpreted' },
         });
 
-        const workstreams = decomposeIntoWorkstreams(interpretation, {
+        const workstreams = await decomposeIntoWorkstreams(interpretation, {
           idGenerator: () => randomUUID(),
+          llm,
         });
         const tasks = assignExecutiveTasks(workstreams, {
           now: () => new Date(now),
@@ -424,7 +435,22 @@ function registerCrudResources(app: any) {
     name: 'agent',
     actions: {
       taskCallback: async (ctx: ActionContext, next: () => Promise<void>) => {
-        const { l5_task_id, phase, status, output_summary, next_owner } = getValues(ctx);
+        const {
+          l5_task_id,
+          phase,
+          status,
+          output_summary,
+          next_owner,
+          // Phase 16: phase-to-phase context handoff fields
+          diff_summary,
+          log_tail,
+          exit_code,
+          branch,
+          // Phase 18: clarification + risk reassessment fields
+          questions,
+          acr_callback_url,
+          new_risk_level,
+        } = getValues(ctx);
         if (!l5_task_id) ctx.throw(400, 'l5_task_id is required');
         if (!status) ctx.throw(400, 'status is required');
 
@@ -434,24 +460,170 @@ function registerCrudResources(app: any) {
 
         let updates: Record<string, any> = { updated_at: new Date().toISOString() };
 
+        // Phase 16: compact phase-context line (kept short; full data goes to logs)
+        const phaseCtx = [
+          phase ? `phase=${phase}` : null,
+          branch ? `branch=${branch}` : null,
+          exit_code !== undefined && exit_code !== null ? `exit=${exit_code}` : null,
+          diff_summary ? `diff_lines=${String(diff_summary).split('\n').length}` : null,
+        ].filter(Boolean).join(' ');
+
+        // Phase 17: CTO result verification gate.
+        // Only runs for CTO tasks reporting success. Falls back to deterministic
+        // mode (no LLM call) — Phase 17.1 will wire OPENAI_API_KEY-gated LLM.
+        let verifierVerdict: any = null;
+        const shouldVerify =
+          (status === 'all_done' || status === 'phase_complete') &&
+          task.assigned_agent === 'CTO';
+        if (shouldVerify) {
+          try {
+            const verifierLLM = process.env.OPENAI_API_KEY
+              ? buildLLMClient(task.title ?? '')
+              : undefined;
+            verifierVerdict = await verifyCTOPhase(
+              {
+                task_title: task.title,
+                expected_output: task.expected_output ?? '',
+                diff_summary: diff_summary ?? undefined,
+                log_tail: log_tail ?? undefined,
+                exit_code: typeof exit_code === 'number' ? exit_code : undefined,
+              },
+              verifierLLM,
+            );
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.warn('[taskCallback] verifier threw:', err);
+          }
+        }
+
         if (status === 'all_done') {
-          updates.status = 'done';
+          if (verifierVerdict && verifierVerdict.verdict === 'fail') {
+            updates.status = 'needs_review';
+            updates.approval_required = true;
+            updates.blocker = `verifier:fail ${verifierVerdict.reason}. retry=${verifierVerdict.retry_recommended}. ${phaseCtx}`.trim();
+          } else if (verifierVerdict && verifierVerdict.verdict === 'inconclusive') {
+            updates.status = 'needs_review';
+            updates.approval_required = true;
+            updates.blocker = `verifier:inconclusive ${verifierVerdict.reason}. ${phaseCtx}`.trim();
+          } else {
+            updates.status = 'done';
+            if (phaseCtx) updates.blocker = `done. ${phaseCtx}`;
+          }
         } else if (status === 'failed') {
           updates.status = 'needs_review';
           updates.approval_required = true;
-          updates.blocker = output_summary;
+          updates.blocker = [output_summary, phaseCtx].filter(Boolean).join(' | ');
         } else if (status === 'blocked') {
           updates.status = 'blocked';
-          updates.blocker = output_summary;
+          updates.blocker = [output_summary, phaseCtx].filter(Boolean).join(' | ');
         } else if (status === 'phase_complete') {
-          updates.blocker = `phase: ${phase} complete. next: ${next_owner || 'pending'}`;
+          updates.blocker = `phase: ${phase} complete. next: ${next_owner || 'pending'}. ${phaseCtx}`.trim();
+        } else if (status === 'needs_clarification') {
+          // Phase 18: ACR raised clarifying questions. Try headless answer via CTO LLM;
+          // escalate to Founder if risk >= D4 or LLM unavailable.
+          const qs: string[] = Array.isArray(questions) ? questions.filter((q: unknown) => typeof q === 'string') : [];
+          const clarifyLLM = process.env.OPENAI_API_KEY ? buildLLMClient(task.title ?? '') : undefined;
+          let clarification: any = null;
+          try {
+            clarification = await answerClarifications(
+              {
+                task_title: task.title,
+                expected_output: task.expected_output ?? '',
+                risk_level: task.risk_level ?? 'D3',
+                questions: qs,
+                context: phaseCtx,
+              },
+              clarifyLLM,
+            );
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.warn('[taskCallback] clarifier threw:', err);
+            clarification = { verdict: 'escalate', answers: qs.map(() => ''), reason: 'clarifier exception' };
+          }
+
+          if (clarification.verdict === 'answered' && typeof acr_callback_url === 'string' && acr_callback_url) {
+            // Fire reply to ACR; do not block taskCallback on failure.
+            try {
+              await fetch(acr_callback_url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  l5_task_id,
+                  phase,
+                  questions: qs,
+                  answers: clarification.answers,
+                }),
+                signal: (AbortSignal as any).timeout?.(5000),
+              });
+            } catch (err) {
+              // eslint-disable-next-line no-console
+              console.warn('[taskCallback] clarify reply failed:', err);
+            }
+            updates.blocker = `clarification:answered ${qs.length} q. ${phaseCtx}`.trim();
+          } else {
+            updates.status = 'needs_review';
+            updates.approval_required = true;
+            updates.blocker = `clarification:escalate ${clarification.reason}. ${phaseCtx}`.trim();
+          }
+          ctx.body = {
+            success: true,
+            task_id: l5_task_id,
+            new_status: updates.status ?? task.status,
+            clarification,
+          };
+          await taskRepo.update({ filterByTk: l5_task_id, values: updates });
+          await next();
+          return;
+        } else if (status === 'risk_reassess') {
+          // Phase 18: ACR re-evaluated risk based on packet content. Sync to L5
+          // agent_tasks.risk_level. Auto-promote approval_required when D3+.
+          const allowed = ['D1', 'D2', 'D3', 'D4', 'D5'];
+          if (typeof new_risk_level !== 'string' || !allowed.includes(new_risk_level)) {
+            ctx.throw(400, `risk_reassess requires new_risk_level in ${allowed.join('|')}`);
+          }
+          const HIGH_RISK = ['D3', 'D4', 'D5'];
+          updates.risk_level = new_risk_level;
+          if (HIGH_RISK.includes(new_risk_level)) {
+            updates.approval_required = true;
+          }
+          updates.blocker = `risk_reassess: ${task.risk_level ?? 'n/a'} -> ${new_risk_level}. ${phaseCtx}`.trim();
+          await taskRepo.update({ filterByTk: l5_task_id, values: updates });
+          ctx.body = {
+            success: true,
+            task_id: l5_task_id,
+            new_status: task.status,
+            new_risk_level,
+          };
+          await next();
+          return;
         } else {
           ctx.throw(400, `Unknown status: ${status}`);
         }
 
         await taskRepo.update({ filterByTk: l5_task_id, values: updates });
 
-        ctx.body = { success: true, task_id: l5_task_id, new_status: updates.status ?? task.status };
+        // Phase 16: structured log of phase context for downstream replanning (Phase 17).
+        if (diff_summary || log_tail) {
+          // eslint-disable-next-line no-console
+          console.log(`[taskCallback] l5_task_id=${l5_task_id} phase=${phase} status=${status} ${phaseCtx}`);
+          if (log_tail) {
+            // eslint-disable-next-line no-console
+            console.log(`[taskCallback] log_tail:\n${String(log_tail).slice(0, 1200)}`);
+          }
+        }
+
+        ctx.body = {
+          success: true,
+          task_id: l5_task_id,
+          new_status: updates.status ?? task.status,
+          accepted_context: {
+            has_diff: Boolean(diff_summary),
+            has_log: Boolean(log_tail),
+            exit_code: exit_code ?? null,
+            branch: branch ?? null,
+          },
+          verifier: verifierVerdict ?? null,
+        };
         await next();
       },
 
@@ -527,6 +699,14 @@ function registerCrudResources(app: any) {
 
 function getValues(ctx: ActionContext): Record<string, any> {
   return ctx.action?.params?.values ?? ctx.request?.body ?? {};
+}
+
+function buildLLMClient(rawText: string) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (apiKey && typeof createOpenAIClient === 'function') {
+    return createOpenAIClient({ apiKey });
+  }
+  return buildDeterministicLLM(rawText);
 }
 
 function buildDeterministicLLM(rawText: string) {

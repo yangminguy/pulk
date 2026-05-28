@@ -17,3 +17,5 @@ export * from './functions/workflow-factory';
 export * from './functions/memory-loop';
 export * from './functions/memory';
 export * from './functions/repetition-detection';
+export * from './functions/cto-verification';
+export * from './functions/cto-clarification';
