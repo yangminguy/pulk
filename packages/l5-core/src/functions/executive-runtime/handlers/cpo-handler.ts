@@ -4,79 +4,64 @@ import type { HandlerInput, HandlerResult } from '../protocol';
 import { buildHandoff } from '../protocol';
 
 export function cpoHandler(input: HandlerInput): HandlerResult {
-  const { task, context } = input;
-  const pmfEvidence = String(context?.pmf_evidence ?? context?.pmfEvidence ?? '').toLowerCase();
-  const pmfScore = typeof context?.pmf_score === 'number' ? context.pmf_score : undefined;
-  const hasStrongEvidence = pmfEvidence === 'strong' || (pmfScore !== undefined && pmfScore >= 4);
-  const productizationRequested = /producti[sz]e|software|tool|build|platform|app|scale/i.test(
-    `${task.title} ${task.rationale} ${task.expected_output}`,
-  );
-  const blocked = productizationRequested && !hasStrongEvidence;
-  const approvalRequired = blocked || task.approval_required;
+  const { task } = input;
 
   const output = {
     current_situation: `CPO task received: ${task.title}`,
     source_instruction: task.rationale,
-    goal: 'Define offer shape and productization path based on existing PMF signals',
+    goal: 'Define offer shape and productization path',
     why_now: 'Offer must be shaped before sales or marketing can operate effectively',
-    bottleneck: blocked
-      ? 'PMF evidence is weak or missing, so productization cannot proceed autonomously'
-      : 'PMF criteria must stay attached to any productization recommendation',
-    root_cause: 'Premature productization without signal leads to wasted build effort',
+    bottleneck: 'Unclear offer scope and customer value mapping',
+    root_cause: 'No documented offer shape or pricing hypothesis yet',
     options: [
       'Package current manual delivery as a repeatable service offer',
       'Define minimum viable offer with clear scope and pricing',
-      'Map user workflow to identify highest-friction steps for future automation',
+      'Map user workflow to identify highest-friction steps for future optimization',
     ],
-    recommendation: blocked
-      ? 'Block productization and require Founder approval until PMF evidence is strong'
-      : 'Define minimum viable offer shape with PMF evidence attached',
+    recommendation: 'Define minimum viable offer shape with scope and pricing clarity',
     action_items: [
       'Document current offer scope and delivery steps',
       'Identify highest-value outcome for target customer',
       'Define offer package with pricing hypothesis',
-      'Flag any tool build suggestions to CTO only after PMF confirmation',
+      'Map user workflow for efficiency improvements',
     ],
     next_owner: 'ceo' as const,
     required_tools: [],
     approval_required: false,
-    insight_to_record: 'CPO must not recommend tool build before PMF criteria are met',
-    workflow_improvement_suggestion: 'Gate CPO tool recommendations behind PMF score threshold check',
+    insight_to_record: 'Offer shape and pricing clarity are prerequisites for sales and marketing alignment',
+    workflow_improvement_suggestion: 'Create offer shape template for faster CPO analysis',
     confidence_level: 'medium' as const,
     risk_level: 'D2' as const,
   };
 
   const handoff = buildHandoff(task, output, {
     what_was_completed: 'Offer shape and productization path defined',
-    what_remains_open: 'PMF validation before any tool build recommendation',
+    what_remains_open: 'Validation through early customer feedback',
     why_next_agent_needed: 'CEO needs offer definition to align sales and marketing workstreams',
-    must_not_lose: 'Offer scope, pricing hypothesis, and PMF gate criteria',
+    must_not_lose: 'Offer scope, pricing hypothesis, and customer value mapping',
   });
 
   return {
-    status: blocked ? 'blocked' : 'needs_review',
-    created_tasks: blocked
-      ? []
-      : [{
-          title: `Offer/productization gate: ${task.title}`,
-          assigned_agent: 'CPO' as const,
-          expected_output: 'Productization decision with PMF evidence attached',
-          details: {
-            pmf_evidence: hasStrongEvidence ? 'strong' : 'not requested',
-            productization_gate: 'PMF evidence required before tool or product build',
-          },
-          approval_required: false,
-          risk_level: 'D2' as const,
-        }],
-    approval_required: approvalRequired,
-    blocked,
-    reason: blocked
-      ? 'Productization requested before strong PMF evidence; route to Founder approval.'
-      : 'Offer shaping can proceed because no premature productization block was detected.',
-    risk_level: blocked ? 'D4' : 'D2',
+    status: 'needs_review',
+    created_tasks: [{
+      title: `Offer shape analysis: ${task.title}`,
+      assigned_agent: 'CPO' as const,
+      expected_output: 'Documented offer scope, pricing hypothesis, and delivery model',
+      details: {
+        offer_shape: 'To be defined',
+        pricing_hypothesis: 'To be developed',
+        delivery_model: 'To be documented',
+      },
+      approval_required: false,
+      risk_level: 'D2' as const,
+    }],
+    approval_required: false,
+    blocked: false,
+    reason: 'Offer shaping is a standard CPO analysis task with no blocking constraints.',
+    risk_level: 'D2',
     source_ref: task.source_ref,
     output,
-    updated_status: blocked ? 'blocked' : 'needs_review',
+    updated_status: 'needs_review',
     handoff,
   };
 }

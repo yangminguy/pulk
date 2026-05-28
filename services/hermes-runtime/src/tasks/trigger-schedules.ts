@@ -24,6 +24,9 @@ export const HERMES_SCHEDULES = {
 
   // Memory review generator: every Friday at 17:00
   MEMORY_REVIEW_GENERATOR: "0 17 * * 5",
+
+  // Repetition analyzer: every 2 hours at :00
+  REPETITION_ANALYZER: "0 */2 * * *",
 } as const;
 
 // Example Trigger.dev v3 wiring (add @trigger.dev/sdk to package.json when ready):
