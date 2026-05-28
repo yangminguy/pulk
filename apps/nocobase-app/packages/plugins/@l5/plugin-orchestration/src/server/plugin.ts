@@ -45,8 +45,9 @@ export default class PluginOrchestrationServer extends Plugin {
     registerChatResource(this.app, this.db);
     registerCrudResources(this.app);
 
-    this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow'], 'loggedIn');
-    this.app.acl.allow('agent', ['executeTask'], 'loggedIn');
+    this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow', 'approvePlan'], 'loggedIn');
+    this.app.acl.allow('agent', ['executeTask', 'taskCallback'], 'loggedIn');
+    this.app.acl.allow('acr', ['approvalCallback'], 'loggedIn');
     this.app.acl.allow('founder_instructions', '*', 'loggedIn');
     this.app.acl.allow('ceo_interpretations', '*', 'loggedIn');
     this.app.acl.allow('agent_tasks', '*', 'loggedIn');
@@ -68,7 +69,8 @@ async function ensureOrchestrationColumns(db: any) {
       ALTER TABLE IF EXISTS agent_tasks
         ADD COLUMN IF NOT EXISTS risk_level text,
         ADD COLUMN IF NOT EXISTS phase text,
-        ADD COLUMN IF NOT EXISTS source_ref text;
+        ADD COLUMN IF NOT EXISTS source_ref text,
+        ADD COLUMN IF NOT EXISTS acr_token text;
     `);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -124,6 +126,7 @@ function registerCollections(db: any) {
       { name: 'source_ref', type: 'string' },
       { name: 'blocker', type: 'text' },
       { name: 'due_at', type: 'date' },
+      { name: 'acr_token', type: 'string' },
     ],
   }));
 
@@ -219,6 +222,26 @@ function registerChatResource(app: any, db: any) {
         });
 
         ctx.body = { ok: true, data: result };
+        await next();
+      },
+
+      approvePlan: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const { instruction_id } = getValues(ctx);
+        if (!instruction_id) ctx.throw(400, 'instruction_id is required');
+
+        const taskRepo = ctx.db.getRepository('agent_tasks');
+        const tasks = await taskRepo.find({ filter: { instruction_id, status: 'queued' } });
+
+        let approved_count = 0;
+        for (const task of tasks) {
+          await taskRepo.update({
+            filterByTk: task.id,
+            values: { status: 'queued' },
+          });
+          approved_count++;
+        }
+
+        ctx.body = { ok: true, data: { instruction_id, approved_count } };
         await next();
       },
     },
@@ -369,8 +392,69 @@ function registerCrudResources(app: any) {
   });
 
   app.resourcer.define({
+    name: 'acr',
+    actions: {
+      approvalCallback: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const { token, approved, notes } = getValues(ctx);
+        if (!token) ctx.throw(400, 'token is required');
+
+        const taskRepo = ctx.db.getRepository('agent_tasks');
+        const tasks = await taskRepo.find({ filter: { acr_token: token } });
+        const task = tasks[0];
+        if (!task) ctx.throw(404, `No task found for token: ${token}`);
+
+        const newStatus = approved ? 'done' : 'killed';
+        await taskRepo.update({
+          filterByTk: task.id,
+          values: {
+            status: newStatus,
+            approval_required: false,
+            blocker: !approved && notes ? String(notes) : null,
+            updated_at: new Date().toISOString(),
+          },
+        });
+
+        ctx.body = { ok: true, task_id: task.id, new_status: newStatus, token };
+        await next();
+      },
+    },
+  });
+
+  app.resourcer.define({
     name: 'agent',
     actions: {
+      taskCallback: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const { l5_task_id, phase, status, output_summary, next_owner } = getValues(ctx);
+        if (!l5_task_id) ctx.throw(400, 'l5_task_id is required');
+        if (!status) ctx.throw(400, 'status is required');
+
+        const taskRepo = ctx.db.getRepository('agent_tasks');
+        const task = await taskRepo.findOne({ filter: { id: l5_task_id } });
+        if (!task) ctx.throw(404, 'Task not found');
+
+        let updates: Record<string, any> = { updated_at: new Date().toISOString() };
+
+        if (status === 'all_done') {
+          updates.status = 'done';
+        } else if (status === 'failed') {
+          updates.status = 'needs_review';
+          updates.approval_required = true;
+          updates.blocker = output_summary;
+        } else if (status === 'blocked') {
+          updates.status = 'blocked';
+          updates.blocker = output_summary;
+        } else if (status === 'phase_complete') {
+          updates.blocker = `phase: ${phase} complete. next: ${next_owner || 'pending'}`;
+        } else {
+          ctx.throw(400, `Unknown status: ${status}`);
+        }
+
+        await taskRepo.update({ filterByTk: l5_task_id, values: updates });
+
+        ctx.body = { success: true, task_id: l5_task_id, new_status: updates.status ?? task.status };
+        await next();
+      },
+
       executeTask: async (ctx: ActionContext, next: () => Promise<void>) => {
         const { task_id } = getValues(ctx);
         if (!task_id) ctx.throw(400, 'task_id is required');
@@ -384,8 +468,14 @@ function registerCrudResources(app: any) {
         try {
           const result = executeAgentTask(task);
 
-          // D3-D5 approval_required 유지: queued → needs_review 상태에서도 approval_required 유지
           let approval_required = result.approval_required;
+
+          // D3+ 태스크에 ACR 승인 토큰 자동 발행
+          const HIGH_RISK: string[] = ['D3', 'D4', 'D5'];
+          const taskRisk = (task.risk_level ?? result.risk_level) as string | undefined;
+          const acr_token = approval_required && taskRisk && HIGH_RISK.includes(taskRisk)
+            ? randomUUID()
+            : null;
 
           // Save handoff if present
           if (result.handoff) {
@@ -404,6 +494,7 @@ function registerCrudResources(app: any) {
               status: result.updated_status,
               approval_required,
               blocker: result.output.bottleneck || null,
+              ...(acr_token ? { acr_token } : {}),
             },
           });
 
@@ -415,6 +506,7 @@ function registerCrudResources(app: any) {
               task_id,
               status: result.updated_status,
               approval_required,
+              acr_token,
               approval_routing: result.approval_routing,
               validation_errors: result.validation_errors,
               output: result.output,

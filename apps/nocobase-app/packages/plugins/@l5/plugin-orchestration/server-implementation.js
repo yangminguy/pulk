@@ -18,7 +18,7 @@ class PluginOrchestrationServer extends Plugin {
     registerChatResource(this.app, this.db);
     registerCrudResources(this.app);
 
-    this.app.acl.allow('chat', ['submitInstruction'], 'loggedIn');
+    this.app.acl.allow('chat', ['submitInstruction', 'approvePlan'], 'loggedIn');
     this.app.acl.allow('founder_instructions', '*', 'loggedIn');
     this.app.acl.allow('ceo_interpretations', '*', 'loggedIn');
     this.app.acl.allow('agent_tasks', '*', 'loggedIn');
@@ -174,6 +174,26 @@ function registerChatResource(app, db) {
             },
           },
         };
+        await next();
+      },
+
+      approvePlan: async (ctx, next) => {
+        const { instruction_id } = getValues(ctx);
+        if (!instruction_id) ctx.throw(400, 'instruction_id is required');
+
+        const taskRepo = ctx.db.getRepository('agent_tasks');
+        const tasks = await taskRepo.find({ filter: { instruction_id, status: 'queued' } });
+
+        let approved_count = 0;
+        for (const task of tasks) {
+          await taskRepo.update({
+            filterByTk: task.id,
+            values: { status: 'queued' },
+          });
+          approved_count++;
+        }
+
+        ctx.body = { ok: true, data: { instruction_id, approved_count } };
         await next();
       },
     },

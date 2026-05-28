@@ -9,6 +9,7 @@ const NAV = [
   { href: '/approval', label: '승인 대기', icon: '✅' },
   { href: '/workflow', label: '워크플로 팩토리', icon: '🏭' },
   { href: '/memory', label: 'Memory Review', icon: '🧠' },
+  { href: '/control-room', label: 'Control Room', icon: '🎛' },
 ]
 
 export default function Sidebar() {

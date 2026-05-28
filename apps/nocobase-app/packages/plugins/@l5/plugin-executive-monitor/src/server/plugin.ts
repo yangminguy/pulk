@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto';
 import path from 'path';
+import { defineCollection } from '@nocobase/database';
 import { Plugin } from '@nocobase/server';
+import { startHermesScheduler } from './hermes-scheduler';
 
 const {
   derivePhaseFromTasks,
@@ -285,6 +287,101 @@ async function requestTransition(ctx: MonitorContext) {
   ctx.body = { ok: result.ok, data: result };
 }
 
+function registerHermesResource(app: any, db: any) {
+  app.resourcer.define({
+    name: 'hermes',
+    actions: {
+      // Hermes가 LLM 컨텍스트로 사용할 태스크 요약 반환
+      taskSummary: async (ctx: MonitorContext, next: () => Promise<void>) => {
+        const taskRepo = db.getRepository('agent_tasks');
+        const [active, pending, recent] = await Promise.all([
+          taskRepo.find({ filter: { status: { $notIn: ['done', 'killed'] } }, sort: ['-updated_at'], limit: 50 }),
+          taskRepo.find({ filter: { approval_required: true, status: { $notIn: ['done', 'killed'] } } }),
+          taskRepo.find({ filter: { status: 'done' }, sort: ['-updated_at'], limit: 20 }),
+        ]);
+
+        ctx.body = {
+          ok: true,
+          summary: {
+            active_count: active.length,
+            pending_approval_count: pending.length,
+            recent_done_count: recent.length,
+            active_tasks: active.map((t: any) => ({
+              id: t.id, agent: t.assigned_agent, title: t.title,
+              status: t.status, risk: t.risk_level, phase: t.phase,
+              updated_at: t.updated_at ?? t.updatedAt,
+            })),
+            pending_approvals: pending.map((t: any) => ({
+              id: t.id, agent: t.assigned_agent, title: t.title, risk: t.risk_level,
+            })),
+            recent_completions: recent.map((t: any) => ({
+              id: t.id, agent: t.assigned_agent, title: t.title, phase: t.phase,
+            })),
+          },
+        };
+        await next();
+      },
+
+      // Hermes LLM이 분석 후 태스크 생성
+      createTask: async (ctx: MonitorContext, next: () => Promise<void>) => {
+        const body = requestValues(ctx) as Record<string, any>;
+        const { assigned_agent, title, rationale, expected_output, risk_level, phase } = body;
+        if (!assigned_agent || !title || !rationale || !expected_output) {
+          (ctx as any).status = 400;
+          ctx.body = { ok: false, error: 'assigned_agent, title, rationale, expected_output are required' };
+          return;
+        }
+        const { randomUUID } = await import('crypto');
+        const now = new Date().toISOString();
+        const task = await db.getRepository('agent_tasks').create({
+          values: {
+            id: randomUUID(),
+            instruction_id: randomUUID(),
+            assigned_agent,
+            title,
+            rationale,
+            expected_output,
+            status: 'queued',
+            approval_required: ['D4', 'D5'].includes(risk_level ?? ''),
+            risk_level: risk_level ?? 'D2',
+            phase,
+            source_ref: 'hermes-agent',
+            created_at: now,
+            updated_at: now,
+          },
+        });
+        ctx.body = { ok: true, task_id: task.id };
+        await next();
+      },
+
+      // Hermes가 메모리 인사이트 저장
+      saveInsight: async (ctx: MonitorContext, next: () => Promise<void>) => {
+        const body = requestValues(ctx) as Record<string, any>;
+        const { insight, source_agent, phase, pii_level } = body;
+        if (!insight) {
+          (ctx as any).status = 400;
+          ctx.body = { ok: false, error: 'insight is required' };
+          return;
+        }
+        const { randomUUID } = await import('crypto');
+        await db.getRepository('founder_memory').create({
+          values: {
+            id: randomUUID(),
+            insight,
+            source_agent: source_agent ?? 'hermes',
+            phase: phase ?? null,
+            pii_level: pii_level ?? 'none',
+            approval_status: 'pending',
+            created_at: new Date().toISOString(),
+          },
+        });
+        ctx.body = { ok: true };
+        await next();
+      },
+    },
+  });
+}
+
 function registerGetRoute(app: any, path: string, handler: (ctx: MonitorContext) => Promise<void>) {
   app.use(async (ctx: MonitorContext, next: () => Promise<void>) => {
     if (ctx.method !== 'GET' || ctx.path !== path) {
@@ -295,9 +392,28 @@ function registerGetRoute(app: any, path: string, handler: (ctx: MonitorContext)
   });
 }
 
+function registerFounderMemoryCollection(db: any) {
+  db.collection(defineCollection({
+    name: 'founder_memory',
+    title: 'Founder Memory',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'insight', type: 'text', allowNull: false },
+      { name: 'workflow_improvement', type: 'text' },
+      { name: 'source_agent', type: 'string' },
+      { name: 'source_task_id', type: 'uuid' },
+      { name: 'pii_level', type: 'string', defaultValue: 'none' },
+      { name: 'phase', type: 'string' },
+      { name: 'approval_status', type: 'string', defaultValue: 'pending' },
+    ],
+  }));
+}
+
 export default class PluginExecutiveMonitorServer extends Plugin {
   async load() {
     this.app.logger.info('PluginExecutiveMonitorServer loaded');
+    registerFounderMemoryCollection(this.db);
+    startHermesScheduler(this.db, this.app.logger);
 
     this.app.resourcer.define({
       name: 'monitor',
@@ -366,6 +482,9 @@ export default class PluginExecutiveMonitorServer extends Plugin {
       'discardMemory',
     ], 'loggedIn');
     this.app.acl.allow('bpr', ['currentPhase', 'requestTransition'], 'loggedIn');
+
+    registerHermesResource(this.app, this.db);
+    this.app.acl.allow('hermes', ['taskSummary', 'createTask', 'saveInsight'], 'public');
   }
 
   async install() {}

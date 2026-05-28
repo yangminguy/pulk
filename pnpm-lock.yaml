@@ -99,7 +99,11 @@ importers:
         specifier: file:../../../../../../packages/l5-core
         version: link:../../../../../../packages/l5-core
 
-  apps/nocobase-app/packages/plugins/@l5/plugin-executive-monitor: {}
+  apps/nocobase-app/packages/plugins/@l5/plugin-executive-monitor:
+    dependencies:
+      node-cron:
+        specifier: ^4.2.1
+        version: 4.2.1
 
   apps/nocobase-app/packages/plugins/@l5/plugin-orchestration: {}
 
@@ -126,6 +130,9 @@ importers:
       '@l5/core':
         specifier: workspace:*
         version: link:../../../../../../packages/l5-core
+      node-cron:
+        specifier: ^4.2.1
+        version: 4.2.1
       react:
         specifier: '>=17.0.0'
         version: 18.3.1
@@ -11697,6 +11704,10 @@ packages:
 
   node-addon-api@7.1.1:
     resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
+
+  node-cron@4.2.1:
+    resolution: {integrity: sha512-lgimEHPE/QDgFlywTd8yTR61ptugX3Qer29efeyWw2rv259HtGBNn1vZVmp8lB9uo9wC0t/AT4iGqXxia+CJFg==}
+    engines: {node: '>=6.0.0'}
 
   node-domexception@1.0.0:
     resolution: {integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==}
@@ -31584,6 +31595,8 @@ snapshots:
   node-abort-controller@3.1.1: {}
 
   node-addon-api@7.1.1: {}
+
+  node-cron@4.2.1: {}
 
   node-domexception@1.0.0: {}
 

@@ -3,6 +3,7 @@
 
 export * from './types/entities';
 export * from './types/orchestration';
+export * from './types/acr-intent';
 export * from './functions/founder-fit';
 export * from './functions/pmf-scoring';
 export * from './functions/tool-request';

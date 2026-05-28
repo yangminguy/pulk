@@ -30,3 +30,20 @@ export { runMemoryReviewGenerator } from "./tasks/memory-review-generator.js";
 export type { MemoryReviewGeneratorResult } from "./tasks/memory-review-generator.js";
 
 export { HERMES_SCHEDULES } from "./tasks/trigger-schedules.js";
+
+export { runRepetitionAnalyzer } from "./tasks/repetition-analyzer.js";
+export type { RepetitionAnalysisResult } from "./tasks/repetition-analyzer.js";
+
+export { runCTOPhaseReview } from "./tasks/cto-phase-review.js";
+export type { CTOPhaseReviewResult } from "./tasks/cto-phase-review.js";
+
+export {
+  runRepetitionAnalyzerLive,
+  runApprovalCheckerLive,
+  runStalledTaskDetectorLive,
+  runCTOPhaseReviewLive,
+  syncD3AutoApprovals,
+} from "./runner.js";
+
+export { fetchAgentTasks, createAgentTask, updateAgentTask, saveFounderMemory } from "./api/nocobase-client.js";
+export { notifyACRApprovalRequired, registerACRProject } from "./api/acr-client.js";

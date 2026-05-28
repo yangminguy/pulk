@@ -1,19 +1,98 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-28 (Phase 10 P0 완료 — PMF 게이트 제거 + Hermes 반복 분석기)
+최종 업데이트: 2026-05-28 (Phase 11 완료 — Hermes Agent OpenAI 연동 완성 + 4개 cron job 정상 동작)
 
 ---
 
 ## Current State
 
-**Phase 0-9.5 구현 완료 (Agent 실제 실행 연결 완료) + Phase 10 P0 (PMF 개념 정정, Hermes 반복 감지 추가)**
+**Phase 0-10 구현 완료 (CTO Agent + ACR 양방향 연동 완성)**
 
 - `@l5/core`: 19 suites / 174 tests PASS
-- `@l5/hermes-runtime`: 2 suites / 13 tests PASS
-- NocoBase 서버: `http://localhost:13001` (port 13001, `yarn dev`로 실행)
-- Founder UI: `http://localhost:3000` (Next.js, `npm run dev`로 실행)
-- LLM: OpenAI GPT-4o 연결 (`OPENAI_API_KEY` → `apps/nocobase-app/.env`)
-- DB: 로컬 PostgreSQL (`nocobase` DB, user: `wonminyang`)
+- NocoBase 서버: `http://localhost:13000` (`yarn nocobase start`)
+- Founder UI: `http://localhost:3000` (`npm run dev`)
+- ACR: `http://localhost:3001` (`npm run dev` in `~/Desktop/양원민 개발자/agent_control_room_docs/`)
+
+### ✅ Phase 10 완전 완료 (2026-05-28)
+
+**L5 → ACR 연결 (CTO Agent):**
+- `services/agent-runtime/src/agents/cto.ts`: LLM 1회 호출 → CTOPhase[] 설계 → ACR dispatch
+- `packages/l5-core/src/types/acr-intent.ts`: ACRIntent, CTOPhase, RuntimeType 타입
+- ACR `POST /api/workbench/dispatch`: L5 CTOPhase[] → FeaturePlan + PlanTask[] 저장 (신규)
+- D-level ↔ Release Gate 동기화: D1-D2=auto, D3=24h gate, D4-D5=manual_founder
+
+**ACR → L5 연결 (결과 피드백):**
+- ACR `POST /api/l5-callback`: ACR 완료/실패 → L5 taskCallback 중계 (신규)
+- ACR `/api/runner` onComplete: projectId `l5-` prefix 감지 → L5 자동 callback (신규)
+- L5 `POST /api/agent:taskCallback`: all_done/failed/blocked/phase_complete 처리
+
+**Founder UI:**
+- `/control-room` 페이지: CTO 태스크 현황 + ACR 열기 버튼
+- 사이드바 Control Room 탭 추가
+
+**E2E 검증:**
+- submitInstruction → approvePlan → executeTask → taskCallback 전체 플로우 ✅
+- ACR typecheck 통과 ✅ / L5 174 tests PASS ✅
+
+### ✅ Phase 11 완료 (2026-05-28)
+
+**11a — founder_memory 컬렉션 공식 등록:**
+- `plugin-executive-monitor`: `founder_memory` NocoBase 컬렉션 정식 등록 (`defineCollection`)
+- 기존 `memoryCandidates` / `saveMemory` / `discardMemory` 엔드포인트가 이제 실제 DB를 사용
+
+**11a — Hermes NocoBase HTTP 클라이언트:**
+- `services/hermes-runtime/src/api/nocobase-client.ts`: NocoBase API HTTP 클라이언트
+  - `fetchAgentTasks()`, `fetchPendingApprovalTasks()`, `createAgentTask()`, `updateAgentTask()`, `saveFounderMemory()`
+- `services/hermes-runtime/src/runner.ts`: 순수 함수 태스크를 실제 NocoBase 데이터와 연결
+  - `runRepetitionAnalyzerLive()`, `runApprovalCheckerLive()`, `runStalledTaskDetectorLive()`, `runCTOPhaseReviewLive()`, `syncD3AutoApprovals()`
+
+**11b — ACR 승인 토큰 자동 발행:**
+- `agent_tasks` 컬렉션에 `acr_token` 필드 추가
+- `executeTask` 액션: D3-D5 태스크 실행 시 `randomUUID()` 토큰 자동 생성 및 저장
+- 응답에 `acr_token` 포함
+
+**11c — ACR 콜백 엔드포인트:**
+- `POST /api/acr:approvalCallback` 추가 (plugin-orchestration)
+  - `token` + `approved` + `notes` 파라미터
+  - 토큰으로 태스크 조회 → 승인(done) / 거절(killed) 처리
+
+**11d — CTO Phase Review:**
+- `services/hermes-runtime/src/tasks/cto-phase-review.ts` 신규 생성
+  - 완료 태스크 집계 → BPR 단계 전환 조건 평가
+  - 조건 충족 시 전환 요청 AgentTask 자동 생성 (D5, needs_review)
+
+**11e — ACR 클라이언트:**
+- `services/hermes-runtime/src/api/acr-client.ts`: ACR HTTP 클라이언트
+  - `notifyACRApprovalRequired()`: D3+ 태스크 → ACR webhook POST (ACR 없을 시 warn만)
+  - `registerACRProject()`: 비즈니스 생성 시 ACR 프로젝트 등록
+
+**Hermes Agent 통합 (2026-05-28):**
+- Hermes Agent (NousResearch, `~/.local/bin/hermes`) 를 L5 스케줄러로 통합
+- `plugin-executive-monitor`에 Hermes 전용 공개 API 엔드포인트 추가:
+  - `GET /api/hermes:taskSummary` — 전체 태스크 현황 (LLM 컨텍스트용)
+  - `POST /api/hermes:createTask` — Hermes LLM이 분석 후 태스크 생성
+  - `POST /api/hermes:saveInsight` — Hermes가 메모리 인사이트 저장
+- Hermes cron 잡 4개 등록 및 정상 동작 확인:
+  - `l5-repetition-analyzer` (d2c745e75090) — 2시간마다 ✅ 실행 확인
+  - `l5-approval-brief` (c8debd1b40b2) — 매일 09:00
+  - `l5-cto-weekly-review` (c9e448bb2840) — 매주 월요일 10:00
+  - `l5-daily-brief` (6db01ae1d784) — 매일 18:00
+
+**Hermes OpenAI 연동 설정 (2026-05-28):**
+- `~/.hermes/config.yaml` 수정:
+  - `providers.openai-direct`: `base_url: https://api.openai.com/v1`, `api_key`, `api_mode: chat_completions`
+  - `model.provider: openai-direct` (Hermes 내부 "openai" 슬러그는 openrouter로 라우팅되어 사용 불가)
+  - `prompt_caching.cache_ttl: 0s` (gpt-4o-mini는 Responses API `include` 파라미터 미지원)
+- `OPENAI_API_KEY` 환경변수 `~/.zshrc`에 추가
+- Hermes gateway 실행: `OPENAI_API_KEY=... hermes gateway run --replace` (재부팅 시 수동 재시작 필요)
+
+### ⚠️ Phase 12로 이관
+
+- OMC/OMX 연동 (의존성 불명확, 별도 스펙 필요)
+- ACR project 자동 등록 — CTO 개발 태스크 시작 시 `registerACRProject()` 호출
+- Hermes → Telegram 알림 연동 (`--deliver telegram` 추가)
+
+→ **상세 내용: `docs/TASKS.md` Phase 12 섹션 참조**
 
 ### ✅ Phase 9.5: Agent 실제 실행 연결 완료
 

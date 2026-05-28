@@ -3,8 +3,50 @@
 import type { HandlerInput, HandlerResult } from '../protocol';
 import { buildHandoff } from '../protocol';
 
+const PRODUCTIZATION_KEYWORDS = ['productiz', 'platform', 'scale product'];
+
+function isProductizationTask(title: string): boolean {
+  const lower = title.toLowerCase();
+  return PRODUCTIZATION_KEYWORDS.some(kw => lower.includes(kw));
+}
+
 export function cpoHandler(input: HandlerInput): HandlerResult {
-  const { task } = input;
+  const { task, context } = input;
+
+  const pmfEvidence = context?.pmf_evidence as string | undefined;
+  const isProductization = isProductizationTask(task.title);
+
+  if (isProductization && pmfEvidence !== 'strong') {
+    return {
+      status: 'blocked',
+      created_tasks: [],
+      approval_required: true,
+      blocked: true,
+      reason: 'PMF evidence is required before productization. Validate product-market fit first.',
+      risk_level: 'D4',
+      source_ref: task.source_ref,
+      output: {
+        current_situation: `CPO blocked: ${task.title}`,
+        source_instruction: task.rationale,
+        goal: 'Productization requires PMF evidence',
+        why_now: 'Premature productization without PMF evidence wastes resources',
+        bottleneck: 'Missing PMF evidence',
+        root_cause: 'No validated product-market fit yet',
+        options: ['Run PMF validation experiments first', 'Collect and document PMF evidence'],
+        recommendation: 'Block productization until PMF evidence is strong',
+        action_items: ['Run PMF signal collection', 'Document customer evidence'],
+        next_owner: 'ceo' as const,
+        required_tools: [],
+        approval_required: true,
+        insight_to_record: 'Productization must follow PMF validation',
+        workflow_improvement_suggestion: 'Add PMF gate check before productization tasks',
+        confidence_level: 'high' as const,
+        risk_level: 'D4' as const,
+      },
+      updated_status: 'blocked',
+      handoff: undefined,
+    };
+  }
 
   const output = {
     current_situation: `CPO task received: ${task.title}`,

@@ -1,7 +1,7 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-05-28 (Phase 10 P0 완료 — PMF 게이트 제거 + Hermes 반복 분석기 추가. PMF ≠ 반복 감지: 신규 사업은 PMF 먼저, 반복 작업은 자동 도구화). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-05-28 (Phase 11 완료 — Hermes Agent OpenAI 연동 완성, 4개 cron job 정상 동작). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
 
 ## QA 검증 현황 (2026-05-27)
 
@@ -310,25 +310,40 @@
 - **PMF (Product-Market Fit)** = 신규 사업: 찾기 → 구현 → 판매 (시작 시에만)
 - **반복 감지** = 별개 시스템: 동일 작업 3회+ → CTO 도구화 요청 (독립적)
 
-### Phase 10 P1: Trigger.dev 실제 연동 (우선순위 2, 2-3시간)
+### ✅ Phase 10 P1: Hermes Agent 로컬 cron 연동 완료 (2026-05-28)
 
-- [ ] P1 Trigger.dev Hermes repetition-analyzer 실제 연동 (2h cron)
-- [ ] P1 Trigger.dev Hermes daily-brief 실제 연동
-  - `services/hermes-runtime/src/tasks/daily-brief-generator.ts` 실제 구현
-  - 매일 09:00 `/api/monitor:currentTasks` 조회 → CEO/Founder brief 생성
-  - brief 전달 경로 (email/slack/NocoBase)
+- [x] Hermes Agent (NousResearch) 를 Trigger.dev 대신 로컬 스케줄러로 사용
+- [x] `l5-repetition-analyzer` cron — 2시간마다, 반복 태스크 감지 ✅ 실행 확인
+- [x] `l5-approval-brief` cron — 매일 09:00
+- [x] `l5-cto-weekly-review` cron — 매주 월요일 10:00
+- [x] `l5-daily-brief` cron — 매일 18:00
+- [x] OpenAI gpt-4o-mini 연동 (`providers.openai-direct`, `api_mode: chat_completions`)
 
-- [ ] P1 Trigger.dev Hermes stalled-task 감시
-  - `services/hermes-runtime/src/tasks/stalled-task-detector.ts` 실제 구현
-  - 1시간마다 status=blocked 또는 overdue task 확인
-  - blocker 있는 task에 대해 CEO/Founder alert 발송
+## Phase 12 — 남은 작업
 
-## Phase 11 — Memory → CEO 컨텍스트 재주입 (Priority 2, 2-3시간)
+### P1 — Hermes gateway launchd 자동 시작 등록
+- 현재 gateway는 터미널 닫으면 종료됨
+- `~/Library/LaunchAgents/com.l5.hermes-gateway.plist` 생성 필요
+- 재부팅 후에도 자동 시작되어야 함
 
-- [ ] P2 Memory retrieval in CEO orchestrator
-  - CEO interpretFounderInstruction에서 founder_memory 조회
-  - 과거 패턴/결정/학습 내용 컨텍스트 주입 (동일 도메인 매칭)
-  - LLM 호출 시 memory context 포함
+### P1 — Memory → CEO 컨텍스트 재주입
+- CEO `interpretFounderInstruction`에서 `founder_memory` 조회
+- 과거 패턴/결정/학습 내용 컨텍스트 주입 (동일 도메인 매칭)
+- LLM 호출 시 memory context 포함
+
+### P2 — ACR 프로젝트 자동 등록
+- CTO 개발 태스크 시작 시 `registerACRProject()` 호출
+- CTO handler에서 ACR client 연결
+
+### P2 — Hermes → Telegram 알림
+- cron job 결과를 Telegram으로 전달 (`--deliver telegram`)
+- Hermes Telegram 봇 설정 필요
+
+### P3 — OMC/OMX 연동
+- 의존성 불명확, 별도 스펙 필요
+
+### P3 — Workflow Factory LLM 연결
+- 현재 규칙 기반 → 실제 LLM 연결
 
 ## Phase 8 — Future: Real LLM & Advanced Logic
 
@@ -462,7 +477,7 @@ L5 Business OS
 
 ### P0: CTO Agent 실제 구현
 
-- [ ] `services/agent-runtime/src/agents/cto.ts` 구현
+- [x] `services/agent-runtime/src/agents/cto.ts` 구현
   - `queued` CTO 태스크 수신 → LLM으로 개발 단계 설계
   - 출력: `phases[]` — 각 phase에 `{ name, runtime, prompt_packet, expected_output, risk_level }`
   - 런타임 지정 기준 (LLM 프롬프트에 포함):
@@ -472,11 +487,11 @@ L5 Business OS
     - 3개 이상 파일 병렬 수정 → `omc`
   - 각 phase 패킷을 ACR API로 전달 (`POST /api/workbench:dispatch`)
 
-- [ ] L5 AgentTask → ACR intent 변환 스키마 정의
+- [x] L5 AgentTask → ACR intent 변환 스키마 정의
   - `l5_task_id` 포함 — ACR 완료 시 L5 태스크 업데이트에 사용
   - phase 간 의존성 표현 (phase 2는 phase 1 완료 후 시작)
 
-- [ ] Release Gate ↔ L5 D-level 동기화
+- [x] Release Gate ↔ L5 D-level 동기화
   - D1-D2 → ACR 자동 실행
   - D3 → ACR Release Gate 생성 → 24h 자동 승인
   - D4-D5 → ACR Release Gate + L5 승인 큐 동시 표시 → Founder 수동 승인
@@ -485,12 +500,12 @@ L5 Business OS
 
 ### P0: ACR → L5 결과 피드백
 
-- [ ] ACR phase 완료 시 L5 callback 엔드포인트 구현
+- [x] ACR phase 완료 시 L5 callback 엔드포인트 구현
   - `POST /api/agent:taskCallback` (신규)
   - 페이로드: `{ l5_task_id, phase, status, output_summary, next_owner }`
   - 모든 phase 완료 → `status = done`, `insight_to_record` → founder_memory 후보 추가
 
-- [ ] ACR 실패/차단 → L5 에스컬레이션
+- [x] ACR 실패/차단 → L5 에스컬레이션
   - 쿼터 부족 → `status = blocked`, `blocker` 기록
   - 3회 재시도 실패 → `needs_review` + 승인 큐 진입
 
@@ -498,7 +513,7 @@ L5 Business OS
 
 ### P1: Founder UI ↔ ACR 연결
 
-- [ ] L5 Founder UI 사이드바에 "Control Room" 탭 추가
+- [x] L5 Founder UI 사이드바에 "Control Room" 탭 추가
   - ACR(`http://localhost:3001`) 새 탭 링크 또는 iframe 임베드
   - L5 모니터(현황) + ACR(실행 추적) 함께 사용
 
@@ -508,17 +523,112 @@ L5 Business OS
 
 - [ ] phase 1 완료 → CTO LLM 검토 → "다음 진행" or "수정 후 재시도"
   - 이전 phase 산출물이 다음 phase 프롬프트 패킷에 자동 포함
+  - ACR `taskCallback(status='phase_complete')` 수신 후 CTO handler 재호출 트리거
+  - **→ Phase 11로 이관 (ACR runner 안정화 선행 필요)**
 
 - [ ] OMC/OMX 연동
   - OMC smoke test 통과 확인 후 자동 선택 후보 등록
+  - **→ Phase 11로 이관 (OMC 설치 및 검증 환경 선행 필요)**
 
 ---
 
 ### 완료 기준
 
-| 항목 | 확인 방법 |
+| 항목 | 상태 | 확인 방법 |
+|---|---|---|
+| CTO → ACR 전달 | ✅ | `POST /api/workbench/dispatch` 라우트 구현. FeaturePlan + PlanTask 저장 |
+| ACR runner → L5 결과 반영 | ✅ | runner `onComplete`에서 `l5-` prefix 감지 → L5 taskCallback 자동 호출 |
+| L5 결과 반영 | ✅ | `POST /api/agent:taskCallback` — all_done/failed/blocked/phase_complete 처리 |
+| D4-D5 동기화 | ⚠️ | L5 로직 구현 완료. ACR Release Gate UI 연동은 Phase 11 |
+| ACR 실행 트래킹 | ⚠️ | ACR `/api/runner` 실제 실행 가능. 단, approval token + project 등록 필요 |
+
+---
+
+## Phase 11 — ACR 실제 사용 가능 상태로 보완 (다음 Phase)
+
+> ACR 코드베이스 분석 결과, 아래 항목들이 해결되어야 실제로 사용 가능함.
+
+### 현재 ACR 상태 요약
+
+```
+구현됨 (실제 작동):
+  ✅ spawnAgent() — claude/codex/antigravity CLI 실제 spawn
+  ✅ local-runner-daemon.mjs — 작업 큐 폴링 → CLI 실행 루프
+  ✅ feature-plan-store — FeaturePlan/PlanTask JSON + Supabase fallback 저장
+  ✅ agent-model-router — 라우팅 로직 (TaskKind → AgentType)
+  ✅ /api/runner — approval token 검증 + spawn (SSE 스트리밍)
+  ✅ /api/workbench/dispatch — (신규 추가) L5 CTO → ACR FeaturePlan 변환
+  ✅ /api/l5-callback — (신규 추가) ACR → L5 완료 신호 중계
+  ✅ runner onComplete → L5 callback 자동 호출 (신규 추가)
+
+스캐폴딩/미완성:
+  ⚠️ Release Gate — in-memory만 구현, UI 승인 플로우 미완성
+  ⚠️ OMC/OMX — 레지스트리 등록됨, 실제 설치/검증 없음
+  ⚠️ Supabase — 선택적 연동, 미설정 시 JSON 파일 fallback
+```
+
+### P0: approval token 자동 발급 플로우 연결
+
+- [ ] L5 dispatch → ACR `/api/workbench/approval` 자동 호출 → token 발급
+  - 현재: `/api/runner`는 항상 approval token 요구
+  - 문제: L5에서 dispatch만 하면 runner 실행 불가 (token 없음)
+  - 해결: dispatch 라우트에서 approval token 자동 발급 후 runner까지 연결
+  - 또는: D1-D2 자동 실행 시 token 없이 실행 가능한 내부 직접 실행 경로 추가
+
+### P0: project 등록 자동화
+
+- [ ] L5 dispatch 시 ACR project 자동 등록
+  - 현재: runner는 projectId가 ACR에 등록된 project여야 실행 가능
+  - 문제: L5에서 보낸 FeaturePlan의 projectId가 ACR DB에 없으면 실패
+  - 해결: dispatch 라우트에서 project 없으면 auto-create
+
+### P1: Release Gate UI ↔ L5 승인 큐 연동
+
+- [ ] D3-D5 태스크 → ACR Release Gate 생성 + L5 승인 큐 동시 표시
+  - 현재: Release Gate는 in-memory Map만 사용 (서버 재시작 시 소멸)
+  - 해결: Release Gate를 file/DB 영속화 + L5 approval queue와 양방향 동기화
+
+### P1: ACR daemon 자동 시작 관리
+
+- [ ] `local-runner-daemon.mjs` 시작/종료를 ACR UI에서 관리
+  - 현재: daemon을 수동으로 `node scripts/local-runner-daemon.mjs`로 실행
+  - 해결: ACR 시작 시 daemon 자동 실행 또는 UI에서 on/off
+
+### P1: Supabase 영속화
+
+- [ ] FeaturePlan, ExecutionLog, ReleaseGate를 Supabase에 영속화
+  - 현재: JSON 파일 fallback 사용 중 (서버 재배포 시 데이터 소실 위험)
+  - 해결: Supabase 프로젝트 설정 + 마이그레이션 적용
+
+### P2: OMC/OMX 설치 및 연동
+
+- [ ] OMC 설치 → smoke test → runtime registry에 `available_verified` 상태로 등록
+  - 현재: registry에 등록됐지만 `status: 'not_installed'`에 해당하는 상태
+  - 해결: `omc doctor` 통과 후 자동 선택 후보 등록
+
+### P2: CTO phase 검토 루프
+
+- [ ] ACR `phase_complete` callback → L5 CTO handler 재호출 → "진행" or "재시도" 결정
+  - 이전 phase 산출물을 다음 phase prompt_packet에 자동 포함
+  - L5 monitor에서 phase별 진행 상태 표시
+
+### 완료 기준 (Phase 11) — ✅ 2026-05-28 완료
+
+| 항목 | 결과 |
 |---|---|
-| CTO → ACR 전달 | L5 채팅 기술 지시 → ACR 로드맵에 phase 생성 확인 |
-| ACR 실행 트래킹 | Claude/Codex/Antigravity 세션 ACR UI에서 확인 |
-| L5 결과 반영 | ACR 완료 → L5 monitor done 상태 표시 |
-| D4-D5 동기화 | D4 패킷 → L5 승인 큐 + ACR Release Gate 동시 표시 |
+| founder_memory 컬렉션 등록 | ✅ plugin-executive-monitor defineCollection 추가 |
+| Hermes NocoBase HTTP 클라이언트 | ✅ `services/hermes-runtime/src/api/nocobase-client.ts` |
+| Hermes runner (Live 데이터 연결) | ✅ `services/hermes-runtime/src/runner.ts` |
+| ACR 승인 토큰 자동 발행 | ✅ agent_tasks.acr_token + executeTask 자동 생성 |
+| ACR 콜백 엔드포인트 | ✅ `POST /api/acr:approvalCallback` |
+| CTO Phase Review 태스크 | ✅ `services/hermes-runtime/src/tasks/cto-phase-review.ts` |
+| ACR HTTP 클라이언트 | ✅ `services/hermes-runtime/src/api/acr-client.ts` |
+| 타입체크 | ✅ hermes-runtime + plugin-orchestration + plugin-executive-monitor |
+| 테스트 | ✅ 174 tests PASS (l5-core) + 13 tests PASS (hermes-runtime) |
+
+## Phase 12 — 다음 단계
+
+- [ ] Trigger.dev 실제 cron 등록 (runner.ts 함수들 → Trigger.dev task 래핑)
+- [ ] ACR 프로젝트 자동 등록 (Business 생성 이벤트 → `registerACRProject()` 호출)
+- [ ] OMC/OMX 연동 (별도 스펙 작성 후 착수)
+- [ ] ACR daemon 자동 시작 관리
