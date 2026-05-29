@@ -738,3 +738,18 @@ L5 Business OS
 - [x] **Phase 18 완료 (2026-05-28):** ACR `/api/clarify-reply` 신규 라우트 — L5가 답변 회신 시 `PlanTask.clarificationAnswers[]` 누적 (`app/api/clarify-reply/route.ts`). `L5_SHARED_SECRET` 헤더 검증.
 
 **검증**: `@l5/core` 194/194 PASS (+10 clarifier), ACR clarify-reply 6/6 + 회귀 9/9 PASS, ACR tsc 0 errors.
+
+---
+
+## Phase 18.1 — ACR pre-dispatch trigger 와이어링 (P0, ✅ 완료 2026-05-29)
+
+**목표:** auto-dispatcher가 `/api/runner` spawn 전에 clarification/risk 트리거를 자율적으로 발사.
+
+- [x] `lib/types.ts` `PlanTask.clarifyingQuestions?: string[]` 추가
+- [x] `app/api/workbench/dispatch/route.ts` `CTOPhase.clarifying_questions?: string[]` 플럼 → PlanTask
+- [x] `lib/orchestration/pre-dispatch-checks.ts` 신규 — `checkPendingClarifications`, `reassessRisk`, `sendClarificationRequest`, `sendRiskReassessment`
+- [x] `lib/orchestration/auto-dispatcher.ts` `dispatchNextTask` pre-flight: clarification pending → skip + needs_clarification, risk escalated D3+ → skip + risk_reassess
+- [x] `__tests__/pre-dispatch-checks.test.ts` 3/3 PASS, 회귀 auto-dispatcher 4 + clarify-reply 6 PASS, tsc 0 errors
+- [x] 라이브 smoke: curl dispatch w/ clarifying_questions → PlanTask 디스크 persist + runner 미호출 확인
+
+**잔여:** ACR 환경변수 `L5_BASE_URL=http://localhost:13000` 설정 후 NocoBase taskCallback 도달 확인.

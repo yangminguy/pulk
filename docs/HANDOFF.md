@@ -1,6 +1,31 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-28 (Phase 18 완료 — Clarification 헤드리스 + Risk 재평가)
+최종 업데이트: 2026-05-29 (Phase 18.1 완료 — ACR pre-dispatch clarification/risk trigger 라이브 와이어링)
+
+---
+
+## ✅ Phase 18.1 완료 (2026-05-29) — ACR pre-dispatch trigger 와이어링
+
+**핵심 변경 (ACR 측):**
+1. `lib/types.ts` `PlanTask.clarifyingQuestions?: string[]` 추가 — dispatch 전 L5 CTO 답변 필요 질문 목록
+2. `app/api/workbench/dispatch/route.ts` — CTOPhase에 `clarifying_questions?: string[]` 옵션 필드 추가, PlanTask로 plumb
+3. `lib/orchestration/pre-dispatch-checks.ts` (신규):
+   - `checkPendingClarifications(task)` — questions vs answers 비교
+   - `reassessRisk(prompt, currentLevel)` — risk-classifier 사용해 D1-D5로 재분류
+   - `sendClarificationRequest()` / `sendRiskReassessment()` — L5 `taskCallback` 직접 호출
+4. `lib/orchestration/auto-dispatcher.ts` `dispatchNextTask` pre-flight 추가:
+   - clarification pending → `needs_clarification` callback 전송 후 skip
+   - risk escalated → `risk_reassess` callback 전송, D3+로 승격되면 skip (approval queue에 위임)
+
+**검증:**
+- `__tests__/pre-dispatch-checks.test.ts` 3/3 PASS (clarification 차단, risk escalation 차단, benign D2 proceed)
+- 회귀: auto-dispatcher 4/4 + clarify-reply 6/6 PASS
+- `npx tsc --noEmit` 0 errors
+- **라이브 smoke 통과 (2026-05-29):** `curl POST /api/workbench/dispatch` clarifying_questions=2 payload → PlanTask.clarifyingQuestions 디스크 persist 확인, task.status='planned' 유지 (runner 미호출). Hot-reload된 Next.js dev 서버에서 검증.
+
+**라이브 E2E 잔여 (실 NocoBase 콜백):**
+- 현재 smoke는 L5_BASE_URL=13001(기본값)로 fetch — 실 NocoBase는 13000. ACR 환경 변수 `L5_BASE_URL=http://localhost:13000` + `L5_ADMIN_TOKEN` 설정 후 재시작 시 needs_clarification → NocoBase /api/agent:taskCallback 도달 확인 필요.
+- Phase 16/17 라이브 (verifier 재호출 + replan) 실 claude CLI 사이클은 별도 시간 예산 필요.
 
 ---
 
