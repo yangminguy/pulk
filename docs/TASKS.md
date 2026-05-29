@@ -9,7 +9,7 @@
 - [x] **Phase 2 — 검토·병합**: `coordinateMerge` — 원격 있으면 gh PR, 없으면 로컬 `git merge --no-ff`. D3+ 자동병합 금지, 충돌→`merge_conflict` needs_review. 구현+테스트 완료, 라이브 반영 대기.
 - [x] **Phase 3** — 모든 business→repo 연결(`afterCreate`+`afterStart` 백필, `workspace-init.ts`) + 신규 business 작업장 자동 git-init + stale 경로 청소(projects.json 4건 제거 + `isDangerousPath` pulk 보호). 배포+라이브 검증(business-2 자동 생성).
 - [x] **Phase 4** — Founder 콘솔: 2단 레이아웃(채팅 + 상태 패널) + `ApprovalQueueCard`(D3+ 승인). 배포 완료, 브라우저 시각 QA 권장.
-- [ ] **Phase 5** — 배움 루프(인사이트 저장소→다음 기획 참조).
+- [x] **Phase 5** — 배움 루프 닫힘: 수집(`executeTask`→`persistTaskInsight`→`founder_memory` pending, 멱등) + 검토/저장(`memoryCandidates`/`saveMemory` camelCase 버그 수정) + 참고(`loadFounderMemories`→`interpretFounderInstruction({memories})`, 고PII 제외) + 데이터 품질(`extractReadableText` self-learning 적용 + 스토어 정리). 배포·라이브 검증(쌓기/검토/저장/참고 전 구간). Formbricks·PMF 자동수집·자동화 후보 등록은 범위 제외(이후).
 - [ ] **Phase 6** — 관측·안전(Langfuse 추적, 위험 명령 차단, 비용/장애 모니터).
 
 ## QA 검증 현황 (2026-05-27)

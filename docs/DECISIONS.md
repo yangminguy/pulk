@@ -1,5 +1,31 @@
 # DECISIONS — L5 Business OS
 
+## 2026-05-30 — 로드맵 Phase 5: 배움 루프 (수집→검토→저장→참고)
+
+**컨텍스트**: 학습 루프의 밑단 순수 로직(`collectInsights`/`memorySection`/`founder_memory` 컬렉션)은 있었으나 어디서도 호출/주입되지 않아 "결과를 학습해 다음 실행을 개선"이 작동하지 않았다. self-learning은 changelog 원문 HTML을 그대로 저장했다.
+
+**결정 1 — 배선만 잇고 새 도메인 로직은 최소화**
+- 수집은 orchestration `executeTask`에서 `executeAgentTask` 직후 `persistTaskInsight()`로 `founder_memory`에 pending 저장(멱등, best-effort 비차단). 참고는 interpret에서 `loadFounderMemories()`로 saved 메모리를 `interpretFounderInstruction({memories})`에 주입. 핵심 판단 로직은 l5-core에 유지, 플러그인은 호출·DB 매핑만.
+
+**결정 2 — 데이터 품질은 근본(추출)에서 해결, UI 가드는 보조로 유지**
+- l5-core 순수함수 `extractReadableText()`를 self-learning 저장 직전에 적용(테스트 가능, NocoBase 비의존). 추출 불가(JS 셸 등)면 항목 스킵하되 fingerprint는 전진시켜 재알림 방지. founder-ui `cleanSummary()`는 이중 방어로 유지.
+
+**결정 3 — PII 거버넌스: LLM에는 고PII 인사이트 미주입**
+- recall은 `pii_level !== 'high'`만 LLM 컨텍스트로 보냄(CLAUDE.md "고객 PII와 재사용 인사이트 분리"). 연산자 호환성 위해 JS에서 필터.
+
+**결정 4 — 범위 제외(이후): Formbricks·PMF 자동수집·자동화 후보 등록**
+- 상업 플러그인 금지 + "PMF 신호 전 도구 금지"에 따라 Phase 5에서 제외. 반복 작업 자동화 후보 등록은 반복 데이터가 쌓인 뒤로 보류.
+
+**발견 — founder_memory camelCase 타임스탬프 버그(동반 수정)**
+- 컬렉션이 `createdAt`만 갖는데 기존 `memoryCandidates` 정렬이 `-created_at`(부재) → throw→catch→항상 빈 배열로 검토 화면이 무력했다. `updateMemoryStatus`의 `updated_at` write도 부재 컬럼. 둘 다 정정(검토→저장 복구). recall 쿼리도 동일 정정.
+
+**Impact / Related Files**
+- l5-core: `functions/content-extract/index.ts`(+테스트), `index.ts`(export).
+- hermes: `tasks/self-learning.ts`. orchestration: `server/plugin.ts`(persistTaskInsight/loadFounderMemories). executive-monitor: `server/plugin.ts`(camelCase 정정).
+- env: `L5_*` 신규 없음. 검증: l5-core 347/347, 빌드 exit 0, NocoBase 재배포 후 쌓기/검토/저장/참고 라이브 확인, 시드 청소.
+
+---
+
 ## 2026-05-30 — 로드맵 Phase 3·4: 사업↔작업장 연결 + Founder 콘솔
 
 **컨텍스트**: business 대부분이 repo_path 없어 sandbox로 fallback했고, ACR에 live `pulk` repo를 가리키는 stale 등록 4건이 사고 위험이었다. 자가학습이 모으는 정보·승인 대기가 한 화면에 안 보였다.

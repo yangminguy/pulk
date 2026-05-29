@@ -1,6 +1,35 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-30 (로드맵 Phase 1·2·3·4 구현·배포·라이브 검증 완료)
+최종 업데이트: 2026-05-30 (로드맵 Phase 5 배움 루프 닫힘 — 구현·배포·라이브 검증 완료)
+
+---
+
+## 🎯 2026-05-30 — 로드맵 Phase 5: 배움 루프 (수집→검토→저장→참고 닫힘, 배포·라이브 검증 완료)
+
+PRD 핵심("결과를 학습해 다음 실행을 개선")의 마지막 고리. 밑단 순수 로직(`collectInsights`/`memorySection`/`founder_memory`)은 이미 있었고 **끊긴 배선 3곳을 이었다**. Formbricks·PMF 자동수집·자동화 후보 등록은 CLAUDE.md(상업 플러그인 금지·PMF 신호 전 도구 금지) 따라 범위 제외.
+
+### 끊긴 고리 → 수정
+- **쌓기(collection)**: orchestration `agent:executeTask`(`plugin.ts`)에서 `executeAgentTask` 직후 신규 `persistTaskInsight()` 호출 → `collectInsights`로 인사이트 추출 → `founder_memory`에 `approval_status='pending'` 자동 저장. `source_task_id` 기준 **멱등(dedup)**, best-effort(실패해도 응답 비차단).
+- **참고(recall)**: 같은 플러그인 interpret 액션에서 신규 `loadFounderMemories()` → `approval_status='saved'` 메모리(고PII 제외, 최대 20) 로드 → 이미 지원되던 `interpretFounderInstruction({memories})` 파라미터로 주입. 과거 교훈이 새 기획 해석에 반영.
+- **데이터 품질(근본)**: `services/hermes-runtime/.../self-learning.ts`가 changelog 원문 HTML을 `content_preview`로 저장하던 버그 → 신규 l5-core 순수함수 `extractReadableText()`(script/style/head 블록 제거·태그/엔티티 정제·40자 미만/JS 셸이면 빈값) 적용. 추출 불가 시 항목 스킵(fingerprint는 전진해 재알림 없음). 오염된 discovery 스토어 항목 1건 정리.
+
+### 발견·동반 수정 (camelCase 타임스탬프 버그)
+- `founder_memory`는 NocoBase 기본 **`createdAt`(camelCase)**만 가짐. 그런데 기존 `monitor:memoryCandidates` 정렬이 `-created_at`(존재X) → 쿼리 throw → catch로 **항상 빈 배열** = 창업자가 pending 후보를 영영 못 봄(검토 화면 무력). `updateMemoryStatus`도 없는 `updated_at` write. 둘 다 `createdAt`/자동 updatedAt으로 수정(배움 루프 검토→저장 절반 복구).
+- 내 recall 쿼리도 같은 버그였어 `-createdAt`로 정정.
+
+### 라이브 검증 (admin 토큰 + psql, 시드 후 청소)
+- **쌓기**: CMO 태스크 `executeTask` → `founder_memory`에 `pending|none|"CMO must validate…"|CMO` 생성 ✅. 재호출에도 1행(멱등) ✅.
+- **검토**: `monitor:memoryCandidates` count 1, `created_at` 채워짐 ✅. **저장**: `monitor:saveMemory` pending→saved ✅.
+- **참고**: `chat:submitInstruction` 200, recall-failed 경고 delta 0(쿼리 정상) ✅.
+- self-learning 8/8, content-extract 8/8, l5-core 347/347, hermes/플러그인 빌드 exit 0. NocoBase 재배포 후 health 200·클린 로드.
+- 검증 시드(instruction/task/memory)는 전량 삭제(잔여 0).
+
+### 영향 파일
+- l5-core: `src/functions/content-extract/index.ts`(신규 + 테스트), `src/index.ts`(export).
+- hermes: `src/tasks/self-learning.ts`(extractReadableText 적용).
+- orchestration: `src/server/plugin.ts`(`persistTaskInsight`/`loadFounderMemories` + executeTask/interpret 배선).
+- executive-monitor: `src/server/plugin.ts`(memoryCandidates/updateMemoryStatus camelCase 정정).
+- 데이터: `services/hermes-runtime/.omc/state/todays-discovery.json` 정리.
 
 ---
 

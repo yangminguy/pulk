@@ -11,6 +11,7 @@
 
 import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
+import { extractReadableText } from '@l5/core';
 import { createTelegramClient } from '../notifier/telegram.js';
 import type { TelegramClient } from '../notifier/telegram.js';
 
@@ -224,13 +225,23 @@ export async function runSelfLearning(
       continue;
     }
 
-    // Content changed (or first run)
+    // Content changed (or first run). Record the new fingerprint so we don't
+    // re-alert next run regardless of whether we can extract readable prose.
     snapshot[source.id] = fingerprint;
+
+    // Phase 5 (learning loop) data-quality root fix: many changelog URLs return
+    // a full HTML page — sometimes a JS app shell with no real prose. Extract
+    // readable text before recording. When nothing readable remains, the
+    // fingerprint still advanced (so this isn't a recurring alert) but we skip
+    // recording an unreadable "discovery".
+    const preview = extractReadableText(text, CONTENT_PREVIEW_LIMIT);
+    if (!preview) continue;
+
     newEntries.push({
       source: source.id,
       label: source.label,
       fetched_at: new Date().toISOString(),
-      content_preview: text.trim().slice(0, CONTENT_PREVIEW_LIMIT),
+      content_preview: preview,
     });
   }
 

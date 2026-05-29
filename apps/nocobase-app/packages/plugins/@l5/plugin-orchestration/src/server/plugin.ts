@@ -20,6 +20,10 @@ const {
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/executive-runtime'));
 
 const {
+  collectInsights,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/memory'));
+
+const {
   verifyCTOPhase,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cto-verification'));
 
@@ -226,11 +230,19 @@ function registerChatResource(app: any, db: any) {
         const instructionRecord = await instructionRepo.create({ values: instruction });
 
         const llm = buildLLMClient(raw_text);
+
+        // Phase 5 (learning loop) — recall link. Inject previously-saved founder
+        // memories into the CEO interpretation so past lessons shape new plans.
+        // Only saved (founder-approved) insights, and never high-PII ones, are
+        // sent to the LLM. Best-effort: failure must not block interpretation.
+        const memories = await loadFounderMemories(ctx);
+
         const interpretationDraft = await interpretFounderInstruction(instruction as any, {
           llm,
           now: () => new Date(now),
           idGenerator: randomUUID,
           activeBusinesses,
+          memories,
         });
 
         const {
@@ -836,6 +848,14 @@ function registerCrudResources(app: any) {
 
           const updatedTask = await taskRepo.findOne({ filter: { id: task_id } });
 
+          // Phase 5 (learning loop) — collection link. When a completed task
+          // produced a reusable insight, persist it as a pending founder_memory
+          // candidate so the founder can review/save it and later runs can
+          // reference it. Best-effort: never blocks or fails the task response.
+          await persistTaskInsight(ctx, task, result).catch((err) => {
+            console.warn('[executeTask] insight persist failed:', err);
+          });
+
           ctx.body = {
             ok: true,
             data: {
@@ -871,6 +891,98 @@ function buildLLMClient(rawText: string) {
     return createOpenAIClient({ apiKey });
   }
   return buildDeterministicLLM(rawText);
+}
+
+// Phase 5 (learning loop) — collection link.
+// Extract a reusable insight from a completed task's executive-runtime output
+// and store it as a pending founder_memory candidate. Idempotent per task
+// (dedup by source_task_id). The founder_memory collection is owned by the
+// executive-monitor plugin; we look it up at request time and no-op if it is
+// not registered. Pure-domain extraction lives in l5-core (collectInsights).
+async function persistTaskInsight(ctx: ActionContext, task: any, result: any): Promise<void> {
+  if (typeof collectInsights !== 'function') return;
+
+  const candidates = collectInsights([
+    {
+      task_id: task.id,
+      assigned_agent: task.assigned_agent,
+      output: {
+        insight_to_record: result?.output?.insight_to_record,
+        workflow_improvement_suggestion: result?.output?.workflow_improvement_suggestion,
+        // risk_level drives pii_level (D4/D5 -> high). Prefer the task's declared
+        // risk, falling back to the runtime result.
+        risk_level: task.risk_level ?? result?.risk_level ?? result?.output?.risk_level,
+        phase: task.phase ?? result?.output?.phase,
+      },
+    },
+  ]);
+  if (candidates.length === 0) return; // insight too short / absent
+
+  let repo: any;
+  try {
+    repo = ctx.db.getRepository('founder_memory');
+  } catch {
+    return; // collection not registered in this app
+  }
+  if (!repo) return;
+
+  for (const c of candidates) {
+    // Dedup: one memory candidate per source task.
+    const existing = await repo.findOne({ filter: { source_task_id: c.source_task_id } });
+    if (existing) continue;
+    await repo.create({
+      values: {
+        id: randomUUID(),
+        insight: c.insight,
+        workflow_improvement: c.workflow_improvement || null,
+        source_agent: c.source_agent || null,
+        source_task_id: c.source_task_id,
+        pii_level: c.pii_level || 'none',
+        phase: c.phase || null,
+        approval_status: 'pending',
+      },
+    });
+  }
+}
+
+// Phase 5 (learning loop) — recall link.
+// Load founder-approved memories to feed the CEO interpretation. Excludes
+// high-PII insights from anything sent to the LLM (CLAUDE.md governance). Caps
+// the count so the prompt stays bounded. Returns [] on any failure.
+async function loadFounderMemories(ctx: ActionContext): Promise<
+  Array<{ insight: string; workflow_improvement?: string; phase?: string }>
+> {
+  const MAX_MEMORIES = 20;
+  let repo: any;
+  try {
+    repo = ctx.db.getRepository('founder_memory');
+  } catch {
+    return [];
+  }
+  if (!repo) return [];
+
+  try {
+    const rows = await repo.find({
+      filter: { approval_status: 'saved' },
+      // founder_memory uses NocoBase's default camelCase timestamps.
+      sort: ['-createdAt'],
+      limit: MAX_MEMORIES * 2,
+    });
+    return (rows ?? [])
+      // Governance: never send high-PII insights to the LLM. Filter in JS to
+      // avoid depending on operator support across NocoBase versions.
+      .filter((r: any) => (r.pii_level ?? 'none') !== 'high')
+      .map((r: any) => ({
+        insight: r.insight ?? '',
+        workflow_improvement: r.workflow_improvement ?? undefined,
+        phase: r.phase ?? undefined,
+      }))
+      .filter((m: { insight: string }) => m.insight.length > 0)
+      .slice(0, MAX_MEMORIES);
+  } catch (err) {
+    console.warn('[interpret] founder memory recall failed:', err);
+    return [];
+  }
 }
 
 // Best-effort Telegram notification for cycle completion.

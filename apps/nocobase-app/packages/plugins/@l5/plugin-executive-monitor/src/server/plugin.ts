@@ -381,7 +381,8 @@ async function memoryCandidates(ctx: MonitorContext) {
     const repo = db.getRepository('founder_memory');
     const rows = await repo.find({
       filter: { approval_status: 'pending' },
-      sort: ['-created_at'],
+      // founder_memory uses NocoBase's default camelCase timestamps.
+      sort: ['-createdAt'],
     });
     ctx.body = {
       ok: true,
@@ -393,7 +394,7 @@ async function memoryCandidates(ctx: MonitorContext) {
         source_task_id: row.source_task_id,
         pii_level: row.pii_level,
         phase: row.phase,
-        created_at: row.created_at,
+        created_at: row.createdAt,
       })),
     };
   } catch {
@@ -412,9 +413,11 @@ async function updateMemoryStatus(ctx: MonitorContext, approval_status: 'saved' 
 
   try {
     const repo = db.getRepository('founder_memory');
+    // NocoBase maintains updatedAt automatically; don't write a non-existent
+    // snake_case column.
     await repo.update({
       filter: { source_task_id },
-      values: { approval_status, updated_at: new Date() },
+      values: { approval_status },
     });
     ctx.body = { ok: true, source_task_id, decision: approval_status };
   } catch {
