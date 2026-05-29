@@ -1,6 +1,14 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-29 (Phase 9 P2 완료 — Phase Transition Summary UI + Phase 18.1 ACR pre-dispatch trigger 와이어링)
+최종 업데이트: 2026-05-29 (Phase 8 P1 완료 — Workflow Factory LLM 연결 + Phase 9 P2 Phase Transition Summary UI + Phase 18.1 ACR pre-dispatch trigger 와이어링)
+
+---
+
+## ✅ Phase 8 P1 완료 (2026-05-29) — Workflow Factory LLM 연결
+
+- `packages/l5-core/src/functions/workflow-factory/generator.ts`: `generateWorkflowWithLLM(input, llm?)` 추가 — deterministic baseline 위에 LLM partial JSON merge, throw/parse-fail/no-llm 시 fallback
+- `apps/nocobase-app/.../plugin-orchestration/src/server/plugin.ts` `generateWorkflow` 액션이 `OPENAI_API_KEY` 있을 때 LLM 경로 사용
+- @l5/core 17/17 workflow-factory tests PASS (기존 12 + 신규 5), 전체 207/207 PASS
 
 ---
 

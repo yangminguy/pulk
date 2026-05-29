@@ -12,6 +12,7 @@ const {
 
 const {
   generateWorkflow,
+  generateWorkflowWithLLM,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/workflow-factory'));
 
 const {
@@ -227,10 +228,16 @@ function registerChatResource(app: any, db: any) {
         const { idea, current_phase } = getValues(ctx);
         if (!idea || typeof idea !== 'string') ctx.throw(400, 'idea is required');
 
-        const result = generateWorkflow({
-          business_idea: idea,
-          current_phase: current_phase ?? undefined,
-        });
+        const llm = process.env.OPENAI_API_KEY ? buildLLMClient(idea) : undefined;
+        const result = llm
+          ? await generateWorkflowWithLLM(
+              { business_idea: idea, current_phase: current_phase ?? undefined },
+              llm,
+            )
+          : generateWorkflow({
+              business_idea: idea,
+              current_phase: current_phase ?? undefined,
+            });
 
         ctx.body = { ok: true, data: result };
         await next();

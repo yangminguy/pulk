@@ -232,7 +232,10 @@
 - [x] P1 OpenAI GPT-4o 연결 (Anthropic → OpenAI 전환 완료)
   - `createOpenAIClient()` in `packages/l5-core/src/functions/ceo-orchestration/anthropic-client.ts`
   - `OPENAI_API_KEY` 없으면 stub fallback 자동 동작
-- [ ] P1 Workflow Factory LLM 연결 (현재 규칙 기반)
+- [x] P1 Workflow Factory LLM 연결 ✅ (2026-05-29)
+  - `generateWorkflowWithLLM(input, llm?)` 신규 — deterministic baseline + LLM 시 JSON 응답 partial merge, throw/parse-fail/empty 시 fallback
+  - plugin `generateWorkflow` 액션이 OPENAI_API_KEY gated로 LLM 경로 선택
+  - 5 new tests PASS (baseline, throw fallback, junk fallback, partial merge, fenced JSON)
 - [ ] P2 Memory → CEO 컨텍스트 주입
 - [ ] P2 PMF Score 실제 계산 (Formbricks 연동)
 - [ ] P2 Tool Request 워크플로

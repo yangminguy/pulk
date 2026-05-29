@@ -5,6 +5,7 @@ import type {
   PMFExperimentPlan,
   AgentStaffingPlan,
 } from './types';
+import type { LLMClient } from '../ceo-orchestration/types';
 
 function deriveExperimentType(
   idea: string
@@ -102,5 +103,68 @@ export function generateWorkflow(
     pmf_experiment_plan: buildPMFExperimentPlan(input),
     agent_staffing_plan: buildAgentStaffingPlan(input),
     generated_at: now,
+  };
+}
+
+/**
+ * Phase 8 P1 — LLM-augmented Workflow Factory.
+ *
+ * Calls the LLM to refine the deterministic baseline. The model is asked for a
+ * JSON envelope containing the three refined plan slices; any parse error,
+ * missing field, or throw falls back to the deterministic output so the caller
+ * always gets a usable result.
+ */
+export async function generateWorkflowWithLLM(
+  input: WorkflowFactoryInput,
+  llm?: LLMClient,
+): Promise<WorkflowFactoryOutput> {
+  const baseline = generateWorkflow(input);
+  if (!llm) return baseline;
+
+  const system = [
+    'You refine a startup workflow plan. Return ONLY JSON with keys',
+    '`business_brief`, `pmf_experiment_plan`, `agent_staffing_plan`,',
+    'each preserving the field shape of the baseline. Keep deterministic fields',
+    'unless you have a stronger, idea-specific replacement. Korean output OK.',
+  ].join(' ');
+  const user = JSON.stringify({
+    business_idea: input.business_idea,
+    current_phase: input.current_phase ?? null,
+    founder_context: input.founder_context ?? null,
+    memory_context: input.memory_context ?? null,
+    baseline,
+  });
+
+  let raw: string;
+  try {
+    raw = await llm.complete({
+      system,
+      user,
+      trace_name: 'workflow-factory-refine',
+    });
+  } catch {
+    return baseline;
+  }
+
+  const fenced = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+  let parsed: Partial<WorkflowFactoryOutput> | null = null;
+  try {
+    parsed = JSON.parse(fenced) as Partial<WorkflowFactoryOutput>;
+  } catch {
+    return baseline;
+  }
+  if (!parsed || typeof parsed !== 'object') return baseline;
+
+  return {
+    business_brief: { ...baseline.business_brief, ...(parsed.business_brief ?? {}) },
+    pmf_experiment_plan: {
+      ...baseline.pmf_experiment_plan,
+      ...(parsed.pmf_experiment_plan ?? {}),
+    },
+    agent_staffing_plan: {
+      ...baseline.agent_staffing_plan,
+      ...(parsed.agent_staffing_plan ?? {}),
+    },
+    generated_at: baseline.generated_at,
   };
 }
