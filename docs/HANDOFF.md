@@ -1,6 +1,30 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-29 (Phase 8 P1 완료 — Workflow Factory LLM 연결 + Phase 9 P2 Phase Transition Summary UI + Phase 18.1 ACR pre-dispatch trigger 와이어링)
+최종 업데이트: 2026-05-29 (Phase 8 P1 / 9 P2 / 18.1 완료 + ACR=CTO 전속 책임 ADR + OMC/OMX·Formbricks 영구 OUT-OF-SCOPE)
+
+---
+
+## 📌 2026-05-29 정책 결정 (DECISIONS.md 참조)
+
+**ACR 소유권**
+- ACR 운영·실행은 CTO Agent 전속 책임
+- Founder·CEO·ChiefOfStaff 대화에서 합의된 개발 항목 → CTO로 자동 위임 (별도 사람 게이트 없음, D3+만 approval queue)
+- Founder UI는 진행 모니터링 + D3+ 승인만. ACR 직접 조작 UI 신규 개발 안 함
+
+**OUT OF SCOPE (영구)**
+- OMC / OMX — ACR 내장 agent-model-router(claude/codex/antigravity)로 충분
+- Formbricks (PMF Score 실측) — Hermes 반복 감지 + Founder 정성 판단으로 대체
+
+---
+
+## 🧭 다음 세션 우선순위 (Open Items)
+
+| 순위 | 항목 | 비고 |
+|---|---|---|
+| P1 | Phase 18.1 라이브 wiring 잔여 | ACR `L5_BASE_URL=http://localhost:13000` + `L5_ADMIN_TOKEN` 설정 후 재시작 → NocoBase taskCallback 실제 도달 확인 |
+| P1 | Phase 14-17 라이브 E2E 누적 검증 | 실 NocoBase + ACR + claude CLI 한 사이클. 사용자 직접 트리거 권장 |
+| P2 | Phase 8 P2 Tool Request 워크플로 | 기반(`generateToolRequestTask`, repetition-analyzer, CTO handler) 존재. Founder-facing 추적 UI만 남음 |
+| P2 | Phase 11 P1 ACR daemon 자동 시작 | launchd plist 추가. 사용자 권한 필요 |
 
 ---
 
