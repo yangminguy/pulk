@@ -237,8 +237,8 @@
   - plugin `generateWorkflow` 액션이 OPENAI_API_KEY gated로 LLM 경로 선택
   - 5 new tests PASS (baseline, throw fallback, junk fallback, partial merge, fenced JSON)
 - [ ] P2 Memory → CEO 컨텍스트 주입
-- [ ] P2 PMF Score 실제 계산 (Formbricks 연동)
-- [ ] P2 Tool Request 워크플로
+- [~] **OUT OF SCOPE** PMF Score 실제 계산 (Formbricks 연동) — DECISIONS.md 2026-05-29 참조. Hermes 반복 감지 + Founder 정성 판단으로 대체
+- [ ] P2 Tool Request 워크플로 — 기반 (`generateToolRequestTask`, repetition-analyzer, CTO handler) 이미 존재. Founder-facing 추적 UI만 남음
 
 ## Phase 9 — Founder UI ✅ (2026-05-28 완료)
 
@@ -351,7 +351,7 @@
   - replace stub buildDeterministicLLM with real createOpenAIClient/createClaudeClient
 - [ ] P2 Add real PMF metric ingestion path
 - [ ] P3 Add Tool Request workflow after repeated task/PMF signals
-- [ ] P3 Add Formbricks adapter when actual PMF surveys are needed
+- [~] **OUT OF SCOPE** Formbricks adapter — DECISIONS.md 2026-05-29
 
 ## Documentation — Phase 5 Complete ✅
 
@@ -526,9 +526,7 @@ L5 Business OS
   - ACR `taskCallback(status='phase_complete')` 수신 후 CTO handler 재호출 트리거
   - **→ Phase 11로 이관 (ACR runner 안정화 선행 필요)**
 
-- [ ] OMC/OMX 연동
-  - OMC smoke test 통과 확인 후 자동 선택 후보 등록
-  - **→ Phase 11로 이관 (OMC 설치 및 검증 환경 선행 필요)**
+- [~] **OUT OF SCOPE** OMC/OMX 연동 — DECISIONS.md 2026-05-29. ACR 내장 agent-model-router로 충분
 
 ---
 
@@ -600,11 +598,7 @@ L5 Business OS
   - 현재: JSON 파일 fallback 사용 중 (서버 재배포 시 데이터 소실 위험)
   - 해결: Supabase 프로젝트 설정 + 마이그레이션 적용
 
-### P2: OMC/OMX 설치 및 연동
-
-- [ ] OMC 설치 → smoke test → runtime registry에 `available_verified` 상태로 등록
-  - 현재: registry에 등록됐지만 `status: 'not_installed'`에 해당하는 상태
-  - 해결: `omc doctor` 통과 후 자동 선택 후보 등록
+### ~~P2: OMC/OMX 설치 및 연동~~ — **OUT OF SCOPE** (DECISIONS.md 2026-05-29)
 
 ### P2: CTO phase 검토 루프
 
@@ -631,7 +625,7 @@ L5 Business OS
 - [x] launchd 자동 시작 등록 (4개 cron job, `scripts/install-launchd.sh`)
 - [x] ACR 프로젝트 자동 등록 (`runCTOAgent()` 시작 시 `registerWithACR()` 호출)
 - [x] Memory → CEO context 재주입 (`interpretFounderInstruction` memories 파라미터)
-- [ ] OMC/OMX 연동 (별도 스펙 작성 후 착수)
+- [~] **OUT OF SCOPE** OMC/OMX 연동 — DECISIONS.md 2026-05-29
 - [ ] ACR daemon 자동 시작 관리
 
 ---
