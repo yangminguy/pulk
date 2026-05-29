@@ -13,6 +13,23 @@ interface PhaseInfo {
   requires_approval: boolean
 }
 
+interface TransitionSummary {
+  from_phase_label: string
+  to_phase_label: string
+  completed_count: number
+  blocked_count: number
+  needs_review_count: number
+  success_criteria_met: Array<{ title: string; outcome: string }>
+  outstanding_items: Array<{ title: string; status: string; reason: string }>
+  key_learnings: string[]
+  next_phase_plan: {
+    primary_owners: string[]
+    success_criteria: string[]
+    expected_outcome: string
+  }
+  message: string
+}
+
 function PhaseTransitionPanel() {
   const [phase, setPhase] = useState<PhaseInfo | null>(null)
   const [reason, setReason] = useState('')
@@ -20,6 +37,8 @@ function PhaseTransitionPanel() {
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [summary, setSummary] = useState<TransitionSummary | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
@@ -27,6 +46,20 @@ function PhaseTransitionPanel() {
     setLoading(true)
     api.currentPhase().then(setPhase).catch(() => {}).finally(() => setLoading(false))
   }, [])
+
+  const openForm = async () => {
+    setShowForm(true)
+    if (!phase?.next_phase) return
+    setSummaryLoading(true)
+    try {
+      const s = await api.transitionSummary(phase.current_phase, phase.next_phase)
+      setSummary(s as TransitionSummary)
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : '요약 로딩 실패')
+    } finally {
+      setSummaryLoading(false)
+    }
+  }
 
   const handleRequest = async () => {
     if (!phase?.next_phase || !reason.trim()) return
@@ -36,6 +69,7 @@ function PhaseTransitionPanel() {
       showToast('Phase 전환 요청이 승인 대기열에 추가됐습니다 (D5)')
       setShowForm(false)
       setReason('')
+      setSummary(null)
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : '오류')
     } finally {
@@ -61,10 +95,10 @@ function PhaseTransitionPanel() {
         </div>
         {phase?.next_phase && (
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => (showForm ? setShowForm(false) : openForm())}
             className="text-xs text-indigo-400 hover:text-indigo-300 border border-indigo-700 rounded px-3 py-1 transition-colors"
           >
-            다음 Phase로 전환 →
+            {showForm ? '닫기' : '다음 Phase로 전환 →'}
           </button>
         )}
       </div>
@@ -89,6 +123,67 @@ function PhaseTransitionPanel() {
             <span className="text-green-400">{phase.next_phase_label}</span>
             <span className="ml-2 text-xs bg-red-900 text-red-300 rounded px-2 py-0.5">D5 승인 필요</span>
           </div>
+
+          {summaryLoading && (
+            <div className="text-xs text-slate-400">전환 요약 로딩 중...</div>
+          )}
+
+          {summary && (
+            <div className="bg-slate-900 border border-slate-700 rounded p-3 space-y-3 text-xs">
+              <div className="flex gap-4 text-slate-300">
+                <span>✓ 완료 {summary.completed_count}</span>
+                <span className="text-amber-400">⚠ 차단 {summary.blocked_count}</span>
+                <span className="text-yellow-400">⊘ 검토 {summary.needs_review_count}</span>
+              </div>
+
+              {summary.success_criteria_met.length > 0 && (
+                <div>
+                  <div className="text-slate-500 uppercase tracking-wide mb-1">충족된 성공 기준</div>
+                  <ul className="space-y-1">
+                    {summary.success_criteria_met.map((s, i) => (
+                      <li key={i} className="text-slate-300">
+                        <span className="text-green-400">✓</span> {s.title} — <span className="text-slate-400">{s.outcome}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {summary.outstanding_items.length > 0 && (
+                <div>
+                  <div className="text-slate-500 uppercase tracking-wide mb-1">미해결 항목</div>
+                  <ul className="space-y-1">
+                    {summary.outstanding_items.map((s, i) => (
+                      <li key={i} className="text-slate-300">
+                        <span className="text-amber-400">⚠</span> {s.title} <span className="text-slate-500">({s.status})</span> — <span className="text-slate-400">{s.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {summary.key_learnings.length > 0 && (
+                <div>
+                  <div className="text-slate-500 uppercase tracking-wide mb-1">핵심 인사이트</div>
+                  <ul className="space-y-1 list-disc list-inside text-slate-300">
+                    {summary.key_learnings.map((l, i) => <li key={i}>{l}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              <div>
+                <div className="text-slate-500 uppercase tracking-wide mb-1">다음 Phase 계획</div>
+                <div className="text-slate-300 space-y-1">
+                  <div>주관: <span className="text-indigo-300">{summary.next_phase_plan.primary_owners.join(', ')}</span></div>
+                  <div>성공 기준: <span className="text-slate-400">{summary.next_phase_plan.success_criteria.join(' · ')}</span></div>
+                  <div>기대 결과: <span className="text-slate-400">{summary.next_phase_plan.expected_outcome}</span></div>
+                </div>
+              </div>
+
+              <div className="text-slate-500 text-[10px]">{summary.message}</div>
+            </div>
+          )}
+
           <textarea
             className="w-full bg-slate-700 rounded px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-indigo-500"
             rows={2}

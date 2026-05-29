@@ -1,6 +1,22 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-29 (Phase 18.1 완료 — ACR pre-dispatch clarification/risk trigger 라이브 와이어링)
+최종 업데이트: 2026-05-29 (Phase 9 P2 완료 — Phase Transition Summary UI + Phase 18.1 ACR pre-dispatch trigger 와이어링)
+
+---
+
+## ✅ Phase 9 P2 완료 (2026-05-29) — Phase Transition Summary UI
+
+**핵심 변경:**
+1. `packages/l5-core/src/functions/bpr/transition-summary.ts` (신규) — pure `buildPhaseTransitionSummary({from_phase, to_phase, tasks})` 가 done/blocked/needs_review 집계 + insight_to_record dedup + PHASE_FOCUS 기반 다음 단계 계획 생성. `FOUNDER_BRIEF_SPEC.md §5` 구조 충족.
+2. `apps/nocobase-app/.../plugin-executive-monitor/src/server/plugin.ts` — `bpr:transitionSummary` 액션 추가 (`POST {from_phase, to_phase}` → agent_tasks 조회 후 pure 함수 호출). ACL `loggedIn`.
+3. `apps/founder-ui/src/lib/api.ts` — `transitionSummary()` 클라이언트 추가.
+4. `apps/founder-ui/src/app/monitor/page.tsx` `PhaseTransitionPanel` — "다음 Phase로 전환 →" 클릭 시 fetch + 인라인 미리보기 (성공 기준, 미해결 항목, 핵심 인사이트, 다음 Phase 계획). 요청 제출 전 검토.
+
+**검증:**
+- `@l5/core` 202/202 PASS (+8 transition-summary)
+- founder-ui `npx tsc --noEmit` 0 errors
+- plugin-executive-monitor standalone tsc 0 errors
+- 라이브 적용: NocoBase 재시작 + 플러그인 재빌드 필요 (사용자 권한)
 
 ---
 

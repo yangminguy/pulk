@@ -139,6 +139,31 @@ export const api = {
       body: JSON.stringify({ from_phase, to_phase, reason }),
     }).then(r => r.data),
 
+  transitionSummary: (from_phase: string, to_phase: string) =>
+    request<{ data: { ok: boolean; data: {
+      from_phase: string
+      from_phase_label: string
+      to_phase: string
+      to_phase_label: string
+      effective_at: string
+      completed_count: number
+      blocked_count: number
+      needs_review_count: number
+      success_criteria_met: Array<{ title: string; outcome: string }>
+      outstanding_items: Array<{ title: string; status: string; reason: string }>
+      key_learnings: string[]
+      next_phase_plan: {
+        primary_owners: string[]
+        success_criteria: string[]
+        expected_outcome: string
+      }
+      requires_approval: boolean
+      message: string
+    } } }>('/api/bpr:transitionSummary', {
+      method: 'POST',
+      body: JSON.stringify({ from_phase, to_phase }),
+    }).then(r => r.data.data),
+
   executeTask: (task_id: string) =>
     request<{ data: { ok: boolean; data: { task_id: string; status: string; approval_required: boolean; output: Record<string, unknown>; handoff: Record<string, unknown> } } }>('/api/agent:executeTask', {
       method: 'POST',

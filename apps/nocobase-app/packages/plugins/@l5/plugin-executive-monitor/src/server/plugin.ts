@@ -7,6 +7,7 @@ import { startHermesScheduler } from './hermes-scheduler';
 const {
   derivePhaseFromTasks,
   buildTransitionResult,
+  buildPhaseTransitionSummary,
   BPR_PHASE_ORDER,
   BPR_PHASE_LABELS,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/bpr'));
@@ -253,6 +254,37 @@ async function currentPhase(ctx: MonitorContext) {
   };
 }
 
+async function transitionSummary(ctx: MonitorContext) {
+  const body = requestValues(ctx);
+  const fromPhase = (body.from_phase as string) ?? (ctx as any).action?.params?.from_phase;
+  const toPhase = (body.to_phase as string) ?? (ctx as any).action?.params?.to_phase;
+  if (!fromPhase || !toPhase) {
+    (ctx as any).status = 400;
+    ctx.body = { ok: false, error: 'from_phase and to_phase are required' };
+    return;
+  }
+  const db = ctx.db || (ctx as any).app?.db;
+  const tasks = await db.getRepository('agent_tasks').find({
+    filter: { phase: fromPhase },
+    limit: 200,
+  });
+  const summary = buildPhaseTransitionSummary({
+    from_phase: fromPhase,
+    to_phase: toPhase,
+    tasks: tasks.map((t: any) => ({
+      id: t.id,
+      title: t.title,
+      expected_output: t.expected_output,
+      status: t.status,
+      assigned_agent: t.assigned_agent,
+      phase: t.phase,
+      blocker: t.blocker,
+      insight_to_record: t.insight_to_record,
+    })),
+  });
+  ctx.body = { ok: true, data: summary };
+}
+
 async function requestTransition(ctx: MonitorContext) {
   const body = requestValues(ctx);
   const { from_phase, to_phase, reason } = body as Record<string, string>;
@@ -464,6 +496,10 @@ export default class PluginExecutiveMonitorServer extends Plugin {
           await requestTransition(ctx);
           await next();
         },
+        transitionSummary: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await transitionSummary(ctx);
+          await next();
+        },
       },
     });
 
@@ -481,7 +517,7 @@ export default class PluginExecutiveMonitorServer extends Plugin {
       'saveMemory',
       'discardMemory',
     ], 'loggedIn');
-    this.app.acl.allow('bpr', ['currentPhase', 'requestTransition'], 'loggedIn');
+    this.app.acl.allow('bpr', ['currentPhase', 'requestTransition', 'transitionSummary'], 'loggedIn');
 
     registerHermesResource(this.app, this.db);
     this.app.acl.allow('hermes', ['taskSummary', 'createTask', 'saveInsight'], 'public');

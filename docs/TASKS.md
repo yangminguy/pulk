@@ -225,8 +225,7 @@
 - [x] P1 Add phase transition rules
   - implemented: `validateTransition()` — 전진만 허용, 후퇴는 Founder 승인 필요
   - phase 전환은 항상 requires_approval=true (D5 수준)
-- [ ] P2 Implement Phase Transition Summary (미착수)
-  - NocoBase plugin 또는 별도 UI에서 표시 필요
+- [x] P2 Implement Phase Transition Summary ✅ (2026-05-29) — see Phase 9 P2
 
 ## Phase 8 — Real LLM & Advanced Logic (진행 중)
 
@@ -276,9 +275,10 @@
     * 승인 후 모든 queued 태스크 병렬 실행
   - 검증: CEO 채팅 → 승인 → executeTask 자동 호출 → Monitor 결과 반영 ✅
 
-- [ ] P2 Implement Phase Transition Summary
-  - reference: `docs/FOUNDER_BRIEF_SPEC.md` section "Phase Transition Summary"
-  - include results, learnings, metrics, next phase plan
+- [x] P2 Implement Phase Transition Summary ✅ (2026-05-29)
+  - `packages/l5-core/src/functions/bpr/transition-summary.ts` 신규 — pure `buildPhaseTransitionSummary()` (8/8 tests PASS)
+  - `bpr:transitionSummary` 액션 + `api.transitionSummary()` 클라이언트
+  - `PhaseTransitionPanel`이 전환 요청 전에 요약 인라인 미리보기 (성공 기준, 미해결 항목, 인사이트, 다음 단계 계획)
 
 ## Phase 10 — PMF 개념 정정 + Hermes 반복 분석기 ✅ (2026-05-28 완료)
 
