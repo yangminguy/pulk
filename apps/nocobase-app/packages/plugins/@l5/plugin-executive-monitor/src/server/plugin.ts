@@ -114,6 +114,43 @@ async function approvalQueue(ctx: MonitorContext) {
   };
 }
 
+async function toolRequests(ctx: MonitorContext) {
+  const db = ctx.db || ctx.app.db;
+  const { status } = requestValues(ctx) as { status?: string };
+
+  // Use raw query to filter by source_ref prefix (repetition-pattern:*)
+  const whereStatus = status && status !== 'all' ? `AND status = :status` : '';
+  const tasks = await db.sequelize.query(
+    `SELECT * FROM agent_tasks
+     WHERE assigned_agent = 'CTO'
+       AND source_ref LIKE 'repetition-pattern:%'
+       ${whereStatus}
+     ORDER BY updated_at DESC`,
+    {
+      replacements: status && status !== 'all' ? { status } : {},
+      type: db.sequelize.QueryTypes.SELECT,
+    }
+  ) as TaskRecord[];
+
+
+  ctx.body = {
+    ok: true,
+    data: tasks.map((task: TaskRecord) => ({
+      task_id: task.id,
+      task_title: task.title,
+      rationale: task.rationale,
+      status: task.status,
+      risk_level: task.risk_level,
+      phase: task.phase,
+      source_ref: task.source_ref,
+      blocker: task.blocker,
+      approval_required: task.approval_required,
+      updated_at: task.updated_at ?? task.updatedAt,
+      created_at: task.created_at ?? task.createdAt,
+    })),
+  };
+}
+
 async function approveTask(ctx: MonitorContext) {
   const db = ctx.db || ctx.app.db;
   const { task_id } = requestValues(ctx);
@@ -482,6 +519,10 @@ export default class PluginExecutiveMonitorServer extends Plugin {
           await updateMemoryStatus(ctx, 'discarded');
           await next();
         },
+        toolRequests: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await toolRequests(ctx);
+          await next();
+        },
       },
     });
 
@@ -516,6 +557,7 @@ export default class PluginExecutiveMonitorServer extends Plugin {
       'memoryCandidates',
       'saveMemory',
       'discardMemory',
+      'toolRequests',
     ], 'loggedIn');
     this.app.acl.allow('bpr', ['currentPhase', 'requestTransition', 'transitionSummary'], 'loggedIn');
 

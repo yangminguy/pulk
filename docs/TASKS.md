@@ -238,7 +238,7 @@
   - 5 new tests PASS (baseline, throw fallback, junk fallback, partial merge, fenced JSON)
 - [ ] P2 Memory → CEO 컨텍스트 주입
 - [~] **OUT OF SCOPE** PMF Score 실제 계산 (Formbricks 연동) — DECISIONS.md 2026-05-29 참조. Hermes 반복 감지 + Founder 정성 판단으로 대체
-- [ ] P2 Tool Request 워크플로 — 기반 (`generateToolRequestTask`, repetition-analyzer, CTO handler) 이미 존재. Founder-facing 추적 UI만 남음
+- [x] P2 Tool Request 워크플로 ✅ (2026-05-29 오후) — Founder UI `/tool-requests` + plugin-executive-monitor `monitor:toolRequests` 액션. 사이드바 노출 라이브 확인
 
 ## Phase 9 — Founder UI ✅ (2026-05-28 완료)
 
@@ -586,11 +586,13 @@ L5 Business OS
   - 현재: Release Gate는 in-memory Map만 사용 (서버 재시작 시 소멸)
   - 해결: Release Gate를 file/DB 영속화 + L5 approval queue와 양방향 동기화
 
-### P1: ACR daemon 자동 시작 관리
+### P1: ACR daemon 자동 시작 관리 ✅ (2026-05-29 오후)
 
-- [ ] `local-runner-daemon.mjs` 시작/종료를 ACR UI에서 관리
-  - 현재: daemon을 수동으로 `node scripts/local-runner-daemon.mjs`로 실행
-  - 해결: ACR 시작 시 daemon 자동 실행 또는 UI에서 on/off
+- [x] launchd LaunchAgent 등록 — ACR `launchd/com.l5.acr-daemon.plist` + `scripts/install-launchd.sh`
+  - KeepAlive=true, RunAtLoad=true, CONTROL_ROOM_URL=http://localhost:3001
+  - `launchctl list | grep com.l5.acr-daemon` 등록 확인 (PID stable)
+  - 로그: `~/Library/Logs/l5-acr-daemon.{out,err}.log`
+  - 설치: `export L5_SHARED_SECRET=... L5_ADMIN_TOKEN=... && bash scripts/install-launchd.sh`
 
 ### P1: Supabase 영속화
 

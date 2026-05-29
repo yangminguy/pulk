@@ -1,6 +1,36 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-29 (Phase 8 P1 / 9 P2 / 18.1 완료 + ACR=CTO 전속 책임 ADR + OMC/OMX·Formbricks 영구 OUT-OF-SCOPE)
+최종 업데이트: 2026-05-29 (오후 — Phase 8 P2 Tool Request UI / 11 P1 ACR daemon launchd / 14·15·18.1 라이브 wiring 검증 완료)
+
+---
+
+## ✅ 2026-05-29 (오후 세션)
+
+### Phase 8 P2 — Tool Request 추적 UI (Founder UI)
+- `plugin-executive-monitor`: `monitor:toolRequests` 액션 추가. `assigned_agent='CTO' AND source_ref LIKE 'repetition-pattern:%'` raw SQL 필터 + 선택적 status 필터
+- `apps/founder-ui/src/lib/api.ts`: `ToolRequestItem` 타입 + `api.listToolRequests(status?)`
+- `apps/founder-ui/src/app/tool-requests/page.tsx` 신규 — 30초 자동 갱신, 상태 탭 필터, rationale 파싱(반복 패턴명/발생 횟수/관련 에이전트)
+- `apps/founder-ui/src/components/Sidebar.tsx`: 🔧 Tool Requests 항목 추가
+- 검증: founder-ui `npx tsc --noEmit` 0 errors, plugin tsc 0 errors. 브라우저 라이브에서 사이드바·라우트 응답 확인
+
+### Phase 11 P1 — ACR daemon launchd plist
+- 신규: `~/Desktop/양원민 개발자/agent_control_room_docs/launchd/com.l5.acr-daemon.plist` (KeepAlive=true, CONTROL_ROOM_URL=http://localhost:3001)
+- 신규: `~/Desktop/양원민 개발자/agent_control_room_docs/scripts/install-launchd.sh`
+- 라이브 등록: `launchctl list | grep com.l5.acr-daemon` 확인 (PID 16713 안정). 데몬이 ACR 3001 폴링 + 작업 픽업 정상.
+- 첫 설치 시 plist의 CONTROL_ROOM_URL이 3000으로 잘못 설정되어 데몬이 Hook Pattern Lab(3000)에 폴링 → 3001로 패치 후 reload. 소스 plist도 패치 완료
+
+### Phase 14·15·18.1 라이브 wiring 검증
+- ACR `.env.local`에 `L5_BASE_URL=http://localhost:13000`, `L5_ADMIN_TOKEN=<NocoBase JWT>` 추가 후 ACR 재시작
+- **Phase 18.1**: `POST /api/workbench/dispatch` w/ `clarifying_questions[]` + `auto_execute:true` → `POST /api/orchestration/auto-dispatch` → `status="skipped", reason="needs_clarification"` ✅ pre-dispatch 차단 정상. 별도 curl로 NocoBase `/api/agent:taskCallback`을 JWT로 호출 → UUID validation 시점까지 도달 (JWT 인증 통과) ✅
+- **Phase 15**: `/tmp/pulk-e2e-sandbox` 경로로 dispatch → `l5-e2e-ph15-1780032219` ACR project 자동 생성 + README.md/docs/SANDBOX.md docs ingestion → `data/projects.json`, `feature-plans.json` 영속 확인 ✅
+- **Founder UI E2E (Playwright headless)**: 로그인 → `/chat` → CTO 지시 → CEO LLM(`execution_system_build`, D2) → "승인" → `/monitor`에서 CTO `needs_review` 1건 반영 ✅. Tool Requests 사이드바·페이지 라이브 노출 ✅
+- **풀 E2E 잔여**: ACR `/api/runner` 403 — Phase 15 HANDOFF에 기록된 cwd/git 가드 잔여 이슈로 추정. 실 claude CLI spawn까지는 가드 해제 후 별도 검증 필요. NocoBase plugin-orchestration의 `executeTask`는 `services/agent-runtime/runCTOAgent`를 호출하지 않음 — 그쪽 wiring은 별도 작업
+
+### Open Items 갱신
+- ~~P1 Phase 18.1 라이브 wiring~~ ✅ 완료
+- ~~P2 Phase 8 P2 Tool Request UI~~ ✅ 완료
+- ~~P2 Phase 11 P1 ACR daemon launchd~~ ✅ 완료
+- P1 Phase 14-17 풀 E2E (실 claude CLI 1사이클): /api/runner 가드 해제 + services/agent-runtime ↔ plugin-orchestration wiring 필요
 
 ---
 

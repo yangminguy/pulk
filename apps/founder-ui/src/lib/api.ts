@@ -47,6 +47,20 @@ export type TaskItem = {
   updated_at: string
 }
 
+export type ToolRequestItem = {
+  task_id: string
+  task_title: string
+  rationale: string
+  status: string
+  risk_level: string | null
+  phase: string | null
+  source_ref: string | null
+  blocker: string | null
+  approval_required: boolean
+  updated_at: string
+  created_at: string
+}
+
 export const api = {
   signIn: (account: string, password: string) =>
     request<{ data: { token: string } }>('/api/auth:signIn', {
@@ -163,6 +177,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ from_phase, to_phase }),
     }).then(r => r.data.data),
+
+  listToolRequests: (status?: string) =>
+    request<{ data: { ok: boolean; data: ToolRequestItem[] } }>(
+      `/api/monitor:toolRequests${status && status !== 'all' ? `?status=${encodeURIComponent(status)}` : ''}`
+    )
+      .then(r => unwrap(r) as ToolRequestItem[])
+      .catch(() => [] as ToolRequestItem[]),
 
   executeTask: (task_id: string) =>
     request<{ data: { ok: boolean; data: { task_id: string; status: string; approval_required: boolean; output: Record<string, unknown>; handoff: Record<string, unknown> } } }>('/api/agent:executeTask', {

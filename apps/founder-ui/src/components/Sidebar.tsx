@@ -10,6 +10,7 @@ const NAV = [
   { href: '/workflow', label: '워크플로 팩토리', icon: '🏭' },
   { href: '/memory', label: 'Memory Review', icon: '🧠' },
   { href: '/control-room', label: 'Control Room', icon: '🎛' },
+  { href: '/tool-requests', label: 'Tool Requests', icon: '🔧' },
 ]
 
 export default function Sidebar() {
