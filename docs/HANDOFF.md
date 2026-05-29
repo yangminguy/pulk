@@ -1,6 +1,300 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-29 (오후 — Phase 8 P2 Tool Request UI / 11 P1 ACR daemon launchd / 14·15·18.1 라이브 wiring 검증 완료)
+최종 업데이트: 2026-05-30 (로드맵 Phase 1·2·3·4 구현·배포·라이브 검증 완료)
+
+---
+
+## 🎯 2026-05-30 — 로드맵 Phase 3·4: 사업↔작업장 연결 + Founder 콘솔 (배포·검증 완료)
+
+서브에이전트 팀 병렬(Agent A=Phase3 백엔드, Agent B=Phase4 UI) + 안전 항목(3c)은 직접 처리.
+
+### Phase 3 — 모든 사업 ↔ 실제 작업장(repo) 연결
+- **3a/3b (L5, `plugin-business-portfolio`)**: 신규 `src/server/workspace-init.ts` — `getRepoPath(id)`=`<L5_WORKSPACE_ROOT|~/l5-workspace>/business-{id}`, `ensureWorkspaceRepo()`(멱등 git-init + `--allow-empty` 초기 커밋, 절대경로·workspaceRoot 직속 자식·`business-\d+`만 허용, 비어있지 않은 non-git 디렉토리 보존). `plugin.ts`: businesses `afterCreate` 훅(repo_path 자동 지정+git-init, 생성 차단 안 함), `acrRegister`가 클라 대신 **DB의 repo_path 조회**해 ACR에 전달, `afterStart` **백필**(repo_path 빈 활성 business에 워크스페이스 생성, 멱등).
+- **3c (ACR, 직접)**: `app/api/projects/route.ts` `isDangerousPath`에 **live repo 보호**(`L5_PROTECTED_PATHS` env, 기본 `/Users/wonminyang/Desktop/pulk` + 하위 경로 차단). `data/projects.json`에서 **pulk를 가리키던 stale 등록 4건 제거**(`l5-phase15-*`×3 + `business-2`), 백업 `projects.json.bak-*` 보존.
+- **라이브 검증**: NocoBase 재부팅 시 백필 실행 → **business-2가 `~/l5-workspace/business-2`로 git-init**(HEAD 9b7d9de)되고 DB `repo_path` 설정 확인. `businesses:list`: id=1→business-1, id=2→business-2 (둘 다 repo_path 채워짐). ACR projects.json pulk-pointing 0건.
+
+### Phase 4 — Founder 콘솔 (한 화면 보고·승인)
+- **`apps/founder-ui`**: 신규 `src/components/ApprovalQueueCard.tsx`(D3+ 승인대기 top4, agent/risk 배지 + 승인/거절, 30s 폴링 + 낙관적 제거, 빈 경우 "승인 대기 없음"). `src/app/chat/page.tsx` ChatTab을 **2단 레이아웃**(`flex-col lg:flex-row`)으로: 좌=채팅+입력, 우=상태 패널(RoadmapMiniCard + ApprovalQueueCard + TodayDiscoveryBanner, 모두 `useBusiness()`의 businessId 주입). 좁은 화면은 세로 스택, 기존 roadmap/inbox 탭 유지. 백엔드 신규 0(기존 api 재사용).
+- **제약**: `TaskItem`에 `business_id` 없어 ApprovalQueueCard는 현재 전사 승인대기 표시(prop은 배선됨, 백엔드가 노출하면 필터 조임).
+
+### 배포·검증
+- 빌드 all exit 0: `plugin-business-portfolio`(nocobase build), `founder-ui`(next build), ACR(next build). tsc all clean.
+- 재시작: `com.l5.founder-ui`(307), `com.l5.acr-web`(200), `com.l5.nocobase`(200) 전부 health OK.
+- **브라우저 QA 완료 (Playwright, 1440 + 390)**: 2단 레이아웃(좌 채팅 / 우 패널) 정상, 로드맵 미리보기(공통 50건→QA Fixed 22건 business 스코핑), ApprovalQueueCard "승인 대기 없음" 빈 상태, 좁은 화면 세로 스택, **콘솔 에러 0 / 네트워크 4xx-5xx 0**.
+- **QA 발견·수정**: `TodayDiscoveryBanner`가 discovery `summary`의 **원시 HTML 문서**를 그대로 렌더(self-learning이 changelog fetch 시 Anthropic 릴리스노트 페이지 HTML을 텍스트 추출 없이 저장 — id `2026-05-29:anthropic-release-notes`). 수정: `cleanSummary()` 가드 추가(HTML 문서면 항목 드롭, 인라인 태그/불완전 꼬리태그 제거 `/<[^>]*>?/g`, 엔티티 디코드, 200자 truncate). 재빌드·재배포 후 배너가 쓰레기 항목을 드롭하고 graceful 숨김 확인.
+- **남은 데이터 근본원인(Phase 5/6)**: self-learning(`services/hermes-runtime/.../self-learning.ts`)이 changelog HTML에서 변경요약 텍스트를 추출하지 않고 원문 HTML을 `summary`로 저장함 — 배움 루프 단계에서 추출 로직 보강 필요. discovery 스토어의 기존 HTML 항목도 정리 대상.
+
+---
+
+## 🎯 2026-05-30 — 로드맵 Phase 1·2: 산출물 확실성 + 검토·병합 (ACR repo)
+
+CTO 로드맵(`/tmp/l5-roadmap.html`) Phase 1·2 구현. 전부 **ACR repo**(`~/Desktop/양원민 개발자/agent_control_room_docs`).
+
+### Phase 1 — "빈 브랜치" 해결 (타임아웃·재시도·산출물 검증)
+- **타임아웃**: `lib/runner/spawn-runner.ts` `spawnAgent`에 wall-clock 타임아웃 추가(`ACR_AGENT_TIMEOUT_MS`, 기본 15분). 만료 시 SIGTERM→5s후 SIGKILL, exit 124. `finish()` once-guard로 close/error/timeout 경쟁 방지.
+- **재시도 + 산출물 검증**: 신규 `lib/runner/spawn-with-verification.ts` `runAgentWithVerification()` — exit 0이지만 git 변경 0이고 변경 예상(`promptExpectsFileChanges`) phase면 프롬프트에 `[RETRY]` 보강 지시 붙여 재시도(`ACR_MAX_ATTEMPTS`, 기본 2회). 소진 후에도 비면 `emptyOutput=true`. read-only(조사/설계) phase는 빈 산출물을 정상 처리.
+- **runner 통합**: `app/api/runner/route.ts` — 기존 spawn Promise를 `runAgentWithVerification` await로 교체(inner Promise 제거). `emptyOutput`이면 planTask=`needs_review`, exec log=`review_blocked`, L5 콜백 `status=empty_output`(거짓 "completed" 대신). 커밋·병합 스킵.
+
+### Phase 2 — 검토·병합 (acr 브랜치 → main)
+- **git 유틸**: `lib/runner/git-utils.ts`에 `getRemoteUrl`/`resolveBaseBranch`(main→master)/`mergeBranchLocally`(--no-ff, 충돌 시 abort+conflict 반환) 추가.
+- **병합 코디네이터**: 신규 `lib/runner/merge-coordinator.ts` `coordinateMerge()` — 정책: 기본 ON(`ACR_AUTO_MERGE=0`이면 비활성). 원격+gh → **PR만 생성**(병합은 CTO 결정), 원격 없으면 **로컬 `git merge --no-ff`**. **D3+는 로컬 자동병합 금지**(원격 있으면 PR, 없으면 skip→founder 승인). 충돌→`conflict`.
+- **runner 통합**: `route.ts`에서 `allDone && 깨끗한 성공`일 때 `coordinateMerge` 호출(CTO metadata에서 risk_level 조회). diff_summary는 병합 전(acr 브랜치)에서 계산. L5 콜백에 `merge_action/merge_target/pr_url`, 충돌 시 `status=merge_conflict`.
+- **L5 콜백**(`plugin-orchestration/.../plugin.ts`): `empty_output`/`merge_conflict` 상태 분기 추가(둘 다 `needs_review`+`approval_required`). `all_done` 성공 시 blocker에 `merge=...` 기록.
+
+### 검증
+- ACR `npx tsc --noEmit` 0 errors. `npx jest` **721 passed**(신규 spawn-verification 10 + merge-coordinator 9 포함), 1 fail은 사전 존재 `qa-fixes-phase11` missing-doc(무관), 7 skipped.
+- L5 plugin 변경 라인 타입 에러 없음(standalone tsc의 `ctx.get` 위양성만, 프로덕션 빌드 정상).
+- **code-reviewer 교차검토 반영**: (1) `diff_summary`를 commit 후 계산(현재 phase 변경 포함), (2) 에이전트 자기-커밋 감지(`getHeadRef` HEAD 전진 → 빈 산출물 오탐 방지), (3) antigravity도 `ACR_AGENT_TIMEOUT_MS` 적용, (4) `gh pr create` 비-URL 출력 시 null(가짜 PR 보고 방지), (5) 충돌 감지 `git ls-files -u`로 강화 + `rev-parse` execFileSync로 안전화.
+
+### ✅ 라이브 배포 + E2E 검증 완료 (2026-05-30)
+- **ACR 재배포**: `npm run build`(exit 0) → `launchctl kickstart -k com.l5.acr-web`(PID 32214, http 200). `ACR_AUTO_MERGE` 미설정=기본 ON(병합 활성).
+- **NocoBase 재배포**: `nocobase build @l5/plugin-orchestration`. 빌드 declaration 단계가 **기존** `ctx.get`(line 552, Koa 런타임엔 있으나 ActionContext 타입엔 없음)에서 막혀, `(ctx as any).get(...)` 캐스트로 해소(런타임 무변경) → clean exit 0 → `launchctl kickstart -k com.l5.nocobase`(PID 33646, http 200).
+- **라이브 E2E (business-1 sandbox)**: main 리셋 후 D1 phase `POST /api/workbench/dispatch`(auto_execute) → claude spawn → `VERIFY_PHASE12.md` 작성 → **Phase 1** 산출물 검증·커밋(`c88c60e ACR phase: ...`) → **Phase 2** `--no-ff` 병합(`cc1725b ACR merge: ...`) → main HEAD `4c59af0→cc1725b`, 파일 main 반영, HEAD main 복귀. exec log status=done/exit 0. **빈 브랜치 아님 + main 병합 모두 실증.**
+- 잔여: business-1 main에 검증 파일 `VERIFY_PHASE12.md` 1건 남음(sandbox라 무해, 필요 시 제거). empty_output/merge_conflict 경로는 유닛테스트로 커버(라이브 미발생).
+
+---
+
+## 🎯 2026-05-30 (오후) — launchd Production 전환 + 무인 자율 루프 ON
+
+### 현재 운영 상태 (모두 launchd 관리, 부팅 자동시작 + 크래시 자동재시작)
+
+| 서비스 | Label | 포트 | 모드 |
+|---|---|---|---|
+| NocoBase | `com.l5.nocobase` | 13000 | `nocobase start --launch-mode node` (pm2 제거) |
+| ACR web | `com.l5.acr-web` | 3001 | **production** `next start` |
+| Founder UI | `com.l5.founder-ui` | 3002 | **production** `next start` |
+| Resilience 데몬 | `com.l5.acr-resilience` | — | KeepAlive, 30s tick |
+| Task Dispatcher | `com.l5.hermes.task-dispatcher` | — | 60s, 무인 L5→ACR 트리거 |
+
+- plist 위치: `~/Library/LaunchAgents/com.l5.*.plist`. 모두 `node` 직접 호출(bash 래퍼는 TCC로 Desktop 접근 거부됨). 래퍼 없음.
+- **무인 인증**: NocoBase `api-keys` 플러그인 활성화 + `root` 비만료 API Key(exp≈2126) → task-dispatcher plist `NOCOBASE_TOKEN`. (재발급: `auth:signIn` admin@nocobase.com/admin123 → `apiKeys:create {role:{name:'root'},expiresIn:'36500d'}`.)
+- **무인 dispatch cwd**: `L5_DEFAULT_PROJECT_PATH=/Users/wonminyang/l5-workspace/default-sandbox`(영구 git repo). live `pulk` repo 보호.
+- **자율 루프 게이팅 (E2E 검증됨)**: D1/D2 → 자동 dispatch, D3+ → `approval_required=true`로 dispatcher가 픽업 안 함(승인 시 자동 실행). `chat:submitInstruction` → CEO해석 → CTO분해 → ACR spawn → 샌드박스 파일생성+커밋 → 콜백 → done 전체 동작 확인.
+- **완료(2026-05-30 추가 작업)**:
+  - **Stale 큐 정리**: 이전 세션 테스트 task 42건 전부 `killed` 처리 → queued 0건(깨끗한 베이스라인).
+  - **Cron 2개 설치·검증**: `com.l5.hermes.model-verify`(08:55) + `com.l5.hermes.self-learning`(09:00). 둘 다 수동 1회 실행 정상(model-verify: roster clean·알림 silent; self-learning: claude changelog 1건 변경·카탈로그 `docs/cto-tool-catalog.md` 갱신·Telegram 발송). plist에 Telegram 토큰+API Key 주입. (codex 403/antigravity 404 changelog fetch는 non-fatal.)
+  - **business_id→repo 매핑**: `businesses.repo_path`(text) 컬럼 추가(plugin-business-portfolio: collection 필드 + `ensureBusinessColumns` ALTER). dispatcher(`runTaskDispatcherLive`)가 `fetchBusinessRepoPaths`로 business_id→repo_path 조회 후 task.project_path 주입 → runCTOAgent `resolveProjectPath`가 cwd로 사용. repo_path 없으면 `L5_DEFAULT_PROJECT_PATH`(샌드박스) fallback. **E2E 검증**: business 1 repo_path=`~/l5-workspace/business-1` 설정 → "QA Fixed business" 지시 → CEO가 business_id=1 추론 → D2 task 자동 dispatch → **ACR 작업이 business-1 repo에 라우팅됨**(default-sandbox 아님). (단 해당 spawn은 빈 브랜치만 생성·파일 미커밋 — agent 실행 비결정성, 매핑과 별개. 이전 SMOKE 테스트에선 파일 생성 정상.)
+- **다음 작업**: business 2 및 향후 사업의 `repo_path`를 실제 repo로 지정(현재 business 1만 설정). project-status-sync cron(템플릿 존재, 미설치). dispatcher PATH에 claude 추가 시 CTO dev-workflow LLM 보강 활성화(현재 deterministic fallback). ACR `data/projects.json`의 pulk 가리키는 stale 등록 정리(샌드박스 기본값으로 무력화돼 있으나 청소 권장).
+
+상세: `docs/DECISIONS.md` 2026-05-30 항목.
+
+---
+
+## 🎯 2026-05-30 — ACR 데몬 설치 + 멀티-phase 무인 검증 + 장기 무인 운영 전환
+
+### 완료 요약
+
+**콜백 인증 영속화 (장기 무인의 전제)**
+- 문제: ACR→L5 `agent:taskCallback`이 만료형 JWT(`L5_ADMIN_TOKEN`, ~17h)로 인증 → 장기 무인 시 만료되면 콜백 401로 사이클 미완.
+- 해결: `taskCallback` ACL을 `loggedIn`→`public`으로 변경, 핸들러에서 **비만료 shared-secret**(`process.env.L5_SHARED_SECRET`, NocoBase `.env`에 설정) 헤더(`x-l5-shared-secret`) 검증. ACR runner(app/api/runner/route.ts)와 pre-dispatch 콜백(lib/orchestration/pre-dispatch-checks.ts)이 헤더 전송. 검증: secret 일치→200, 없음/틀림→401.
+
+**멀티-phase 무인 실행 버그 2건 수정**
+- **버그 A**: runner가 성공한 phase의 변경을 커밋하지 않아 tree가 dirty → 다음 phase의 checkUncommittedChanges 가드가 abort → 후속 phase 영원히 planned. 수정: `commitAll(cwd, msg)` 추가(lib/runner/git-utils.ts), runner onSuccess 시 phase 변경 커밋.
+- **버그 B**: dispatch-time fire-and-forget과 resilience 데몬이 같은 plan 동시 drain → git cwd 충돌. 수정: plan별 in-flight 락(globalThis Set) 추가(lib/orchestration/auto-dispatcher.ts), runAutoDispatchForPlan/drainAllPlans 직렬화.
+- 검증: 3-phase D1 플랜이 데몬 단일 틱에 전부 done, STEP1/2/3.txt 생성+3커밋 누적, tree clean, 헛-재dispatch 없음.
+
+**데몬 설치 + 라이브 검증**
+- `~/Library/LaunchAgents/com.l5.acr-resilience.plist` 설치 + `launchctl load` 완료. KeepAlive+RunAtLoad(재부팅 생존). 30초 간격 폴링. 전체 사이클 라이브 검증: L5 queued task(D1) → ACR dispatch → 데몬 drain → 실제 claude spawn 3회 → phase별 커밋 → ACR→L5 콜백(shared-secret) → task queued→needs_review.
+
+**장기 무인 운영 베이스라인**
+- ACR `data/feature-plans.json`/`cto-task-metadata.json` 리셋 → stale 테스트 plan(실제 pulk cwd 가리키는 eligible task) 제거. 깨끗한 베이스에서 무인 루프 시작.
+- 현재 운영: NocoBase:13000, founder-ui:3002, ACR:3001(dev), resilience 데몬 가동 중(idle, allDone=true).
+- 위험도 게이트 정책: D1 즉시 / D2 24h 자동 release / D3+ 파운더 수동 승인. model_locked(T1) phase는 토큰 소진 시 다운그레이드 없이 대기.
+- **후속 권장**: ACR을 dev(`next dev`) 대신 `next build && next start`로 운영 → 장기 안정성↑. ACR data 주기적 정리.
+
+---
+
+## 🎯 2026-05-29 야간 — ACR 세션: runner 403 조사 + Resilience 루프
+
+### 완료 요약
+
+**runner 403 설계상 정상 동작**: `/api/runner`의 403은 버그가 아니라 approval token 누락, cwd 경로 미등록, git uncommitted 3가지 보안 가드. Phase 15 라이브에서 **git 샌드박스 + D1 auto-exec phase**로 전체 사이클 검증: workbench/dispatch → auto-dispatcher 토큰 발급 → /api/runner 실제 `claude -p` spawn → 파일 생성 + exit 0 → 격리 브랜치 생성 → ACR→L5 콜백(localhost:13000, L5_ADMIN_TOKEN JWT) → L5 task queued→needs_review 전이. **403 없이 완주**.
+
+**Resilience 지속 루프**: 사용자 선택(옵션1 게이트 유지 + 토큰 대기). ACR repo에 구축:
+- `lib/orchestration/auto-dispatcher.ts`: `DispatchOutcome`에 `waiting` status + `waitUntil`, D2 auto_24h/D3+ manual_founder 게이팅, `drainAllPlans()` 무한 루프 가능
+- `POST /api/orchestration/resilience-tick` (x-l5-shared-secret 인증): drainAllPlans 실행
+- `scripts/resilience-loop-daemon.mjs` + `launchd/com.l5.acr-resilience.plist`: KeepAlive 폴링 데몬 (미설치, 수동 install 시 활성)
+- 테스트 9개 추가, jest 704 PASS, tsc clean
+
+**Model Locking**: T1 모델은 다운그레이드 금지. l5-core `CTOPhase.model_locked=true` → ACR dispatcher가 respect (폴백 없이 대기). spec/rfc/research/review와 일부 BIG_CHANGE에서 LOCK 적용.
+- `packages/l5-core/src/types/acr-intent.ts`: model_locked? 필드
+- `services/agent-runtime/src/agents/cto.ts`: selectModelTier==T1 체크 후 설정
+- l5-core 339 PASS, agent-runtime tsc clean
+
+### 라이브 운영 상태
+
+- NocoBase:13000, founder-ui:3002, ACR:3001 (dev, .env.local L5_BASE_URL/L5_SHARED_SECRET)
+- Resilience 데몬 파일 생성 완료(미설치), shared-secret 기반 콜백으로 장기 운영 준비
+
+---
+
+## 🎯 2026-05-29 야간 — Phase 19 Wave 2 완료 (실행 인프라 강화)
+
+### 완료 요약
+**"실행 인프라 강화 — Wave 2"** 모든 구현 완료 및 브라우저 E2E 검증 6/6 PASS. Monitor 재구성, Founder UI 완성, 모델 티어링, 자동 연구, 라이브 검증 누적.
+
+### 완료 상세 (Wave 2 5개 슬라이스)
+
+#### 2.1 Monitor 재구성 (business_id 기준) ✅
+- `plugin-executive-monitor` `monitor:projectTimeline` — `source_ref LIKE` → `business_id` 컬럼 필터
+- `business_id IS NULL` / `= 'common'` 양쪽 = 회사 공통
+- idx_agent_tasks_business_id 멱등 인덱스 추가
+- SELECT `blocker` 컬럼 누락 버그 수정
+- 검증: tsc 0 errors
+
+#### 2.2 Founder UI 완전 재구성 ✅
+- `business-context.tsx` — BusinessProvider + useBusinessContext() hook
+- `TabLayout.tsx` — 💬채팅 / 📍로드맵 / 📥인박스
+- `RoadmapMiniCard.tsx`, `TodayDiscoveryBanner.tsx` (신규)
+- Sidebar "활성 사업" + "🌐 회사 공통" 섹션
+- 채팅/로드맵/discovery에 business_id 자동 전달
+- next build 12 routes PASS, tsc 0 errors
+
+#### 2.3 CTO 모델 T1/T2/T3 티어링 (순수) ✅
+- `model-routing.ts` — MODEL_ROSTER 메타데이터 + selectModelTier + resolveModel(fallback)
+- 21개 테스트 PASS (tiering, quota fallback)
+- 비밀/키 없음, IO 없음
+
+#### 2.4 Hermes cron 2개 ✅
+- `model-verify.ts` (08:55) — deprecated 모델 감지 + 재매핑 제안 (D4)
+- `self-learning.ts` (09:00) — changelog → cto-tool-catalog.md + todays-discovery.json + Telegram
+- launchd plist 2개 추가
+- 81개 hermes 테스트 PASS
+
+#### 2.5 OSS 자동 조사 (순수) ✅
+- `oss-research.ts` — filterCandidates (MIT/Apache/BSD + stars>1000 + 6m active) + 비교표 + 결정
+- 37개 테스트 PASS (filtering, decision matrix)
+
+### E2E 브라우저 검증 (Playwright, 6/6 PASS)
+
+**발견 & 수정:**
+1. rejectPlan 액션 부재 → 핸들러+ACL 추가
+2. approvePlan no-op → approval_required:false 전환
+3. submitInstruction 응답 business_id stale → instructionOut 수정
+4. 사이드바 401 레이스 → useAuth().token 준비 후 fetch
+5. 빈 사업명 → fallback: `{name || one_liner || '사업 ${id}'}`
+6. self-learning tmpdir 오염 → 경로 주입 격리
+
+**결과:** 콘솔 에러 0, 네트워크 4xx/5xx 0
+
+### 빌드 & 현재 상태
+
+```bash
+# 모든 서비스 가동 (재시작 필요)
+NocoBase:13000 — rebuild + plugin 재로드
+founder-ui:3002 — npm run dev
+ACR:3001 — npm run dev (L5_BASE_URL=http://localhost:13000 + L5_ADMIN_TOKEN)
+
+# 검증 현황
+l5-core: 281→339 tests PASS (model-routing 21 + oss-research 37)
+hermes-runtime: 81 tests PASS (12 suites; 신규 model-verify 8 + self-learning 8)
+founder-ui: tsc 0 errors, 12 routes PASS
+plugin-executive-monitor: tsc 0 errors
+```
+
+### 스코프 분리 (다음 세션)
+
+- **2.3/2.5 모듈** — @l5/core 완성, export됨. 라이브 소비자는 ACR 런타임 인프라(모델 티어링 헤더 캡처, research web-search client) → ACR 세션 범위
+- **ACR `/api/runner` 403** — 사이클 완전 완료(status=done)는 ACR 세션 과제
+
+### 다음 우선순위
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| ACR runner 403 | ⚠️ | Phase 15 cwd 가드 (ACR 영역) |
+| Wave 3 (다음 세션) | 📋 | 모델 헤더 캡처, 웹 검색, 최종 E2E |
+
+---
+
+## 🎯 2026-05-29 저녁 — Phase 19 Wave 1 기반 사이클 완료
+
+### 완료 요약
+**"CTO 자율 운영 강화 — Wave 1 (기반 사이클)"** 모두 검증 통과. CEO 지시 → business_id 추론 → CTO task queued → dispatcher 폴링 → ACR dispatch까지 end-to-end 라이브 확인.
+
+### 완료된 작업 상세
+
+#### 1.1 Schema: business_id 추가 ✅
+- `founder_instructions`, `ceo_interpretations`, `agent_tasks`에 `business_id` (nullable string) 컬럼
+- 파일: `apps/nocobase-app/packages/plugins/@l5/plugin-orchestration/src/server/plugin.ts` (raw ALTER + defineCollection)
+- 파일: `packages/l5-core/src/types/orchestration.ts` + `schemas/orchestration.schema.json`
+- 1회성 truncate 스크립트: `scripts/truncate-orchestration-tables.sql` (수동만, 자동 실행 금지)
+- 검증: tsc 0 errors
+
+#### 1.2 CEO 사업 추론 + 모호 시 되묻기 ✅
+- `packages/l5-core/src/functions/ceo-orchestration/interpreter.ts`: `interpretFounderInstruction()` 옵션에 `activeBusinesses` 추가
+- 자동 business_id 추론 또는 모호 시 `needs_business_clarification` 응답
+- `chat:submitInstruction`: 활성 business 조회(status ≠ 'deleted') → interpreter에 주입
+  - **버그 수정**: `status: 'active'` → `status: {$ne: 'deleted'}` (기본값 'idea' 때문)
+- 검증: interpreter 테스트 10/10 PASS
+
+#### 1.3 CTO 작업 분류 6종 ✅
+- `dev-workflow-spec.ts` 재구성: SMALL_FIX, FEATURE, BIG_CHANGE, OPS, RESEARCH, REFACTOR
+- `classifyTask()` 신설 — 키워드 + 5지표 격상 분류
+  - **버그 수정**: parseTaskClass "small fix" → "small_fix" 정규화
+- `buildDevWorkflowSystemPrompt` 등에 taskClass 인자 추가
+- `services/agent-runtime/src/agents/cto.ts`: LLM 파싱 + classifyTask fallback
+- 검증: dev-workflow-spec 41 tests + l5-core 281 전체 PASS
+
+#### 1.4 막힘② 검증 + executeTask 가드 ✅
+- **자율 경로 완결**: Hermes task-dispatcher (60s cron) → `fetchQueuedTasks[queued && approval_required=false]` → `runCTOAgent` → ACR dispatch 정적 확인
+- **경쟁 경로 차단**: `agent:executeTask` 액션이 CTO task에 `deferred` 반환 (dispatcher 일원화)
+- **Founder UI 수정**: 승인 후 `executeTask` 제거, task status를 `needs_review`만 변경
+- **라이브 버그 수정**: interpreter SYSTEM_PROMPT `undefined` → `null` + 파싱 방어
+- 검증: dispatcher 단위테스트 7개 추가 + 전체 테스트 PASS
+
+#### 1.5 D2 사이클 라이브 E2E ✅
+**환경:** NocoBase :13000, ACR :3001
+
+**end-to-end 검증:**
+1. Founder chat: "QA Fixed 비즈니스를 위한 기술 개선 배포 절차 자동화" (D2)
+2. CEO LLM 해석
+3. **business_id 추론**: "QA Fixed" → id=1 ✅
+4. **CTO task queued, approval_required=false** ✅
+5. **dispatcher 폴링** (60s) → `runCTOAgent`
+6. **CTO phase 분해** (LLM 1회) → 6단계 + risk levels
+7. **ACR `/api/projects`** → auto-create ✅
+8. **ACR `/api/workbench/dispatch`** → FeaturePlan + PlanTask 저장 ✅
+9. `auto_dispatch_scheduled: true`
+
+**결론:** 모든 단계 통과. "막힘②" 최종 검증 완료.
+
+### 아키텍처 결정 (DECISIONS.md에 기록)
+1. **id=0 폐기** → `business_id NULL = 회사 공통`
+2. **막힘② = dispatcher 일원화** → runCTOAgent는 Hermes cron 전담
+3. **undefined → null** → LLM 경로 동기화
+
+### 빌드 & 재시작 절차
+```bash
+# L5 side
+cd /Users/wonminyang/Desktop/pulk
+corepack pnpm -r build
+corepack pnpm -r typecheck
+
+# NocoBase 재시작
+cd apps/nocobase-app
+yarn dev  # :13000
+
+# ACR (별도 터미널)
+cd ~/Desktop/양원민\ 개발자/agent_control_room_docs
+npm run dev  # :3001, L5_BASE_URL=http://localhost:13000 + L5_ADMIN_TOKEN 설정
+
+# Hermes 4개 cron 등록 (처음 한 번)
+bash /Users/wonminyang/Desktop/pulk/services/hermes-runtime/scripts/install-launchd.sh
+```
+
+### 검증 현황
+| 항목 | 결과 |
+|---|---|
+| l5-core tsc + tests | ✅ 281 PASS |
+| plugin-orchestration tsc | ✅ 0 errors |
+| founder-ui tsc | ✅ 0 errors |
+| hermes-runtime tests | ✅ 24 PASS |
+| 라이브 D2 E2E | ✅ CEO 해석→business_id→dispatcher→CTO phase→ACR dispatch |
+| 라이브 버그 수정 | ✅ business status + parseTaskClass + undefined→null |
+
+### 다음 세션
+- **ACR runner 403**: Phase 15 기록된 cwd 가드 (ACR 레포 영역, pulk 범위 외)
+- **Wave 2**: 모니터 재구성, Founder UI 개선, 모델 티어링, 전체 E2E (별도 세션)
 
 ---
 

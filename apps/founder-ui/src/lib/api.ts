@@ -61,6 +61,73 @@ export type ToolRequestItem = {
   created_at: string
 }
 
+export type ActiveBusiness = {
+  id: string
+  name: string
+  one_liner: string | null
+  current_phase: string | null
+  lifecycle_stage: string | null
+  updated_at: string | null
+}
+
+export type AgentTaskSummary = {
+  task_id: string
+  agent: string
+  title: string
+  status: string
+  risk_level: string | null
+  phase: string | null
+  source_ref: string | null
+  updated_at: string | null
+}
+
+export type HandoffSummary = {
+  id: string
+  from_agent: string
+  to_agent: string
+  task_id: string
+  note: string | null
+  created_at: string | null
+}
+
+export type OpenItem = {
+  kind: 'needs_review' | 'blocked' | 'pending_approval'
+  task_id: string
+  note?: string
+}
+
+export type DecisionRecord = {
+  task_id: string
+  verdict: string
+  rationale: string
+  at: string
+}
+
+export type ProjectTimeline = {
+  agentTasks: AgentTaskSummary[]
+  handoffs: HandoffSummary[]
+  openItems: OpenItem[]
+  decisions: DecisionRecord[]
+}
+
+export type RoadmapItem = {
+  id: string
+  title: string
+  status: string
+  phase: string | null
+  priority: number | null
+  due_date: string | null
+  business_id: string | null
+}
+
+export type TodayDiscovery = {
+  id: string
+  summary: string
+  source: string | null
+  created_at: string
+  business_id: string | null
+}
+
 export const api = {
   signIn: (account: string, password: string) =>
     request<{ data: { token: string } }>('/api/auth:signIn', {
@@ -68,10 +135,10 @@ export const api = {
       body: JSON.stringify({ account, password }),
     }).then(r => ({ token: r.data.token })),
 
-  submitInstruction: (rawText: string) =>
+  submitInstruction: (rawText: string, businessId?: string | null) =>
     request<{ data: { ok: boolean; data: { instruction: { id: string }; interpretation: Record<string, unknown>; tasks: unknown[] } } }>('/api/chat:submitInstruction', {
       method: 'POST',
-      body: JSON.stringify({ raw_text: rawText, source: 'chat' }),
+      body: JSON.stringify({ raw_text: rawText, source: 'chat', business_id: businessId ?? null }),
     }).then(r => unwrap(r)),
 
   approvePlan: (instruction_id: string) =>
@@ -190,4 +257,38 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ task_id }),
     }).then(r => unwrap(r)),
+
+  listActiveBusinesses: () =>
+    request<{ data: { ok: boolean; data: ActiveBusiness[] } }>('/api/business:listActive')
+      .then(r => unwrap(r) as ActiveBusiness[])
+      .catch(() => [] as ActiveBusiness[]),
+
+  getProjectTimeline: (businessId: string) =>
+    request<{ data: { ok: boolean; data: ProjectTimeline } }>(
+      `/api/monitor:projectTimeline?business_id=${encodeURIComponent(businessId)}`
+    )
+      .then(r => unwrap(r) as ProjectTimeline)
+      .catch(() => ({ agentTasks: [], handoffs: [], openItems: [], decisions: [] } as ProjectTimeline)),
+
+  getProjectStatusMd: async (businessId: string): Promise<string> => {
+    const res = await fetch(`/api/projects/${encodeURIComponent(businessId)}/status-md`)
+    if (!res.ok) return ''
+    return res.text()
+  },
+
+  // Slice 2.4 — not yet implemented on backend; safe empty fallback
+  getRoadmapItems: (businessId: string | null) =>
+    request<{ data: { ok: boolean; data: RoadmapItem[] } }>(
+      `/api/roadmap:list${businessId ? `?business_id=${encodeURIComponent(businessId)}` : ''}`
+    )
+      .then(r => unwrap(r) as RoadmapItem[])
+      .catch(() => [] as RoadmapItem[]),
+
+  // Slice 2.4 — not yet implemented on backend; safe empty fallback
+  getTodayDiscoveries: (businessId: string | null) =>
+    request<{ data: { ok: boolean; data: TodayDiscovery[] } }>(
+      `/api/discovery:today${businessId ? `?business_id=${encodeURIComponent(businessId)}` : ''}`
+    )
+      .then(r => unwrap(r) as TodayDiscovery[])
+      .catch(() => [] as TodayDiscovery[]),
 }

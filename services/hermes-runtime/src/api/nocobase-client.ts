@@ -62,6 +62,43 @@ export async function fetchPendingApprovalTasks(): Promise<AgentTask[]> {
   return (data.data ?? []) as AgentTask[];
 }
 
+export interface FounderMemoryEntry {
+  insight: string;
+  workflow_improvement?: string;
+  phase?: string;
+}
+
+export async function fetchFounderMemories(limit = 10): Promise<FounderMemoryEntry[]> {
+  const data = await apiFetch(
+    `/api/founder_memory:list?filter[approval_status]=saved&sort=-createdAt&pageSize=${limit}`,
+  );
+  return (data.data ?? []).map((m: any) => ({
+    insight: m.insight as string,
+    workflow_improvement: m.workflow_improvement as string | undefined,
+    phase: m.phase as string | undefined,
+  }));
+}
+
+export async function fetchQueuedTasks(): Promise<AgentTask[]> {
+  const data = await apiFetch(
+    "/api/agent_tasks:list?filter[status]=queued&filter[approval_required]=false&pageSize=200",
+  );
+  return (data.data ?? []) as AgentTask[];
+}
+
+// business_id → repo_path lookup for CTO dispatch cwd resolution.
+// Returns a map of String(id) → repo_path for businesses that have one set.
+export async function fetchBusinessRepoPaths(): Promise<Record<string, string>> {
+  const data = await apiFetch("/api/businesses:list?pageSize=200");
+  const map: Record<string, string> = {};
+  for (const b of (data.data ?? []) as any[]) {
+    if (b?.id != null && typeof b.repo_path === "string" && b.repo_path.trim()) {
+      map[String(b.id)] = b.repo_path.trim();
+    }
+  }
+  return map;
+}
+
 export async function saveFounderMemory(entry: {
   insight: string;
   workflow_improvement?: string;

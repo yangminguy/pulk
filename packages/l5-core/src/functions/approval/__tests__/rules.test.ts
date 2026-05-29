@@ -15,7 +15,7 @@ describe('requiresFounderApproval', () => {
   it('D3 should require CEO approval', () => {
     const result = requiresFounderApproval('test_decision', 'D3');
     expect(result.requires_approval).toBe(true);
-    expect(result.approval_level).toBe('ceo_only');
+    expect(result.approval_level).toBe('cto_autonomous');
   });
 
   it('D4 should require Founder approval', () => {

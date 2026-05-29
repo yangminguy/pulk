@@ -2,6 +2,7 @@ import type { RiskLevel } from '../../types/entities';
 import type {
   CEOInterpretation,
   ExecutiveRole,
+  LLMClient,
   Workstream,
 } from './types';
 
@@ -61,12 +62,30 @@ export interface DecomposeOptions {
   now?: () => Date;
   idGenerator?: (role: ExecutiveRole) => string;
   fallback_role?: ExecutiveRole;
+  llm?: LLMClient;
 }
 
-export function decomposeIntoWorkstreams(
+export async function decomposeIntoWorkstreams(
   interpretation: CEOInterpretation,
   opts: DecomposeOptions = {}
-): Workstream[] {
+): Promise<Workstream[]> {
+  const idGen = opts.idGenerator ?? defaultIdGen;
+
+  if (opts.llm) {
+    try {
+      const roles = await resolveRolesWithLLM(interpretation, opts.llm);
+      if (roles.length > 0) {
+        return roles.map(({ role, rationale }) => {
+          const rule = findRule(role);
+          const ws = buildWorkstream(rule, interpretation, idGen(role));
+          return { ...ws, rationale };
+        });
+      }
+    } catch {
+      // fall through to keyword-based on LLM failure
+    }
+  }
+
   const haystack = [
     interpretation.goal,
     ...interpretation.assumptions,
@@ -76,9 +95,49 @@ export function decomposeIntoWorkstreams(
   const matched = DOMAIN_RULES.filter(rule => rule.keywords.test(haystack));
   const rules = matched.length > 0 ? matched : [findRule(opts.fallback_role ?? 'CPO')];
 
-  const idGen = opts.idGenerator ?? defaultIdGen;
-
   return rules.map(rule => buildWorkstream(rule, interpretation, idGen(rule.role)));
+}
+
+const LLM_SYSTEM = `You are the CEO Agent routing engine for L5 Business OS.
+Given a business goal, decide which executive roles should handle it.
+Return ONLY valid JSON: { "assignments": [{ "role": "CMO"|"CRO"|"CPO"|"CTO"|"COO"|"CFO"|"RiskQA", "rationale": string }] }
+Rules:
+- Assign 1-3 roles. Only assign roles with clear work to do.
+- CMO: external messaging, brand, marketing, content, campaign
+- CRO: sales, revenue, leads, pipeline, customer outreach
+- CPO: product, PMF, user research, feature, onboarding
+- CTO: technical build, tool, infra, automation, API, engineering
+- COO: operations, process, SOP, delivery, cadence
+- CFO: budget, cost, pricing, finance, subscription
+- RiskQA: any risk/legal/PII/compliance concern (add alongside other roles when relevant)
+- If ambiguous, assign CPO only.`;
+
+async function resolveRolesWithLLM(
+  interpretation: CEOInterpretation,
+  llm: LLMClient
+): Promise<{ role: ExecutiveRole; rationale: string }[]> {
+  const raw = await llm.complete({
+    system: LLM_SYSTEM,
+    user: `Goal: ${interpretation.goal}\nPhase: ${interpretation.phase}\nAssumptions: ${interpretation.assumptions.join(', ')}\nSuccess criteria: ${interpretation.success_criteria.join(', ')}`,
+    trace_name: 'ceo.decomposeIntoWorkstreams',
+    trace_metadata: { interpretation_id: interpretation.id },
+  });
+
+  const json = extractJson(raw);
+  const obj = JSON.parse(json) as { assignments: Array<{ role: string; rationale: string }> };
+  const valid = DOMAIN_RULES.map(r => r.role);
+  return obj.assignments
+    .filter(a => valid.includes(a.role as ExecutiveRole))
+    .map(a => ({ role: a.role as ExecutiveRole, rationale: a.rationale }));
+}
+
+function extractJson(raw: string): string {
+  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) return fence[1].trim();
+  const s = raw.indexOf('{');
+  const e = raw.lastIndexOf('}');
+  if (s === -1 || e <= s) throw new Error('no JSON in LLM output');
+  return raw.slice(s, e + 1);
 }
 
 function buildWorkstream(

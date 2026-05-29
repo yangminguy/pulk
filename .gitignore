@@ -43,3 +43,6 @@ Thumbs.db
 # NocoBase runtime
 apps/nocobase/storage/
 apps/nocobase/.env
+
+# Hermes runtime cron/state artifacts (contain tokens/PII — never commit)
+apps/nocobase-app/cron_*

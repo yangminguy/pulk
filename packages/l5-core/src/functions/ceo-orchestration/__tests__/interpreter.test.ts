@@ -92,4 +92,61 @@ describe('interpretFounderInstruction', () => {
     expect(calls[0].trace_name).toBe('ceo.interpretFounderInstruction');
     expect(calls[0].trace_metadata).toEqual({ instruction_id: 'fi_1' });
   });
+
+  // Business inference cases
+  it('assigns business_id when LLM picks a clear match from active list', async () => {
+    const llmJson = JSON.stringify({
+      ...JSON.parse(validJson),
+      business_id: 'biz_42',
+      needs_business_clarification: false,
+    });
+    const result = await interpretFounderInstruction(baseInstruction, {
+      llm: mockLLM(llmJson),
+      activeBusinesses: [
+        { id: 'biz_42', name: 'AI Coding Assistant', one_liner: 'AI pair programmer for devs' },
+        { id: 'biz_99', name: 'HR Automation', one_liner: 'Automate HR workflows' },
+      ],
+    });
+    expect(result.business_id).toBe('biz_42');
+    expect(result.needs_business_clarification).toBe(false);
+    expect(result.business_clarification_question).toBeUndefined();
+  });
+
+  it('sets needs_business_clarification=true and omits business_id when ambiguous', async () => {
+    const llmJson = JSON.stringify({
+      ...JSON.parse(validJson),
+      business_id: null,
+      needs_business_clarification: true,
+      business_clarification_question: 'Which business is this for — AI Coding Assistant or HR Automation?',
+    });
+    const result = await interpretFounderInstruction(baseInstruction, {
+      llm: mockLLM(llmJson),
+      activeBusinesses: [
+        { id: 'biz_42', name: 'AI Coding Assistant' },
+        { id: 'biz_99', name: 'HR Automation' },
+      ],
+    });
+    expect(result.needs_business_clarification).toBe(true);
+    expect(result.business_id).toBeNull();
+    expect(result.business_clarification_question).toBe(
+      'Which business is this for — AI Coding Assistant or HR Automation?'
+    );
+  });
+
+  it('defaults business_id to null when activeBusinesses list is empty', async () => {
+    // LLM might try to set something; parser must ignore it when no active list
+    const llmJson = JSON.stringify({
+      ...JSON.parse(validJson),
+      business_id: 'biz_42',
+      needs_business_clarification: true,
+      business_clarification_question: 'Which business?',
+    });
+    const result = await interpretFounderInstruction(baseInstruction, {
+      llm: mockLLM(llmJson),
+      activeBusinesses: [],
+    });
+    expect(result.business_id).toBeNull();
+    expect(result.needs_business_clarification).toBe(false);
+    expect(result.business_clarification_question).toBeUndefined();
+  });
 });

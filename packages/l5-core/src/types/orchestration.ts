@@ -42,6 +42,7 @@ export interface FounderInstruction {
   constraints?: string[];
   requested_phase?: string;
   status: 'new' | 'interpreted' | 'in_progress' | 'closed';
+  business_id?: string | null;
   created_at: string;
 }
 
@@ -54,6 +55,7 @@ export interface CEOInterpretation {
   success_criteria: string[];
   risk_level: RiskLevel;
   approval_required: boolean;
+  business_id?: string | null;
   created_at: string;
 }
 
@@ -72,6 +74,7 @@ export interface AgentTask {
   source_ref?: string;
   blocker?: string;
   due_at?: string;
+  business_id?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -114,6 +114,178 @@ async function approvalQueue(ctx: MonitorContext) {
   };
 }
 
+async function projectTimeline(ctx: MonitorContext) {
+  const db = ctx.db || (ctx as any).app?.db;
+  const rawQuery = (ctx as any).request?.query ?? (ctx as any).query ?? {};
+  const rawId = String(rawQuery['business_id'] ?? '').trim();
+
+  // 'common', empty string, or absent → company-wide (business_id IS NULL)
+  const isCommon = !rawId || rawId === 'common';
+
+  const taskWhereClause = isCommon
+    ? `WHERE business_id IS NULL`
+    : `WHERE business_id = :business_id`;
+
+  const handoffWhereClause = isCommon
+    ? `WHERE task_id IN (SELECT id FROM agent_tasks WHERE business_id IS NULL)`
+    : `WHERE task_id IN (SELECT id FROM agent_tasks WHERE business_id = :business_id)`;
+
+  const replacements = isCommon ? {} : { business_id: rawId };
+
+  const agentTasksRaw: TaskRecord[] = await db.sequelize.query(
+    `SELECT id, assigned_agent, title, status, risk_level, phase, source_ref, business_id, updated_at, created_at, approval_required
+     FROM agent_tasks
+     ${taskWhereClause}
+     ORDER BY updated_at DESC
+     LIMIT 50`,
+    {
+      replacements,
+      type: db.sequelize.QueryTypes.SELECT,
+    }
+  );
+
+  let handoffsRaw: TaskRecord[] = [];
+  try {
+    handoffsRaw = await db.sequelize.query(
+      `SELECT id, from_agent, to_agent, task_id, what_was_completed AS note, created_at
+       FROM agent_handoffs
+       ${handoffWhereClause}
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      {
+        replacements,
+        type: db.sequelize.QueryTypes.SELECT,
+      }
+    );
+  } catch {
+    // agent_handoffs table may not exist yet
+    handoffsRaw = [];
+  }
+
+  // Derive open items from task statuses
+  const openItems = agentTasksRaw
+    .filter((t) => ['needs_review', 'blocked'].includes(t['status'] as string) ||
+      (t['approval_required'] && t['status'] !== 'done' && t['status'] !== 'killed'))
+    .map((t) => ({
+      kind: t['status'] === 'blocked'
+        ? 'blocked'
+        : t['approval_required'] && t['status'] !== 'done'
+          ? 'pending_approval'
+          : 'needs_review',
+      task_id: String(t['id']),
+      note: t['blocker'] as string | undefined ?? undefined,
+    })) as Array<{ kind: 'needs_review' | 'blocked' | 'pending_approval'; task_id: string; note?: string }>;
+
+  // Derive decisions from tasks whose source_ref contains 'judge' or title indicates a decision verdict
+  const decisions = agentTasksRaw
+    .filter((t) => {
+      const ref = String(t['source_ref'] ?? '');
+      const title = String(t['title'] ?? '');
+      return ref.includes('judge') || title.toLowerCase().includes('decision') || title.toLowerCase().includes('verdict');
+    })
+    .map((t) => ({
+      task_id: String(t['id']),
+      verdict: t['status'] as string,
+      rationale: '', // rationale intentionally omitted — may contain PII
+      at: String(t['updated_at'] ?? t['created_at'] ?? ''),
+    }));
+
+  ctx.body = {
+    ok: true,
+    data: {
+      agentTasks: agentTasksRaw.map((t) => ({
+        task_id: String(t['id']),
+        agent: t['assigned_agent'],
+        title: t['title'],
+        status: t['status'],
+        risk_level: t['risk_level'] ?? null,
+        phase: t['phase'] ?? null,
+        source_ref: t['source_ref'] ?? null,
+        updated_at: t['updated_at'] ?? t['created_at'] ?? null,
+      })),
+      handoffs: handoffsRaw.map((h) => ({
+        id: String(h['id']),
+        from_agent: h['from_agent'],
+        to_agent: h['to_agent'],
+        task_id: String(h['task_id']),
+        note: h['note'] ?? null,
+        created_at: h['created_at'] ?? null,
+      })),
+      openItems,
+      decisions,
+    },
+  };
+}
+
+// roadmap:list — phase roadmap for one business (or company-wide when business_id is NULL).
+// Maps agent_tasks → RoadmapItem the founder-ui RoadmapMiniCard expects.
+async function roadmapList(ctx: MonitorContext) {
+  const db = ctx.db || (ctx as any).app?.db;
+  const rawQuery = (ctx as any).request?.query ?? (ctx as any).query ?? {};
+  const rawId = String(rawQuery['business_id'] ?? '').trim();
+  const isCommon = !rawId || rawId === 'common';
+
+  const whereClause = isCommon ? `WHERE business_id IS NULL` : `WHERE business_id = :business_id`;
+  const replacements = isCommon ? {} : { business_id: rawId };
+
+  const rows: TaskRecord[] = await db.sequelize.query(
+    `SELECT id, title, status, phase, business_id, updated_at, created_at
+     FROM agent_tasks
+     ${whereClause}
+     ORDER BY updated_at DESC
+     LIMIT 50`,
+    { replacements, type: db.sequelize.QueryTypes.SELECT }
+  );
+
+  ctx.body = {
+    ok: true,
+    data: rows.map((t) => ({
+      id: String(t['id']),
+      title: t['title'],
+      status: t['status'],
+      phase: t['phase'] ?? null,
+      // agent_tasks carries no priority/due_date columns yet — null until modeled.
+      priority: null,
+      due_date: null,
+      business_id: (t['business_id'] as string | null) ?? null,
+    })),
+  };
+}
+
+// discovery:today — surfaces the self-learning cron's "오늘의 발견" record.
+// The record is company-wide (model/tool changelog), so business_id is always null.
+// Reads the hermes-runtime discovery JSON; missing file → empty (graceful).
+async function discoveryToday(ctx: MonitorContext) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('fs') as typeof import('fs');
+  // L5_DISCOVERY_PATH wins; else resolve from cwd (NocoBase runs from apps/nocobase-app → repo root is ../..).
+  const discoveryPath =
+    process.env.L5_DISCOVERY_PATH ??
+    path.resolve(process.cwd(), '../../services/hermes-runtime/.omc/state/todays-discovery.json');
+
+  let data: Array<{ id: string; summary: string; source: string | null; created_at: string; business_id: string | null }> = [];
+  try {
+    const raw = fs.readFileSync(discoveryPath, 'utf-8');
+    const record = JSON.parse(raw) as {
+      date?: string;
+      generated_at?: string;
+      new_entries?: Array<{ source?: string; label?: string; fetched_at?: string; content_preview?: string }>;
+    };
+    data = (record.new_entries ?? []).map((e, i) => ({
+      id: `${record.date ?? 'today'}:${e.source ?? i}`,
+      summary: (e.content_preview ?? '').slice(0, 280),
+      source: e.label ?? e.source ?? null,
+      created_at: e.fetched_at ?? record.generated_at ?? '',
+      business_id: null,
+    }));
+  } catch {
+    // No discovery file yet (self-learning hasn't run) → empty banner.
+    data = [];
+  }
+
+  ctx.body = { ok: true, data };
+}
+
 async function toolRequests(ctx: MonitorContext) {
   const db = ctx.db || ctx.app.db;
   const { status } = requestValues(ctx) as { status?: string };
@@ -356,6 +528,20 @@ async function requestTransition(ctx: MonitorContext) {
   ctx.body = { ok: result.ok, data: result };
 }
 
+async function ensureBusinessIdIndex(db: any) {
+  const dialect = db.sequelize?.getDialect?.();
+  if (dialect === 'sqlite') return;
+
+  try {
+    await db.sequelize.query(
+      `CREATE INDEX IF NOT EXISTS idx_agent_tasks_business_id ON agent_tasks (business_id);`
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure agent_tasks business_id index: ${message}`);
+  }
+}
+
 function registerHermesResource(app: any, db: any) {
   app.resourcer.define({
     name: 'hermes',
@@ -482,6 +668,7 @@ export default class PluginExecutiveMonitorServer extends Plugin {
   async load() {
     this.app.logger.info('PluginExecutiveMonitorServer loaded');
     registerFounderMemoryCollection(this.db);
+    await ensureBusinessIdIndex(this.db);
     startHermesScheduler(this.db, this.app.logger);
 
     this.app.resourcer.define({
@@ -523,6 +710,30 @@ export default class PluginExecutiveMonitorServer extends Plugin {
           await toolRequests(ctx);
           await next();
         },
+        projectTimeline: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await projectTimeline(ctx);
+          await next();
+        },
+      },
+    });
+
+    this.app.resourcer.define({
+      name: 'roadmap',
+      actions: {
+        list: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await roadmapList(ctx);
+          await next();
+        },
+      },
+    });
+
+    this.app.resourcer.define({
+      name: 'discovery',
+      actions: {
+        today: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await discoveryToday(ctx);
+          await next();
+        },
       },
     });
 
@@ -558,7 +769,10 @@ export default class PluginExecutiveMonitorServer extends Plugin {
       'saveMemory',
       'discardMemory',
       'toolRequests',
+      'projectTimeline',
     ], 'loggedIn');
+    this.app.acl.allow('roadmap', ['list'], 'loggedIn');
+    this.app.acl.allow('discovery', ['today'], 'loggedIn');
     this.app.acl.allow('bpr', ['currentPhase', 'requestTransition', 'transitionSummary'], 'loggedIn');
 
     registerHermesResource(this.app, this.db);

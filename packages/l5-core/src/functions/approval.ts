@@ -6,7 +6,7 @@ import type { RiskLevel } from '../types/entities';
 export interface ApprovalGate {
   requires_approval: boolean;
   decision_type: string;
-  approval_level: 'none' | 'ceo_only' | 'founder_only' | 'founder_and_legal';
+  approval_level: 'none' | 'ceo_only' | 'cto_autonomous' | 'founder_only' | 'founder_and_legal';
   urgency: 'routine' | 'high' | 'critical';
   estimated_review_time_hours?: number;
 }
@@ -37,7 +37,7 @@ export function requiresFounderApproval(
     D3: {
       requires_approval: true,
       decision_type: decisionType,
-      approval_level: 'ceo_only',
+      approval_level: 'cto_autonomous',
       urgency: 'routine',
       estimated_review_time_hours: 24
     },

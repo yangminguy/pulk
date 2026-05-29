@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.l5.hermes.project-status-sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE_PATH__</string>
+    <string>__HERMES_DIR__/dist/tasks/project-status-sync.runner.js</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>900</integer>
+  <key>WorkingDirectory</key>
+  <string>__HERMES_DIR__</string>
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/project-status-sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/project-status-sync.err</string>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <key>PATH</key>
+    <string>__PATH__</string>
+    <key>L5_BASE_URL</key>
+    <string>__L5_BASE_URL__</string>
+    <key>L5_ADMIN_TOKEN</key>
+    <string>__L5_ADMIN_TOKEN__</string>
+    <key>ACR_BASE_URL</key>
+    <string>__ACR_BASE_URL__</string>
+  </dict>
+</dict>
+</plist>

@@ -175,10 +175,21 @@ export async function submitChatInstruction(ctx: Context, next: Next) {
     values: instruction,
   });
 
+  const savedMemories: any[] = await ctx.db
+    .getRepository('founder_memory')
+    .find({ filter: { approval_status: 'saved' }, sort: ['-createdAt'], limit: 10 })
+    .catch(() => []);
+  const memories = savedMemories.map((m: any) => ({
+    insight: m.insight as string,
+    workflow_improvement: m.workflow_improvement as string | undefined,
+    phase: m.phase as string | undefined,
+  }));
+
   const interpretationDraft = await interpretFounderInstruction(instruction, {
     llm: buildLLMClient(raw_text),
     now: () => new Date(now),
     idGenerator: randomUUID,
+    memories: memories.length > 0 ? memories : undefined,
   });
 
   const interpretation: CEOInterpretation = {
@@ -195,8 +206,9 @@ export async function submitChatInstruction(ctx: Context, next: Next) {
     values: { status: 'interpreted' },
   });
 
-  const workstreams = decomposeIntoWorkstreams(interpretation, {
+  const workstreams = await decomposeIntoWorkstreams(interpretation, {
     idGenerator: () => randomUUID(),
+    llm: buildLLMClient(raw_text),
   });
   const tasks = assignExecutiveTasks(workstreams, {
     now: () => new Date(now),

@@ -1,9 +1,12 @@
 import type { LLMClient } from './types';
+import { createClaudeCLIClient } from '../../llm/claude-cli-client';
 
 export interface OpenAIClientOptions {
   apiKey: string;
   model?: string;
 }
+
+export type LLMRole = 'cto-design' | 'cto-verify' | 'default';
 
 interface OpenAIResponse {
   choices: Array<{ message: { content: string | null } }>;
@@ -44,3 +47,27 @@ export function createOpenAIClient(opts: OpenAIClientOptions): LLMClient {
 // Legacy alias — keeps existing imports working
 export const createAnthropicClient = createOpenAIClient;
 export type AnthropicClientOptions = OpenAIClientOptions;
+
+// Factory that picks the appropriate backend based on the L5_LLM_BACKEND env var.
+// Defaults to claude-cli; falls back to OpenAI when explicitly requested.
+// Role determines model tier for claude-cli (cto-design -> opus, others -> haiku).
+export function createDefaultLLMClient(role: LLMRole): LLMClient {
+  const backend = process.env.L5_LLM_BACKEND ?? 'claude-cli';
+
+  if (backend === 'openai') {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        'createDefaultLLMClient: L5_LLM_BACKEND=openai but OPENAI_API_KEY is not set',
+      );
+    }
+    return createOpenAIClient({ apiKey, model: 'gpt-4o' });
+  }
+
+  // Default: claude-cli.
+  if (role === 'cto-design') {
+    return createClaudeCLIClient({ model: 'opus' });
+  }
+  // cto-verify and default both use haiku.
+  return createClaudeCLIClient({ model: 'haiku' });
+}

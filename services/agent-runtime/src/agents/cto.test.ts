@@ -1,0 +1,193 @@
+import { runCTOAgent } from './cto.js';
+import type { LLMClient } from '@l5/core';
+
+type Complete = LLMClient['complete'];
+
+function makeLLM(responses: Array<string | Error | null>): LLMClient {
+  let i = 0;
+  const complete: Complete = async () => {
+    const r = responses[i++];
+    if (r instanceof Error) throw r;
+    if (r === null) throw new Error('null response');
+    return r;
+  };
+  return { complete };
+}
+
+const TASK = {
+  id: 't-1',
+  title: 'Add login validation',
+  rationale: 'Prevent malformed payloads from crashing the API',
+  expected_output: 'Validated login endpoint',
+};
+
+// FEATURE class: research → spec → test → implement → review → commit (6 phases)
+const VALID_LLM_PHASES = {
+  task_class: 'FEATURE',
+  phases: [
+    {
+      kind: 'research',
+      name: '오픈소스 조사',
+      runtime: 'claude',
+      read_only: true,
+      acceptance_criteria: ['후보 비교표', '채택 근거'],
+      verifier_hint: '비교표 확인',
+      prompt_packet: 'research libs',
+      expected_output: 'comparison table',
+      risk_level: 'D1',
+    },
+    {
+      kind: 'spec',
+      name: '스펙 작성',
+      runtime: 'claude',
+      read_only: true,
+      dependsOn: ['research'],
+      acceptance_criteria: ['요구사항 명세', '측정 가능한 criteria', '영향 파일 목록'],
+      verifier_hint: 'spec 산출물 존재 확인',
+      prompt_packet: 'write spec',
+      expected_output: 'spec doc',
+      risk_level: 'D1',
+    },
+    {
+      kind: 'test',
+      name: '실패 테스트',
+      runtime: 'codex',
+      read_only: false,
+      dependsOn: ['spec'],
+      acceptance_criteria: ['실패 테스트 추가', 'red 확인'],
+      verifier_hint: '신규 테스트 fail 확인',
+      prompt_packet: 'write failing test',
+      expected_output: 'red test',
+      risk_level: 'D2',
+    },
+    {
+      kind: 'implement',
+      name: '구현',
+      runtime: 'codex',
+      read_only: false,
+      dependsOn: ['test'],
+      acceptance_criteria: ['테스트 pass', '회귀 없음'],
+      verifier_hint: 'pnpm test green',
+      prompt_packet: 'implement',
+      expected_output: 'code',
+      risk_level: 'D2',
+    },
+    {
+      kind: 'review',
+      name: '리뷰',
+      runtime: 'claude',
+      read_only: true,
+      dependsOn: ['implement'],
+      acceptance_criteria: ['LGTM 또는 fix list'],
+      verifier_hint: '리뷰 코멘트 명시',
+      prompt_packet: 'review diff',
+      expected_output: 'review',
+      risk_level: 'D1',
+    },
+    {
+      kind: 'commit',
+      name: '커밋',
+      runtime: 'claude',
+      read_only: false,
+      dependsOn: ['review'],
+      acceptance_criteria: ['atomic commit 메시지', '1개 commit 추가'],
+      verifier_hint: 'git log 1개 commit',
+      prompt_packet: 'commit',
+      expected_output: 'commit sha',
+      risk_level: 'D2',
+    },
+  ],
+};
+
+// Silence ACR network warnings during tests.
+const ORIG_FETCH = global.fetch;
+beforeAll(() => {
+  global.fetch = (async () =>
+    new Response(JSON.stringify({ ok: true }), { status: 200 })) as typeof fetch;
+});
+afterAll(() => {
+  global.fetch = ORIG_FETCH;
+});
+
+describe('runCTOAgent — dev workflow SOP enforcement', () => {
+  it('uses the LLM phases when the response is a valid FEATURE SOP (6 stages)', async () => {
+    const llm = makeLLM([JSON.stringify(VALID_LLM_PHASES)]);
+
+    const out = await runCTOAgent({ task: TASK }, { llm });
+
+    expect(out.clarifying_questions).toBeUndefined();
+    expect(out.acr_intent.phases).toHaveLength(6);
+    expect(out.acr_intent.phases.map((p) => p.name)).toEqual([
+      '오픈소스 조사',
+      '스펙 작성',
+      '실패 테스트',
+      '구현',
+      '리뷰',
+      '커밋',
+    ]);
+  });
+
+  it('retries once when the LLM returns only 4 phases, then falls back to deterministic FEATURE SOP', async () => {
+    const fourPhase = { task_class: 'FEATURE', phases: VALID_LLM_PHASES.phases.slice(0, 4) };
+    const llm = makeLLM([JSON.stringify(fourPhase), JSON.stringify(fourPhase)]);
+
+    const out = await runCTOAgent({ task: TASK }, { llm });
+
+    // Deterministic FEATURE fallback returns 6 phases.
+    expect(out.acr_intent.phases).toHaveLength(6);
+    expect(out.acr_intent.phases.map((p) => p.name)).toEqual([
+      '오픈소스 조사',
+      '스펙 작성',
+      '실패 테스트 작성',
+      '구현',
+      '리뷰',
+      '커밋',
+    ]);
+  });
+
+  it('falls back to deterministic SOP when the LLM throws', async () => {
+    const llm = makeLLM([new Error('network down')]);
+
+    const out = await runCTOAgent({ task: TASK }, { llm });
+
+    // TASK title "Add login validation" → FEATURE (6 phases)
+    expect(out.acr_intent.phases).toHaveLength(6);
+    expect(out.acr_intent.phases[0]!.name).toBe('오픈소스 조사');
+    expect(out.acr_intent.phases[5]!.name).toBe('커밋');
+  });
+
+  it('falls back to deterministic SOP when no LLM is available', async () => {
+    const out = await runCTOAgent({ task: TASK }, { llm: null });
+
+    // TASK title "Add login validation" → FEATURE (6 phases)
+    expect(out.acr_intent.phases).toHaveLength(6);
+    expect(out.acr_intent.phases.map((p) => p.runtime)).toEqual([
+      'claude', // research
+      'claude', // spec
+      'codex',  // test
+      'codex',  // implement
+      'claude', // review
+      'claude', // commit
+    ]);
+  });
+
+  it('surfaces clarifying_questions when the LLM returns them and skips ACR dispatch path', async () => {
+    const llm = makeLLM([
+      JSON.stringify({
+        clarifying_questions: [
+          '로그인은 OAuth 인가요, 자체 인증인가요?',
+          '에러 응답 포맷은 무엇인가요?',
+        ],
+      }),
+    ]);
+
+    const out = await runCTOAgent({ task: TASK }, { llm });
+
+    expect(out.clarifying_questions).toEqual([
+      '로그인은 OAuth 인가요, 자체 인증인가요?',
+      '에러 응답 포맷은 무엇인가요?',
+    ]);
+    expect(out.requires_founder_approval).toBe(true);
+    expect(out.decision).toMatch(/clarification/);
+  });
+});

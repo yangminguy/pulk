@@ -52,6 +52,8 @@ export interface ACRProjectRegistration {
   title: string;
   one_liner: string;
   l5_business_id: string;
+  /** Optional absolute path to the project on the host filesystem. */
+  project_path?: string;
 }
 
 export async function registerACRProject(
@@ -66,5 +68,47 @@ export async function registerACRProject(
   } catch (err) {
     console.warn("[ACR] project registration failed:", err);
     return { acr_project_id: null };
+  }
+}
+
+export interface ACRProject {
+  id: string;
+  title?: string;
+  one_liner?: string;
+  l5_business_id?: string;
+}
+
+export interface ACRFeaturePlan {
+  plan_id?: string;
+  phases?: Array<{
+    name: string;
+    runtime?: string;
+    status: "todo" | "running" | "done" | "failed" | "planned" | "in_progress";
+    updated_at?: string;
+  }>;
+}
+
+/** GET /api/projects/<projectId> */
+export async function getProject(projectId: string): Promise<ACRProject | null> {
+  try {
+    return await acrFetch(`/api/projects/${projectId}`);
+  } catch (err) {
+    console.warn(`[ACR] getProject(${projectId}) failed:`, err);
+    return null;
+  }
+}
+
+/** GET /api/feature-plans?projectId=<projectId> — returns first plan or null */
+export async function getFeaturePlans(projectId: string): Promise<ACRFeaturePlan | null> {
+  try {
+    const data = await acrFetch(`/api/feature-plans?projectId=${encodeURIComponent(projectId)}`);
+    // ACR may return an array or a single object
+    if (Array.isArray(data)) {
+      return data[0] ?? null;
+    }
+    return data ?? null;
+  } catch (err) {
+    console.warn(`[ACR] getFeaturePlans(${projectId}) failed:`, err);
+    return null;
   }
 }

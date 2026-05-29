@@ -19,3 +19,8 @@ export * from './functions/memory';
 export * from './functions/repetition-detection';
 export * from './functions/cto-verification';
 export * from './functions/cto-clarification';
+export * from './functions/cto-decision';
+export * from './functions/cto-design';
+export * from './functions/project-status/builder';
+export { createClaudeCLIClient } from './llm/claude-cli-client';
+export type { ClaudeCLIModel, ClaudeCLIClientOptions } from './llm/claude-cli-client';

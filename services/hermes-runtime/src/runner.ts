@@ -1,18 +1,26 @@
 // Hermes Runner — wires pure task functions to real NocoBase data.
-// Call these functions from Trigger.dev tasks, cron jobs, or HTTP triggers.
+// Call these functions from cron jobs or HTTP triggers.
 
 import { randomUUID } from "crypto";
 import {
   fetchAgentTasks,
   fetchPendingApprovalTasks,
+  fetchQueuedTasks,
+  fetchBusinessRepoPaths,
   createAgentTask,
   updateAgentTask,
 } from "./api/nocobase-client.js";
 import { runRepetitionAnalyzer } from "./tasks/repetition-analyzer.js";
 import { runApprovalChecker } from "./tasks/approval-checker.js";
+import { runDailyBriefGenerator } from "./tasks/daily-brief-generator.js";
 import { runStalledTaskDetector } from "./tasks/stalled-task-detector.js";
 import { runCTOPhaseReview } from "./tasks/cto-phase-review.js";
+import { runTaskDispatcher } from "./tasks/task-dispatcher.js";
+import { runCTOVerificationLoop } from "./tasks/cto-verification-loop.js";
+import { runModelVerify } from "./tasks/model-verify.js";
+import { runSelfLearning } from "./tasks/self-learning.js";
 import type { DailyApprovalBrief } from "./tasks/approval-checker.js";
+import type { DailyBrief } from "./tasks/daily-brief-generator.js";
 
 const NOCOBASE_URL = process.env.NOCOBASE_URL ?? "http://localhost:13000";
 
@@ -65,6 +73,42 @@ export async function runCTOPhaseReviewLive() {
   });
 }
 
+export async function runDailyBriefGeneratorLive() {
+  const tasks = await fetchAgentTasks();
+  return runDailyBriefGenerator(tasks, async (brief: DailyBrief) => {
+    console.log("[Hermes] Daily brief:", JSON.stringify(brief, null, 2));
+    return true;
+  });
+}
+
+export async function runTaskDispatcherLive() {
+  const tasks = await fetchQueuedTasks();
+  // Resolve each task's dispatch cwd from the business→repo mapping. Tasks with a
+  // business_id whose business has repo_path set run in that repo; everything else
+  // falls back to L5_DEFAULT_PROJECT_PATH (sandbox) via the CTO agent's resolveProjectPath.
+  let repoPaths: Record<string, string> = {};
+  try {
+    repoPaths = await fetchBusinessRepoPaths();
+  } catch (err) {
+    console.warn("[Dispatcher] business repo_path lookup failed — using sandbox fallback:", (err as Error).message);
+  }
+  const enriched = tasks.map((t) => {
+    const bizId = (t as { business_id?: string | null }).business_id;
+    const repo = bizId != null ? repoPaths[String(bizId)] : undefined;
+    return repo ? { ...t, project_path: repo } : t;
+  });
+  return runTaskDispatcher(enriched, async (id, updates) => {
+    await updateAgentTask(id, updates as any);
+  });
+}
+
+export async function runCTOVerificationLoopLive() {
+  const tasks = await fetchAgentTasks();
+  return runCTOVerificationLoop(tasks, async (id, updates) => {
+    await updateAgentTask(id, updates as any);
+  });
+}
+
 // D3 태스크 24h 자동 승인 처리 - approval-checker가 감지한 만료 항목을 실제 DB에 반영
 export async function syncD3AutoApprovals() {
   const tasks = await fetchPendingApprovalTasks();
@@ -90,4 +134,12 @@ export async function syncD3AutoApprovals() {
   }
 
   return { synced_at: now.toISOString(), auto_approved_count: count };
+}
+
+export async function runModelVerifyLive() {
+  return runModelVerify();
+}
+
+export async function runSelfLearningLive() {
+  return runSelfLearning();
 }

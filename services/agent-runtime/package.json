@@ -20,7 +20,10 @@
   "author": "L5 Team",
   "license": "AGPL-3.0-or-later",
   "dependencies": {
-    "@l5/core": "workspace:*"
+    "@l5/core": "workspace:*",
+    "@mastra/core": "^1.37.1",
+    "@ai-sdk/openai": "^3.0.66",
+    "zod": "^3.22.0"
   },
   "devDependencies": {
     "typescript": "catalog:",

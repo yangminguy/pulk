@@ -84,7 +84,7 @@ export const BusinessPortfolioPage = () => {
   const handleCreateBusiness = async (record: any) => {
     try {
       // Typically we'd request approval first or create the business directly
-      await api.resource('businesses').create({
+      const created: any = await api.resource('businesses').create({
         values: {
           title: record.title,
           one_liner: record.raw_description,
@@ -98,6 +98,20 @@ export const BusinessPortfolioPage = () => {
         filterByTk: String(record.id),
         values: { status: 'business_created' },
       });
+
+      const businessId = created?.data?.data?.id ?? created?.data?.id;
+      if (businessId) {
+        api.resource('l5').acrRegister({
+          values: {
+            business_id: businessId,
+            title: record.title,
+            one_liner: record.raw_description,
+          },
+        }).catch((err: any) => {
+          console.warn('[BusinessPortfolio] ACR register failed (non-blocking):', err?.message ?? err);
+        });
+      }
+
       message.success('Business created successfully');
       fetchIdeas();
     } catch (e) {

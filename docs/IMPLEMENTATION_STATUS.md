@@ -1,5 +1,23 @@
 # Implementation Status Matrix — L5 Business OS MVP (May 27, 2026)
 
+## Phase 15 Addendum — 2026-05-28 (CTO 프로젝트 부트스트랩)
+
+| Area | State |
+|------|-------|
+| ACR `POST /api/projects` 라우트 | ✅ 신규 (`app/api/projects/route.ts`, 멱등 upsert + 위험 경로 차단) |
+| ACR docs ingestion | ✅ 신규 (`lib/ingestion/project-docs-ingestor.ts`, AGENTS/CLAUDE/README + docs/*.md, fire-and-forget) |
+| ACR `workbench/dispatch` project auto-create | ✅ `project_path` 있고 project 없을 때 dispatch 시점 자동 등록 |
+| L5 CTO `bootstrapProjectIfMissing()` | ✅ `services/agent-runtime/src/agents/cto.ts`, `L5_DEFAULT_PROJECT_PATH` fallback |
+| L5 CTO payload `project_path` 동봉 | ✅ `resolveProjectPath()` → ACR `/api/projects` 페이로드 + dispatch 양쪽 |
+| NocoBase 비즈니스 생성 → ACR register | ✅ `plugin-business-portfolio` `acrRegister` 서버 액션 + 클라이언트 비차단 호출 |
+| `services/hermes-runtime/src/api/acr-client.ts` 타입 확장 | ✅ `ACRProjectRegistration.project_path?` 추가 |
+| ACR 신규 테스트 (`projects-register.test.ts`) | ✅ 8/8 PASS |
+| ACR auto-dispatcher 회귀 | ✅ 4/4 PASS |
+| ACR 전체 회귀 | 🟡 41/42 suites PASS (사전 존재 qa-fixes-phase11 missing-doc 1건 Phase 15 무관) |
+| L5 `pnpm -r typecheck` | ✅ l5-core/founder-ui/agent-runtime/hermes-runtime 전체 통과 |
+| L5 `@l5/core` 테스트 | ✅ 174/174 PASS |
+| 라이브 E2E | ⏳ NocoBase + ACR 동시 기동 후 비즈니스 생성 + D2 CTO dispatch 실측 대기 |
+
 ## Current Status Addendum — May 27, 2026
 
 This file contains earlier status snapshots below. The current verified state is:

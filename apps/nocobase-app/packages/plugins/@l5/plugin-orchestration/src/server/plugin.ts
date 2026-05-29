@@ -55,8 +55,12 @@ export default class PluginOrchestrationServer extends Plugin {
     registerChatResource(this.app, this.db);
     registerCrudResources(this.app);
 
-    this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow', 'approvePlan'], 'loggedIn');
-    this.app.acl.allow('agent', ['executeTask', 'taskCallback'], 'loggedIn');
+    this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow', 'approvePlan', 'rejectPlan'], 'loggedIn');
+    this.app.acl.allow('agent', ['executeTask'], 'loggedIn');
+    // taskCallback is a machine-to-machine callback from ACR (non-interactive,
+    // long-running). Public ACL + non-expiring shared-secret guard in the handler
+    // avoids the ~17h JWT expiry that would break unattended cycle completion.
+    this.app.acl.allow('agent', ['taskCallback'], 'public');
     this.app.acl.allow('acr', ['approvalCallback'], 'loggedIn');
     this.app.acl.allow('founder_instructions', '*', 'loggedIn');
     this.app.acl.allow('ceo_interpretations', '*', 'loggedIn');
@@ -80,11 +84,32 @@ async function ensureOrchestrationColumns(db: any) {
         ADD COLUMN IF NOT EXISTS risk_level text,
         ADD COLUMN IF NOT EXISTS phase text,
         ADD COLUMN IF NOT EXISTS source_ref text,
-        ADD COLUMN IF NOT EXISTS acr_token text;
+        ADD COLUMN IF NOT EXISTS acr_token text,
+        ADD COLUMN IF NOT EXISTS business_id text;
     `);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     db.logger?.warn?.(`Could not ensure agent_tasks contract columns: ${message}`);
+  }
+
+  try {
+    await db.sequelize.query(`
+      ALTER TABLE IF EXISTS founder_instructions
+        ADD COLUMN IF NOT EXISTS business_id text;
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure founder_instructions contract columns: ${message}`);
+  }
+
+  try {
+    await db.sequelize.query(`
+      ALTER TABLE IF EXISTS ceo_interpretations
+        ADD COLUMN IF NOT EXISTS business_id text;
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure ceo_interpretations contract columns: ${message}`);
   }
 }
 
@@ -100,6 +125,7 @@ function registerCollections(db: any) {
       { name: 'constraints', type: 'json', defaultValue: [] },
       { name: 'requested_phase', type: 'string' },
       { name: 'status', type: 'string', allowNull: false, defaultValue: 'new' },
+      { name: 'business_id', type: 'string' },
     ],
   }));
 
@@ -115,6 +141,7 @@ function registerCollections(db: any) {
       { name: 'success_criteria', type: 'json', defaultValue: [] },
       { name: 'risk_level', type: 'string', allowNull: false, defaultValue: 'D1' },
       { name: 'approval_required', type: 'boolean', defaultValue: false },
+      { name: 'business_id', type: 'string' },
     ],
   }));
 
@@ -137,6 +164,7 @@ function registerCollections(db: any) {
       { name: 'blocker', type: 'text' },
       { name: 'due_at', type: 'date' },
       { name: 'acr_token', type: 'string' },
+      { name: 'business_id', type: 'string' },
     ],
   }));
 
@@ -169,6 +197,22 @@ function registerChatResource(app: any, db: any) {
         const taskRepo = db.getRepository('agent_tasks');
         const now = new Date().toISOString();
 
+        // Fetch active businesses for business_id inference.
+        let activeBusinesses: { id: string; name: string; one_liner?: string }[] = [];
+        try {
+          const bizRepo = db.getRepository('businesses');
+          if (bizRepo) {
+            const rows = await bizRepo.find({ filter: { status: { $ne: 'deleted' } } });
+            activeBusinesses = (rows ?? []).map((b: any) => ({
+              id: String(b.id),
+              name: String(b.title ?? b.name ?? b.id),
+              one_liner: b.one_liner ?? undefined,
+            }));
+          }
+        } catch {
+          // plugin-business-portfolio may not be loaded in all envs — safe to skip
+        }
+
         const instruction = {
           id: randomUUID(),
           raw_text,
@@ -186,14 +230,49 @@ function registerChatResource(app: any, db: any) {
           llm,
           now: () => new Date(now),
           idGenerator: randomUUID,
+          activeBusinesses,
         });
-        const interpretation = { ...interpretationDraft, id: randomUUID() };
+
+        const {
+          needs_business_clarification,
+          business_clarification_question,
+          new_business_proposal,
+          business_id,
+          ...interpCore
+        } = interpretationDraft as any;
+
+        const interpretation = { ...interpCore, id: randomUUID(), business_id: business_id ?? null };
         const interpretationRecord = await interpretationRepo.create({ values: interpretation });
 
         await instructionRepo.update({
           filter: { id: instruction.id },
-          values: { status: 'interpreted' },
+          values: { status: 'interpreted', business_id: business_id ?? null },
         });
+
+        // instructionRecord is the pre-update reference; reflect the persisted
+        // status/business_id in the response so clients don't see stale nulls.
+        const instructionOut = {
+          ...((instructionRecord as any).toJSON?.() ?? instructionRecord),
+          status: 'interpreted',
+          business_id: business_id ?? null,
+        };
+
+        // Ambiguous business: save records but stop task creation, return clarification question.
+        if (needs_business_clarification) {
+          ctx.body = {
+            ok: true,
+            data: {
+              instruction: instructionOut,
+              interpretation: interpretationRecord,
+              needs_business_clarification: true,
+              business_clarification_question: business_clarification_question ?? null,
+              tasks: [],
+              ...(new_business_proposal ? { new_business_proposal } : {}),
+            },
+          };
+          await next();
+          return;
+        }
 
         const workstreams = await decomposeIntoWorkstreams(interpretation, {
           idGenerator: () => randomUUID(),
@@ -206,15 +285,16 @@ function registerChatResource(app: any, db: any) {
 
         const taskRecords = [];
         for (const task of tasks) {
-          taskRecords.push(await taskRepo.create({ values: task }));
+          taskRecords.push(await taskRepo.create({ values: { ...task, business_id: business_id ?? null } }));
         }
 
         ctx.body = {
           ok: true,
           data: {
-            instruction: instructionRecord,
+            instruction: instructionOut,
             interpretation: interpretationRecord,
             tasks: taskRecords,
+            ...(new_business_proposal ? { new_business_proposal } : {}),
             monitor_paths: {
               current_tasks: '/api/monitor:currentTasks',
               approval_queue: '/api/monitor:approvalQueue',
@@ -252,14 +332,37 @@ function registerChatResource(app: any, db: any) {
 
         let approved_count = 0;
         for (const task of tasks) {
+          // Approving clears the approval gate so the Hermes dispatcher
+          // (status=queued AND approval_required=false) can pick the task up.
           await taskRepo.update({
             filterByTk: task.id,
-            values: { status: 'queued' },
+            values: { approval_required: false },
           });
           approved_count++;
         }
 
         ctx.body = { ok: true, data: { instruction_id, approved_count } };
+        await next();
+      },
+      rejectPlan: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const { instruction_id } = getValues(ctx);
+        if (!instruction_id) ctx.throw(400, 'instruction_id is required');
+
+        const taskRepo = ctx.db.getRepository('agent_tasks');
+        // Cancel only still-pending tasks; never touch already-running/done/killed.
+        const tasks = await taskRepo.find({ filter: { instruction_id, status: 'queued' } });
+
+        let rejected_count = 0;
+        for (const task of tasks) {
+          await taskRepo.update({ filterByTk: task.id, values: { status: 'killed' } });
+          rejected_count++;
+        }
+        await ctx.db.getRepository('founder_instructions').update({
+          filter: { id: instruction_id },
+          values: { status: 'rejected' },
+        });
+
+        ctx.body = { ok: true, data: { instruction_id, rejected_count } };
         await next();
       },
     },
@@ -442,6 +545,16 @@ function registerCrudResources(app: any) {
     name: 'agent',
     actions: {
       taskCallback: async (ctx: ActionContext, next: () => Promise<void>) => {
+        // Machine auth: non-expiring shared secret (set on both ACR and NocoBase).
+        // Public ACL above means NocoBase skips JWT; we enforce the secret here.
+        const expectedSecret = process.env.L5_SHARED_SECRET;
+        if (expectedSecret) {
+          // Koa ctx.get(header) exists at runtime; ActionContext type omits it.
+          const provided = (ctx as any).get('x-l5-shared-secret');
+          if (provided !== expectedSecret) {
+            ctx.throw(401, 'Invalid or missing x-l5-shared-secret');
+          }
+        }
         const {
           l5_task_id,
           phase,
@@ -457,6 +570,10 @@ function registerCrudResources(app: any) {
           questions,
           acr_callback_url,
           new_risk_level,
+          // Phase 2: review & merge outcome fields
+          merge_action,
+          merge_target,
+          pr_url,
         } = getValues(ctx);
         if (!l5_task_id) ctx.throw(400, 'l5_task_id is required');
         if (!status) ctx.throw(400, 'status is required');
@@ -514,8 +631,30 @@ function registerCrudResources(app: any) {
             updates.blocker = `verifier:inconclusive ${verifierVerdict.reason}. ${phaseCtx}`.trim();
           } else {
             updates.status = 'done';
-            if (phaseCtx) updates.blocker = `done. ${phaseCtx}`;
+            // Phase 2: record how the work was merged (or left for review).
+            const mergeNote = merge_action
+              ? ` merge=${merge_action}${merge_target ? `->${merge_target}` : ''}${pr_url ? ` pr=${pr_url}` : ''}`
+              : '';
+            if (phaseCtx || mergeNote) updates.blocker = `done.${mergeNote} ${phaseCtx}`.trim();
+            // Best-effort Telegram notification — never blocks taskCallback response.
+            sendCycleDoneTelegram(task, l5_task_id as string).catch(() => { /* silent */ });
           }
+        } else if (status === 'empty_output') {
+          // Phase 1: agent finished exit 0 but produced no file changes ("empty
+          // branch") after retries. Not a clean success — alert the founder.
+          updates.status = 'needs_review';
+          updates.approval_required = true;
+          updates.blocker = [`empty_output: agent produced no file changes`, output_summary, phaseCtx]
+            .filter(Boolean)
+            .join(' | ');
+        } else if (status === 'merge_conflict') {
+          // Phase 2: clean run but the branch could not be auto-merged into the
+          // base. Surface as a founder review card; the branch is preserved.
+          updates.status = 'needs_review';
+          updates.approval_required = true;
+          updates.blocker = [`merge_conflict${merge_target ? `->${merge_target}` : ''}: manual merge required`, phaseCtx]
+            .filter(Boolean)
+            .join(' | ');
         } else if (status === 'failed') {
           updates.status = 'needs_review';
           updates.approval_required = true;
@@ -644,6 +783,24 @@ function registerCrudResources(app: any) {
         const task = await taskRepo.findOne({ filter: { id: task_id } });
         if (!task) ctx.throw(404, `Task ${task_id} not found`);
 
+        // CTO tasks without approval_required are owned by the Hermes dispatcher
+        // (60s launchd cycle → runCTOAgent → ACR). executeTask must not alter their
+        // status, otherwise the dispatcher will not see them as queued and ACR
+        // dispatch is silently skipped.
+        if (task.assigned_agent === 'CTO' && !task.approval_required) {
+          ctx.body = {
+            ok: true,
+            deferred: true,
+            data: {
+              task_id,
+              status: task.status,
+              message: 'CTO task (approval_required=false) is managed by the Hermes dispatcher. No status change made.',
+            },
+          };
+          await next();
+          return;
+        }
+
         try {
           const result = executeAgentTask(task);
 
@@ -716,6 +873,36 @@ function buildLLMClient(rawText: string) {
   return buildDeterministicLLM(rawText);
 }
 
+// Best-effort Telegram notification for cycle completion.
+// Reads env vars TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, FOUNDER_UI_BASE_URL.
+// Silent skip if env vars are absent.
+async function sendCycleDoneTelegram(task: any, taskId: string): Promise<void> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!botToken || !chatId) return;
+
+  const founderUIBase = process.env.FOUNDER_UI_BASE_URL ?? 'http://localhost:3002';
+  const planTitle = (task.title as string | undefined) ?? taskId;
+  const body = `task_id: ${taskId}`;
+  const link = `${founderUIBase}/`;
+  const text = `ℹ️ *사이클 완료 — ${planTitle}*\n\n${body}\n\n🔗 ${link}`;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+        disable_web_page_preview: false,
+      }),
+    });
+  } catch {
+    // Intentionally silent — notification failure must not affect task state.
+  }
+}
+
 function buildDeterministicLLM(rawText: string) {
   return {
     async complete() {
@@ -741,6 +928,8 @@ function buildDeterministicLLM(rawText: string) {
         ],
         risk_level: risk || finance ? 'D4' : external ? 'D3' : 'D2',
         approval_required: external || risk || finance,
+        business_id: null,
+        needs_business_clarification: false,
       });
     },
   };

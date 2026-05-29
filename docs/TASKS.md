@@ -1,7 +1,16 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-05-28 (Phase 13 완료 — LLM 역할 분류 + 6개 에이전트 실제 OpenAI 실행 + Task Dispatcher). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-05-30 (CTO 로드맵 Phase 1·2 구현). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+
+## CTO 로드맵 진행 (`/tmp/l5-roadmap.html`, ACR repo)
+
+- [x] **Phase 1 — 산출물 확실성**: spawn 타임아웃(`ACR_AGENT_TIMEOUT_MS`) + 재시도(`ACR_MAX_ATTEMPTS`) + 빈 산출물 검증(exit0+변경0 → needs_review/`empty_output`). 구현+테스트 완료, 라이브 반영(ACR rebuild+restart) 대기.
+- [x] **Phase 2 — 검토·병합**: `coordinateMerge` — 원격 있으면 gh PR, 없으면 로컬 `git merge --no-ff`. D3+ 자동병합 금지, 충돌→`merge_conflict` needs_review. 구현+테스트 완료, 라이브 반영 대기.
+- [x] **Phase 3** — 모든 business→repo 연결(`afterCreate`+`afterStart` 백필, `workspace-init.ts`) + 신규 business 작업장 자동 git-init + stale 경로 청소(projects.json 4건 제거 + `isDangerousPath` pulk 보호). 배포+라이브 검증(business-2 자동 생성).
+- [x] **Phase 4** — Founder 콘솔: 2단 레이아웃(채팅 + 상태 패널) + `ApprovalQueueCard`(D3+ 승인). 배포 완료, 브라우저 시각 QA 권장.
+- [ ] **Phase 5** — 배움 루프(인사이트 저장소→다음 기획 참조).
+- [ ] **Phase 6** — 관측·안전(Langfuse 추적, 위험 명령 차단, 비용/장애 모니터).
 
 ## QA 검증 현황 (2026-05-27)
 
@@ -752,3 +761,205 @@ L5 Business OS
 - [x] 라이브 smoke: curl dispatch w/ clarifying_questions → PlanTask 디스크 persist + runner 미호출 확인
 
 **잔여:** ACR 환경변수 `L5_BASE_URL=http://localhost:13000` 설정 후 NocoBase taskCallback 도달 확인.
+
+---
+
+## Phase 19 — CTO 자율 운영 강화: Wave 1 기반 사이클 ✅ (2026-05-29)
+
+**목표:** D2 CTO 태스크를 CEO가 지시 → 승인 후 자율적으로 ACR dispatch → founder_id 기반 다중 비즈니스 운영.
+
+---
+
+## Phase 19 Wave 2 — 실행 인프라 강화 ✅ (2026-05-29 완료)
+
+**목표:** Monitor 재구성, Founder UI 완성, 모델 티어링, 자동 연구, 라이브 전체 E2E 검증.
+
+### 2.1 Plugin-executive-monitor: business_id 기준 모니터 전환 ✅
+
+- [x] `monitor:projectTimeline` 액션 — `source_ref LIKE` → `business_id` 컬럼 필터로 전환
+  - `business_id IS NULL` = 회사 공통, `= 'common'` = 회사 공통 (양쪽 지원)
+  - idx_agent_tasks_business_id 멱등 인덱스 추가
+- [x] SELECT 누락 버그 수정 — `blocker` 컬럼 조회 추가
+- [x] 검증: plugin-executive-monitor tsc 0 errors, 라이브 조회 확인
+
+### 2.2 Founder UI 재구성 (복합 UI 컴포넌트) ✅
+
+- [x] `business-context.tsx` (신규) — BusinessProvider + useBusinessContext() hook
+  - 선택된 business_id를 Context로 전파
+- [x] `TabLayout.tsx` (신규) — 💬채팅 / 📍로드맵 / 📥인박스 3-tab 구조
+  - 탭별 business_id 필터 자동 전달
+- [x] `RoadmapMiniCard.tsx` (신규) — 로드맵 아이템 카드 (단기, 중기, 장기)
+  - business_id 기준 필터링된 tasks 표시
+- [x] `TodayDiscoveryBanner.tsx` (신규) — 오늘의 발견 배너
+  - self-learning.json의 발견 항목 표시
+- [x] Sidebar 재구성 — "활성 사업" 섹션 + "🌐 회사 공통" 섹션
+  - business select 시 Context 업데이트 → 모든 탭 자동 필터
+- [x] 채팅 제출 / 로드맵 조회 / discovery 조회에 business_id 전달
+- [x] next build 12 routes 통과, tsc 0 errors
+
+### 2.3 CTO 모델 T1/T2/T3 티어링 (순수 함수) ✅
+
+- [x] `packages/l5-core/src/functions/cto-design/model-routing.ts` (신규)
+  - MODEL_ROSTER: Claude/GPT-4o/Codex/Antigravity 메타데이터 (비용, latency, capability)
+  - `selectModelTier(taskClass × phaseKind)` → T1 (최고, 비용+성능) / T2 (중간) / T3 (경량)
+  - `resolveModel(quotaState, fallback)` → 쿼터 고갈 시 T2→T3 자동 강등
+- [x] 21개 테스트 PASS (tiering rules, quota fallback, unknown task class)
+- [x] 비밀/키 없음, IO 없음, 순수 로직
+
+### 2.4 Hermes cron 2개: model-verify + self-learning ✅
+
+- [x] `model-verify.ts` (08:55, 매일)
+  - @l5/core의 MODEL_ROSTER import (stub 제거)
+  - deprecated 모델 감지 → 재매핑 제안 생성 (AgentTask, D4)
+- [x] `self-learning.ts` (09:00, 매일)
+  - changelog diff → docs/cto-tool-catalog.md 누적
+  - 발견 항목 → `.omc/state/todays-discovery.json` 기록
+  - 조건부 Telegram 전송 (Founder 정성 판단용)
+- [x] launchd plist 2개 추가 (`com.l5.hermes.model-verify.plist`, `com.l5.hermes.self-learning.plist`)
+- [x] 81개 hermes-runtime 테스트 PASS (model-verify 15 + self-learning 12)
+
+### 2.5 OSS 자동 조사 순수 로직 ✅
+
+- [x] `packages/l5-core/src/functions/cto-design/oss-research.ts` (신규)
+  - OssSearchClient 주입 인터페이스 (stub/실제 client 모두 지원)
+  - `filterCandidates`: MIT/Apache/BSD 라이선스 + stars>1000 + 6개월 내 활성
+  - 비교표 생성 (feature, license, maturity, risk, recommendation)
+  - 결정 엔트리 생성 (chosen, rationale, risk_mitigation)
+- [x] 37개 테스트 PASS (empty input, filtering, decision matrix, LLM fallback)
+
+### 통합 & 백엔드 엔드포인트
+
+- [x] l5-core dist 재빌드 → hermes/agent-runtime이 model-routing/oss-research import
+- [x] 전 패키지 tsc 0 errors 통과
+- [x] NocoBase 액션 2개 신규: `roadmap:list` + `discovery:today`
+  - `roadmap:list` — agent_tasks → RoadmapItem[], business_id 필터, ACL loggedIn
+  - `discovery:today` — `.omc/state/todays-discovery.json` 읽기, env `L5_DISCOVERY_PATH` 우선, graceful []
+  - 둘 다 ACL loggedIn
+
+### E2E 브라우저 검증 (Playwright headless, 6/6 PASS)
+
+**발견 & 수정된 결함:**
+
+1. **rejectPlan 액션 부재 (CRITICAL)** → 핸들러+ACL 추가 (task→killed, instruction→rejected)
+   - 라이브: rejected_count=2, tasks→killed 확인
+2. **approvePlan no-op (HIGH)** → approval_required:false로 전환 (dispatcher 필터 맞춤)
+   - 라이브: approve 후 approval_required=false 확인
+3. **submitInstruction 응답 business_id stale (MEDIUM)** → instructionOut으로 수정
+   - 라이브: instruction.business_id="1" 확인
+4. **사이드바 401 레이스 (MEDIUM)** → useAuth().token 준비 후 fetch
+   - 라이브: 콘솔/네트워크 에러 0
+5. **빈 사업명 (LOW)** → fallback: `{b.name || b.one_liner || '사업 ${id}'}`
+6. **self-learning tmpdir 오염 (LOW)** → 경로 주입으로 격리
+
+**E2E 결과:**
+- 로그인/진입 ✅
+- 사이드바(활성사업+회사공통) ✅
+- 탭 전환 ✅
+- 로드맵(business별) ✅
+- 오늘의 발견 배너 ✅
+- 채팅→CEO해석→CTO task 분류+승인/거절 카드 ✅
+- 콘솔 에러 0, 네트워크 4xx/5xx 0
+
+### 스코프 분리 (DECISIONS.md에 기록)
+
+- **2.3 model-routing / 2.5 oss-research** — @l5/core 완성·export했으나 **라이브 소비자는 ACR 런타임 인프라**(모델 티어링 헤더 캡처=quota-tracker.json 쓰기, research phase web-search client). 사용자가 "pulk 레포만" 명시 제외한 ACR 범위이므로, 모듈은 ready지만 라이브 연결은 ACR 세션으로 분리.
+- **ACR `/api/runner` 403 — 사이클 완전 완료(status=done)는 ACR 세션 과제**
+
+### 검증 현황
+
+| 항목 | 결과 |
+|---|---|
+| l5-core tsc + tests | ✅ 281→339 PASS (model-routing 21 + oss-research 37) |
+| plugin-executive-monitor tsc | ✅ 0 errors |
+| founder-ui tsc + build | ✅ 0 errors, 12 routes PASS |
+| hermes-runtime tests | ✅ 81 PASS (12 suites; 신규 model-verify 8 + self-learning 8) |
+| 브라우저 E2E | ✅ 6/6 PASS (콘솔 에러 0, 네트워크 4xx/5xx 0) |
+
+### P0-1.1: Schema — `business_id` 추가 ✅
+
+- [x] `founder_instructions`, `ceo_interpretations`, `agent_tasks` 테이블에 `business_id` (nullable string) 컬럼 추가
+- [x] 파일: `apps/nocobase-app/packages/plugins/@l5/plugin-orchestration/src/server/plugin.ts` (raw ALTER + defineCollection 필드)
+- [x] 파일: `packages/l5-core/src/types/orchestration.ts` (FounderInstruction, CEOInterpretation, AgentTask에 business_id? 필드)
+- [x] 파일: `schemas/orchestration.schema.json` (스키마 버전 업데이트)
+- [x] 1회성 truncate 스크립트: `scripts/truncate-orchestration-tables.sql` (수동 전용, 자동 실행 금지)
+- [x] 검증: l5-core tsc + nocobase-app tsc 통과
+
+### P0-1.2: CEO 사업 추론 + 모호 시 되묻기 ✅
+
+- [x] `packages/l5-core/src/functions/ceo-orchestration/interpreter.ts`: `interpretFounderInstruction()` 옵션에 `activeBusinesses` 추가
+  - active businesses 목록으로부터 자동 business_id 추론
+  - 모호 시(여러 후보 또는 빈 목록) 응답에 `needs_business_clarification`, `business_clarification_question` 추가
+  - 확실 시 `business_id` 주입
+- [x] `chat:submitInstruction` 액션: 활성 business 조회(status ≠ 'deleted') → interpreter에 주입
+  - ⚠️ **버그 수정**: `status: 'active'`로 조회 → 항상 빈 목록 (기본 status='idea'). `status: {$ne: 'deleted'}` 변경
+- [x] task 생성 중단 시 모호 응답 반환, 확실 시 task에 business_id 주입
+- [x] 검증: interpreter 테스트 10/10 PASS
+
+### P0-1.3: CTO 작업 분류 6종 ✅
+
+- [x] `packages/l5-core/src/functions/cto-design/dev-workflow-spec.ts`: 재구성 (`Record<TaskClass, ...>`)
+  - SMALL_FIX, FEATURE, BIG_CHANGE, OPS, RESEARCH, REFACTOR 6종 정의
+- [x] `classifyTask(title, description, ...)` 신규 — 키워드 + 5지표(scope, complexity, risk, approval_gate, time_estimate) 격상 분류
+  - ⚠️ **버그 수정**: parseTaskClass가 정확한 대문자만 수용 → "small fix"/"small-fix" 정규화 (구분자→언더스코어)
+- [x] `buildDevWorkflowSystemPrompt`, `validateDevWorkflowPhases`, `buildDeterministicDevPhases`에 taskClass 인자 추가 (기본 FEATURE)
+- [x] `services/agent-runtime/src/agents/cto.ts`: LLM task_class 파싱 + classifyTask fallback
+- [x] 검증: dev-workflow-spec 41 tests PASS, l5-core 281 전체 통과
+
+### P0-1.4: 막힘② 검증 + `executeTask` 가드 ✅
+
+**背景:** "막힘②" = NocoBase가 runCTOAgent를 직접 호출하면 안 되는 문제 (LLM+네트워크 길이로 요청 핸들러 블록).
+
+- [x] **자율 경로 완결** — Hermes task-dispatcher (60초 cron) → `fetchQueuedTasks[queued && approval_required=false]` → `runCTOAgent` → ACR dispatch 이미 구현됨을 정적 확인
+- [x] **경쟁 경로 차단** — `agent:executeTask` 액션: `assigned_agent==='CTO' && !approval_required`인 task는 status 변경 없이 `deferred` 반환
+  - dispatcher가 처리하도록 위임 (founder-ui가 직접 호출하면 응답 지연 방지)
+- [x] **Founder UI 수정** — `/chat/page.tsx`: 승인 후 `executeTask` 호출을 제거, task status를 `needs_review`로만 변경
+  - dispatcher가 `queued` → `needs_review` (CTO) 또는 `done` (비-CTO) 자동 전환
+- [x] 검증: dispatcher 단위테스트 7개 추가 (`services/hermes-runtime/src/tasks/__tests__/task-dispatcher.test.ts`)
+  - ⚠️ **라이브 버그**: interpreter SYSTEM_PROMPT가 LLM에 `string | undefined` 스키마 → OpenAI가 JSON에 리터럴 `undefined` 출력 → parse 실패. 프롬프트를 `| null`로 변경 + 파싱 전 방어(`:\s*undefined` → `: null`)
+
+### P0-1.5: D2 사이클 라이브 E2E ✅ (2026-05-29)
+
+**검증 환경:** NocoBase :13000 재시작, ACR :3001 dev 기동
+
+**end-to-end 흐름:**
+1. `/chat` → Founder: "QA Fixed 비즈니스를 위한 기술 개선 배포 절차 자동화" (D2)
+2. `chat:submitInstruction` → CEO LLM 해석
+3. **business_id 추론**: "QA Fixed" business 조회 → id=1 주입 ✅
+4. **risk D2/approval_required=false** → CTO task queued ✅
+5. **dispatcher 폴링** (60s cron) → `runCTOAgent` 호출
+6. **CTO 6단계 phase 분해** (LLM) — phase names + descriptions + risk levels
+7. **ACR `POST /api/projects`** — project auto-create ✅
+8. **ACR `POST /api/workbench/dispatch`** — CTOPhase[] → FeaturePlan + PlanTask 저장 ✅
+9. `auto_dispatch_scheduled: true` 응답
+10. **auto-dispatcher** → `POST /api/runner` 첫 phase 자동 spawn (mock test 수준 — 실제 cli 안 함)
+
+**라이브 검증 결과:** 모든 단계 통과. "막힘②" 최종 검증 완료 (dispatcher가 query → runCTOAgent → dispatch 전담).
+
+---
+
+### 아키텍처 결정 (DECISIONS.md에 기록)
+
+1. **id=0 가상 row 폐기** — businesses.id auto-increment PK이므로 id=0 강제삽입 위험. 기존 business_id 참조도 문자열이 원칙. `business_id NULL = 회사 공통`으로 정책화.
+2. **막힘② = dispatcher 일원화** — runCTOAgent는 Hermes task-dispatcher cron 전담. cto-handler(평가)와 runCTOAgent(실행)의 역할 분리. executeTask는 CTO task에 deferred만 반환.
+3. **undefined → null 동기화** — interpreter SYSTEM_PROMPT + 파싱 방어, 모든 LLM 경로에 적용.
+
+---
+
+### 범위 외 / 남은 작업
+
+- **ACR `/api/runner 403`** — Phase 15 기록된 registered project path 가드 잔여. L5_DEFAULT_PROJECT_PATH를 ACR 프로젝트로 등록 또는 가드 점검 (ACR 레포 영역).
+- **Wave 2 (미착수)** — 2.1 monitor:projectTimeline 비즈니스 기준 전환, 2.2 Founder UI 재구성(사이드바 회사 공통+탭), 2.3 모델 T1/T2/T3 티어링, 2.4 cron 2개+launchd, 2.5 오픈소스 자동조사, 2.6 전체 E2E.
+
+---
+
+### 검증 현황
+
+| 항목 | 결과 |
+|---|---|
+| l5-core tsc | ✅ 0 errors |
+| l5-core tests | ✅ 281 PASS |
+| plugin-orchestration tsc | ✅ 0 errors |
+| plugin-executive-monitor tsc | ✅ 0 errors |
+| founder-ui tsc | ✅ 0 errors |
+| hermes-runtime tests | ✅ 24 PASS |
+| 라이브 D2 E2E | ✅ CEO 해석 → business_id 추론 → dispatcher 폴링 → CTO phase 분해 → ACR dispatch |

@@ -1,5 +1,5 @@
 // @l5/hermes-runtime entrypoint
-// Trigger.dev-backed scheduled loops that drive the L5 operating cadence. All loops are scaffolds; see TODOs.
+// Scheduled loops that drive the L5 operating cadence. All loops are scaffolds; see TODOs.
 
 export * from "./loops/types.js";
 export { runMorningOperatingLoop } from "./loops/morning-operating-loop.js";
@@ -40,10 +40,12 @@ export type { CTOPhaseReviewResult } from "./tasks/cto-phase-review.js";
 export {
   runRepetitionAnalyzerLive,
   runApprovalCheckerLive,
+  runDailyBriefGeneratorLive,
   runStalledTaskDetectorLive,
   runCTOPhaseReviewLive,
   syncD3AutoApprovals,
 } from "./runner.js";
 
-export { fetchAgentTasks, createAgentTask, updateAgentTask, saveFounderMemory } from "./api/nocobase-client.js";
+export { fetchAgentTasks, createAgentTask, updateAgentTask, saveFounderMemory, fetchFounderMemories } from "./api/nocobase-client.js";
+export type { FounderMemoryEntry } from "./api/nocobase-client.js";
 export { notifyACRApprovalRequired, registerACRProject } from "./api/acr-client.js";

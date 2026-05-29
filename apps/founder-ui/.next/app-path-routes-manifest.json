@@ -1,1 +1,1 @@
-{"/_not-found/page":"/_not-found","/approval/page":"/approval","/chat/page":"/chat","/memory/page":"/memory","/monitor/page":"/monitor","/page":"/","/workflow/page":"/workflow"}
+{"/_not-found/page":"/_not-found","/approval/page":"/approval","/api/projects/[id]/status-md/route":"/api/projects/[id]/status-md","/chat/page":"/chat","/control-room/page":"/control-room","/memory/page":"/memory","/monitor/page":"/monitor","/page":"/","/workflow/page":"/workflow","/tool-requests/page":"/tool-requests","/projects/page":"/projects","/projects/[id]/page":"/projects/[id]"}

@@ -1,6 +1,5 @@
-// Trigger.dev cron schedule definitions for Hermes tasks.
-// These are reference constants; wire them into your Trigger.dev project
-// entry point when the Trigger.dev SDK is installed.
+// Hermes cron schedule definitions.
+// Use these constants with launchd (macOS) or any cron runner.
 
 /** Hours after which a D3 (low-external-risk) task is automatically approved. */
 export const D3_AUTO_APPROVE_HOURS = 24;
@@ -29,35 +28,3 @@ export const HERMES_SCHEDULES = {
   REPETITION_ANALYZER: "0 */2 * * *",
 } as const;
 
-// Example Trigger.dev v3 wiring (add @trigger.dev/sdk to package.json when ready):
-//
-// import { schedules } from "@trigger.dev/sdk/v3";
-// import { runStalledTaskDetector } from "./stalled-task-detector.js";
-// import { runApprovalChecker } from "./approval-checker.js";
-//
-// export const stalledTaskDetectorTask = schedules.task({
-//   id: "stalled-task-detector",
-//   cron: HERMES_SCHEDULES.STALLED_TASK_DETECTOR,
-//   run: async () => {
-//     const tasks = await fetchAgentTasks();
-//     return runStalledTaskDetector(tasks, sendCEOAlert);
-//   },
-// });
-//
-// export const approvalCheckerTask = schedules.task({
-//   id: "approval-checker",
-//   cron: HERMES_SCHEDULES.APPROVAL_CHECKER,
-//   run: async () => {
-//     const tasks = await fetchAgentTasks();
-//     return runApprovalChecker(tasks, sendFounderBrief);
-//   },
-// });
-//
-// export const dailyBriefGeneratorTask = schedules.task({
-//   id: "daily-brief-generator",
-//   cron: HERMES_SCHEDULES.DAILY_BRIEF_GENERATOR,
-//   run: async () => {
-//     const tasks = await fetchAgentTasks();
-//     return runDailyBriefGenerator(tasks, sendFounderBrief);
-//   },
-// });

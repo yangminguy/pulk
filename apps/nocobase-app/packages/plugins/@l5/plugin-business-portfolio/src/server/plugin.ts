@@ -1,12 +1,13 @@
 import { Plugin } from '@nocobase/server';
-import { 
-  scoreFounderFit, 
-  generateBusinessBrief, 
-  calculatePmfScore, 
-  decideToolCandidate, 
-  requiresFounderApproval 
+import {
+  scoreFounderFit,
+  generateBusinessBrief,
+  calculatePmfScore,
+  decideToolCandidate,
+  requiresFounderApproval
 } from '@l5/core';
 import collections from './collections';
+import { ensureWorkspaceRepo, getRepoPath } from './workspace-init';
 
 export class PluginBusinessPortfolioServer extends Plugin {
   async afterAdd() {}
@@ -19,6 +20,59 @@ export class PluginBusinessPortfolioServer extends Plugin {
 
   async load() {
     this.app.logger.info('PluginBusinessPortfolioServer loaded');
+
+    await ensureBusinessColumns(this.db);
+
+    // --- Phase 3a: afterCreate hook — auto-assign repo_path and git-init workspace ---
+    this.db.on('businesses.afterCreate', async (model: any) => {
+      if (model.get('repo_path')) return; // already set by caller
+      const id = model.get('id');
+      const repoPath = getRepoPath(id);
+      try {
+        await ensureWorkspaceRepo(repoPath);
+        await model.update({ repo_path: repoPath });
+        this.app.logger.info(`[workspace-init] Initialised repo for business ${id}: ${repoPath}`);
+      } catch (err: any) {
+        this.app.logger.warn(`[workspace-init] Failed to init repo for business ${id}: ${err?.message ?? err}`);
+      }
+    });
+
+    // --- Phase 3c: backfill on boot — assign repo_path to existing businesses that lack it ---
+    this.app.on('afterStart', async () => {
+      try {
+        const db: any = this.db;
+        const [rows] = await db.sequelize.query(
+          `SELECT id FROM businesses WHERE (repo_path IS NULL OR repo_path = '') AND status != 'deleted'`
+        ) as [Record<string, any>[], unknown];
+
+        if (rows.length === 0) {
+          this.app.logger.info('[workspace-init] Backfill: no businesses need repo_path assignment.');
+          return;
+        }
+
+        let succeeded = 0;
+        let skipped = 0;
+        for (const row of rows) {
+          const id = row['id'];
+          const repoPath = getRepoPath(id);
+          try {
+            await ensureWorkspaceRepo(repoPath);
+            await db.sequelize.query(
+              `UPDATE businesses SET repo_path = :repoPath WHERE id = :id AND (repo_path IS NULL OR repo_path = '')`,
+              { replacements: { repoPath, id } }
+            );
+            this.app.logger.info(`[workspace-init] Backfilled business ${id}: ${repoPath}`);
+            succeeded++;
+          } catch (err: any) {
+            this.app.logger.warn(`[workspace-init] Backfill skipped business ${id}: ${err?.message ?? err}`);
+            skipped++;
+          }
+        }
+        this.app.logger.info(`[workspace-init] Backfill complete — ${succeeded} initialised, ${skipped} skipped.`);
+      } catch (err: any) {
+        this.app.logger.warn(`[workspace-init] Backfill error: ${err?.message ?? err}`);
+      }
+    });
 
     this.app.resourcer.define({
       name: 'l5',
@@ -144,6 +198,52 @@ export class PluginBusinessPortfolioServer extends Plugin {
           await next();
         },
 
+        acrRegister: async (ctx, next) => {
+          const { business_id, title, one_liner } = ctx.action.params.values || {};
+          if (!business_id || !title) {
+            ctx.throw(400, 'business_id and title are required');
+          }
+          const acrBaseUrl = process.env.ACR_BASE_URL || 'http://localhost:3001';
+          const fallbackPath = process.env.L5_DEFAULT_PROJECT_PATH;
+
+          // Phase 3b: look up repo_path from DB so the client never needs to pass it
+          let resolvedPath: string | undefined;
+          try {
+            const BusinessRepo = this.db.getRepository('businesses');
+            const biz = await BusinessRepo.findOne({ filterByTk: String(business_id) });
+            resolvedPath = biz?.get('repo_path') || undefined;
+          } catch {
+            // non-fatal — fall through to fallback
+          }
+          const project_path = resolvedPath || fallbackPath;
+
+          const payload = {
+            project_id: `business-${business_id}`,
+            title,
+            one_liner: one_liner || '',
+            l5_business_id: String(business_id),
+            ...(project_path ? { project_path } : {}),
+          };
+          try {
+            const response = await fetch(`${acrBaseUrl}/api/projects`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+              this.app.logger.warn(`[acrRegister] ACR returned ${response.status}`);
+              ctx.body = { success: false, status: response.status };
+            } else {
+              const data = await response.json().catch(() => ({}));
+              ctx.body = { success: true, acr_project_id: data?.id ?? null };
+            }
+          } catch (err: any) {
+            this.app.logger.warn(`[acrRegister] ACR fetch failed: ${err?.message ?? err}`);
+            ctx.body = { success: false, error: String(err?.message ?? err) };
+          }
+          await next();
+        },
+
         requiresFounderApproval: async (ctx, next) => {
           const { decisionType, riskLevel, title, description, related_business_id } = ctx.action.params.values || {};
 
@@ -177,6 +277,35 @@ export class PluginBusinessPortfolioServer extends Plugin {
       }
     });
     this.app.acl.allow('l5', '*', 'loggedIn');
+
+    // business resource
+    this.app.resourcer.define({
+      name: 'business',
+      actions: {
+        listActive: async (ctx: any, next: () => Promise<void>) => {
+          const db: any = this.db;
+          const [rows] = await db.sequelize.query(
+            `SELECT id, title, one_liner, status, "createdAt", "updatedAt"
+             FROM businesses
+             WHERE status != 'deleted'
+             ORDER BY "updatedAt" DESC`
+          ) as [Record<string, any>[], unknown];
+          ctx.body = {
+            ok: true,
+            data: rows.map((r) => ({
+              id: String(r['id']),
+              name: r['title'] ?? '',
+              one_liner: r['one_liner'] ?? null,
+              current_phase: null,
+              lifecycle_stage: r['status'] ?? null,
+              updated_at: r['updatedAt'] ?? r['createdAt'] ?? null,
+            })),
+          };
+          await next();
+        },
+      },
+    });
+    this.app.acl.allow('business', ['listActive'], 'loggedIn');
 
     this.app.on('afterStart', async () => {
       const FounderDnaRepo = this.db.getRepository('founder_dna');
@@ -212,6 +341,23 @@ export class PluginBusinessPortfolioServer extends Plugin {
   async afterDisable() {}
 
   async remove() {}
+}
+
+// Idempotent column add for the business→repo mapping. Mirrors the orchestration
+// plugin's ensureOrchestrationColumns pattern so the field exists on the running
+// postgres without a dedicated migration file. sqlite/meta handled by defineCollection.
+async function ensureBusinessColumns(db: any) {
+  const dialect = db.sequelize?.getDialect?.();
+  if (dialect === 'sqlite') return;
+  try {
+    await db.sequelize.query(`
+      ALTER TABLE IF EXISTS businesses
+        ADD COLUMN IF NOT EXISTS repo_path text;
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure businesses.repo_path column: ${message}`);
+  }
 }
 
 export default PluginBusinessPortfolioServer;

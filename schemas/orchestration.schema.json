@@ -32,6 +32,7 @@
         "constraints": { "type": "array", "items": { "type": "string" } },
         "requested_phase": { "type": "string" },
         "status": { "type": "string", "enum": ["new", "interpreted", "in_progress", "closed"] },
+        "business_id": { "type": ["string", "null"] },
         "created_at": { "type": "string", "format": "date-time" }
       },
       "additionalProperties": false
@@ -48,6 +49,7 @@
         "success_criteria": { "type": "array", "items": { "type": "string" } },
         "risk_level": { "$ref": "#/definitions/RiskLevel" },
         "approval_required": { "type": "boolean" },
+        "business_id": { "type": ["string", "null"] },
         "created_at": { "type": "string", "format": "date-time" }
       },
       "additionalProperties": false
@@ -67,6 +69,7 @@
         "approval_required": { "type": "boolean" },
         "blocker": { "type": "string" },
         "due_at": { "type": "string", "format": "date-time" },
+        "business_id": { "type": ["string", "null"] },
         "created_at": { "type": "string", "format": "date-time" },
         "updated_at": { "type": "string", "format": "date-time" }
       },

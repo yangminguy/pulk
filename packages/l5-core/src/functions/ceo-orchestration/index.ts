@@ -3,5 +3,5 @@ export { interpretFounderInstruction } from './interpreter';
 export { decomposeIntoWorkstreams } from './decomposer';
 export { assignExecutiveTasks } from './assigner';
 export { summarizeAgentStatus } from './summarizer';
-export { createOpenAIClient, createAnthropicClient } from './anthropic-client';
-export type { OpenAIClientOptions, AnthropicClientOptions } from './anthropic-client';
+export { createOpenAIClient, createAnthropicClient, createDefaultLLMClient } from './anthropic-client';
+export type { OpenAIClientOptions, AnthropicClientOptions, LLMRole } from './anthropic-client';

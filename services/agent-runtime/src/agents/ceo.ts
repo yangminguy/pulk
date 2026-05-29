@@ -11,6 +11,7 @@ export async function runCEOAgent(input: AgentInput): Promise<CEOAgentOutput> {
   return {
     decision: "placeholder",
     reasoning: "TODO: implement CEO logic",
+    next_action: "Review and decompose instruction into executive workstreams.",
     risk_level: "D3",
     requires_founder_approval: true,
   };

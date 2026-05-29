@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.l5.hermes.model-verify</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE_PATH__</string>
+    <string>__HERMES_DIR__/dist/gateway.js</string>
+    <string>model-verify</string>
+  </array>
+
+  <!-- 08:55 daily — runs before self-learning (09:00) so roster is validated first -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>8</integer>
+    <key>Minute</key>
+    <integer>55</integer>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>__HERMES_DIR__</string>
+
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/model-verify.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/model-verify.err</string>
+
+  <!-- Do not run immediately on launchctl load -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <!-- TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set in the user environment
+         or injected here after substitution. Never hardcode secrets in this file. -->
+  </dict>
+</dict>
+</plist>

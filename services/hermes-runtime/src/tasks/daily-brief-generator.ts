@@ -1,4 +1,6 @@
 import type { AgentTask } from "@l5/core";
+import { createTelegramClient } from "../notifier/telegram.js";
+import type { TelegramClient } from "../notifier/telegram.js";
 
 export interface DailyBrief {
   brief_date: string;
@@ -20,6 +22,7 @@ export interface DailyBriefResult {
 export async function runDailyBriefGenerator(
   tasks: AgentTask[],
   notifier: (brief: DailyBrief) => Promise<boolean>,
+  telegram?: TelegramClient,
 ): Promise<DailyBriefResult> {
   const now = new Date();
   const briefDate = now.toISOString().split("T")[0];
@@ -59,6 +62,30 @@ export async function runDailyBriefGenerator(
 
   const shouldNotify = blockedTasks.length > 0 || approvalQueue.length > 0;
   const notification_sent = shouldNotify ? await notifier(brief) : false;
+
+  // Also send to Telegram (best-effort, dual channel with console).
+  const tg = telegram ?? createTelegramClient();
+  const founderUIBase = process.env.FOUNDER_UI_BASE_URL ?? 'http://localhost:3002';
+  const dateStr = briefDate;
+  const timeSlot = now.getHours() < 12 ? 'morning' : 'evening';
+  const TELEGRAM_MAX = 4096;
+  let briefText =
+    `active: ${brief.active_count}, blocked: ${brief.blocked_count}, ` +
+    `approval_pending: ${brief.approval_pending_count}\n` +
+    (brief.recommendations.length > 0
+      ? `\n권고사항:\n${brief.recommendations.join('\n')}`
+      : '');
+  if (briefText.length > TELEGRAM_MAX - 3) {
+    briefText = briefText.slice(0, TELEGRAM_MAX - 3) + '...';
+  }
+  console.log(`[daily-brief] ${dateStr} ${timeSlot}:`, briefText);
+  await tg.send({
+    title: `Daily Brief — ${dateStr}`,
+    body: briefText,
+    level: 'info',
+    link: `${founderUIBase}/`,
+    dedupKey: `brief:${dateStr}:${timeSlot}`,
+  });
 
   return {
     generated_at: now.toISOString(),
