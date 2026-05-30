@@ -24,11 +24,16 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const D3_AUTO_APPROVE_MS = 24 * 60 * 60 * 1000;
 const STALLED_HOURS = 48;
 
+let activeCronJobs: any[] = [];
+
 export function startHermesScheduler(db: any, logger: any) {
   const log = (msg: string) => logger?.info?.(`[Hermes] ${msg}`) ?? console.log(`[Hermes] ${msg}`);
 
+  // 기존 등록된 잡이 있다면 먼저 클리어
+  stopHermesScheduler(logger);
+
   // 반복 태스크 감지 — 2시간마다
-  cron.schedule('0 */2 * * *', async () => {
+  const job1 = cron.schedule('0 */2 * * *', async () => {
     try {
       log('반복 분석 시작');
       await runRepetitionAnalyzer(db, log);
@@ -36,9 +41,10 @@ export function startHermesScheduler(db: any, logger: any) {
       logger?.error?.('[Hermes] 반복 분석 실패:', err);
     }
   });
+  activeCronJobs.push(job1);
 
   // D3 자동 승인 + 승인 대기 브리핑 — 매일 09:00
-  cron.schedule('0 9 * * *', async () => {
+  const job2 = cron.schedule('0 9 * * *', async () => {
     try {
       log('승인 체크 시작');
       await runApprovalChecker(db, log);
@@ -46,9 +52,10 @@ export function startHermesScheduler(db: any, logger: any) {
       logger?.error?.('[Hermes] 승인 체크 실패:', err);
     }
   });
+  activeCronJobs.push(job2);
 
   // CTO 단계 검토 — 매주 월요일 10:00
-  cron.schedule('0 10 * * 1', async () => {
+  const job3 = cron.schedule('0 10 * * 1', async () => {
     try {
       log('CTO 단계 검토 시작');
       await runCTOPhaseReview(db, log);
@@ -56,9 +63,10 @@ export function startHermesScheduler(db: any, logger: any) {
       logger?.error?.('[Hermes] CTO 단계 검토 실패:', err);
     }
   });
+  activeCronJobs.push(job3);
 
   // 정체 태스크 감지 — 매시간
-  cron.schedule('0 * * * *', async () => {
+  const job4 = cron.schedule('0 * * * *', async () => {
     try {
       log('정체 감지 시작');
       await runStalledTaskDetector(db, log);
@@ -66,8 +74,26 @@ export function startHermesScheduler(db: any, logger: any) {
       logger?.error?.('[Hermes] 정체 감지 실패:', err);
     }
   });
+  activeCronJobs.push(job4);
 
   log('스케줄러 등록 완료 (반복감지 2h, 승인체크 09:00, CTO검토 월10:00, 정체감지 1h)');
+}
+
+export function stopHermesScheduler(logger?: any) {
+  if (activeCronJobs.length > 0) {
+    logger?.info?.(`[Hermes] ${activeCronJobs.length}개의 cron job 중지 중...`) ?? console.log(`[Hermes] ${activeCronJobs.length}개의 cron job 중지 중...`);
+    for (const job of activeCronJobs) {
+      try {
+        job.stop();
+        if (typeof job.destroy === 'function') {
+          job.destroy();
+        }
+      } catch (err) {
+        // 무시
+      }
+    }
+    activeCronJobs = [];
+  }
 }
 
 async function runRepetitionAnalyzer(db: any, log: (m: string) => void) {

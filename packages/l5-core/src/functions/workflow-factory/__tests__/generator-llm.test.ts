@@ -32,7 +32,11 @@ describe('generateWorkflowWithLLM', () => {
   test('LLM returns junk → deterministic fallback', async () => {
     const llm = mockLLM('not json at all');
     const out = await generateWorkflowWithLLM(baseInput, llm);
-    expect(out.business_brief).toEqual(generateWorkflow(baseInput).business_brief);
+    const baseline = generateWorkflow(baseInput);
+    expect({ ...out.business_brief, generated_at: 'fixed' }).toEqual({
+      ...baseline.business_brief,
+      generated_at: 'fixed',
+    });
   });
 
   test('LLM returns partial JSON → merges with baseline', async () => {

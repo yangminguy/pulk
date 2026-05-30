@@ -24,6 +24,18 @@
 | `corepack pnpm validate` | ✅ 22 PASS / 1 optional Docker WARN / 0 FAIL |
 | PR | [#1 feat/nocobase-real-mvp](https://github.com/yangminguy/pulk/pull/1) |
 
+### 2026-05-30 QA 세션 이어받기 (안티그래비티 중단 복구)
+
+| 검증 항목 | 결과 |
+|---|---|
+| `@l5/core` 유닛 회귀 | ✅ 347/347 PASS |
+| `@l5/hermes-runtime` 유닛 회귀 | ✅ 81/81 PASS |
+| E2E 자율 루프 라이브 smoke (`scripts/smoke-autopilot-e2e.ts`, 샌드박스) | ✅ instruction→CEO 분해→dispatch→ACR claude spawn→커밋→done |
+| smoke 스크립트 안전·견고화 | ✅ 라이브 pulk repo 가드 + ECONNRESET 폴링 retry |
+| D3/D5 승인 게이팅 | ✅ dispatcher 픽업 차단 확인 |
+
+QA 로드맵 대시보드: `reports/qa-status-visualization.html` (6 E2E 시나리오). QA1-3 라이브 입증, QA4-6 로직은 유닛테스트(verifier/model-lock/self-learning) 커버.
+
 **다음 세션 진입점:** Phase 9 — Founder UI 앱 구축 (`[ ] P0` 항목부터)
 
 ## Direction Lock

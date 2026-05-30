@@ -1,6 +1,31 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-30 (로드맵 Phase 5 배움 루프 닫힘 — 구현·배포·라이브 검증 완료)
+최종 업데이트: 2026-05-30 (QA 세션 이어받기 — E2E smoke 견고화 + 라이브 검증 완료)
+
+---
+
+## 🎯 2026-05-30 — QA 세션 이어받기 (안티그래비티 중단 작업 복구 + E2E 라이브 검증)
+
+이전 세션(안티그래비티)이 QA/E2E 진행 중 토큰 소진으로 중단(10:38 KST). 남긴 QA 로드맵은 `reports/qa-status-visualization.html`(6개 E2E 시나리오 대시보드)이고, `scripts/smoke-autopilot-e2e.ts`(자동 E2E smoke)를 작성하다 멈췄다. 이어받아 회귀·라이브 검증을 완주했다.
+
+### 안티그래비티 변경 검토 (모두 QA 중 발견한 실제 버그 수정 — 유지)
+- `plugin-executive-monitor/hermes-scheduler.ts`: cron job 중복 등록 방지 + `stopHermesScheduler()` cleanup(`beforeStop`/`afterDisable` 훅). 플러그인 reload 시 cron 중복 버그 해소.
+- `plugin-executive-monitor`·`plugin-orchestration` `client/index.ts`: placeholder export → 실제 NocoBase `Plugin` 클래스.
+- `workflow-factory/__tests__/generator-llm.test.ts`: `generated_at` 타임스탬프 flaky 비교 정규화.
+
+### 발견·수정한 안전 문제 (smoke 스크립트)
+- **라이브 repo 보호 위반**: `smoke-autopilot-e2e.ts`가 `sandboxPath='/Users/wonminyang/Desktop/pulk'`(보호 경로 `L5_PROTECTED_PATHS`)를 직접 대상으로 삼고 있었다. → 기본값을 `L5_DEFAULT_PROJECT_PATH`(영구 샌드박스)로 바꾸고, pulk를 가리키면 throw하는 가드 추가.
+- **폴링 견고성(안티그래비티가 멈춘 지점)**: 폴링 fetch에 retry가 없어 dispatcher 직후 NocoBase 과부하 시 `ECONNRESET`에 바로 throw. → fetch를 try/catch로 감싸 일시 오류 시 재시도. 성공 기준도 `파일 생성 AND done` → `done|needs_review`로 완화(멀티-phase 플랜의 첫 phase가 read-only "오픈소스 조사"일 수 있어 파일 생성 단정 불가).
+
+### 라이브 검증 결과
+- **유닛 회귀**: `@l5/core` 347/347 PASS, `@l5/hermes-runtime` 81/81 PASS.
+- **E2E smoke 라이브(샌드박스)**: `chat:submitInstruction` → CEO 3-workstream 분해(CTO/COO/CPO) → dispatcher가 ACR로 dispatch → claude CLI spawn(45.9s) → acr 브랜치 생성+커밋 → task **done**. 재실행에서 ECONNRESET retry가 1회 발동 후 정상 조회됨(견고화 입증). 첫 phase blocker=`risk_reassess: D2->D2. phase=오픈소스 조사`로 read-only phase 확인.
+- **게이팅 정상**: 검증 중 생성된 D3/D5 task는 `approval_required=true`로 dispatcher가 픽업 안 함(자동 실행 차단 정상).
+- **잔여 정리**: 샌드박스 오늘 acr 브랜치 3건 삭제(main clean), NocoBase 검증 task 5건 destroy. 남은 queued 5건은 안티그래비티 세션의 D3/D5 승인 대기 task(dispatcher 무관)로 보존.
+
+### 남은 항목
+- 안티그래비티 코드 변경 5파일 + smoke 스크립트는 아직 **uncommitted**(커밋은 사용자 지시 대기).
+- queued 5건(00:33~01:38 생성, PMF/CRO/CMO D3-D5)은 실제 도메인 task인지 QA 잔여인지 사용자 판단 필요 — approval-gated라 무해하게 대기 중.
 
 ---
 

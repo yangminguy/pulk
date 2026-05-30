@@ -1,5 +1,9 @@
-// Orchestration — NocoBase client plugin entry
+import { Plugin } from '@nocobase/client';
 
-export default {
-  name: '@l5/plugin-orchestration',
-};
+export class PluginOrchestrationClient extends Plugin {
+  async load() {
+    // Client-side initialization if needed
+  }
+}
+
+export default PluginOrchestrationClient;

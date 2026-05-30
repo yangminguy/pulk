@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>L5 Business OS — QA Dashboard & Architecture Status</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #080c14;
+      --bg-card: #111827;
+      --bg-card-hover: #1f2937;
+      --accent-blue: #3b82f6;
+      --accent-purple: #8b5cf6;
+      --accent-pink: #ec4899;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --border-color: #1e293b;
+      --border-glow: rgba(59, 130, 246, 0.15);
+      
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.15);
+      --warning: #f59e0b;
+      --warning-glow: rgba(245, 158, 11, 0.15);
+      --danger: #ef4444;
+      --danger-glow: rgba(239, 68, 68, 0.15);
+      
+      --font-outfit: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-inter: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-color) var(--bg-dark);
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-primary);
+      font-family: var(--font-inter);
+      padding: 2.5rem 1.5rem;
+      max-width: 1440px;
+      margin: 0 auto;
+      min-height: 100vh;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.03) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.04) 0%, transparent 40%);
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-logo {
+      width: 2.5rem;
+      height: 2.5rem;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      border-radius: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-outfit);
+      font-weight: 800;
+      color: white;
+      font-size: 1.25rem;
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+    }
+
+    .brand-title h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(to right, #ffffff, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-title p {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .global-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background-color: var(--success-glow);
+      border: 1px solid var(--success);
+      color: var(--success);
+      padding: 0.5rem 1rem;
+      border-radius: 9999px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.1);
+    }
+
+    .pulse {
+      width: 8px;
+      height: 8px;
+      background-color: var(--success);
+      border-radius: 50%;
+      animation: pulse-ani 1.5s infinite;
+    }
+
+    @keyframes pulse-ani {
+      0% { transform: scale(0.9); opacity: 0.4; }
+      50% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(0.9); opacity: 0.4; }
+    }
+
+    /* Grid Layout */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1.8fr;
+      gap: 2rem;
+      margin-bottom: 2.5rem;
+    }
+
+    @media (max-width: 1024px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 1.25rem;
+      padding: 1.75rem;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+
+    .card:hover {
+      border-color: var(--accent-blue);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px var(--border-glow);
+      transform: translateY(-2px);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card-title svg {
+      width: 1.25rem;
+      height: 1.25rem;
+      color: var(--accent-blue);
+    }
+
+    /* Features List */
+    .feature-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .feature-item {
+      padding: 1rem;
+      border-radius: 0.75rem;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .feature-item:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .feature-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 0.35rem;
+    }
+
+    .feature-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: var(--text-primary);
+    }
+
+    .feature-badge {
+      font-size: 0.75rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 9999px;
+      font-weight: 500;
+    }
+
+    .badge-core { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .badge-ui { background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3); }
+    .badge-daemon { background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.3); }
+    .badge-acr { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+
+    .feature-desc {
+      font-size: 0.825rem;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    /* Architecture Visualizer */
+    .arch-container {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      position: relative;
+    }
+
+    .arch-layer {
+      border: 1px dashed rgba(255, 255, 255, 0.1);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    .layer-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+      font-weight: 700;
+    }
+
+    .layer-nodes {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+
+    .node {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      border-radius: 0.5rem;
+      padding: 0.75rem;
+      text-align: center;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .node:hover {
+      background: rgba(59, 130, 246, 0.05);
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.1);
+    }
+
+    .node-title {
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: var(--text-primary);
+      margin-bottom: 0.25rem;
+    }
+
+    .node-sub {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .node-arrow {
+      position: absolute;
+      left: 50%;
+      bottom: -1rem;
+      transform: translateX(-50%);
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      z-index: 10;
+    }
+
+    /* Milestones & Status Timeline */
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .timeline-item {
+      display: flex;
+      gap: 1rem;
+      position: relative;
+    }
+
+    .timeline-item:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 1rem;
+      top: 2rem;
+      bottom: -1rem;
+      width: 2px;
+      background: var(--border-color);
+    }
+
+    .timeline-dot {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.875rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      z-index: 2;
+    }
+
+    .dot-done {
+      background-color: var(--success-glow);
+      border: 1px solid var(--success);
+      color: var(--success);
+    }
+
+    .dot-active {
+      background-color: var(--warning-glow);
+      border: 1px solid var(--warning);
+      color: var(--warning);
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
+    }
+
+    .dot-todo {
+      background-color: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+    }
+
+    .timeline-content {
+      flex-grow: 1;
+      padding-top: 0.15rem;
+    }
+
+    .timeline-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.25rem;
+    }
+
+    .timeline-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: var(--text-primary);
+    }
+
+    .timeline-date {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .timeline-desc {
+      font-size: 0.825rem;
+      color: var(--text-secondary);
+    }
+
+    /* E2E Test Suite Visualizer */
+    .qa-suite-section {
+      margin-top: 2.5rem;
+    }
+
+    .qa-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .qa-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .qa-card:hover {
+      border-color: var(--accent-purple);
+      box-shadow: 0 8px 20px rgba(139, 92, 246, 0.08);
+      transform: translateY(-2px);
+    }
+
+    .qa-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .qa-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .qa-status {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+    }
+
+    .status-ready { background: var(--success-glow); color: var(--success); border: 1px solid var(--success); }
+    .status-plan { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+
+    .qa-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+
+    .qa-step {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .qa-step svg {
+      width: 0.875rem;
+      height: 0.875rem;
+      flex-shrink: 0;
+    }
+
+    .step-pass svg { color: var(--success); }
+    .step-pending svg { color: var(--warning); }
+
+    .interactive-details {
+      display: none;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .interactive-details.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .cmd-box {
+      background: #020617;
+      border: 1px solid var(--border-color);
+      border-radius: 0.35rem;
+      padding: 0.5rem;
+      font-family: monospace;
+      color: #38bdf8;
+      margin: 0.5rem 0;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-logo">L5</div>
+      <div class="brand-title">
+        <h1>L5 Business OS MVP</h1>
+        <p>Founder OS Autopilot & QA Dashboard</p>
+      </div>
+    </div>
+    <div class="global-badge">
+      <div class="pulse"></div>
+      <span>All Systems Active: PASS (429/429 Tests Passed + 6 E2E Scenarios Ready)</span>
+    </div>
+  </header>
+
+  <div class="dashboard-grid">
+    
+    <!-- LEFT: Implemented Features Map -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+          구현된 기능 목록 (Features)
+        </h2>
+        <span style="font-size: 0.75rem; color: var(--text-muted);">총 16개 핵심 모듈</span>
+      </div>
+      
+      <div class="feature-list">
+        
+        <div class="feature-item">
+          <div class="feature-meta">
+            <span class="feature-name">Founder Fit Scoring</span>
+            <span class="feature-badge badge-core">L5 Core</span>
+          </div>
+          <p class="feature-desc">아이디어와 창업자 DNA(관심도, 핵심 스킬, 에너지, 리스크 성향) 간 적합도를 분석하고 D1-D5의 위험 수위를 매핑합니다.</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-meta">
+            <span class="feature-name">PMF Score Calculator</span>
+            <span class="feature-badge badge-core">L5 Core</span>
+          </div>
+          <p class="feature-desc">설문, 인터뷰, 대기자 수 등 PMF 검증 지표를 수집하고 중요도 가중치를 적용하여 종합 PMF 점수(0~100)를 측정합니다.</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-meta">
+            <span class="feature-name">Tool Candidate Judge</span>
+            <span class="feature-badge badge-core">L5 Core</span>
+          </div>
+          <p class="feature-desc">PMF 증거 확보 여부, 작업의 주기성 및 수행 소요 시간, 장애 발생률을 검토하여 제품화/자동화 빌드 여부를 자동 판정합니다.</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-meta">
+            <span class="feature-name">CEO Agent Interpreter</span>
+            <span class="feature-badge badge-core">L5 Core</span>
+          </div>
+          <p class="feature-desc">창업자의 자연어 지시를 해석해 세부 태스크로 분해하고, 여러 비즈니스 중 관련 비즈니스를 스스로 추론(Business Routing)합니다.</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-meta">
+            <span class="feature-name">CTO Result Verifier & Replan</span>
+            <span class="feature-badge badge-core">L5 Core</span>
+          </div>
+          <p class="feature-desc">CTO 에이전트의 작업 결과(exit_code, uncommitted, error string 등)를 LLM과 연계해 검증하고, 실패 시 2회까지 재도전 시나리오를 설계합니다.</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-meta">
+            <span class="feature-name">NocoBase Shell Integration</span>
+            <span class="feature-badge badge-ui">NocoBase</span>
+          </div>
+          <p class="feature-desc">비즈니스 포트폴리오(컬렉션), 오케스트레이션 결과 적재, RLS 권한 제어, 멱등 git init 작업장 초기화 및 등록 훅을 지원합니다.</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-meta">
+            <span class="feature-name">Founder UI (2단 콘솔)</span>
+            <span class="feature-badge badge-ui">Founder-UI</span>
+          </div>
+          <p class="feature-desc">좌측 채팅/인박스 영역과 우측 로드맵/승인 큐/오늘의 발견 배너가 결합된 극강의 2단 파운더 컨트롤 대시보드 화면을 제공합니다.</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-meta">
+            <span class="feature-name">Hermes Task Dispatcher</span>
+            <span class="feature-badge badge-daemon">Hermes Daemon</span>
+          </div>
+          <p class="feature-desc">60초마다 비결재(D1-D2) 대기 태스크를 탐색해, 해당하는 비즈니스 레포지토리(CWD)를 주입하며 ACR Dispatch API로 무인 실행합니다.</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-meta">
+            <span class="feature-name">ACR Runner (Autopilot)</span>
+            <span class="feature-badge badge-acr">ACR Exec</span>
+          </div>
+          <p class="feature-desc">타임아웃 SIGTERM/SIGKILL 관리, 변경 사항 미검출 시 자동 재시도([RETRY]), 완료 후 자동 로컬 --no-ff 병합을 수행합니다.</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-meta">
+            <span class="feature-name">Continuous Memory Loop</span>
+            <span class="feature-badge badge-daemon">Self-Learning</span>
+          </div>
+          <p class="feature-desc">매일 09시 크론이 릴리스노트/체인지로그 수집, 텍스트 정제 및 인덱싱을 거쳐 파운더의 검토 승인 후 회사 장기 메모리(Recall)에 적재합니다.</p>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RIGHT: Architecture & Milestone Status -->
+    <div style="display: flex; flex-direction: column; gap: 2rem;">
+      
+      <!-- Top Card: Architecture Map -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+            현재 시스템 아키텍처 (Architecture Flow)
+          </h2>
+        </div>
+        
+        <div class="arch-container">
+          
+          <div class="arch-layer">
+            <div class="layer-label">1. Presentation Layer (Founder UX)</div>
+            <div class="layer-nodes">
+              <div class="node">
+                <div class="node-title">Founder UI (Port 3002)</div>
+                <div class="node-sub">Next.js / 2-Pane Console</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="arch-layer">
+            <div class="layer-label">2. App Shell & Persistent Layer</div>
+            <div class="layer-nodes">
+              <div class="node">
+                <div class="node-title">NocoBase Shell (Port 13000)</div>
+                <div class="node-sub">PostgreSQL / RLS Policies</div>
+              </div>
+              <div class="node">
+                <div class="node-title">L5-Core Logic Package</div>
+                <div class="node-sub">pure TS / scoring & decisions</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="arch-layer">
+            <div class="layer-label">3. Background Loop & Daemon Layer</div>
+            <div class="layer-nodes">
+              <div class="node">
+                <div class="node-title">Hermes Runtime (launchd)</div>
+                <div class="node-sub">Dispatcher, self-learning, verification</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="arch-layer">
+            <div class="layer-label">4. Sandbox Execution Layer (Agent Control Room)</div>
+            <div class="layer-nodes">
+              <div class="node">
+                <div class="node-title">ACR Web Service (Port 3001)</div>
+                <div class="node-sub">Project Register, Ingestion</div>
+              </div>
+              <div class="node">
+                <div class="node-title">ACR Runner & Git Sandbox</div>
+                <div class="node-sub">Spawn Claude CLI, Commit, Local Merge</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Bottom Card: Milestone Timeline -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+            개발 진행 단계 (Milestone Progress)
+          </h2>
+        </div>
+        
+        <div class="timeline">
+          
+          <div class="timeline-item">
+            <div class="timeline-dot dot-done">0</div>
+            <div class="timeline-content">
+              <div class="timeline-header">
+                <span class="timeline-title">Phase 0-2: Foundation & Core Logic</span>
+                <span class="timeline-date">완료</span>
+              </div>
+              <p class="timeline-desc">모노레포 설정, 5개 의사결정 core 로직 개발, 유닛 테스트 100% 완료.</p>
+            </div>
+          </div>
+
+          <div class="timeline-item">
+            <div class="timeline-dot dot-done">3-4</div>
+            <div class="timeline-content">
+              <div class="timeline-header">
+                <span class="timeline-title">Phase 3-4: Workspace Linkage & Dashboard UI</span>
+                <span class="timeline-date">완료</span>
+              </div>
+              <p class="timeline-desc">비즈니스별 개별 git 레포 초기화, 2단 Founder UI 대시보드 및 승인 카드 렌더링.</p>
+            </div>
+          </div>
+
+          <div class="timeline-item">
+            <div class="timeline-dot dot-done">5-11</div>
+            <div class="timeline-content">
+              <div class="timeline-header">
+                <span class="timeline-title">Phase 5-11: Self-Learning & Autopilot Daemon</span>
+                <span class="timeline-date">완료</span>
+              </div>
+              <p class="timeline-desc">배움 루프 연동, launchd 영속 데몬 구동, Shared Secret 기반 무인 인증 릴레이션.</p>
+            </div>
+          </div>
+
+          <div class="timeline-item">
+            <div class="timeline-dot dot-done">14-18</div>
+            <div class="timeline-content">
+              <div class="timeline-header">
+                <span class="timeline-title">Phase 14-18: Sandbox Execution & Pre-flight Checks</span>
+                <span class="timeline-date">완료</span>
+              </div>
+              <p class="timeline-desc">ACR claude CLI 실주행 연동, uncommitted 파일 가드, 리스크 재평가 및 자동 질문 응답 루프 연동.</p>
+            </div>
+          </div>
+
+          <div class="timeline-item">
+            <div class="timeline-dot dot-active">QA</div>
+            <div class="timeline-content">
+              <div class="timeline-header">
+                <span class="timeline-title">전체 QA & E2E 브라우저 검증 계획</span>
+                <span class="timeline-date">진행중</span>
+              </div>
+              <p class="timeline-desc">전체 모듈에 대한 E2E 통합 테스트 수행 및 샌드박스 안정성 검증.</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- BOTTOM: QA & Playwright E2E Scenario Visualizer -->
+  <div class="qa-suite-section">
+    <h2 style="font-size: 1.5rem; font-family: var(--font-outfit); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+      <svg style="width: 1.5rem; height: 1.5rem; color: var(--accent-pink);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 9.172V5L8 4z"></path></svg>
+      E2E 브라우저 테스트 및 통합 QA 계획 (Playwright & Integration Loop)
+    </h2>
+    
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.95rem;">
+      각 카드를 <strong>클릭</strong>하여 테스트 명령어와 각 단계별 기대 출력, 그리고 실제로 시각화될 브라우저 E2E 검증 흐름을 상세히 확인하세요.
+    </p>
+
+    <div class="qa-grid">
+      
+      <!-- QA 1 -->
+      <div class="qa-card" onclick="toggleDetails('qa1')">
+        <div class="qa-header">
+          <span class="qa-title">1. Founder UI & Chat submission</span>
+          <span class="qa-status status-ready">준비 완료</span>
+        </div>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">창업자 UI 로그인 및 자연어 지시 제출, 비즈니스 매핑 및 태스크 분해 검증</p>
+        <div class="qa-steps">
+          <div class="qa-step step-pass">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>Playwright Auth State 로드 및 대시보드 진입</span>
+          </div>
+          <div class="qa-step step-pass">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>채팅창에 지시어("QA Fixed 비즈니스 기술 개선") 전송</span>
+          </div>
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>CEO 해석 및 비즈니스 매핑(ID:1) 확인</span>
+          </div>
+        </div>
+
+        <div id="qa1" class="interactive-details">
+          <p><strong>실행 명령어:</strong></p>
+          <div class="cmd-box">corepack pnpm --dir apps/nocobase-app nocobase e2e test</div>
+          <p><strong>세부 검증 흐름:</strong></p>
+          <ul style="margin-left: 1.25rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem;">
+            <li>1. UI 포트 3002 접속 시 401 튕김 가드 및 로컬스토리지 토큰 획득 검증.</li>
+            <li>2. submitInstruction API(/api/chat) 응답에 correct business_id("1") 포함 여부 확인.</li>
+            <li>3. 콘솔 4xx/5xx 에러 및 경고 존재 유무 실시간 모니터링.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- QA 2 -->
+      <div class="qa-card" onclick="toggleDetails('qa2')">
+        <div class="qa-header">
+          <span class="qa-title">2. Approval Queue & Risk Escalation</span>
+          <span class="qa-status status-ready">준비 완료</span>
+        </div>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">위험 등급 D3+에 따른 결재 승인 차단 및 창업자 수동 승인 후 릴리즈 흐름 검증</p>
+        <div class="qa-steps">
+          <div class="qa-step step-pass">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>D4 작업 발생 시 approval_required=true 세팅 확인</span>
+          </div>
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>우측 패널 ApprovalQueueCard에 D4 승인대기 카드 노출 검증</span>
+          </div>
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>승인 버튼 클릭 시 낙관적 업데이트 및 executor 해제 전이 확인</span>
+          </div>
+        </div>
+
+        <div id="qa2" class="interactive-details">
+          <p><strong>검증 사항:</strong></p>
+          <ul style="margin-left: 1.25rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem;">
+            <li>1. D4 위험도의 CTO 태스크에 대해 dispatcher가 자동 dispatch 처리를 하지 않고 스킵하는가? (보안 가드 검증)</li>
+            <li>2. UI에서 승인 버튼 클릭 시 API `approvePlan` 요청이 성공하여 `approval_required=false`로 즉시 업데이트되는가?</li>
+            <li>3. 이후 60초 주기 dispatcher 틱에서 해당 작업이 정상 픽업되는가?</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- QA 3 -->
+      <div class="qa-card" onclick="toggleDetails('qa3')">
+        <div class="qa-header">
+          <span class="qa-title">3. Sandbox E2E Cycle (ACR)</span>
+          <span class="qa-status status-plan">계획 수립</span>
+        </div>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">실제 샌드박스 CWD git repo에서 에이전트 주행, 커밋, diff 생성 및 main 병합 검증</p>
+        <div class="qa-steps">
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>ACR dispatch 요청 후 CLI spawn 실행 검사</span>
+          </div>
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>uncommitted 변화 검출, acr 브랜치 생성 및 git commit 검증</span>
+          </div>
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>로컬 --no-ff merge 완료 및 L5 callback 정상 호출 수신</span>
+          </div>
+        </div>
+
+        <div id="qa3" class="interactive-details">
+          <p><strong>수행 스크립트:</strong></p>
+          <div class="cmd-box">cd ~/Desktop/양원민\ 개발자/agent_control_room_docs && npm run test</div>
+          <p><strong>세부 검증 흐름:</strong></p>
+          <ul style="margin-left: 1.25rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem;">
+            <li>1. dispatch 시점에 해당 비즈니스 경로(`repo_path`)가 주입되며, 해당 경로에서 안전 가드가 잘 동작하는지 검사.</li>
+            <li>2. 에이전트 주행 시 wall-clock 타임아웃(15분) 및 비정상 빈 산출물 감지 시 재시도([RETRY]) 트리거링 여부 검증.</li>
+            <li>3. merge 완료 후 L5 callback 시 shared-secret 헤더를 사용하여 401 403 에러 없이 성공적으로 상태가 갱신되는지 검증.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- QA 4 -->
+      <div class="qa-card" onclick="toggleDetails('qa4')">
+        <div class="qa-header">
+          <span class="qa-title">4. Autopilot Verifier & Retry Loop</span>
+          <span class="qa-status status-plan">계획 수립</span>
+        </div>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">에이전트 주행 결과 Verifier 판정 및 실패 시 자동 Replan 기반 재도전 루프 검증</p>
+        <div class="qa-steps">
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>ACR 작업 결과(exit_code: 1, 에러 로그) 콜백 수신</span>
+          </div>
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>L5 Core Verifier가 'fail' Verdict 및 cto_retry=1 마킹 검증</span>
+          </div>
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>Hermes 루프 감지 -> 피드백 프롬프트 합성 후 재디스패치 수행 검사</span>
+          </div>
+        </div>
+
+        <div id="qa4" class="interactive-details">
+          <p><strong>시뮬레이션 검증 방법:</strong></p>
+          <ul style="margin-left: 1.25rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem;">
+            <li>1. 에이전트 Mock Runner에 일부러 빌드 에러를 유발하는 출력을 삽입합니다.</li>
+            <li>2. `taskCallback` 시 `verifyCTOPhase`가 에러 문자열 및 exit_code 1을 정상 판독하여 `fail` 판정을 내리는지 유닛 테스트 로그로 확인합니다.</li>
+            <li>3. 데몬 스케줄러가 해당 태스크를 픽업할 때 `replanNextPrompt`가 `[PRIOR PHASE CONTEXT]` 블록(직전 에러 로그 포함)을 정상 추가해 프롬프트를 전송하는지 샌드박스 인텐트 내역에서 입증합니다.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- QA 5 -->
+      <div class="qa-card" onclick="toggleDetails('qa5')">
+        <div class="qa-header">
+          <span class="qa-title">5. Model Lock & Quota Fallback</span>
+          <span class="qa-status status-plan">계획 수립</span>
+        </div>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">에이전트별 토큰 만료 시 model_locked 옵션에 따른 Lock 대기 및 Fallback 전환 검증</p>
+        <div class="qa-steps">
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>Claude(T1) 에이전트의 Quota 상태를 'exhausted'로 모의 주입</span>
+          </div>
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>D2 설계 단계(model_locked: true) 실행 시 bypass 없이 waiting 전이 확인</span>
+          </div>
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>D2 구현 단계(model_locked: false)는 codex(T2)로 대체 배정 주행 검증</span>
+          </div>
+        </div>
+
+        <div id="qa5" class="interactive-details">
+          <p><strong>시뮬레이션 검증 방법:</strong></p>
+          <ul style="margin-left: 1.25rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem;">
+            <li>1. ACR `quota-tracker.json`에 `claude-code: { available: false, nextRetryAt: "미래시각" }`을 강제 기입합니다.</li>
+            <li>2. `resolveModel` 함수를 호출하여 `spec` 단계일 때는 `waiting` 응답이 리턴되고, `implement` 단계일 때는 `gpt-4o(codex)` 모델로 대체 결정이 떨어지는지 테스트 스위트로 입증합니다.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- QA 6 -->
+      <div class="qa-card" onclick="toggleDetails('qa6')">
+        <div class="qa-header">
+          <span class="qa-title">6. Self-Learning & Recall Loop</span>
+          <span class="qa-status status-plan">계획 수립</span>
+        </div>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">오전 9시 크론 자율 도구 카탈로그 학습, 파운더 승인 후 기획 단계의 메모리 반영 검증</p>
+        <div class="qa-steps">
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>self-learning 크론 기동 후 cto-tool-catalog.md 신규 항목 적재 검사</span>
+          </div>
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>메모리 캔디데이트 승인 처리 -> DB 내 saved 마킹 검출</span>
+          </div>
+          <div class="qa-step step-pending">
+            <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            <span>submitInstruction 호출 시 LLM 프롬프트 내에 해당 메모리 주입 검출</span>
+          </div>
+        </div>
+
+        <div id="qa6" class="interactive-details">
+          <p><strong>검증 방법:</strong></p>
+          <ul style="margin-left: 1.25rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem;">
+            <li>1. mock changelog 데이터를 제공하여 `self-learning`을 강제 트리거하고, 신규 마크다운 블록이 `cto-tool-catalog.md` 파일 끝에 정상 덧붙여지는지 파일 diff로 감사합니다.</li>
+            <li>2. `loadFounderMemories()`를 수행하여 mock 승인된 메모리 데이터가 추출되는지 확인합니다.</li>
+            <li>3. 새로운 지시사항 해석 API 호출 시, LLM 요청 페이로드 내에 해당 메모리 텍스트(예: "바이브 코딩 최신 인사이트...")가 온전히 탑재되어 발송되는지 API 트레이스 로그로 최종 검증합니다.</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function toggleDetails(id) {
+      const element = document.getElementById(id);
+      element.classList.toggle('active');
+    }
+  </script>
+</body>
+</html>

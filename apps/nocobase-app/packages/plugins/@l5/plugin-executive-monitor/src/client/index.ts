@@ -1,6 +1,9 @@
-// Executive Monitor — NocoBase client plugin entry
-// NocoBase build system resolves this file to generate the client bundle.
+import { Plugin } from '@nocobase/client';
 
-export default {
-  name: '@l5/plugin-executive-monitor',
-};
+export class PluginExecutiveMonitorClient extends Plugin {
+  async load() {
+    // Client-side initialization if needed
+  }
+}
+
+export default PluginExecutiveMonitorClient;

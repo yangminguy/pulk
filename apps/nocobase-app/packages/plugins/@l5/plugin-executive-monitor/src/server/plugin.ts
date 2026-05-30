@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import path from 'path';
 import { defineCollection } from '@nocobase/database';
 import { Plugin } from '@nocobase/server';
-import { startHermesScheduler } from './hermes-scheduler';
+import { startHermesScheduler, stopHermesScheduler } from './hermes-scheduler';
 
 const {
   derivePhaseFromTasks,
@@ -674,6 +674,11 @@ export default class PluginExecutiveMonitorServer extends Plugin {
     await ensureBusinessIdIndex(this.db);
     startHermesScheduler(this.db, this.app.logger);
 
+    this.app.on('beforeStop', async () => {
+      this.app.logger.info('PluginExecutiveMonitorServer cleaning up beforeStop');
+      stopHermesScheduler(this.app.logger);
+    });
+
     this.app.resourcer.define({
       name: 'monitor',
       actions: {
@@ -784,7 +789,10 @@ export default class PluginExecutiveMonitorServer extends Plugin {
 
   async install() {}
   async afterEnable() {}
-  async afterDisable() {}
+  async afterDisable() {
+    this.app.logger.info('PluginExecutiveMonitorServer disabled, stopping scheduler');
+    stopHermesScheduler(this.app.logger);
+  }
   async remove() {}
 }
 
