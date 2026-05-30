@@ -2,11 +2,11 @@
 
 ## Phase 0 — Project Setup
 
-- [ ] P0 Create monorepo structure
-- [ ] P0 Add `CLAUDE.md`, `AGENTS.md`, and `docs/`
-- [ ] P0 Add package manager and workspace config
-- [ ] P0 Add `.env.example`
-- [ ] P0 Add basic lint/test scripts
+- [x] P0 Create monorepo structure
+- [x] P0 Add `CLAUDE.md`, `AGENTS.md`, and `docs/`
+- [x] P0 Add package manager and workspace config
+- [x] P0 Add `.env.example`
+- [x] P0 Add basic lint/test scripts
 
 ## Phase 1 — NocoBase Shell + Data Skeleton
 
@@ -24,18 +24,18 @@
 
 ## Phase 2 — L5 Core Package
 
-- [ ] P0 Create `packages/l5-core`
-- [ ] P0 Implement `scoreFounderFit`
-- [ ] P0 Implement `calculatePmfScore`
-- [ ] P0 Implement `decideToolCandidate`
-- [ ] P0 Implement `requiresFounderApproval`
-- [ ] P1 Implement `generateBusinessBrief`
+- [x] P0 Create `packages/l5-core`
+- [x] P0 Implement `scoreFounderFit`
+- [x] P0 Implement `calculatePmfScore`
+- [x] P0 Implement `decideToolCandidate`
+- [x] P0 Implement `requiresFounderApproval`
+- [x] P1 Implement `generateBusinessBrief`
 - [ ] P1 Implement `generateWorkflow`
 - [ ] P1 Implement `generate7DayExperiment`
 - [ ] P1 Implement `assignAgents`
 - [ ] P1 Implement `createMemoryEntry`
 - [ ] P1 Implement `retrieveRelevantMemory`
-- [ ] P1 Add unit tests for all core scoring functions
+- [x] P1 Add unit tests for all core scoring functions
 
 ## Phase 3 — L5 NocoBase Plugins
 
@@ -110,3 +110,7 @@
 ## Done
 
 - [x] Development document package generated from source PRD
+- [x] Phase 0: monorepo, CLAUDE.md, pnpm workspace, .env.example, scripts
+- [x] Phase 2 (P0): l5-core package — scoreFounderFit, calculatePmfScore, decideToolCandidate, requiresFounderApproval, generateBusinessBrief
+- [x] Phase 2 (P0): 25 portable TypeScript entity types
+- [x] Phase 2 (P1): 27 unit tests — 100% pass rate
