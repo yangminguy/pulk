@@ -1,41 +1,71 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import AuthGate from '@/components/AuthGate'
 import TabLayout from '@/components/TabLayout'
 import RoadmapMiniCard from '@/components/RoadmapMiniCard'
 import TodayDiscoveryBanner from '@/components/TodayDiscoveryBanner'
 import ApprovalQueueCard from '@/components/ApprovalQueueCard'
+import RoadmapTimeline from '@/components/RoadmapTimeline'
 import { api } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
 
+// ── Icon primitive (matches Sidebar.tsx pattern) ─────────────────────────────
+const ICONS: Record<string, string> = {
+  check:    'M20 6L9 17l-5-5',
+  x:        'M18 6L6 18 M6 6l12 12',
+  send:     'M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z',
+  alert:    'M12 22a10 10 0 110-20 10 10 0 010 20z M12 8v4 M12 16h.01',
+  folder:   'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z',
+  inbox:    'M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z',
+  note:     'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8',
+  arrowR:   'M5 12h14 M12 5l7 7-7 7',
+  wrench:   'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
+}
+
+function Icon({ name, size = 14, stroke = 1.7 }: { name: string; size?: number; stroke?: number }) {
+  const d = ICONS[name]
+  if (!d) return null
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true">
+      {d.split(/(?=M)/).map((seg, i) => <path key={i} d={seg.trim()} />)}
+    </svg>
+  )
+}
+
+// ── Constants ────────────────────────────────────────────────────────────────
 const PHASE_LABELS: Record<string, string> = {
-  direction_alignment: '방향 정렬',
-  pmf_diagnosis: 'PMF 진단',
-  execution_build: '실행 빌드',
-  sales_distribution_test: '세일즈 테스트',
-  productization_review: '제품화 검토',
-  scale_automation: '스케일/자동화',
+  direction_alignment:      '방향 정렬',
+  pmf_diagnosis:            'PMF 진단',
+  execution_build:          '실행 빌드',
+  sales_distribution_test:  '세일즈 테스트',
+  productization_review:    '제품화 검토',
+  scale_automation:         '스케일/자동화',
 }
 
-const RISK_COLORS: Record<string, string> = {
-  D1: 'bg-green-800 text-green-200',
-  D2: 'bg-blue-800 text-blue-200',
-  D3: 'bg-yellow-800 text-yellow-200',
-  D4: 'bg-orange-800 text-orange-200',
-  D5: 'bg-red-800 text-red-200',
+// Risk badge classes — use j-risk-* from globals.css
+const RISK_CLASS: Record<string, string> = {
+  D1: 'j-risk-d1',
+  D2: 'j-risk-d2',
+  D3: 'j-risk-d3',
+  D4: 'j-risk-d4',
+  D5: 'j-risk-d5',
 }
 
-const AGENT_COLORS: Record<string, string> = {
-  CMO: 'text-purple-400',
-  CRO: 'text-blue-400',
-  CPO: 'text-green-400',
-  CTO: 'text-cyan-400',
-  COO: 'text-orange-400',
-  CFO: 'text-yellow-400',
-  RiskQA: 'text-red-400',
-  CEO: 'text-indigo-400',
+// Agent monogram colors — matches primitives.jsx AGENTS palette
+const AGENT_COLOR: Record<string, string> = {
+  CMO:    'var(--wood-3)',
+  CRO:    'var(--wood-2)',
+  CPO:    'var(--green-press)',
+  CTO:    'var(--ink-2)',
+  COO:    'var(--wood-4)',
+  CFO:    'var(--silver-4)',
+  RiskQA: 'var(--red)',
+  CEO:    'var(--ink-1)',
 }
 
+// ── Types ────────────────────────────────────────────────────────────────────
 type ProposedTask = {
   id: string
   assigned_agent: string
@@ -61,6 +91,36 @@ type CEOMessage = {
   planStatus?: 'pending' | 'approved' | 'rejected'
 }
 
+// ── Agent chip (monogram square + label) ────────────────────────────────────
+function AgentChip({ agent, showLabel = true }: { agent: string; showLabel?: boolean }) {
+  const color = AGENT_COLOR[agent] ?? 'var(--ink-3)'
+  const mono = agent.slice(0, 2).toUpperCase()
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span style={{
+        width: 22,
+        height: 22,
+        borderRadius: 4,
+        background: color,
+        color: '#fff',
+        fontSize: 9.5,
+        fontWeight: 700,
+        fontFamily: 'var(--font-mono)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}>
+        {mono}
+      </span>
+      {showLabel && (
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)' }}>{agent}</span>
+      )}
+    </span>
+  )
+}
+
+// ── Proposed Tasks Panel (executive dispatch cards) ──────────────────────────
 function ProposedTasksPanel({
   tasks,
   instructionId,
@@ -78,72 +138,131 @@ function ProposedTasksPanel({
 
   const approve = async () => {
     setLoading(true)
-    try { onApprove(instructionId) } finally { setLoading(false) }
+    try { await onApprove(instructionId) } finally { setLoading(false) }
   }
   const reject = async () => {
     setLoading(true)
-    try { onReject(instructionId) } finally { setLoading(false) }
+    try { await onReject(instructionId) } finally { setLoading(false) }
   }
 
   return (
-    <div className="mt-3 border border-slate-600 rounded-xl overflow-hidden">
-      <div className="bg-slate-700 px-4 py-2 text-xs text-slate-400 font-medium uppercase tracking-wide">
-        배정 예정 Task ({tasks.length}건)
-      </div>
-      <div className="divide-y divide-slate-700">
-        {tasks.map((t, i) => (
-          <div key={i} className="px-4 py-3 flex items-start gap-3">
-            <span className={`text-sm font-bold shrink-0 ${AGENT_COLORS[t.assigned_agent] ?? 'text-slate-300'}`}>
-              {t.assigned_agent}
+    <div style={{
+      marginTop: 12,
+      border: '1px solid var(--silver-2)',
+      borderRadius: 8,
+      overflow: 'hidden',
+      background: 'var(--paper-elevated)',
+    }}>
+      {/* dispatch header */}
+      <div style={{
+        padding: '8px 13px',
+        borderBottom: '1px solid var(--silver-1)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <span className="j-overline">배정 예정 Task · {tasks.length}건</span>
+        {/* avatar stack */}
+        <div style={{ display: 'flex', gap: -2 }}>
+          {tasks.slice(0, 4).map((t, i) => (
+            <span key={i} style={{ marginLeft: i > 0 ? -6 : 0, zIndex: tasks.length - i }}>
+              <AgentChip agent={t.assigned_agent} showLabel={false} />
             </span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate">{t.title}</div>
-              <div className="text-xs text-slate-400 mt-0.5 line-clamp-2">{t.rationale}</div>
+          ))}
+        </div>
+      </div>
+
+      {/* task rows — executive dispatch cards */}
+      {tasks.map((t, i) => {
+        const riskCls = RISK_CLASS[t.risk_level ?? ''] ?? ''
+        return (
+          <div key={i} style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 11,
+            padding: '11px 13px',
+            borderBottom: i < tasks.length - 1 ? '1px solid var(--silver-1)' : 'none',
+          }}>
+            <AgentChip agent={t.assigned_agent} showLabel={false} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink-1)', lineHeight: 1.3 }}>
+                {t.title}
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 2, lineHeight: 1.45 }}>
+                {t.rationale}
+              </div>
             </div>
-            <div className="flex gap-1 shrink-0">
+            <div style={{ display: 'flex', gap: 5, flexShrink: 0, alignItems: 'center' }}>
               {t.risk_level && (
-                <span className={`text-xs rounded px-2 py-0.5 ${RISK_COLORS[t.risk_level] ?? 'bg-slate-700'}`}>
-                  {t.risk_level}
-                </span>
+                <span className={`j-badge ${riskCls}`}>{t.risk_level}</span>
               )}
               {t.approval_required && (
-                <span className="text-xs bg-yellow-900 text-yellow-300 rounded px-2 py-0.5">승인필요</span>
+                <span className="j-badge j-badge-review">승인필요</span>
               )}
             </div>
           </div>
-        ))}
-      </div>
+        )
+      })}
 
+      {/* CTA footer */}
       {planStatus === 'pending' && (
-        <div className="px-4 py-3 bg-slate-750 border-t border-slate-600 flex gap-3 items-center">
-          <span className="text-xs text-slate-400 flex-1">
+        <div style={{
+          padding: '11px 13px',
+          background: 'var(--paper-surface)',
+          borderTop: '1px solid var(--silver-1)',
+          display: 'flex',
+          gap: 9,
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 12, color: 'var(--ink-3)', flex: 1, minWidth: 140 }}>
             승인하면 각 임원에게 Task가 배정됩니다. 거절하면 모든 Task가 취소됩니다.
           </span>
           <button
             onClick={approve}
             disabled={loading}
-            className="bg-green-700 hover:bg-green-600 disabled:opacity-50 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors"
+            className="j-btn j-btn-primary j-btn-sm"
           >
+            <Icon name="check" size={13} stroke={2.2} />
             승인 — 임원 배정
           </button>
           <button
             onClick={reject}
             disabled={loading}
-            className="bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors"
+            className="j-btn j-btn-danger j-btn-sm"
           >
+            <Icon name="x" size={13} stroke={2} />
             거절
           </button>
         </div>
       )}
 
       {planStatus === 'approved' && (
-        <div className="px-4 py-2 bg-green-900/30 border-t border-green-700 text-xs text-green-400">
+        <div style={{
+          padding: '10px 13px',
+          background: 'var(--green-tint)',
+          borderTop: '1px solid var(--green-tint-2)',
+          fontSize: 12.5,
+          color: 'var(--green-press)',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+        }}>
+          <Icon name="check" size={14} stroke={2} />
           승인됨 — 각 임원에게 Task가 배정됐습니다
         </div>
       )}
 
       {planStatus === 'rejected' && (
-        <div className="px-4 py-2 bg-red-900/30 border-t border-red-700 text-xs text-red-400">
+        <div style={{
+          padding: '10px 13px',
+          background: 'var(--red-tint)',
+          borderTop: '1px solid #E8C5BF',
+          fontSize: 12.5,
+          color: '#8C2A1F',
+          fontWeight: 600,
+        }}>
           거절됨 — 모든 Task가 취소됐습니다
         </div>
       )}
@@ -151,26 +270,45 @@ function ProposedTasksPanel({
   )
 }
 
-// D4/D5 approval card embedded in chat — shows tasks requiring high-risk approval
+// ── High-risk embed card (shown on narrow screens, above message list) ───────
 function ApprovalEmbedCard({ tasks }: { tasks: ProposedTask[] }) {
   const highRisk = tasks.filter(t => t.risk_level === 'D4' || t.risk_level === 'D5')
   if (highRisk.length === 0) return null
 
   return (
-    <div className="border border-orange-700 bg-orange-900/20 rounded-xl overflow-hidden mb-3">
-      <div className="bg-orange-900/40 px-4 py-2 text-xs text-orange-300 font-medium uppercase tracking-wide">
-        고위험 승인 필요 ({highRisk.length}건)
+    <div style={{
+      border: '1px solid #DDB87A',
+      borderRadius: 6,
+      overflow: 'hidden',
+      marginBottom: 12,
+      background: 'var(--amber-tint)',
+    }}>
+      <div style={{
+        padding: '8px 13px',
+        borderBottom: '1px solid #DDB87A',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 7,
+      }}>
+        <Icon name="alert" size={13} stroke={1.8} />
+        <span className="j-overline" style={{ color: '#8A5408' }}>
+          고위험 승인 필요 ({highRisk.length}건)
+        </span>
       </div>
-      <div className="divide-y divide-orange-900/40">
+      <div style={{ background: 'var(--paper-surface)' }}>
         {highRisk.map((t, i) => (
-          <div key={i} className="px-4 py-2.5 flex items-center gap-3">
-            <span className={`text-xs rounded px-2 py-0.5 shrink-0 ${RISK_COLORS[t.risk_level!] ?? ''}`}>
-              {t.risk_level}
+          <div key={i} style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 9,
+            padding: '9px 13px',
+            borderBottom: i < highRisk.length - 1 ? '1px solid var(--silver-1)' : 'none',
+          }}>
+            <span className={`j-badge ${RISK_CLASS[t.risk_level!] ?? ''}`}>{t.risk_level}</span>
+            <AgentChip agent={t.assigned_agent} showLabel={false} />
+            <span style={{ fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink-1)' }}>
+              {t.title}
             </span>
-            <span className={`text-sm font-bold shrink-0 ${AGENT_COLORS[t.assigned_agent] ?? 'text-slate-300'}`}>
-              {t.assigned_agent}
-            </span>
-            <span className="text-sm flex-1 truncate">{t.title}</span>
           </div>
         ))}
       </div>
@@ -178,18 +316,110 @@ function ApprovalEmbedCard({ tasks }: { tasks: ProposedTask[] }) {
   )
 }
 
+// ── CEO interpretation panel ─────────────────────────────────────────────────
+function InterpretationPanel({ interpretation }: {
+  interpretation: NonNullable<CEOMessage['interpretation']>
+}) {
+  const { phase, risk_level, assumptions, success_criteria } = interpretation
+  if (!phase && !risk_level && !assumptions?.length && !success_criteria?.length) return null
+
+  return (
+    <div style={{
+      marginTop: 10,
+      paddingTop: 10,
+      borderTop: '1px solid var(--silver-1)',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 8,
+    }}>
+      {/* phase + risk row */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {phase && (
+          <span className="j-badge j-badge-ref">{PHASE_LABELS[phase] ?? phase}</span>
+        )}
+        {risk_level && (
+          <span className={`j-badge ${RISK_CLASS[risk_level] ?? 'j-badge-neutral'}`}>
+            {risk_level}
+          </span>
+        )}
+      </div>
+
+      {/* assumptions */}
+      {assumptions && assumptions.length > 0 && (
+        <div>
+          <div className="j-overline" style={{ marginBottom: 4 }}>가정 (Assumptions)</div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.5 }}>
+            {assumptions.join(' · ')}
+          </div>
+        </div>
+      )}
+
+      {/* success criteria */}
+      {success_criteria && success_criteria.length > 0 && (
+        <div>
+          <div className="j-overline" style={{ marginBottom: 4 }}>성공 기준</div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.5 }}>
+            {success_criteria.join(' · ')}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Chat Tab ─────────────────────────────────────────────────────────────────
 function ChatTab({ businessId }: { businessId: string | null }) {
+  const { selectedProjectId } = useBusiness()
   const [messages, setMessages] = useState<CEOMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  const fetchHistory = useCallback(async (projId: string) => {
+    setLoading(true)
+    setError('')
+    try {
+      const history = await api.chatHistory(projId)
+      const formatted = history.map(m => {
+        const meta = m.metadata ?? {}
+        return {
+          id: m.id,
+          role: m.role,
+          text: m.text,
+          instructionId: meta.instructionId,
+          interpretation: {
+            goal: meta.goal,
+            phase: meta.phase,
+            risk_level: meta.risk_level,
+            assumptions: meta.assumptions,
+            success_criteria: meta.success_criteria,
+          },
+          proposedTasks: meta.proposed_tasks,
+          planStatus: meta.planStatus ?? (meta.proposed_tasks ? 'pending' : undefined),
+        } as CEOMessage
+      })
+      setMessages(formatted)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '대화 기록 로드 실패')
+      setMessages([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      fetchHistory(selectedProjectId)
+    } else {
+      setMessages([])
+    }
+  }, [selectedProjectId, fetchHistory])
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Collect all pending high-risk tasks across all messages for the approval embed card
   const allPendingHighRiskTasks = messages
     .filter(m => m.role === 'ceo' && m.planStatus === 'pending' && m.proposedTasks)
     .flatMap(m => m.proposedTasks ?? [])
@@ -206,29 +436,33 @@ function ChatTab({ businessId }: { businessId: string | null }) {
     setLoading(true)
 
     try {
-      // Pass business_id context; null means 회사 공통
-      const res = await api.submitInstruction(text, businessId)
-      const interp = (res as any)?.interpretation ?? {}
-      const tasks: ProposedTask[] = ((res as any)?.tasks ?? []).map((t: any) => ({
-        id: t.id,
-        assigned_agent: t.assigned_agent,
-        title: t.title,
-        rationale: t.rationale,
-        risk_level: t.risk_level,
-        approval_required: t.approval_required,
-      }))
-      const instructionId = (res as any)?.instruction?.id ?? ''
+      const res = await api.submitInstruction(text, selectedProjectId, businessId)
 
-      const ceoMsg: CEOMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'ceo',
-        text: interp?.goal ?? '지시를 분석했습니다.',
-        instructionId,
-        interpretation: interp,
-        proposedTasks: tasks,
-        planStatus: 'pending',
+      if (selectedProjectId) {
+        await fetchHistory(selectedProjectId)
+      } else {
+        const interp = (res as any)?.interpretation ?? {}
+        const tasks: ProposedTask[] = ((res as any)?.tasks ?? []).map((t: any) => ({
+          id: t.id,
+          assigned_agent: t.assigned_agent,
+          title: t.title,
+          rationale: t.rationale,
+          risk_level: t.risk_level,
+          approval_required: t.approval_required,
+        }))
+        const instructionId = (res as any)?.instruction?.id ?? ''
+
+        const ceoMsg: CEOMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'ceo',
+          text: interp?.goal ?? '지시를 분석했습니다.',
+          instructionId,
+          interpretation: interp,
+          proposedTasks: tasks,
+          planStatus: 'pending',
+        }
+        setMessages(prev => [...prev, ceoMsg])
       }
-      setMessages(prev => [...prev, ceoMsg])
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'API 오류')
     } finally {
@@ -253,6 +487,9 @@ function ChatTab({ businessId }: { businessId: string | null }) {
           }
         }
       }
+      if (selectedProjectId) {
+        await fetchHistory(selectedProjectId)
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '승인 실패')
     }
@@ -264,16 +501,68 @@ function ChatTab({ businessId }: { businessId: string | null }) {
       setMessages(prev => prev.map(m =>
         m.instructionId === instructionId ? { ...m, planStatus: 'rejected' } : m
       ))
+      if (selectedProjectId) {
+        await fetchHistory(selectedProjectId)
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '거절 실패')
     }
   }
 
+  // No project selected state
+  if (businessId !== null && !selectedProjectId) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 400,
+        background: 'var(--paper-surface)',
+        border: '1px solid var(--silver-2)',
+        borderRadius: 8,
+        padding: 32,
+        textAlign: 'center',
+      }}>
+        <span style={{
+          width: 48,
+          height: 48,
+          borderRadius: 12,
+          background: 'var(--silver-1)',
+          color: 'var(--ink-3)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 16,
+        }}>
+          <Icon name="folder" size={22} stroke={1.5} />
+        </span>
+        <h3 style={{
+          fontFamily: 'var(--font-serif)',
+          fontSize: 20,
+          fontWeight: 500,
+          color: 'var(--ink-1)',
+          marginBottom: 8,
+        }}>
+          활성 프로젝트가 선택되지 않았습니다
+        </h3>
+        <p style={{ fontSize: 13.5, color: 'var(--ink-3)', maxWidth: 360, lineHeight: 1.6, marginBottom: 16 }}>
+          왼쪽 사이드바의 활성 사업 하위에 있는{' '}
+          <strong style={{ color: 'var(--green-press)' }}>프로젝트</strong>를 선택하거나,{' '}
+          <strong style={{ color: 'var(--green-press)' }}>+ 추가</strong> 버튼을 눌러 프로젝트를 먼저 생성해 주세요.
+        </p>
+        <span style={{ fontSize: 11.5, color: 'var(--ink-4)' }}>
+          대화 및 수립된 로드맵은 프로젝트 단위로 격리되어 안전하게 영속 보존됩니다.
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col lg:flex-row gap-4 h-full">
-      {/* Left: chat messages + input (primary) */}
+      {/* Left: chat messages + input */}
       <div className="flex flex-col flex-1 min-w-0 h-full">
-        {/* D4/D5 inline embed card — shown above messages only on narrow screens where the right panel stacks below */}
+        {/* D4/D5 inline embed — narrow screens only */}
         <div className="lg:hidden">
           {allPendingHighRiskTasks.length > 0 && (
             <ApprovalEmbedCard tasks={allPendingHighRiskTasks} />
@@ -281,77 +570,133 @@ function ChatTab({ businessId }: { businessId: string | null }) {
         </div>
 
         {/* Message list */}
-        <div className="flex-1 overflow-auto space-y-4 my-3 pr-1">
+        <div className="flex-1 overflow-auto my-3 pr-1" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {messages.length === 0 && (
-            <div className="text-center text-slate-500 mt-16 text-sm">
-              비즈니스 지시를 입력해보세요<br/>
-              <span className="text-xs text-slate-600">예: &quot;PMF 메시지 실험 계획해줘&quot;, &quot;신규 고객 온보딩 프로세스 만들어줘&quot;</span>
+            <div style={{
+              textAlign: 'center',
+              marginTop: 64,
+              color: 'var(--ink-4)',
+            }}>
+              <div style={{ fontSize: 14 }}>비즈니스 지시를 입력해보세요</div>
+              <div style={{ fontSize: 12, marginTop: 6, color: 'var(--ink-4)' }}>
+                예: &quot;PMF 메시지 실험 계획해줘&quot;, &quot;신규 고객 온보딩 프로세스 만들어줘&quot;
+              </div>
             </div>
           )}
 
           {messages.map(msg => (
-            <div key={msg.id} className={`flex ${msg.role === 'founder' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-2xl rounded-xl px-4 py-3 text-sm ${
-                msg.role === 'founder'
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-800 text-slate-100'
-              }`}>
-                {msg.role === 'ceo' && (
-                  <div className="text-xs text-indigo-400 mb-1 font-medium">CEO Agent</div>
-                )}
-                <div>{msg.text}</div>
-
-                {msg.role === 'ceo' && msg.interpretation && (
-                  <div className="mt-2 space-y-1">
-                    <div className="flex flex-wrap gap-2">
-                      {msg.interpretation.phase && (
-                        <span className="text-xs bg-indigo-700 rounded px-2 py-0.5">
-                          {PHASE_LABELS[msg.interpretation.phase] ?? msg.interpretation.phase}
-                        </span>
-                      )}
-                      {msg.interpretation.risk_level && (
-                        <span className={`text-xs rounded px-2 py-0.5 ${RISK_COLORS[msg.interpretation.risk_level] ?? 'bg-slate-700'}`}>
-                          {msg.interpretation.risk_level}
-                        </span>
-                      )}
-                    </div>
-                    {msg.interpretation.success_criteria && msg.interpretation.success_criteria.length > 0 && (
-                      <div className="text-xs text-slate-400 mt-1">
-                        성공 기준: {msg.interpretation.success_criteria.join(' · ')}
-                      </div>
-                    )}
+            <div key={msg.id} style={{
+              display: 'flex',
+              justifyContent: msg.role === 'founder' ? 'flex-end' : 'flex-start',
+            }}>
+              {msg.role === 'founder' ? (
+                // Founder bubble — right, paper-elevated card
+                <div style={{
+                  maxWidth: '78%',
+                  background: 'var(--paper-elevated)',
+                  border: '1px solid var(--silver-2)',
+                  borderRadius: '14px 14px 4px 14px',
+                  padding: '12px 15px',
+                  fontSize: 14,
+                  color: 'var(--ink-1)',
+                  lineHeight: 1.55,
+                }}>
+                  {msg.text}
+                </div>
+              ) : (
+                // CEO bubble — left, paper-surface + 4px green accent bar
+                <div style={{
+                  maxWidth: '90%',
+                  background: 'var(--paper-surface)',
+                  border: '1px solid var(--silver-2)',
+                  borderLeft: '4px solid var(--green)',
+                  borderRadius: '4px 14px 14px 4px',
+                  padding: '12px 15px',
+                  fontSize: 14,
+                  color: 'var(--ink-1)',
+                  lineHeight: 1.55,
+                }}>
+                  {/* CEO agent label */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 7,
+                    marginBottom: 8,
+                  }}>
+                    <AgentChip agent="CEO" showLabel={false} />
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-3)' }}>
+                      CEO Agent
+                    </span>
                   </div>
-                )}
 
-                {msg.role === 'ceo' && msg.proposedTasks && msg.proposedTasks.length > 0 && msg.instructionId && (
-                  <ProposedTasksPanel
-                    tasks={msg.proposedTasks}
-                    instructionId={msg.instructionId}
-                    planStatus={msg.planStatus ?? 'pending'}
-                    onApprove={handleApprove}
-                    onReject={handleReject}
-                  />
-                )}
-              </div>
+                  {/* main message text */}
+                  <div style={{ fontWeight: 500, whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+
+                  {/* interpretation panel */}
+                  {msg.interpretation && (
+                    <InterpretationPanel interpretation={msg.interpretation} />
+                  )}
+
+                  {/* proposed tasks */}
+                  {msg.proposedTasks && msg.proposedTasks.length > 0 && msg.instructionId && (
+                    <ProposedTasksPanel
+                      tasks={msg.proposedTasks}
+                      instructionId={msg.instructionId}
+                      planStatus={msg.planStatus ?? 'pending'}
+                      onApprove={handleApprove}
+                      onReject={handleReject}
+                    />
+                  )}
+                </div>
+              )}
             </div>
           ))}
 
+          {/* Thinking indicator */}
           {loading && (
-            <div className="flex justify-start">
-              <div className="bg-slate-800 rounded-xl px-4 py-3 text-sm text-slate-400 animate-pulse">
-                CEO Agent가 분석 중...
+            <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+              <div style={{
+                background: 'var(--paper-surface)',
+                border: '1px solid var(--silver-2)',
+                borderLeft: '4px solid var(--green)',
+                borderRadius: '4px 14px 14px 4px',
+                padding: '12px 15px',
+                fontSize: 13.5,
+                color: 'var(--ink-3)',
+              }}>
+                CEO Agent가 분석 중…
               </div>
             </div>
           )}
+
           <div ref={bottomRef} />
         </div>
 
-        {error && <div className="text-red-400 text-sm mb-2">{error}</div>}
+        {/* Error */}
+        {error && (
+          <div style={{
+            fontSize: 12.5,
+            color: 'var(--red)',
+            marginBottom: 8,
+            padding: '6px 10px',
+            background: 'var(--red-tint)',
+            borderRadius: 4,
+          }}>
+            {error}
+          </div>
+        )}
 
-        <div className="flex gap-2">
+        {/* Input bar */}
+        <div style={{ display: 'flex', gap: 9 }}>
           <input
-            className="flex-1 bg-slate-800 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="비즈니스 지시를 입력하세요..."
+            className="j-input"
+            style={{
+              flex: 1,
+              borderRadius: 999,
+              padding: '11px 18px',
+              fontSize: 14,
+            }}
+            placeholder="비즈니스 지시를 입력하세요…"
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
@@ -360,15 +705,17 @@ function ChatTab({ businessId }: { businessId: string | null }) {
           <button
             onClick={send}
             disabled={loading || !input.trim()}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl px-5 py-3 text-sm font-medium transition-colors"
+            className="j-btn j-btn-primary"
+            style={{ borderRadius: 999, padding: '0 20px', fontSize: 14 }}
           >
+            <Icon name="send" size={15} stroke={1.8} />
             전송
           </button>
         </div>
       </div>
 
-      {/* Right: status panel — fixed width on large screens, stacks below on narrow */}
-      <div className="w-full lg:w-80 shrink-0 overflow-y-auto space-y-3 lg:max-h-full">
+      {/* Right: status rail */}
+      <div className="w-full lg:w-80 shrink-0 overflow-y-auto lg:max-h-full" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <RoadmapMiniCard businessId={businessId} />
         <ApprovalQueueCard businessId={businessId} />
         <TodayDiscoveryBanner businessId={businessId} />
@@ -377,44 +724,475 @@ function ChatTab({ businessId }: { businessId: string | null }) {
   )
 }
 
+// ── Roadmap Tab ──────────────────────────────────────────────────────────────
 function RoadmapTab({ businessId }: { businessId: string | null }) {
   return (
     <div className="space-y-4">
-      <RoadmapMiniCard businessId={businessId} />
-      <div className="text-xs text-slate-500 text-center mt-4">
-        전체 로드맵 뷰는 슬라이스 2.4에서 구현 예정입니다.
-      </div>
+      <RoadmapTimeline />
     </div>
   )
 }
 
+// ── Inbox Tab ────────────────────────────────────────────────────────────────
 function InboxTab({ businessId }: { businessId: string | null }) {
+  const { selectedProjectId } = useBusiness()
+  const [tasks, setTasks] = useState<any[]>([])
+  const [selectedTask, setSelectedTask] = useState<any | null>(null)
+  const [handoffs, setHandoffs] = useState<any[]>([])
+  const [feedback, setFeedback] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const loadTasks = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const reviewable = await api.getInboxTasks(selectedProjectId, businessId)
+      setTasks(reviewable)
+      if (selectedTask && !reviewable.some((t: any) => t.task_id === selectedTask.task_id)) {
+        setSelectedTask(null)
+        setHandoffs([])
+      }
+    } catch (err) {
+      setError('검토 대상 태스크 로드 실패')
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedProjectId, businessId, selectedTask])
+
+  useEffect(() => {
+    loadTasks()
+  }, [selectedProjectId, businessId, loadTasks])
+
+  const selectTask = async (task: any) => {
+    setSelectedTask(task)
+    setHandoffs([])
+    setFeedback('')
+    try {
+      const taskId = task.task_id || task.id
+      const res = await api.getTaskHandoffs(taskId)
+      setHandoffs(res)
+    } catch (err) {
+      console.error('Handoff 로드 실패:', err)
+    }
+  }
+
+  const handleApprove = async () => {
+    if (!selectedTask || actionLoading) return
+    const taskId = selectedTask.task_id || selectedTask.id
+    setActionLoading(true)
+    try {
+      await api.approveTask(taskId)
+      await loadTasks()
+      setSelectedTask(null)
+      setHandoffs([])
+      setFeedback('')
+    } catch (err) {
+      setError('태스크 승인 실패')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleReject = async () => {
+    if (!selectedTask || actionLoading) return
+    const taskId = selectedTask.task_id || selectedTask.id
+    setActionLoading(true)
+    try {
+      await api.rejectTask(taskId)
+      await loadTasks()
+      setSelectedTask(null)
+      setHandoffs([])
+      setFeedback('')
+    } catch (err) {
+      setError('수정 요청 실패')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 12rem)', minHeight: 500, gap: 16 }}>
+      {/* Today Discovery as insight card */}
       <TodayDiscoveryBanner businessId={businessId} />
-      <div className="text-xs text-slate-500 text-center mt-8">
-        인박스 항목은 슬라이스 2.4에서 구현 예정입니다.
+
+      <div style={{ flex: 1, display: 'flex', gap: 16, overflow: 'hidden', minHeight: 0 }}>
+        {/* Left list pane */}
+        <div style={{
+          width: 300,
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--paper-surface)',
+          border: '1px solid var(--silver-2)',
+          borderRadius: 8,
+          overflow: 'hidden',
+        }}>
+          {/* pane header */}
+          <div style={{
+            padding: '10px 14px',
+            borderBottom: '1px solid var(--silver-1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}>
+            <span className="j-overline">검토 대기 중인 산출물</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>
+              {tasks.length}건
+            </span>
+          </div>
+
+          {/* list body */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {loading ? (
+              <div style={{ padding: '20px 14px', color: 'var(--ink-4)', fontSize: 12, textAlign: 'center' }}>
+                로딩 중…
+              </div>
+            ) : tasks.length === 0 ? (
+              <div style={{ padding: '32px 14px', color: 'var(--ink-4)', fontSize: 12.5, textAlign: 'center' }}>
+                현재 검토 대기 중인 에이전트 산출물이 없습니다.
+              </div>
+            ) : (
+              tasks.map(task => {
+                const isSelected = selectedTask && (selectedTask.task_id === task.task_id || selectedTask.id === task.id)
+                const agentColor = AGENT_COLOR[task.assigned_agent] ?? 'var(--ink-3)'
+                const riskCls = RISK_CLASS[task.risk_level ?? ''] ?? ''
+                return (
+                  <button
+                    key={task.task_id || task.id}
+                    onClick={() => selectTask(task)}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '11px 14px',
+                      background: isSelected ? 'var(--green-tint)' : 'transparent',
+                      borderBottom: '1px solid var(--silver-1)',
+                      border: 'none',
+                      borderLeft: isSelected ? '3px solid var(--green)' : '3px solid transparent',
+                      cursor: 'pointer',
+                      transition: 'background 120ms',
+                    }}
+                    onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'var(--silver-1)' }}
+                    onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
+                      <AgentChip agent={task.assigned_agent} showLabel={false} />
+                      <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-2)' }}>
+                        {task.assigned_agent} Agent
+                      </span>
+                      {task.risk_level && (
+                        <span className={`j-badge ${riskCls}`} style={{ marginLeft: 'auto' }}>
+                          {task.risk_level}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-1)', marginBottom: 3, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {task.title}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'var(--ink-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {task.expected_output}
+                    </div>
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Right detail pane */}
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--paper-surface)',
+          border: '1px solid var(--silver-2)',
+          borderRadius: 8,
+          overflow: 'hidden',
+          minHeight: 300,
+        }}>
+          {selectedTask ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              {/* detail header */}
+              <div style={{
+                padding: '14px 18px',
+                borderBottom: '1px solid var(--silver-1)',
+                background: 'var(--paper-elevated)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 7 }}>
+                  <AgentChip agent={selectedTask.assigned_agent} />
+                  <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>결과 보고 및 검토</span>
+                </div>
+                <h2 style={{
+                  fontFamily: 'var(--font-serif)',
+                  fontWeight: 500,
+                  fontSize: 18,
+                  color: 'var(--ink-1)',
+                  lineHeight: 1.3,
+                  margin: 0,
+                }}>
+                  {selectedTask.title}
+                </h2>
+              </div>
+
+              {/* scrollable content */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* task meta grid */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 12,
+                  background: 'var(--paper-elevated)',
+                  border: '1px solid var(--silver-1)',
+                  borderRadius: 6,
+                  padding: '13px 14px',
+                }}>
+                  <div>
+                    <div className="j-overline" style={{ marginBottom: 5 }}>수행 배경 (Rationale)</div>
+                    <p style={{ fontSize: 12.5, color: 'var(--ink-1)', lineHeight: 1.55, margin: 0 }}>
+                      {selectedTask.rationale}
+                    </p>
+                  </div>
+                  <div>
+                    <div className="j-overline" style={{ marginBottom: 5 }}>기대 산출물</div>
+                    <p style={{ fontSize: 12.5, color: 'var(--ink-1)', lineHeight: 1.55, margin: 0 }}>
+                      {selectedTask.expected_output}
+                    </p>
+                  </div>
+                </div>
+
+                {/* blocker */}
+                {selectedTask.blocker && (
+                  <div style={{
+                    background: 'var(--amber-tint)',
+                    border: '1px solid #DDB87A',
+                    borderRadius: 6,
+                    padding: '11px 13px',
+                    fontSize: 12.5,
+                    color: '#8A5408',
+                    display: 'flex',
+                    gap: 8,
+                    alignItems: 'flex-start',
+                  }}>
+                    <Icon name="alert" size={14} stroke={1.8} />
+                    <div>
+                      <div style={{ fontWeight: 600, marginBottom: 3 }}>분석된 병목 요인 (Blocker)</div>
+                      <div style={{ lineHeight: 1.5 }}>{selectedTask.blocker}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* agent deliverable */}
+                <div style={{
+                  border: '1px solid var(--silver-2)',
+                  borderRadius: 6,
+                  overflow: 'hidden',
+                }}>
+                  <div style={{
+                    padding: '9px 13px',
+                    borderBottom: '1px solid var(--silver-1)',
+                    background: 'var(--paper-elevated)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}>
+                    <Icon name="note" size={13} stroke={1.6} />
+                    <span className="j-overline">에이전트 최종 분석 & 산출물</span>
+                  </div>
+
+                  <div style={{ padding: '14px 13px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {handoffs.length === 0 ? (
+                      <div>
+                        <div className="j-overline" style={{ marginBottom: 6 }}>상세 결과 내용</div>
+                        <div style={{
+                          background: 'var(--paper-elevated)',
+                          border: '1px solid var(--silver-1)',
+                          borderRadius: 4,
+                          padding: '10px 12px',
+                          fontSize: 12.5,
+                          color: 'var(--ink-1)',
+                          lineHeight: 1.6,
+                          whiteSpace: 'pre-wrap',
+                        }}>
+                          {selectedTask.expected_output}
+                        </div>
+                      </div>
+                    ) : (
+                      handoffs.map((handoff: any) => (
+                        <div key={handoff.id} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {handoff.context && (
+                            <div>
+                              <div className="j-overline" style={{ marginBottom: 6 }}>분석 본문 및 결과 (Context)</div>
+                              <div style={{
+                                background: 'var(--paper-elevated)',
+                                border: '1px solid var(--silver-1)',
+                                borderRadius: 4,
+                                padding: '10px 12px',
+                                fontSize: 12.5,
+                                color: 'var(--ink-1)',
+                                lineHeight: 1.6,
+                                whiteSpace: 'pre-wrap',
+                              }}>
+                                {handoff.context}
+                              </div>
+                            </div>
+                          )}
+                          {handoff.next_action && (
+                            <div style={{
+                              background: 'var(--green-tint)',
+                              border: '1px solid var(--green-tint-2)',
+                              borderRadius: 6,
+                              padding: '10px 12px',
+                            }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--green-press)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <Icon name="arrowR" size={12} stroke={2} />
+                                COO가 정의한 다음 액션 (Next Action)
+                              </div>
+                              <p style={{ fontSize: 12.5, color: 'var(--ink-1)', lineHeight: 1.5, margin: 0 }}>
+                                {handoff.next_action}
+                              </p>
+                            </div>
+                          )}
+                          {handoff.what_was_completed && (
+                            <div>
+                              <div className="j-overline" style={{ marginBottom: 6 }}>완료된 사항</div>
+                              <p style={{ fontSize: 12.5, color: 'var(--ink-1)', lineHeight: 1.55, margin: 0 }}>
+                                {handoff.what_was_completed}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* action panel */}
+              <div style={{
+                padding: '14px 18px',
+                borderTop: '1px solid var(--silver-1)',
+                background: 'var(--paper-elevated)',
+              }}>
+                {error && (
+                  <div style={{ fontSize: 12, color: 'var(--red)', marginBottom: 8 }}>{error}</div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--ink-3)', marginBottom: 5 }}>
+                      에이전트에게 전달할 피드백 (수정 요청 시 필수 입력)
+                    </label>
+                    <textarea
+                      value={feedback}
+                      onChange={e => setFeedback(e.target.value)}
+                      placeholder="수정이 필요한 부분이나 추가 피드백을 남겨주세요…"
+                      className="j-input j-textarea"
+                      style={{ minHeight: 60, maxHeight: 100, fontSize: 12.5 }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={handleReject}
+                      disabled={actionLoading || !feedback.trim()}
+                      className="j-btn j-btn-danger j-btn-sm"
+                    >
+                      <Icon name="x" size={13} stroke={2} />
+                      수정 요청하기
+                    </button>
+                    <button
+                      onClick={handleApprove}
+                      disabled={actionLoading}
+                      className="j-btn j-btn-primary j-btn-sm"
+                    >
+                      <Icon name="check" size={13} stroke={2.2} />
+                      {actionLoading ? '승인 처리 중…' : '최종 승인 완료'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 32,
+              textAlign: 'center',
+            }}>
+              <span style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                background: 'var(--silver-1)',
+                color: 'var(--ink-4)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 12,
+              }}>
+                <Icon name="inbox" size={20} stroke={1.5} />
+              </span>
+              <p style={{ fontSize: 13, color: 'var(--ink-3)', fontWeight: 500, marginBottom: 5 }}>
+                검토할 에이전트 산출물을 왼쪽 목록에서 선택해 주세요.
+              </p>
+              <p style={{ fontSize: 11.5, color: 'var(--ink-4)', maxWidth: 280, lineHeight: 1.6 }}>
+                에이전트가 완료한 태스크를 클릭하면 구체적인 지침서(SOP)나 마케팅 가설 등의 상세 분석 결과물이 여기에 렌더링됩니다.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
+// ── Page shell ───────────────────────────────────────────────────────────────
 function ChatContent() {
-  const { selectedId, businesses } = useBusiness()
+  const { selectedId, businesses, selectedProjectId, projects } = useBusiness()
 
   const selectedBusiness = businesses.find(b => b.id === selectedId)
+  const selectedProject = projects.find(p => p.id === selectedProjectId)
+
   const contextLabel = selectedBusiness
-    ? selectedBusiness.name
+    ? `${selectedBusiness.name}${selectedProject ? ` ↳ ${selectedProject.name}` : ''}`
     : '회사 공통'
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)]">
-      <div className="mb-3 flex items-center gap-3">
-        <h1 className="text-xl font-bold">CEO Agent 채팅</h1>
-        <span className="text-xs bg-slate-700 text-slate-300 rounded px-2 py-0.5">
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 3rem)' }}>
+      {/* page header */}
+      <div style={{
+        marginBottom: 16,
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: 12,
+        flexWrap: 'wrap',
+      }}>
+        <h1 style={{
+          fontFamily: 'var(--font-serif)',
+          fontWeight: 500,
+          fontSize: 24,
+          color: 'var(--ink-1)',
+          letterSpacing: '-0.01em',
+          margin: 0,
+          lineHeight: 1.1,
+        }}>
+          CEO Agent 채팅
+        </h1>
+        <span style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 11.5,
+          color: 'var(--ink-3)',
+          background: 'var(--silver-1)',
+          border: '1px solid var(--silver-2)',
+          borderRadius: 999,
+          padding: '2px 9px',
+        }}>
           {contextLabel}
         </span>
-        <p className="text-sm text-slate-400 ml-1 hidden sm:block">
+        <p style={{ fontSize: 13, color: 'var(--ink-3)', marginLeft: 2, display: 'none' }}
+          className="sm:block">
           지시를 입력하면 CEO Agent가 해석하고 임원 Task 플랜을 제안합니다.
         </p>
       </div>

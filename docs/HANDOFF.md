@@ -1,6 +1,97 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-30 (QA 세션 이어받기 — E2E smoke 견고화 + 라이브 검증 완료)
+최종 업데이트: 2026-05-31 (Founder UI Joinery 디자인 전면 재적용 + Vercel 배포 준비)
+
+---
+
+## 🎯 2026-05-31 — Founder UI: Joinery 디자인 시스템 전면 재적용
+
+사용자 요청("ui작업 완료해줘") 후속. 이전 세션(2026-05-30 15:45 KST, 세션 `3018d2ae`)에서 git 커밋 폴링 + 화면별 1:1 재현으로 셋업했으나 커밋이 발생하지 않아 미실행이었던 작업을 이번 세션에서 전부 완료.
+
+### 입력 자료
+- 디자인 zip: `/Users/wonminyang/Downloads/비즈니스 os.zip` (7.4MB, 2026-05-30 15:41 생성)
+- 내부 구조: `redesign/` (tokens-v2.css, colors_and_type.css, primitives.jsx, shell.jsx, screens-today/work.jsx, v2-shell/screens/ui.jsx) + `uploads/pulk_claude_design_input_materials/` (03~08 디자인 브리프)
+- 추출 위치: `/tmp/joinery/` (UTF-8 unzip, html/uploads/scratch 제외)
+
+### 디자인 전환 (다크 콘솔 → 라이트 운영 콘솔)
+- **배경**: `bg-slate-900` → Joinery paper (`#F4F0E6` canvas / `#FAF7F0` surface / `#FDFBF6` elevated)
+- **액센트**: indigo → Joinery green (`#1FA64D` / hover `#178A3F` / press `#126E32` / tint `#E4F4E8`)
+- **타이포**: 시스템 폰트 → Source Serif 4 (헤딩) + IBM Plex Sans + SUIT/Pretendard (한국어 본문) + IBM Plex Mono (overline/숫자) — 모두 CDN import
+- **위험도/상태**: 발광 indigo → `j-risk-d1~d5` (green-tint → blue-tint → amber-tint → orange → red-tint) + pastel pair 7색(mint/peach/lav/sky/butter/rose/sand) + 4px 좌측 액센트 막대
+- **아이콘**: 이모지(`📊🏭🧠🎛🔧🌐💬✅🗂️📁` 등) → 인라인 SVG (Lucide 스타일, stroke 1.6)
+- **한국어**: `word-break: keep-all` 적용 (음절 중간 줄바꿈 방지)
+
+### 작업 분배
+- **Phase 1 (직접)**: `apps/founder-ui/src/app/globals.css` (Joinery + v2 토큰 임베드 + `j-*` 컴포넌트 클래스 + 폰트 CDN import), `tailwind.config.ts` (paper/ink/silver/green/amber/red/blue/pastel 시멘틱 노출), `app/layout.tsx` (라이트 body), `components/Sidebar.tsx` (Joinery sidebar — 비즈니스/프로젝트 다중계층 + 모달 모두 보존)
+- **Designer 워커 5명 병렬 (Agent 도구)**:
+  - W1 Chat: `chat/page.tsx` + `ApprovalQueueCard` + `RoadmapMiniCard` + `TodayDiscoveryBanner` (founder 메시지=right paper-elevated, CEO=left paper-surface + 4px green bar, executive dispatch cards, amber-tint approval queue)
+  - W2 Monitor+Approval: `monitor/page.tsx` (executive command board, PhaseTransitionPanel, 4px left accent bar) + `approval/page.tsx` (D5→D4→D3 정렬, green-tint empty state)
+  - W3 Workflow+Memory: `workflow/page.tsx` (3개 출력 카드 — Brief=mint / PMF=sky / Staffing=butter strip) + `memory/page.tsx` (PII 위험 명시, 저장=primary/폐기=danger)
+  - W4 Projects: `projects/page.tsx` (포트폴리오 보드 grid) + `projects/[id]/page.tsx` (PhaseStrip + SectionHead) + `projects/layout.tsx` (라이트 sidebar)
+  - W5 CTO+신규: `control-room/page.tsx`, `tool-requests/page.tsx`, `TabLayout.tsx`, **`RoadmapTimeline.tsx` (완전 재작성: 다크 emerald/indigo gradient spine → 단일 green progress bar on silver-2 track, agent 색 → pastel pair 7색, j-pulse keyframe)**, **`AuthGate.tsx` (zip 미수록 → 동일 토큰으로 신규)**, `LoginForm.tsx`
+
+### 검증
+- `npx tsc --noEmit` (apps/founder-ui): 에러 0
+- `npx next build` (apps/founder-ui): 12개 페이지 prerender 성공, 무경고
+- 페이지별 크기: `/chat` 14.6kB / `/monitor` 7.69kB / `/tool-requests` 6.14kB / `/workflow` 6.25kB / `/approval` 5.75kB 등
+- 보존 확인: 라우팅, API 호출 (`api.*`), useEffect, state, props 시그니처, `useAuth`/`useBusiness` 사용, 한국어 카피 의미 — 전부 유지
+
+### 영향 파일 (13)
+```
+apps/founder-ui/src/app/globals.css          [재작성]
+apps/founder-ui/tailwind.config.ts           [재작성]
+apps/founder-ui/src/app/layout.tsx           [라이트화]
+apps/founder-ui/src/components/Sidebar.tsx   [Joinery 재작성]
+apps/founder-ui/src/app/chat/page.tsx
+apps/founder-ui/src/app/monitor/page.tsx
+apps/founder-ui/src/app/approval/page.tsx
+apps/founder-ui/src/app/workflow/page.tsx
+apps/founder-ui/src/app/memory/page.tsx
+apps/founder-ui/src/app/projects/page.tsx
+apps/founder-ui/src/app/projects/[id]/page.tsx
+apps/founder-ui/src/app/projects/layout.tsx
+apps/founder-ui/src/app/control-room/page.tsx
+apps/founder-ui/src/app/tool-requests/page.tsx
+apps/founder-ui/src/components/ApprovalQueueCard.tsx
+apps/founder-ui/src/components/RoadmapMiniCard.tsx
+apps/founder-ui/src/components/TodayDiscoveryBanner.tsx
+apps/founder-ui/src/components/TabLayout.tsx
+apps/founder-ui/src/components/RoadmapTimeline.tsx
+apps/founder-ui/src/components/AuthGate.tsx
+apps/founder-ui/src/components/LoginForm.tsx
+```
+
+### 남은 항목
+- 시각 QA: `pnpm --filter @l5/founder-ui dev` 로 브라우저에서 화면별 톤 확인 권장 (특히 CEO 메시지 좌측 4px green bar, BPR PhaseStrip, RoadmapTimeline 가로 줄기)
+- Vercel 배포 (다음 작업): NocoBase 백엔드 노출 방식 결정 필요
+
+---
+
+## 🎯 2026-05-30 — CTO/ACR 마무리: Phase 11 P0 검증 + 안티그래비티 hermes 정리 + phase verdict + Release Gate 일원화
+
+사용자 요청으로 CTO/ACR 관련 작업 상태를 점검하고 잔여를 마무리했다. **아직 전부 uncommitted — 사용자 지시: "일원화까지 마무리 후 커밋".**
+
+### Phase 11 P0 — 검증 결과 (문서 체크박스만 방치였음)
+- **acr_token 자동발급**: `plugin-orchestration/plugin.ts:1040` 실재(D3+ → randomUUID + 콜백 동봉). 설계 변경(원안 workbench/approval 직접호출 → 내부 토큰 발급)으로 구현 완료. TASKS.md 600행 `[ ]→[x]` 갱신.
+- **project 자동등록**: `cto.ts:265 bootstrapProjectIfMissing` + `/api/projects` 실재. TASKS.md 608행 `[x]` 갱신.
+
+### 안티그래비티 hermes 미완성 작업 마무리 (토큰 소진으로 중단했던 것)
+- **task-archiver**(신규): 코드+배선(gateway/runner/index)+plist+install-launchd 완비했으나 **테스트 없었음** → `__tests__/task-archiver.test.ts` 5케이스 추가(7일 경과 done/killed만, 최근 제외, 비-종료 status 제외, updated_at 없으면 created_at, archive 실패 시 delete 안 함). 5/5 PASS.
+- **model-verify 결함**: 안티그래비티가 `/gpt-4o/`를 deprecated 패턴에 추가 → MODEL_ROSTER의 현역 T2(gpt-4o)를 **자기 자신으로 remap**하는 모순. 사용자 확인("gpt-4o가 맞다") 후 패턴 제거. hermes jest 81/81 유지.
+
+### CTO phase 검토 — verdict 반영 (경량)
+- `plugin.ts` `phase_complete` 분기: 기존엔 verifier verdict를 계산만 하고 버림(all_done만 반영). 이제 fail/inconclusive → `needs_review`+`verifier:fail retry=...`로 올려 `cto-verification-loop`가 재시도 픽업. pass면 진행 메모만. ACR auto-drain은 유지. plugin-orchestration tsc clean.
+
+### Release Gate L5 일원화 (ACR repo 교차) — 핵심
+- **갭의 본질**: dispatcher는 `approval_required=false`(=L5 승인됨)만 ACR로 보내는데, ACR auto-dispatcher가 `manual_founder`(D4-D5)를 **다시** 막아 승인된 D4-D5가 영영 실행 안 됨. dispatch route도 `auto_execute`(D1-D2)만 auto-dispatch 스케줄.
+- **해결(단일 승인원)**: `ACRIntent.l5_approved` 신설. L5(`l5-core/types/acr-intent.ts`, `agent-runtime/cto.ts` 2곳) → ACR(`cto-task-metadata-store`, `workbench/dispatch` route: metadata 저장+트리거 조건 확장, `auto-dispatcher`: auto_execute=false 차단 우회 + manual_founder 게이트 통과, `workbench/approval`: Release Gate 스킵). **`auto_24h`(D3)는 미적용**(시간 정책).
+- **검증**: ACR `auto-dispatcher.test.ts` 신규 대칭 케이스 통과(전체 722 passed, 1 fail은 무관한 사전존재 `qa-fixes-phase11` missing-doc). L5 `cto.test.ts` `l5_approved` assert(5/5). l5-core 빌드/agent-runtime·ACR tsc 전부 clean.
+- **주의**: 로컬에서 agent-runtime은 jest/ts-jest 미설치라 hermes의 jest 바이너리로 실행함(`../hermes-runtime/node_modules/.bin/jest cto`). l5-core 타입 변경 후 **dist 재빌드 필요**(테스트가 `@l5/core`를 dist로 매핑).
+
+### 남은 항목
+- **커밋**: 이번 세션분만(검증·수정 + 안티그래비티 hermes + phase verdict + 일원화). `.next`(104)·`storage`(16) 빌드/런타임 산출물은 제외. founder-ui 등 타 세션 대규모 변경은 커밋 안 함.
+- **라이브 E2E 미실행**: 단위/통합 테스트로 검증. NocoBase+ACR 기동 후 D4 태스크 승인→자동실행 한 사이클은 후속.
+- Release Gate in-memory→file 영속화, ACR panel UI 제거는 범위 외(미사용이라 무해).
 
 ---
 

@@ -3,6 +3,36 @@ import { useEffect, useState, useCallback } from 'react'
 import AuthGate from '@/components/AuthGate'
 import { api } from '@/lib/api'
 
+// ---------------------------------------------------------------------------
+// Local Icon (same pattern as Sidebar.tsx)
+// ---------------------------------------------------------------------------
+const ICONS: Record<string, string> = {
+  arrowR:      'M5 12h14 M12 5l7 7-7 7',
+  chevD:       'M6 9l6 6 6-6',
+  chevU:       'M18 15l-6-6-6 6',
+  refresh:     'M23 4v6h-6 M1 20v-6h6 M3.51 9a9 9 0 0 1 14.85-3.36L23 10 M1 14l4.64 4.36A9 9 0 0 0 20.49 15',
+  alert:       'M12 22a10 10 0 110-20 10 10 0 010 20z M12 8v4 M12 16h.01',
+  check:       'M20 6L9 17l-5-5',
+  activity:    'M22 12h-4l-3 9L9 3l-3 9H2',
+  clock:       'M12 22a10 10 0 110-20 10 10 0 010 20z M12 6v6l4 2',
+  x:           'M18 6L6 18 M6 6l12 12',
+}
+
+function Icon({ name, size = 16, stroke = 1.6 }: { name: string; size?: number; stroke?: number }) {
+  const d = ICONS[name]
+  if (!d) return null
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true">
+      {d.split(/(?=M)/).map((seg, i) => <path key={i} d={seg.trim()} />)}
+    </svg>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Interfaces (unchanged from original)
+// ---------------------------------------------------------------------------
 interface PhaseInfo {
   current_phase: string
   current_phase_label: string
@@ -30,6 +60,91 @@ interface TransitionSummary {
   message: string
 }
 
+// ---------------------------------------------------------------------------
+// Agent owner badge color map — pastel pairs, not neon
+// ---------------------------------------------------------------------------
+const AGENT_PASTEL: Record<string, { bg: string; fg: string }> = {
+  CMO:          { bg: 'var(--p-lav)',   fg: 'var(--pi-lav)' },
+  CRO:          { bg: 'var(--p-sky)',   fg: 'var(--pi-sky)' },
+  CPO:          { bg: 'var(--p-mint)',  fg: 'var(--pi-mint)' },
+  CTO:          { bg: 'var(--p-butter)', fg: 'var(--pi-butter)' },
+  COO:          { bg: 'var(--p-peach)', fg: 'var(--pi-peach)' },
+  CFO:          { bg: 'var(--p-sand)',  fg: 'var(--pi-sand)' },
+  RiskQA:       { bg: 'var(--p-rose)',  fg: 'var(--pi-rose)' },
+  CEO:          { bg: 'var(--p-lav)',   fg: 'var(--pi-lav)' },
+  ChiefOfStaff: { bg: 'var(--p-peach)', fg: 'var(--pi-peach)' },
+}
+
+function AgentBadge({ agent }: { agent: string }) {
+  const p = AGENT_PASTEL[agent] ?? { bg: 'var(--silver-1)', fg: 'var(--ink-2)' }
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      padding: '2px 8px', borderRadius: 999,
+      fontSize: 11.5, fontWeight: 600, lineHeight: 1.4,
+      background: p.bg, color: p.fg,
+      fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap',
+    }}>
+      {agent}
+    </span>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Status badge mapping → j-badge classes
+// ---------------------------------------------------------------------------
+type TaskStatus = 'queued' | 'running' | 'blocked' | 'needs_review' | 'done' | 'killed'
+type RiskLevel = 'D1' | 'D2' | 'D3' | 'D4' | 'D5'
+
+const STATUS_BADGE: Record<TaskStatus, string> = {
+  queued:       'j-badge j-badge-draft',
+  running:      'j-badge j-badge-live',
+  blocked:      'j-badge j-badge-blocked',
+  needs_review: 'j-badge j-badge-review',
+  done:         'j-badge j-badge-live',
+  killed:       'j-badge j-badge-neutral',
+}
+const STATUS_LABELS: Record<TaskStatus, string> = {
+  queued:       '대기',
+  running:      '진행중',
+  blocked:      '차단됨',
+  needs_review: '검토필요',
+  done:         '완료',
+  killed:       '종료',
+}
+const STATUS_DOT: Record<TaskStatus, boolean> = {
+  queued: true, running: true, blocked: true, needs_review: true, done: true, killed: false,
+}
+
+// Risk class (uses j-badge + j-risk-dN for background, but we render as a badge pill)
+const RISK_CLASS: Record<RiskLevel, string> = {
+  D1: 'j-badge j-risk-d1',
+  D2: 'j-badge j-risk-d2',
+  D3: 'j-badge j-risk-d3',
+  D4: 'j-badge j-risk-d4',
+  D5: 'j-badge j-risk-d5',
+}
+
+// Left accent bar color for cards that need attention
+function cardAccentColor(status: TaskStatus): string | null {
+  if (status === 'blocked') return 'var(--red)'
+  if (status === 'needs_review') return 'var(--amber)'
+  return null
+}
+
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return '방금'
+  if (mins < 60) return `${mins}분 전`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}시간 전`
+  return `${Math.floor(hours / 24)}일 전`
+}
+
+// ---------------------------------------------------------------------------
+// Phase Transition Panel — redesigned
+// ---------------------------------------------------------------------------
 function PhaseTransitionPanel() {
   const [phase, setPhase] = useState<PhaseInfo | null>(null)
   const [reason, setReason] = useState('')
@@ -80,128 +195,237 @@ function PhaseTransitionPanel() {
   if (loading) return null
 
   return (
-    <div className="bg-slate-800 rounded-xl p-4 mb-5 border border-slate-700">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-500 uppercase tracking-wide">BPR Phase</span>
-          <span className="bg-indigo-700 text-indigo-100 text-sm font-medium rounded px-3 py-0.5">
-            {phase?.current_phase_label ?? '로딩 중'}
-          </span>
-          {phase && (
-            <span className="text-xs text-slate-500">
-              {phase.phase_index + 1} / {phase.total_phases}
-            </span>
+    <div style={{
+      background: 'var(--paper-surface)',
+      border: '1px solid var(--silver-2)',
+      borderRadius: 10,
+      marginBottom: 28,
+      overflow: 'hidden',
+    }}>
+      {/* Phase hero strip */}
+      <div style={{ padding: '20px 24px 18px', borderBottom: showForm ? '1px solid var(--silver-2)' : undefined }}>
+        {/* Overline */}
+        <div style={{
+          fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-3)',
+          letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 12,
+        }}>
+          BPR Phase &nbsp;·&nbsp; {phase ? `${phase.phase_index + 1} / ${phase.total_phases}` : '—'}
+        </div>
+
+        {/* Current → Next row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          {/* Current phase node */}
+          <div style={{
+            background: 'var(--green-tint)',
+            border: '1px solid var(--green-tint-2)',
+            borderRadius: 8,
+            padding: '8px 16px',
+          }}>
+            <div style={{
+              fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 22,
+              color: 'var(--green-press)', letterSpacing: '-0.01em', lineHeight: 1.2,
+            }}>
+              {phase?.current_phase_label ?? '로딩 중'}
+            </div>
+          </div>
+
+          {/* Arrow */}
+          {phase?.next_phase && (
+            <>
+              <div style={{ color: 'var(--silver-3)', display: 'flex', alignItems: 'center' }}>
+                <Icon name="arrowR" size={18} stroke={1.4} />
+              </div>
+              {/* Next phase node */}
+              <div style={{
+                background: 'var(--paper-elevated)',
+                border: '1px solid var(--silver-2)',
+                borderRadius: 8,
+                padding: '8px 16px',
+              }}>
+                <div style={{
+                  fontFamily: 'var(--font-serif)', fontWeight: 400, fontSize: 20,
+                  color: 'var(--ink-3)', letterSpacing: '-0.01em', lineHeight: 1.2,
+                }}>
+                  {phase?.next_phase_label}
+                </div>
+              </div>
+            </>
+          )}
+
+          <div style={{ flex: 1 }} />
+
+          {/* Transition CTA */}
+          {phase?.next_phase && (
+            <button
+              onClick={() => (showForm ? setShowForm(false) : openForm())}
+              className="j-btn j-btn-secondary j-btn-sm"
+              style={{ gap: 6 }}
+            >
+              {showForm
+                ? <><Icon name="x" size={13} /> 닫기</>
+                : <><span>다음 Phase 전환</span><Icon name="arrowR" size={13} /></>
+              }
+            </button>
           )}
         </div>
-        {phase?.next_phase && (
-          <button
-            onClick={() => (showForm ? setShowForm(false) : openForm())}
-            className="text-xs text-indigo-400 hover:text-indigo-300 border border-indigo-700 rounded px-3 py-1 transition-colors"
-          >
-            {showForm ? '닫기' : '다음 Phase로 전환 →'}
-          </button>
+
+        {/* Progress bar */}
+        {phase && (
+          <div style={{ display: 'flex', gap: 5, marginTop: 16 }}>
+            {Array.from({ length: phase.total_phases }).map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  height: 4, flex: 1, borderRadius: 999,
+                  background: i <= phase.phase_index ? 'var(--green)' : 'var(--silver-2)',
+                  transition: 'background 200ms',
+                }}
+              />
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Phase progress bar */}
-      {phase && (
-        <div className="flex gap-1 mt-2">
-          {Array.from({ length: phase.total_phases }).map((_, i) => (
-            <div
-              key={i}
-              className={`h-1 flex-1 rounded-full ${i <= phase.phase_index ? 'bg-indigo-500' : 'bg-slate-700'}`}
-            />
-          ))}
-        </div>
-      )}
-
+      {/* Transition form */}
       {showForm && phase?.next_phase && (
-        <div className="mt-4 space-y-3 border-t border-slate-700 pt-4">
-          <div className="text-sm text-slate-300">
-            <span className="text-indigo-400">{phase.current_phase_label}</span>
-            <span className="mx-2 text-slate-500">→</span>
-            <span className="text-green-400">{phase.next_phase_label}</span>
-            <span className="ml-2 text-xs bg-red-900 text-red-300 rounded px-2 py-0.5">D5 승인 필요</span>
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Transition labels */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 14, color: 'var(--ink-1)', fontWeight: 500 }}>
+              {phase.current_phase_label}
+            </span>
+            <Icon name="arrowR" size={14} />
+            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 14, color: 'var(--green-press)', fontWeight: 600 }}>
+              {phase.next_phase_label}
+            </span>
+            <span className="j-badge j-risk-d5" style={{ marginLeft: 4 }}>D5 승인 필요</span>
           </div>
 
           {summaryLoading && (
-            <div className="text-xs text-slate-400">전환 요약 로딩 중...</div>
-          )}
-
-          {summary && (
-            <div className="bg-slate-900 border border-slate-700 rounded p-3 space-y-3 text-xs">
-              <div className="flex gap-4 text-slate-300">
-                <span>✓ 완료 {summary.completed_count}</span>
-                <span className="text-amber-400">⚠ 차단 {summary.blocked_count}</span>
-                <span className="text-yellow-400">⊘ 검토 {summary.needs_review_count}</span>
-              </div>
-
-              {summary.success_criteria_met.length > 0 && (
-                <div>
-                  <div className="text-slate-500 uppercase tracking-wide mb-1">충족된 성공 기준</div>
-                  <ul className="space-y-1">
-                    {summary.success_criteria_met.map((s, i) => (
-                      <li key={i} className="text-slate-300">
-                        <span className="text-green-400">✓</span> {s.title} — <span className="text-slate-400">{s.outcome}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {summary.outstanding_items.length > 0 && (
-                <div>
-                  <div className="text-slate-500 uppercase tracking-wide mb-1">미해결 항목</div>
-                  <ul className="space-y-1">
-                    {summary.outstanding_items.map((s, i) => (
-                      <li key={i} className="text-slate-300">
-                        <span className="text-amber-400">⚠</span> {s.title} <span className="text-slate-500">({s.status})</span> — <span className="text-slate-400">{s.reason}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {summary.key_learnings.length > 0 && (
-                <div>
-                  <div className="text-slate-500 uppercase tracking-wide mb-1">핵심 인사이트</div>
-                  <ul className="space-y-1 list-disc list-inside text-slate-300">
-                    {summary.key_learnings.map((l, i) => <li key={i}>{l}</li>)}
-                  </ul>
-                </div>
-              )}
-
-              <div>
-                <div className="text-slate-500 uppercase tracking-wide mb-1">다음 Phase 계획</div>
-                <div className="text-slate-300 space-y-1">
-                  <div>주관: <span className="text-indigo-300">{summary.next_phase_plan.primary_owners.join(', ')}</span></div>
-                  <div>성공 기준: <span className="text-slate-400">{summary.next_phase_plan.success_criteria.join(' · ')}</span></div>
-                  <div>기대 결과: <span className="text-slate-400">{summary.next_phase_plan.expected_outcome}</span></div>
-                </div>
-              </div>
-
-              <div className="text-slate-500 text-[10px]">{summary.message}</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-3)' }}>
+              전환 요약 로딩 중…
             </div>
           )}
 
+          {summary && (
+            <div style={{
+              background: 'var(--paper-elevated)',
+              border: '1px solid var(--silver-2)',
+              borderRadius: 8,
+              overflow: 'hidden',
+            }}>
+              {/* Counts strip */}
+              <div style={{
+                display: 'flex', gap: 20, padding: '12px 16px',
+                borderBottom: '1px solid var(--silver-1)',
+              }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--green-press)', fontFamily: 'var(--font-sans)' }}>
+                  <Icon name="check" size={13} stroke={2} />
+                  완료 <strong style={{ fontFamily: 'var(--font-mono)' }}>{summary.completed_count}</strong>
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--red)', fontFamily: 'var(--font-sans)' }}>
+                  <Icon name="alert" size={13} />
+                  차단 <strong style={{ fontFamily: 'var(--font-mono)' }}>{summary.blocked_count}</strong>
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--amber)', fontFamily: 'var(--font-sans)' }}>
+                  <Icon name="clock" size={13} />
+                  검토 <strong style={{ fontFamily: 'var(--font-mono)' }}>{summary.needs_review_count}</strong>
+                </span>
+              </div>
+
+              <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {/* Success criteria */}
+                {summary.success_criteria_met.length > 0 && (
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-3)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>
+                      충족된 성공 기준
+                    </div>
+                    <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {summary.success_criteria_met.map((s, i) => (
+                        <li key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: 'var(--ink-1)' }}>
+                          <Icon name="check" size={13} stroke={2} />
+                          <span>{s.title} <span style={{ color: 'var(--ink-3)' }}>— {s.outcome}</span></span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Outstanding items */}
+                {summary.outstanding_items.length > 0 && (
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-3)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>
+                      미해결 항목
+                    </div>
+                    <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {summary.outstanding_items.map((s, i) => (
+                        <li key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: 'var(--ink-1)' }}>
+                          <span style={{ color: 'var(--amber)', flexShrink: 0, marginTop: 1 }}><Icon name="alert" size={13} /></span>
+                          <span>{s.title} <span style={{ color: 'var(--ink-3)' }}>({s.status})</span> — <span style={{ color: 'var(--ink-2)' }}>{s.reason}</span></span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Key learnings */}
+                {summary.key_learnings.length > 0 && (
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-3)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>
+                      핵심 인사이트
+                    </div>
+                    <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {summary.key_learnings.map((l, i) => (
+                        <li key={i} style={{ display: 'flex', gap: 8, fontSize: 13, color: 'var(--ink-1)' }}>
+                          <span style={{ color: 'var(--green)', flexShrink: 0, marginTop: 1 }}>·</span>
+                          {l}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Next phase plan */}
+                <div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-3)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>
+                    다음 Phase 계획
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--ink-1)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div>주관: <span style={{ color: 'var(--ink-2)' }}>{summary.next_phase_plan.primary_owners.join(', ')}</span></div>
+                    <div>성공 기준: <span style={{ color: 'var(--ink-2)' }}>{summary.next_phase_plan.success_criteria.join(' · ')}</span></div>
+                    <div>기대 결과: <span style={{ color: 'var(--ink-2)' }}>{summary.next_phase_plan.expected_outcome}</span></div>
+                  </div>
+                </div>
+
+                {summary.message && (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>
+                    {summary.message}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Reason textarea */}
           <textarea
-            className="w-full bg-slate-700 rounded px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-indigo-500"
+            className="j-input j-textarea"
             rows={2}
             placeholder="전환 사유를 입력하세요 (예: PMF 신호 3개 달성, 첫 유료 전환 발생)"
             value={reason}
             onChange={e => setReason(e.target.value)}
           />
-          <div className="flex gap-2">
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button
               onClick={handleRequest}
               disabled={submitting || !reason.trim()}
-              className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded px-4 py-1.5 text-sm font-medium transition-colors"
+              className="j-btn j-btn-primary"
             >
-              {submitting ? '요청 중...' : '전환 요청 (승인 대기열로)'}
+              {submitting ? '요청 중…' : '전환 요청 (승인 대기열로)'}
             </button>
             <button
               onClick={() => setShowForm(false)}
-              className="text-slate-400 hover:text-slate-200 text-sm px-3"
+              className="j-btn j-btn-ghost"
             >
               취소
             </button>
@@ -209,66 +433,142 @@ function PhaseTransitionPanel() {
         </div>
       )}
 
+      {/* Toast */}
       {toast && (
-        <div className="mt-3 bg-slate-700 text-white text-xs rounded px-3 py-2">{toast}</div>
+        <div style={{
+          margin: '0 24px 16px',
+          background: 'var(--paper-elevated)',
+          border: '1px solid var(--silver-2)',
+          borderRadius: 6,
+          padding: '9px 14px',
+          fontSize: 13,
+          color: 'var(--ink-2)',
+          fontFamily: 'var(--font-sans)',
+        }}>
+          {toast}
+        </div>
       )}
     </div>
   )
 }
 
-type TaskStatus = 'queued' | 'running' | 'blocked' | 'needs_review' | 'done' | 'killed'
-type RiskLevel = 'D1' | 'D2' | 'D3' | 'D4' | 'D5'
-
-const STATUS_STYLES: Record<TaskStatus, string> = {
-  queued: 'bg-slate-600 text-slate-200',
-  running: 'bg-blue-700 text-blue-100',
-  blocked: 'bg-red-700 text-red-100',
-  needs_review: 'bg-yellow-700 text-yellow-100',
-  done: 'bg-green-700 text-green-100',
-  killed: 'bg-slate-700 text-slate-400 line-through',
-}
-
-const STATUS_LABELS: Record<TaskStatus, string> = {
-  queued: '대기',
-  running: '진행중',
-  blocked: '차단됨',
-  needs_review: '검토필요',
-  done: '완료',
-  killed: '종료',
-}
-
-const RISK_STYLES: Record<RiskLevel, string> = {
-  D1: 'bg-green-800 text-green-200',
-  D2: 'bg-blue-800 text-blue-200',
-  D3: 'bg-yellow-800 text-yellow-200',
-  D4: 'bg-orange-800 text-orange-200',
-  D5: 'bg-red-800 text-red-200',
-}
-
-const AGENT_COLORS: Record<string, string> = {
-  CMO: 'text-purple-400',
-  CRO: 'text-blue-400',
-  CPO: 'text-green-400',
-  CTO: 'text-cyan-400',
-  COO: 'text-orange-400',
-  CFO: 'text-yellow-400',
-  RiskQA: 'text-red-400',
-  CEO: 'text-indigo-400',
-  ChiefOfStaff: 'text-pink-400',
-}
-
+// ---------------------------------------------------------------------------
+// Filter tabs
+// ---------------------------------------------------------------------------
 type FilterType = 'all' | 'running' | 'blocked' | 'needs_review'
 
-function relativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return '방금'
-  if (mins < 60) return `${mins}분 전`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}시간 전`
-  return `${Math.floor(hours / 24)}일 전`
+const TABS: { key: FilterType; label: string }[] = [
+  { key: 'all', label: '전체' },
+  { key: 'running', label: '진행중' },
+  { key: 'blocked', label: '차단됨' },
+  { key: 'needs_review', label: '검토필요' },
+]
+
+// ---------------------------------------------------------------------------
+// Task card
+// ---------------------------------------------------------------------------
+function TaskCard({ task }: { task: any }) {
+  const status: TaskStatus = task.status as TaskStatus
+  const risk: RiskLevel | undefined = task.risk_level as RiskLevel | undefined
+  const accent = cardAccentColor(status)
+
+  return (
+    <div style={{
+      background: 'var(--paper-surface)',
+      border: '1px solid var(--silver-2)',
+      borderRadius: 8,
+      overflow: 'hidden',
+      display: 'flex',
+      transition: 'border-color 120ms',
+    }}>
+      {/* Left accent bar */}
+      {accent && (
+        <div style={{ width: 4, flexShrink: 0, background: accent }} />
+      )}
+
+      <div style={{ flex: 1, padding: '14px 16px' }}>
+        {/* Top row — badges */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8, alignItems: 'center' }}>
+          {/* Agent */}
+          {task.agent && <AgentBadge agent={task.agent} />}
+
+          {/* Status */}
+          <span className={STATUS_BADGE[status] ?? 'j-badge j-badge-neutral'}>
+            {STATUS_DOT[status] && <span className="j-badge-dot" />}
+            {STATUS_LABELS[status] ?? task.status}
+          </span>
+
+          {/* Risk */}
+          {risk && (
+            <span className={`j-badge ${RISK_CLASS[risk] ?? 'j-badge-neutral'}`}>
+              {risk}
+            </span>
+          )}
+
+          {/* Approval required */}
+          {task.approval_required && (
+            <span className="j-badge j-badge-review">
+              <span className="j-badge-dot" />
+              승인필요
+            </span>
+          )}
+
+          {/* Phase */}
+          {task.phase && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>
+              {task.phase}
+            </span>
+          )}
+        </div>
+
+        {/* Title */}
+        <div style={{
+          fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 14,
+          color: 'var(--ink-1)', marginBottom: 4, lineHeight: 1.35,
+        }}>
+          {task.task_title}
+        </div>
+
+        {/* Rationale */}
+        {task.rationale && (
+          <div style={{
+            fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5,
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+            overflow: 'hidden', marginBottom: task.blocker ? 6 : 0,
+          }}>
+            {task.rationale}
+          </div>
+        )}
+
+        {/* Blocker */}
+        {task.blocker && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            marginTop: 6, fontSize: 12.5, color: 'var(--red)',
+            fontFamily: 'var(--font-sans)',
+          }}>
+            <Icon name="alert" size={13} stroke={1.8} />
+            {task.blocker}
+          </div>
+        )}
+
+        {/* Timestamp */}
+        {task.updated_at && (
+          <div style={{
+            marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: 11,
+            color: 'var(--ink-4)',
+          }}>
+            {relativeTime(task.updated_at)}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
+// ---------------------------------------------------------------------------
+// Monitor content
+// ---------------------------------------------------------------------------
 function MonitorContent() {
   const [tasks, setTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -283,7 +583,6 @@ function MonitorContent() {
       ])
       const currentArr = Array.isArray(current) ? current : (current as any)?.data ?? []
       const blockedArr = Array.isArray(blocked) ? blocked : (blocked as any)?.data ?? []
-      // deduplicate by task_id
       const map = new Map<string, any>()
       ;[...currentArr, ...blockedArr].forEach(t => map.set(t.task_id, t))
       setTasks(Array.from(map.values()))
@@ -309,107 +608,166 @@ function MonitorContent() {
     return true
   })
 
-  // Agent summary
-  const agentCounts = tasks.reduce<Record<string, number>>((acc, t) => {
-    if (t.agent) acc[t.agent] = (acc[t.agent] ?? 0) + 1
-    return acc
-  }, {})
+  // Summary counts
+  const blockedCount  = tasks.filter(t => t.status === 'blocked').length
+  const reviewCount   = tasks.filter(t => t.status === 'needs_review' || t.approval_required).length
+  const runningCount  = tasks.filter(t => t.status === 'running').length
 
-  const TABS: { key: FilterType; label: string }[] = [
-    { key: 'all', label: `전체 (${tasks.length})` },
-    { key: 'running', label: `진행중` },
-    { key: 'blocked', label: `차단됨` },
-    { key: 'needs_review', label: `승인필요` },
-  ]
+  const tabCount = (key: FilterType): number => {
+    if (key === 'all') return tasks.length
+    if (key === 'running') return tasks.filter(t => t.status === 'running' || t.status === 'queued').length
+    if (key === 'blocked') return blockedCount
+    if (key === 'needs_review') return reviewCount
+    return 0
+  }
 
   return (
-    <div>
+    <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 24px 64px' }}>
       <PhaseTransitionPanel />
-      <div className="flex items-center gap-4 mb-4">
-        <h1 className="text-xl font-bold">Executive Monitor</h1>
-        <label className="ml-auto flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={autoRefresh}
-            onChange={e => setAutoRefresh(e.target.checked)}
-            className="rounded"
-          />
-          30초 자동 새로고침
-        </label>
-        <button onClick={load} className="text-xs text-slate-400 hover:text-slate-200">새로고침</button>
+
+      {/* Page header */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 24, gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{
+            fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-3)',
+            letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6,
+          }}>
+            도구
+          </div>
+          <h1 style={{
+            fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 30,
+            color: 'var(--ink-1)', margin: 0, letterSpacing: '-0.015em', lineHeight: 1.15,
+          }}>
+            현황 모니터
+          </h1>
+        </div>
+
+        {/* Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={e => setAutoRefresh(e.target.checked)}
+              style={{ accentColor: 'var(--green)', width: 14, height: 14 }}
+            />
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.04em' }}>
+              자동 새로고침
+            </span>
+          </label>
+          <button onClick={load} className="j-btn j-btn-secondary j-btn-sm" style={{ gap: 5 }}>
+            <Icon name="refresh" size={13} />
+            새로고침
+          </button>
+        </div>
       </div>
 
-      {/* Agent summary row */}
-      {Object.keys(agentCounts).length > 0 && (
-        <div className="flex flex-wrap gap-3 mb-4 text-xs">
-          {Object.entries(agentCounts).map(([agent, count]) => (
-            <span key={agent} className={`font-medium ${AGENT_COLORS[agent] ?? 'text-slate-300'}`}>
-              {agent}: {count}건
-            </span>
-          ))}
+      {/* Status summary strip */}
+      {!loading && tasks.length > 0 && (
+        <div style={{
+          display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap',
+        }}>
+          <MetricPill label="진행중" value={runningCount} tone="live" />
+          {blockedCount > 0 && <MetricPill label="차단됨" value={blockedCount} tone="blocked" />}
+          {reviewCount > 0 && <MetricPill label="검토필요" value={reviewCount} tone="review" />}
         </div>
       )}
 
       {/* Filter tabs */}
-      <div className="flex gap-1 mb-6 border-b border-slate-700">
-        {TABS.map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setFilter(tab.key)}
-            className={`px-4 py-2 text-sm transition-colors border-b-2 -mb-px ${
-              filter === tab.key
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div style={{
+        display: 'flex', gap: 0, marginBottom: 20,
+        borderBottom: '1px solid var(--silver-2)',
+      }}>
+        {TABS.map(tab => {
+          const active = filter === tab.key
+          const count = tabCount(tab.key)
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setFilter(tab.key)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                borderBottom: active ? '2px solid var(--green)' : '2px solid transparent',
+                marginBottom: -1,
+                padding: '8px 16px',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-sans)',
+                fontSize: 13.5,
+                fontWeight: active ? 600 : 400,
+                color: active ? 'var(--green-press)' : 'var(--ink-3)',
+                display: 'flex', alignItems: 'center', gap: 6,
+                transition: 'color 120ms, border-color 120ms',
+              }}
+            >
+              {tab.label}
+              <span style={{
+                fontFamily: 'var(--font-mono)', fontSize: 11,
+                color: active ? 'var(--green-press)' : 'var(--ink-4)',
+              }}>
+                {count}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
-      {loading && <div className="text-slate-400">로딩 중...</div>}
-
-      {!loading && filtered.length === 0 && (
-        <div className="text-center text-slate-500 mt-12 text-sm">
-          {filter === 'all' ? '활성 Task가 없습니다' : '해당 항목이 없습니다'}
+      {/* Loading */}
+      {loading && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-4)', padding: '20px 0' }}>
+          로딩 중…
         </div>
       )}
 
-      <div className="grid gap-3">
-        {filtered.map(task => (
-          <div key={task.task_id} className="bg-slate-800 rounded-xl p-4">
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <span className={`font-bold text-sm ${AGENT_COLORS[task.agent] ?? 'text-slate-300'}`}>
-                {task.agent}
-              </span>
-              <span className={`text-xs rounded px-2 py-0.5 ${STATUS_STYLES[task.status as TaskStatus] ?? 'bg-slate-600'}`}>
-                {STATUS_LABELS[task.status as TaskStatus] ?? task.status}
-              </span>
-              {task.risk_level && (
-                <span className={`text-xs rounded px-2 py-0.5 ${RISK_STYLES[task.risk_level as RiskLevel] ?? 'bg-slate-600'}`}>
-                  {task.risk_level}
-                </span>
-              )}
-              {task.approval_required && (
-                <span className="text-xs bg-yellow-900 text-yellow-300 rounded px-2 py-0.5">승인필요</span>
-              )}
-              {task.phase && (
-                <span className="text-xs text-slate-500">{task.phase}</span>
-              )}
-            </div>
-            <div className="font-medium text-sm mb-1">{task.task_title}</div>
-            {task.rationale && (
-              <div className="text-xs text-slate-400 line-clamp-2 mb-2">{task.rationale}</div>
-            )}
-            {task.blocker && (
-              <div className="text-xs text-red-400 mt-1">⚠ {task.blocker}</div>
-            )}
-            {task.updated_at && (
-              <div className="text-xs text-slate-600 mt-2">{relativeTime(task.updated_at)}</div>
-            )}
+      {/* Empty state */}
+      {!loading && filtered.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '60px 0' }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 12,
+            background: 'var(--silver-1)', color: 'var(--ink-3)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            marginBottom: 12,
+          }}>
+            <Icon name="activity" size={20} stroke={1.4} />
           </div>
+          <div style={{ fontSize: 14, color: 'var(--ink-3)', fontFamily: 'var(--font-sans)' }}>
+            {filter === 'all' ? '활성 Task가 없습니다' : '해당 항목이 없습니다'}
+          </div>
+        </div>
+      )}
+
+      {/* Task list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {filtered.map(task => (
+          <TaskCard key={task.task_id} task={task} />
         ))}
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// MetricPill — compact summary at top
+// ---------------------------------------------------------------------------
+function MetricPill({ label, value, tone }: { label: string; value: number; tone: 'live' | 'blocked' | 'review' }) {
+  const TONE_STYLE = {
+    live:    { background: 'var(--green-tint)', color: 'var(--green-press)' },
+    blocked: { background: 'var(--red-tint)',   color: '#8C2A1F' },
+    review:  { background: 'var(--amber-tint)', color: '#8A5408' },
+  }
+  const s = TONE_STYLE[tone]
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '8px 14px', borderRadius: 8,
+      ...s,
+    }}>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 500, lineHeight: 1 }}>
+        {value}
+      </span>
+      <span style={{ fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 500 }}>
+        {label}
+      </span>
     </div>
   )
 }

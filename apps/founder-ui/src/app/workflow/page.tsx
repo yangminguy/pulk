@@ -10,14 +10,93 @@ interface WorkflowResult {
   data: any
 }
 
-function ResultPanel({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
+// SVG icon primitives — no emoji
+function IconDoc({ size = 14 }: { size?: number }) {
   return (
-    <div className="bg-slate-700 rounded-xl p-4">
-      <div className="text-sm font-semibold mb-3 flex items-center gap-2">
-        <span>{icon}</span>
-        <span>{title}</span>
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 2h7l3 3v9H3V2z" /><path d="M10 2v3h3" /><path d="M6 7h5M6 10h3" />
+    </svg>
+  )
+}
+function IconTarget({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="6" /><circle cx="8" cy="8" r="3" /><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+function IconPeople({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6" cy="5" r="2.5" /><path d="M1 13c0-2.76 2.24-5 5-5s5 2.24 5 5" />
+      <circle cx="11.5" cy="5" r="2" /><path d="M11.5 9.5c1.93 0 3.5 1.57 3.5 3.5" />
+    </svg>
+  )
+}
+function IconChevron({ dir = 'down', size = 14 }: { dir?: 'up' | 'down'; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      style={{ transform: dir === 'up' ? 'rotate(180deg)' : undefined }}>
+      <path d="M3 6l5 5 5-5" />
+    </svg>
+  )
+}
+function IconSpinner({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="animate-spin">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+    </svg>
+  )
+}
+function IconWarning({ size = 13 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 1.5L14.5 13H1.5L8 1.5z" /><path d="M8 6v3M8 11h.01" />
+    </svg>
+  )
+}
+function IconStop({ size = 13 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="6" /><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" />
+    </svg>
+  )
+}
+
+// ─── Panel tint configs ────────────────────────────────────────────────────
+const PANEL_TINTS = {
+  brief: { bg: 'var(--p-mint)', ink: 'var(--pi-mint)', strip: 'var(--green-tint-2)' },
+  pmf:   { bg: 'var(--p-sky)',  ink: 'var(--pi-sky)',  strip: 'var(--blue-tint)' },
+  staff: { bg: 'var(--p-butter)', ink: 'var(--pi-butter)', strip: '#FBEFD9' },
+  raw:   { bg: 'var(--p-sand)', ink: 'var(--pi-sand)', strip: 'var(--silver-1)' },
+}
+
+interface ResultPanelProps {
+  title: string
+  tint: keyof typeof PANEL_TINTS
+  icon: React.ReactNode
+  children: React.ReactNode
+}
+function ResultPanel({ title, tint, icon, children }: ResultPanelProps) {
+  const t = PANEL_TINTS[tint]
+  return (
+    <div className="j-card" style={{ padding: 0, overflow: 'hidden', background: 'var(--paper-elevated)' }}>
+      {/* Tinted header strip */}
+      <div style={{ background: t.strip, padding: '10px 16px', borderBottom: '1px solid var(--silver-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ color: t.ink, display: 'flex', alignItems: 'center' }}>{icon}</span>
+        <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 16, color: t.ink, letterSpacing: '-0.01em' }}>{title}</span>
       </div>
-      <div className="text-sm text-slate-300">{children}</div>
+      <div style={{ padding: '14px 16px' }}>{children}</div>
+    </div>
+  )
+}
+
+function LabeledRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 10 }}>
+      <span className="j-overline">{label}</span>
+      <span className="j-body" style={{ fontFamily: mono ? 'var(--font-mono)' : undefined, fontSize: 14, color: 'var(--ink-1)', lineHeight: 1.5 }}>{value}</span>
     </div>
   )
 }
@@ -25,54 +104,96 @@ function ResultPanel({ title, icon, children }: { title: string; icon: string; c
 function WorkflowResultView({ data }: { data: any }) {
   if (!data) return null
 
-  const brief = data?.business_brief ?? data?.brief ?? data?.data?.business_brief ?? data?.data?.brief
-  const pmfPlan = data?.pmf_experiment_plan ?? data?.pmf_plan ?? data?.data?.pmf_experiment_plan
+  const brief    = data?.business_brief ?? data?.brief ?? data?.data?.business_brief ?? data?.data?.brief
+  const pmfPlan  = data?.pmf_experiment_plan ?? data?.pmf_plan ?? data?.data?.pmf_experiment_plan
   const staffing = data?.agent_staffing_plan ?? data?.staffing ?? data?.data?.agent_staffing_plan
 
   return (
-    <div className="grid gap-4 mt-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
       {brief && (
-        <ResultPanel title="Business Brief" icon="📋">
-          {brief.idea_summary && <div className="font-medium mb-1">{brief.idea_summary}</div>}
-          {brief.core_problem && <div className="text-slate-400 mb-2">문제: {brief.core_problem}</div>}
-          {brief.proposed_solution && <div className="text-slate-400 mb-2">해결책: {brief.proposed_solution}</div>}
-          {brief.target_customer && <div className="text-xs text-slate-500">타겟: {brief.target_customer}</div>}
-          {brief.differentiation && <div className="text-xs text-slate-500 mt-1">차별화: {brief.differentiation}</div>}
-          {brief.recommended_phase && <div className="text-xs text-indigo-400 mt-2">추천 단계: {brief.recommended_phase}</div>}
-          {typeof brief.founder_fit_score === 'number' && (
-            <div className="text-xs text-slate-500 mt-1">Founder Fit: {brief.founder_fit_score}/100</div>
+        <ResultPanel title="Business Brief" tint="brief" icon={<IconDoc />}>
+          {brief.idea_summary && (
+            <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 15, color: 'var(--ink-1)', marginBottom: 10, lineHeight: 1.4 }}>
+              {brief.idea_summary}
+            </p>
+          )}
+          <hr className="j-hairline" />
+          {brief.core_problem      && <LabeledRow label="핵심 문제"   value={brief.core_problem} />}
+          {brief.proposed_solution && <LabeledRow label="해결책"      value={brief.proposed_solution} />}
+          {brief.target_customer   && <LabeledRow label="타겟 고객"   value={brief.target_customer} />}
+          {brief.differentiation   && <LabeledRow label="차별화 요소" value={brief.differentiation} />}
+          {/* Priority signals */}
+          {(brief.recommended_phase || typeof brief.founder_fit_score === 'number') && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+              {brief.recommended_phase && (
+                <span className="j-badge j-badge-ref">
+                  <span className="j-badge-dot" />
+                  추천 단계: {brief.recommended_phase}
+                </span>
+              )}
+              {typeof brief.founder_fit_score === 'number' && (
+                <span className="j-badge j-badge-live">
+                  <span className="j-badge-dot" />
+                  Founder Fit {brief.founder_fit_score}/100
+                </span>
+              )}
+            </div>
           )}
         </ResultPanel>
       )}
 
       {pmfPlan && (
-        <ResultPanel title="PMF Plan" icon="🎯">
-          {pmfPlan.hypothesis && <div className="mb-2">가설: {pmfPlan.hypothesis}</div>}
-          {pmfPlan.experiment_type && <div className="text-xs text-slate-500">실험 유형: {pmfPlan.experiment_type}</div>}
-          {pmfPlan.success_signal && <div className="text-xs text-slate-500 mt-1">성공 신호: {pmfPlan.success_signal}</div>}
-          {pmfPlan.kill_criteria && <div className="text-xs text-red-400 mt-1">중단 기준: {pmfPlan.kill_criteria}</div>}
-          {pmfPlan.timeline_days && <div className="text-xs text-slate-500 mt-1">기간: {pmfPlan.timeline_days}일</div>}
+        <ResultPanel title="PMF Experiment Plan" tint="pmf" icon={<IconTarget />}>
+          {pmfPlan.hypothesis && <LabeledRow label="가설"      value={pmfPlan.hypothesis} />}
+          {pmfPlan.experiment_type && <LabeledRow label="실험 유형" value={pmfPlan.experiment_type} />}
+          {pmfPlan.success_signal  && (
+            <div style={{ marginBottom: 10 }}>
+              <span className="j-overline" style={{ display: 'block', marginBottom: 4 }}>PMF 성공 신호</span>
+              <span className="j-badge j-badge-live" style={{ borderRadius: 4 }}>
+                <span className="j-badge-dot" />{pmfPlan.success_signal}
+              </span>
+            </div>
+          )}
+          {pmfPlan.kill_criteria && (
+            <div style={{ marginBottom: 10 }}>
+              <span className="j-overline" style={{ display: 'block', marginBottom: 4 }}>중단 기준</span>
+              <span className="j-badge j-badge-blocked" style={{ borderRadius: 4 }}>
+                <IconStop size={11} />{pmfPlan.kill_criteria}
+              </span>
+            </div>
+          )}
+          {pmfPlan.timeline_days && (
+            <span className="j-mono" style={{ color: 'var(--ink-3)', fontSize: 12 }}>실험 기간: {pmfPlan.timeline_days}일</span>
+          )}
         </ResultPanel>
       )}
 
       {staffing && (
-        <ResultPanel title="Staffing" icon="👥">
-          <div className="space-y-2">
+        <ResultPanel title="Agent Staffing Plan" tint="staff" icon={<IconPeople />}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {(staffing.roles ?? staffing.recommended_roles ?? []).map((r: any, i: number) => (
-              <div key={i} className="border-l-2 border-indigo-600 pl-3">
-                <div className="font-medium text-indigo-300">{r.role ?? r.agent ?? r}</div>
-                {r.rationale && <div className="text-xs text-slate-400">{r.rationale}</div>}
-                {r.responsibilities && <div className="text-xs text-slate-500">{r.responsibilities}</div>}
+              <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid var(--silver-1)', display: 'flex', gap: 12 }}>
+                <div style={{ width: 3, borderRadius: 999, background: 'var(--green)', flexShrink: 0, marginTop: 2, marginBottom: 2 }} />
+                <div>
+                  <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 14, color: 'var(--ink-1)', marginBottom: 3 }}>
+                    {r.role ?? r.agent ?? r}
+                  </div>
+                  {r.rationale && (
+                    <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, margin: 0 }}>{r.rationale}</p>
+                  )}
+                  {r.responsibilities && (
+                    <p style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5, margin: '3px 0 0' }}>{r.responsibilities}</p>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         </ResultPanel>
       )}
 
-      {/* Fallback: raw JSON if no structured fields found */}
       {!brief && !pmfPlan && !staffing && (
-        <ResultPanel title="결과" icon="📄">
-          <pre className="text-xs overflow-auto whitespace-pre-wrap">
+        <ResultPanel title="결과" tint="raw" icon={<IconDoc />}>
+          <pre className="j-mono" style={{ fontSize: 12, overflowX: 'auto', whiteSpace: 'pre-wrap', color: 'var(--ink-2)' }}>
             {JSON.stringify(data, null, 2)}
           </pre>
         </ResultPanel>
@@ -82,9 +203,9 @@ function WorkflowResultView({ data }: { data: any }) {
 }
 
 function WorkflowContent() {
-  const [idea, setIdea] = useState('')
+  const [idea, setIdea]       = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError]     = useState('')
   const [history, setHistory] = useState<WorkflowResult[]>([])
   const [expanded, setExpanded] = useState<string | null>(null)
 
@@ -112,58 +233,86 @@ function WorkflowContent() {
   }
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-bold mb-1">Workflow Factory</h1>
-        <p className="text-sm text-slate-400">
-          아이디어를 입력하면 CEO Agent가 Brief, PMF Plan, Staffing을 생성합니다.
+    <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      {/* Page header */}
+      <div style={{ marginBottom: 28 }}>
+        <p className="j-overline" style={{ marginBottom: 6 }}>Workflow Factory</p>
+        <h1 className="j-h2">전략 문서 생성</h1>
+        <p className="j-body" style={{ marginTop: 6, maxWidth: 520 }}>
+          사업 아이디어를 입력하면 CEO Agent가 Business Brief, PMF Plan, Staffing Plan을 생성합니다.
         </p>
       </div>
 
-      <div className="bg-slate-800 rounded-xl p-5 mb-6">
+      {/* Input workbench */}
+      <div className="j-card" style={{ padding: 20, marginBottom: 28, background: 'var(--paper-elevated)' }}>
+        <label className="j-overline" style={{ display: 'block', marginBottom: 10 }}>사업 아이디어</label>
         <textarea
-          className="w-full bg-slate-700 rounded-lg px-4 py-3 text-sm resize-none outline-none focus:ring-2 focus:ring-indigo-500 mb-3"
-          rows={4}
+          className="j-input j-textarea"
+          rows={5}
           placeholder="어떤 비즈니스를 구축하고 싶으신가요? 아이디어를 자유롭게 입력하세요..."
           value={idea}
           onChange={e => setIdea(e.target.value)}
           disabled={loading}
+          style={{ marginBottom: 12 }}
         />
-        {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
-        <button
-          onClick={generate}
-          disabled={loading || !idea.trim()}
-          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg px-6 py-2.5 text-sm font-medium transition-colors"
-        >
-          {loading ? (
-            <span className="flex items-center gap-2">
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
-              CEO Agent가 분석 중...
-            </span>
-          ) : '워크플로 생성'}
-        </button>
+        {error && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>
+            <IconWarning />
+            <span>{error}</span>
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span className="j-meta">최근 5건 보관</span>
+          <button
+            onClick={generate}
+            disabled={loading || !idea.trim()}
+            className="j-btn j-btn-primary j-btn-lg"
+          >
+            {loading ? (
+              <>
+                <IconSpinner size={15} />
+                CEO Agent 분석 중...
+              </>
+            ) : '워크플로 생성'}
+          </button>
+        </div>
       </div>
 
-      {/* History */}
+      {/* History accordion */}
       {history.length > 0 && (
-        <div className="space-y-3">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p className="j-overline" style={{ marginBottom: 4 }}>생성 기록</p>
           {history.map(entry => (
-            <div key={entry.id} className="bg-slate-800 rounded-xl overflow-hidden">
+            <div key={entry.id} className="j-card" style={{ padding: 0, overflow: 'hidden' }}>
               <button
                 onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}
-                className="w-full flex items-center justify-between px-5 py-3 text-sm text-left hover:bg-slate-750 transition-colors"
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '13px 16px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  gap: 12,
+                  textAlign: 'left',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--paper-surface)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
               >
-                <div>
-                  <span className="text-slate-300 font-medium line-clamp-1">{entry.idea}</span>
-                  <span className="text-xs text-slate-500 ml-3">{entry.createdAt}</span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <span className="j-ui" style={{ fontWeight: 500, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {entry.idea}
+                  </span>
+                  <span className="j-mono" style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2, display: 'block' }}>{entry.createdAt}</span>
                 </div>
-                <span className="text-slate-500 text-lg">{expanded === entry.id ? '▲' : '▼'}</span>
+                <span style={{ color: 'var(--ink-3)', flexShrink: 0 }}>
+                  <IconChevron dir={expanded === entry.id ? 'up' : 'down'} />
+                </span>
               </button>
               {expanded === entry.id && (
-                <div className="px-5 pb-5">
+                <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--silver-1)' }}>
                   <WorkflowResultView data={entry.data} />
                 </div>
               )}

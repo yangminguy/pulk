@@ -90,6 +90,21 @@ export type HandoffSummary = {
   created_at: string | null
 }
 
+export type HandoffItem = {
+  id: string
+  task_id: string
+  from_agent: string
+  to_agent: string
+  context: string | null
+  next_action: string | null
+  blocker: string | null
+  what_was_completed: string | null
+  what_remains_open: string | null
+  why_next_agent_needed: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export type OpenItem = {
   kind: 'needs_review' | 'blocked' | 'pending_approval'
   task_id: string
@@ -128,6 +143,57 @@ export type TodayDiscovery = {
   business_id: string | null
 }
 
+export type ProjectItem = {
+  id: string
+  business_id: string
+  name: string
+  description: string
+  status: string | null
+  updated_at: string | null
+}
+
+export type ChatMessageItem = {
+  id: string
+  project_id: string
+  role: 'founder' | 'ceo'
+  text: string
+  metadata?: {
+    instructionId?: string
+    planStatus?: 'pending' | 'approved' | 'rejected'
+    goal?: string
+    phase?: string
+    risk_level?: string
+    assumptions?: string[]
+    success_criteria?: string[]
+    proposed_tasks?: Array<{
+      id: string
+      assigned_agent: string
+      title: string
+      rationale: string
+      expected_output: string
+      risk_level?: string
+      approval_required?: boolean
+    }>
+    needs_business_clarification?: boolean
+    business_clarification_question?: string
+  }
+  createdAt: string
+}
+
+export type ProjectRoadmapEventItem = {
+  id: string
+  project_id: string
+  task_id: string
+  title: string
+  assigned_agent: string
+  status: string
+  risk_level: string
+  phase: string
+  rationale: string
+  output_summary: string
+  completed_at: string
+}
+
 export const api = {
   signIn: (account: string, password: string) =>
     request<{ data: { token: string } }>('/api/auth:signIn', {
@@ -135,10 +201,10 @@ export const api = {
       body: JSON.stringify({ account, password }),
     }).then(r => ({ token: r.data.token })),
 
-  submitInstruction: (rawText: string, businessId?: string | null) =>
+  submitInstruction: (rawText: string, projectId?: string | null, businessId?: string | null) =>
     request<{ data: { ok: boolean; data: { instruction: { id: string }; interpretation: Record<string, unknown>; tasks: unknown[] } } }>('/api/chat:submitInstruction', {
       method: 'POST',
-      body: JSON.stringify({ raw_text: rawText, source: 'chat', business_id: businessId ?? null }),
+      body: JSON.stringify({ raw_text: rawText, source: 'chat', project_id: projectId ?? null, business_id: businessId ?? null }),
     }).then(r => unwrap(r)),
 
   approvePlan: (instruction_id: string) =>
@@ -263,6 +329,12 @@ export const api = {
       .then(r => unwrap(r) as ActiveBusiness[])
       .catch(() => [] as ActiveBusiness[]),
 
+  createBusiness: (title: string, oneLiner?: string) =>
+    request<{ data: ActiveBusiness }>('/api/businesses:create', {
+      method: 'POST',
+      body: JSON.stringify({ title, one_liner: oneLiner ?? '', status: 'active' }),
+    }).then(r => r.data),
+
   getProjectTimeline: (businessId: string) =>
     request<{ data: { ok: boolean; data: ProjectTimeline } }>(
       `/api/monitor:projectTimeline?business_id=${encodeURIComponent(businessId)}`
@@ -291,4 +363,62 @@ export const api = {
     )
       .then(r => unwrap(r) as TodayDiscovery[])
       .catch(() => [] as TodayDiscovery[]),
+
+  listProjects: (businessId?: string | null) =>
+    request<{ data: { ok: boolean; data: ProjectItem[] } }>(
+      `/api/project:listActive${businessId ? `?business_id=${encodeURIComponent(businessId)}` : ''}`
+    )
+      .then(r => unwrap(r) as ProjectItem[])
+      .catch(() => [] as ProjectItem[]),
+
+  createProject: (businessId: string, title: string, description?: string) =>
+    request<{ data: ProjectItem }>('/api/projects:create', {
+      method: 'POST',
+      body: JSON.stringify({ business_id: businessId, title, description: description ?? '', status: 'active' }),
+    }).then(r => r.data),
+
+  chatHistory: (projectId: string) =>
+    request<{ data: { ok: boolean; data: ChatMessageItem[] } }>(
+      `/api/chat:history?project_id=${encodeURIComponent(projectId)}`
+    )
+      .then(r => unwrap(r) as ChatMessageItem[])
+      .catch(() => [] as ChatMessageItem[]),
+
+  getProjectRoadmapEvents: (projectId: string) =>
+    request<{ data: ProjectRoadmapEventItem[] }>(
+      `/api/project_roadmap_events:list?filter[project_id]=${encodeURIComponent(projectId)}&sort=completed_at`
+    )
+      .then(r => r.data as ProjectRoadmapEventItem[])
+      .catch(() => [] as ProjectRoadmapEventItem[]),
+
+  getProjectTasks: (projectId: string) =>
+    request<{ data: TaskItem[] }>(
+      `/api/agent_tasks:list?filter[project_id]=${encodeURIComponent(projectId)}&pageSize=200`
+    )
+      .then(r => r.data as TaskItem[])
+      .catch(() => [] as TaskItem[]),
+
+  getInboxTasks: (projectId: string | null, businessId: string | null) => {
+    let query = `/api/agent_tasks:list?filter[status]=needs_review&pageSize=200`
+    if (projectId) {
+      query += `&filter[$or][0][project_id]=${encodeURIComponent(projectId)}&filter[$or][1][project_id][$empty]=true`
+    } else {
+      query += `&filter[project_id][$empty]=true`
+    }
+    if (businessId && businessId !== 'common') {
+      query += `&filter[business_id]=${encodeURIComponent(businessId)}`
+    } else {
+      query += `&filter[business_id][$empty]=true`
+    }
+    return request<{ data: TaskItem[] }>(query)
+      .then(r => r.data as TaskItem[])
+      .catch(() => [] as TaskItem[])
+  },
+
+  getTaskHandoffs: (taskId: string) =>
+    request<{ data: HandoffItem[] }>(
+      `/api/agent_handoffs:list?filter[task_id]=${encodeURIComponent(taskId)}`
+    )
+      .then(r => r.data as HandoffItem[])
+      .catch(() => [] as HandoffItem[]),
 }

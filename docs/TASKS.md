@@ -1,7 +1,30 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-05-30 (CTO 로드맵 Phase 1·2 구현). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-05-31 (Founder UI Joinery 디자인 전면 재적용 완료, Vercel 배포 준비). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+
+## ✨ 2026-05-31 — Founder UI Joinery 디자인 전면 재적용
+
+- [x] **UI.1 Foundation**: globals.css에 Joinery + v2 디자인 토큰 임베드 (paper/ink/silver/green/amber/red/blue/pastel + Source Serif 4 / IBM Plex Sans / SUIT / Pretendard / IBM Plex Mono CDN import + `j-card`/`j-btn`/`j-badge`/`j-input`/`j-risk-d1~d5` 등 컴포넌트 클래스). tailwind.config.ts 시멘틱 토큰 노출. layout.tsx 라이트화.
+- [x] **UI.2 Sidebar Joinery 재작성**: 다중계층 비즈니스/프로젝트 트리 + 모달 + 인라인 SVG 아이콘 + 4px green active bar. 모든 hook/state/로직 보존.
+- [x] **UI.3 Chat workspace**: chat/page.tsx (founder=right paper-elevated / CEO=left paper-surface + 4px green bar, executive dispatch card 패턴) + ApprovalQueueCard (amber-tint, prominent but calm) + RoadmapMiniCard + TodayDiscoveryBanner.
+- [x] **UI.4 Executive board**: monitor/page.tsx (PhaseTransitionPanel + 4px left accent for blocked/review) + approval/page.tsx (D5→D4→D3 정렬, j-risk-d3~d5).
+- [x] **UI.5 Strategic docs**: workflow/page.tsx (Brief/PMF/Staffing 3종 pastel tint strip) + memory/page.tsx (PII 위험 명시).
+- [x] **UI.6 Portfolio room**: projects/page.tsx (그리드 보드) + projects/[id]/page.tsx (PhaseStrip + SectionHead) + projects/layout.tsx.
+- [x] **UI.7 CTO + Tools + 신규 컴포넌트**: control-room, tool-requests, TabLayout, RoadmapTimeline (단일 green spine + pastel agent), AuthGate (신규), LoginForm.
+- [x] **UI.8 검증**: `npx tsc --noEmit` 0 에러 + `npx next build` 12 페이지 prerender 성공.
+- [ ] **UI.9 Vercel 배포**: NocoBase 백엔드 노출 방식 결정 필요 (사용자 선택 대기) → 결정 후 `vercel.json` + 환경변수 + 프로젝트 셋업.
+
+
+
+## 🔥 최우선 작업 (1순위) — 사업/프로젝트 레이어 다중화, 대화형 기획 및 시각적 로드맵
+
+상세 설계는 `docs/projects_roadmap_implementation_plan.md` 파일을 참조하십시오.
+
+- [ ] **1.1 Database Schema 확장**: `projects`, `chat_messages`, `project_roadmap_events` 컬렉션 정의 및 기존 데이터 연결
+- [ ] **1.2 대화형 기획 및 Multi-turn 채팅**: 과거 대화 Context를 LLM에 전달하고 계획 확정 전까지 대화를 이어나가며 기획을 정교화하는 기능
+- [ ] **1.3 태스크 1주일 후 아카이브 및 삭제 데몬**: 완료 태스크 정리 후 로드맵 이벤트 테이블로 복사 및 삭제 수행하는 Hermes Cron 스케줄 구축
+- [ ] **1.4 Founder UI 개편 및 가로 줄기형 로드맵 시각화**: 사이드바 프로젝트 트리, 복원 가능한 채팅창, 그리고 HSL Harmonized Dark Theme 기반 가로 스크롤형 타임라인 컴포넌트 (`RoadmapTimeline.tsx`) 추가
 
 ## CTO 로드맵 진행 (`/tmp/l5-roadmap.html`, ACR repo)
 
@@ -588,24 +611,26 @@ L5 Business OS
 
 ### P0: approval token 자동 발급 플로우 연결
 
-- [ ] L5 dispatch → ACR `/api/workbench/approval` 자동 호출 → token 발급
-  - 현재: `/api/runner`는 항상 approval token 요구
-  - 문제: L5에서 dispatch만 하면 runner 실행 불가 (token 없음)
-  - 해결: dispatch 라우트에서 approval token 자동 발급 후 runner까지 연결
-  - 또는: D1-D2 자동 실행 시 token 없이 실행 가능한 내부 직접 실행 경로 추가
+- [x] L5 dispatch → approval token 자동 발급 → runner 연결 ✅ (2026-05-30 검증, 설계 변경)
+  - 원안(ACR `/api/workbench/approval` 직접 호출)은 **내부 토큰 발급 방식으로 대체**됨
+  - 구현: Phase 14 P0-2 ACR `app/api/orchestration/internal-token/route.ts`(`L5_SHARED_SECRET` 검증) + P0-3 auto-dispatcher가 `issueApprovalToken()` in-process 호출
+  - L5 측: `plugin-orchestration/plugin.ts:1040` executeTask가 D3+ 태스크에 `acr_token`(randomUUID) 자동 발급, 콜백 응답에 동봉
+  - D1-D2는 auto-dispatcher 무토큰 내부 직접 실행 경로 사용 (Phase 14 P0-3/P0-4)
 
 ### P0: project 등록 자동화
 
-- [ ] L5 dispatch 시 ACR project 자동 등록
-  - 현재: runner는 projectId가 ACR에 등록된 project여야 실행 가능
-  - 문제: L5에서 보낸 FeaturePlan의 projectId가 ACR DB에 없으면 실패
-  - 해결: dispatch 라우트에서 project 없으면 auto-create
+- [x] L5 dispatch 시 ACR project 자동 등록 ✅ (2026-05-30 검증)
+  - 구현: ACR `workbench/dispatch`가 `project_path` 있고 project 없으면 dispatch 시점 auto-create (Phase 15 Addendum)
+  - L5 측: `cto.ts:265 bootstrapProjectIfMissing()` → `/api/projects` 등록 + business-portfolio `acrRegister` 서버 액션
+  - 검증: 658행 "ACR 프로젝트 자동 등록 ✅", `projects-register.test.ts` 8/8 PASS
 
-### P1: Release Gate UI ↔ L5 승인 큐 연동
+### P1: Release Gate ↔ L5 승인 일원화 ✅ (2026-05-30, 설계 변경)
 
-- [ ] D3-D5 태스크 → ACR Release Gate 생성 + L5 승인 큐 동시 표시
-  - 현재: Release Gate는 in-memory Map만 사용 (서버 재시작 시 소멸)
-  - 해결: Release Gate를 file/DB 영속화 + L5 approval queue와 양방향 동기화
+- [x] D4-D5 승인을 **L5 단일 승인원**으로 통합 (ACR Release Gate 중복 제거)
+  - 문제: 승인 경로 이원화 — L5 `acr_token`(Founder가 L5에서 승인) vs ACR Release Gate(in-memory, ACR panel에서 별도 승인). 게다가 dispatcher가 픽업한(=L5 승인된) D4-D5 태스크를 ACR auto-dispatcher가 `manual_founder`로 **다시** 막아 영영 실행 안 됨.
+  - 해결(양방향 동기화 대신 단일 승인원): Hermes dispatcher는 `approval_required=false` 태스크만 ACR로 보내므로, ACR에 도달한 intent는 이미 L5 게이트 통과. `ACRIntent.l5_approved=true`로 표시(`l5-core/types/acr-intent.ts`, `agent-runtime/agents/cto.ts`) → ACR `auto-dispatcher`가 `manual_founder` 게이트 통과 + dispatch route가 auto-dispatch 스케줄, `workbench/approval`(수동 경로)도 Release Gate 스킵. **`auto_24h`(D3)는 시간 정책이라 미적용.**
+  - 검증: ACR `auto-dispatcher.test.ts` 신규 "D4 manual_founder IS auto-dispatched once L5 approved" + 기존 NOT-dispatched 대칭 케이스 동시 통과(5/5). L5 `cto.test.ts` `l5_approved` assert. 양쪽 tsc clean.
+  - 미적용(범위 외): Release Gate in-memory→file 영속화(별개), ACR Release Gate panel UI 제거(미사용이라 무해)
 
 ### P1: ACR daemon 자동 시작 관리 ✅ (2026-05-29 오후)
 

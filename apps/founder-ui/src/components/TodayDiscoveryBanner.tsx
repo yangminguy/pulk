@@ -13,11 +13,8 @@ interface TodayDiscoveryBannerProps {
  */
 function cleanSummary(raw: string): string {
   if (!raw) return ''
-  // A summary that is itself an HTML document (e.g. a changelog fetch that
-  // returned a full page) is not a real discovery — drop it entirely.
   if (/<!doctype html|<html[\s>]/i.test(raw)) return ''
   const text = raw
-    // strip tags, including a trailing tag truncated without its closing '>'
     .replace(/<[^>]*>?/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
@@ -41,7 +38,6 @@ export default function TodayDiscoveryBanner({ businessId }: TodayDiscoveryBanne
     })
   }, [businessId])
 
-  // Sanitize summaries and drop any that are empty after cleaning.
   const cleaned = items
     .map(item => ({ id: item.id, text: cleanSummary(item.summary) }))
     .filter(item => item.text.length > 0)
@@ -50,18 +46,60 @@ export default function TodayDiscoveryBanner({ businessId }: TodayDiscoveryBanne
   if (loading || cleaned.length === 0) return null
 
   return (
-    <div className="border border-indigo-700 bg-indigo-900/30 rounded-xl px-4 py-3 mb-3">
-      <div className="text-xs text-indigo-400 font-medium mb-2 uppercase tracking-wide">
-        오늘의 발견 (24h)
+    <div style={{
+      background: 'var(--paper-surface)',
+      border: '1px solid var(--silver-2)',
+      borderRadius: 6,
+      overflow: 'hidden',
+    }}>
+      {/* header */}
+      <div style={{
+        padding: '9px 14px',
+        borderBottom: '1px solid var(--silver-1)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 7,
+      }}>
+        {/* small green dot accent */}
+        <span style={{
+          width: 6,
+          height: 6,
+          borderRadius: 999,
+          background: 'var(--green)',
+          flexShrink: 0,
+        }} />
+        <span className="j-overline">오늘의 발견 · 24h</span>
       </div>
-      <ul className="space-y-1">
-        {cleaned.map(item => (
-          <li key={item.id} className="text-sm text-slate-200 flex items-start gap-2">
-            <span className="text-indigo-500 mt-0.5 shrink-0">•</span>
-            <span>{item.text}</span>
-          </li>
+
+      {/* discovery rows */}
+      <div>
+        {cleaned.map((item, i) => (
+          <div key={item.id} style={{
+            display: 'flex',
+            gap: 10,
+            padding: '10px 14px',
+            borderBottom: i < cleaned.length - 1 ? '1px solid var(--silver-1)' : 'none',
+            alignItems: 'flex-start',
+          }}>
+            {/* bullet */}
+            <span style={{
+              width: 5,
+              height: 5,
+              borderRadius: 999,
+              background: 'var(--silver-3)',
+              flexShrink: 0,
+              marginTop: 6,
+            }} />
+            <span style={{
+              fontSize: 13,
+              color: 'var(--ink-1)',
+              lineHeight: 1.5,
+            }}>
+              {item.text}
+            </span>
+          </div>
         ))}
-      </ul>
+      </div>
     </div>
   )
 }

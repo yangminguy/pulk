@@ -1,3 +1,252 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* =============================================================
+   Joinery Design System — tokens (zip: redesign/colors_and_type.css)
+   ============================================================= */
+
+/* Korean UI sans + Latin pairings */
+@import url('https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css');
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* Paper — backgrounds */
+  --paper-canvas:   #F4F0E6;
+  --paper-surface:  #FAF7F0;
+  --paper-elevated: #FDFBF6;
+  --paper-pure:     #FFFFFE;
+
+  /* Ink — text */
+  --ink-1: #1A1612;
+  --ink-2: #4A4540;
+  --ink-3: #7C766C;
+  --ink-4: #ACA59A;
+
+  /* Silver — borders */
+  --silver-1: #EFECE3;
+  --silver-2: #E0DCD1;
+  --silver-3: #C5BFB2;
+  --silver-4: #908A7E;
+
+  /* Wood — illustrative */
+  --wood-1: #E2C492;
+  --wood-2: #B68A55;
+  --wood-3: #8A5E33;
+  --wood-4: #4E331B;
+
+  /* Joinery Green — signal */
+  --green:        #1FA64D;
+  --green-hover:  #178A3F;
+  --green-press:  #126E32;
+  --green-tint:   #E4F4E8;
+  --green-tint-2: #C7E8D0;
+  --green-on:     #FFFFFF;
+
+  /* Status */
+  --amber:      #C77D11;
+  --amber-tint: #FBEFD9;
+  --red:        #B83A2A;
+  --red-tint:   #F7E1DD;
+  --blue:       #2862C7;
+  --blue-tint:  #DDE6F7;
+
+  /* Pastel pairs (v2) — soft fill / ink */
+  --p-lav:   #ECE6F7; --pi-lav:   #4A3D7A;
+  --p-peach: #FBE6D6; --pi-peach: #8A4E26;
+  --p-mint:  #DCEFE0; --pi-mint:  #1E6B3A;
+  --p-sky:   #DCE7F7; --pi-sky:   #29508F;
+  --p-butter:#FBEFC9; --pi-butter:#8A6708;
+  --p-rose:  #F7DCE4; --pi-rose:  #9B2F4E;
+  --p-sand:  #F0E9DB; --pi-sand:  #6B6253;
+
+  /* Semantic aliases */
+  --bg:              var(--paper-canvas);
+  --bg-surface:      var(--paper-surface);
+  --bg-elevated:     var(--paper-elevated);
+  --bg-inset:        #EDE9DE;
+  --fg:              var(--ink-1);
+  --fg-muted:        var(--ink-2);
+  --fg-subtle:       var(--ink-3);
+  --fg-faint:        var(--ink-4);
+  --hairline:        var(--silver-2);
+  --hairline-strong: var(--silver-3);
+  --accent:          var(--green);
+  --accent-hover:    var(--green-hover);
+  --accent-press:    var(--green-press);
+  --accent-tint:     var(--green-tint);
+  --accent-on:       var(--green-on);
+  --focus-ring:      var(--green);
+
+  /* Type families */
+  --font-serif: 'Source Serif 4', 'Gowun Batang', 'Nanum Myeongjo', Georgia, serif;
+  --font-sans:  'IBM Plex Sans', 'SUIT Variable', 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif;
+  --font-mono:  'IBM Plex Mono', 'Pretendard Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sans-kr: 'SUIT Variable', 'Pretendard Variable', Pretendard, 'IBM Plex Sans', -apple-system, 'Apple SD Gothic Neo', sans-serif;
+  --font-serif-kr: 'Gowun Batang', 'Nanum Myeongjo', 'Source Serif 4', Georgia, serif;
+
+  /* Type scale (4px grid) */
+  --text-xs:   12px;
+  --text-sm:   13px;
+  --text-base: 15px;
+  --text-md:   16px;
+  --text-lg:   18px;
+  --text-xl:   22px;
+  --text-2xl:  28px;
+  --text-3xl:  36px;
+  --text-4xl:  48px;
+  --text-5xl:  64px;
+  --text-6xl:  84px;
+
+  --leading-tight:   1.15;
+  --leading-snug:    1.3;
+  --leading-normal:  1.5;
+  --leading-relaxed: 1.65;
+
+  --tracking-tight:   -0.015em;
+  --tracking-normal:   0;
+  --tracking-wide:     0.04em;
+  --tracking-overline: 0.12em;
+
+  /* Spacing (4px) */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+  --space-12: 48px; --space-16: 64px; --space-20: 80px; --space-24: 96px;
+
+  /* Radii */
+  --radius-0:    0px;
+  --radius-sm:   2px;
+  --radius-md:   6px;
+  --radius-lg:  10px;
+  --radius-xl:  14px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-1: 0 0 0 1px var(--silver-2);
+  --shadow-2: 0 1px 2px rgba(26, 22, 18, 0.04), 0 6px 16px -8px rgba(26, 22, 18, 0.10);
+  --shadow-3: 0 4px 12px rgba(26, 22, 18, 0.06), 0 20px 48px -12px rgba(26, 22, 18, 0.18);
+  --shadow-focus: 0 0 0 2px var(--paper-canvas), 0 0 0 4px var(--green);
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-1: 120ms; --dur-2: 200ms; --dur-3: 320ms;
+
+  /* Layout */
+  --nav-top-h:   56px;
+  --nav-side-w:  232px;
+  --max-prose:   720px;
+  --max-page:    1200px;
+}
+
+/* Baseline — light operating console */
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  word-break: keep-all;
+}
+
+::selection { background: var(--green-tint-2); color: var(--ink-1); }
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
+
+/* Joinery semantic type classes */
+.j-display { font-family: var(--font-serif); font-weight: 500; font-size: var(--text-6xl); line-height: var(--leading-tight); letter-spacing: var(--tracking-tight); color: var(--fg); }
+.j-h1 { font-family: var(--font-serif); font-weight: 500; font-size: var(--text-4xl); line-height: 1.1; letter-spacing: var(--tracking-tight); color: var(--fg); }
+.j-h2 { font-family: var(--font-serif); font-weight: 500; font-size: var(--text-3xl); line-height: 1.15; letter-spacing: var(--tracking-tight); color: var(--fg); }
+.j-h3 { font-family: var(--font-sans); font-weight: 600; font-size: var(--text-xl); line-height: var(--leading-snug); letter-spacing: -0.005em; color: var(--fg); }
+.j-h4 { font-family: var(--font-sans); font-weight: 600; font-size: var(--text-lg); line-height: var(--leading-snug); color: var(--fg); }
+.j-body { font-family: var(--font-sans); font-weight: 400; font-size: var(--text-md); line-height: var(--leading-relaxed); color: var(--fg-muted); }
+.j-ui { font-family: var(--font-sans); font-weight: 400; font-size: var(--text-base); line-height: var(--leading-snug); color: var(--fg); }
+.j-ui-sm { font-family: var(--font-sans); font-weight: 400; font-size: var(--text-sm); line-height: var(--leading-snug); color: var(--fg-muted); }
+.j-meta { font-family: var(--font-sans); font-weight: 400; font-size: var(--text-xs); line-height: var(--leading-snug); color: var(--fg-subtle); }
+.j-overline { font-family: var(--font-mono); font-weight: 500; font-size: 11px; line-height: 1; letter-spacing: var(--tracking-overline); text-transform: uppercase; color: var(--fg-subtle); }
+.j-mono { font-family: var(--font-mono); font-weight: 400; font-size: var(--text-sm); line-height: var(--leading-snug); font-variant-numeric: tabular-nums; color: var(--fg); }
+.j-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+/* Joinery component primitives — reusable across screens */
+.j-card {
+  background: var(--paper-surface);
+  border: 1px solid var(--silver-2);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  transition: border-color var(--dur-1), background var(--dur-1);
+}
+.j-card.j-card-hover:hover { background: var(--paper-elevated); border-color: var(--silver-3); cursor: pointer; }
+.j-card.j-card-selected { border-color: var(--green); }
+
+.j-btn {
+  font-family: inherit;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  font-weight: 500; line-height: 1; white-space: nowrap;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--dur-1) var(--ease-standard);
+  height: 36px; padding: 0 14px; font-size: 14px; border-radius: var(--radius-md);
+}
+.j-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.j-btn-sm { height: 30px; padding: 0 11px; font-size: 13px; border-radius: 4px; }
+.j-btn-lg { height: 44px; padding: 0 20px; font-size: 15px; }
+.j-btn-primary { background: var(--green); color: #fff; border-color: transparent; }
+.j-btn-primary:hover:not(:disabled) { background: var(--green-hover); }
+.j-btn-secondary { background: var(--paper-surface); color: var(--ink-1); border-color: var(--silver-3); }
+.j-btn-secondary:hover:not(:disabled) { background: var(--paper-elevated); }
+.j-btn-ghost { background: transparent; color: var(--ink-1); }
+.j-btn-ghost:hover:not(:disabled) { background: var(--silver-1); }
+.j-btn-danger { background: transparent; color: var(--red); border-color: var(--silver-2); }
+.j-btn-danger:hover:not(:disabled) { background: var(--red-tint); }
+
+.j-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 500; line-height: 1.4;
+  white-space: nowrap; font-family: var(--font-sans);
+}
+.j-badge-dot { width: 6px; height: 6px; border-radius: 999px; display: inline-block; }
+.j-badge-live    { background: var(--green-tint); color: var(--green-press); }
+.j-badge-live .j-badge-dot { background: var(--green); }
+.j-badge-review  { background: var(--amber-tint); color: #8A5408; }
+.j-badge-review .j-badge-dot { background: var(--amber); }
+.j-badge-blocked { background: var(--red-tint); color: #8C2A1F; }
+.j-badge-blocked .j-badge-dot { background: var(--red); }
+.j-badge-draft   { background: var(--silver-1); color: var(--ink-2); }
+.j-badge-draft .j-badge-dot { background: var(--silver-4); }
+.j-badge-ref     { background: var(--blue-tint); color: #1F4A9E; }
+.j-badge-ref .j-badge-dot { background: var(--blue); }
+.j-badge-neutral { background: var(--silver-1); color: var(--ink-2); }
+.j-badge-neutral .j-badge-dot { background: var(--silver-4); }
+
+.j-input {
+  width: 100%;
+  background: var(--paper-elevated);
+  border: 1px solid var(--silver-2);
+  border-radius: var(--radius-md);
+  padding: 9px 12px;
+  font-size: 14px;
+  color: var(--ink-1);
+  font-family: inherit;
+  transition: border-color var(--dur-1), background var(--dur-1);
+}
+.j-input::placeholder { color: var(--ink-4); }
+.j-input:focus { outline: none; border-color: var(--green); background: var(--paper-pure); }
+
+.j-textarea { resize: vertical; min-height: 96px; line-height: 1.5; }
+
+.j-hairline { height: 1px; background: var(--silver-2); border: 0; margin: 12px 0; }
+
+/* Risk badges — D1 calm → D5 strict */
+.j-risk-d1 { background: var(--green-tint); color: var(--green-press); }
+.j-risk-d2 { background: var(--blue-tint); color: #1F4A9E; }
+.j-risk-d3 { background: var(--amber-tint); color: #8A5408; }
+.j-risk-d4 { background: #F7DCB6; color: #8A4E26; }
+.j-risk-d5 { background: var(--red-tint); color: #8C2A1F; }

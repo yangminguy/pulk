@@ -5,46 +5,37 @@ import { usePathname } from 'next/navigation'
 import AuthGate from '@/components/AuthGate'
 import { api, ActiveBusiness } from '@/lib/api'
 
-function relativeTime(dateStr: string | null): string {
-  if (!dateStr) return '-'
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return '방금'
-  if (mins < 60) return `${mins}분 전`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}시간 전`
-  return `${Math.floor(hours / 24)}일 전`
-}
-
 function stageColor(stage: string | null): string {
-  if (!stage) return 'text-slate-400'
+  if (!stage) return 'var(--silver-4)'
   const s = stage.toLowerCase()
-  if (s === 'active' || s === 'running') return 'text-green-400'
-  if (s === 'idea' || s === 'draft') return 'text-yellow-400'
-  if (s === 'deleted' || s === 'killed' || s === 'archived') return 'text-red-400'
-  return 'text-slate-300'
-}
-
-function stageIcon(stage: string | null): string {
-  if (!stage) return '⬜'
-  const s = stage.toLowerCase()
-  if (s === 'active' || s === 'running') return '🟢'
-  if (s === 'idea' || s === 'draft') return '🟡'
-  if (s === 'deleted' || s === 'killed' || s === 'archived') return '🛑'
-  return '⬜'
+  if (s === 'active' || s === 'running') return 'var(--green)'
+  if (s === 'idea' || s === 'draft') return 'var(--amber)'
+  if (s === 'deleted' || s === 'killed' || s === 'archived') return 'var(--red)'
+  return 'var(--silver-4)'
 }
 
 function ProjectsSidebar({ businesses, loading }: { businesses: ActiveBusiness[]; loading: boolean }) {
   const pathname = usePathname()
 
   return (
-    <aside className="w-56 bg-slate-800 border-r border-slate-700 flex flex-col py-4 px-2 min-h-screen shrink-0">
-      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 mb-3">Projects</div>
-      {loading && <div className="text-xs text-slate-500 px-2">로딩 중...</div>}
-      {!loading && businesses.length === 0 && (
-        <div className="text-xs text-slate-500 px-2">활성 프로젝트 없음</div>
+    <aside style={{
+      width: 220,
+      background: 'var(--paper-surface)',
+      borderRight: '1px solid var(--silver-2)',
+      display: 'flex',
+      flexDirection: 'column',
+      padding: '20px 8px',
+      minHeight: '100vh',
+      flexShrink: 0,
+    }}>
+      <div className="j-overline" style={{ padding: '0 8px', marginBottom: 12 }}>Projects</div>
+      {loading && (
+        <div className="j-meta" style={{ padding: '0 8px' }}>로딩 중...</div>
       )}
-      <nav className="space-y-0.5 flex-1 overflow-y-auto">
+      {!loading && businesses.length === 0 && (
+        <div className="j-meta" style={{ padding: '0 8px' }}>활성 프로젝트 없음</div>
+      )}
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, overflowY: 'auto' }}>
         {businesses.map((b) => {
           const href = `/projects/${b.id}`
           const isActive = pathname === href
@@ -52,21 +43,50 @@ function ProjectsSidebar({ businesses, loading }: { businesses: ActiveBusiness[]
             <Link
               key={b.id}
               href={href}
-              className={`flex items-center justify-between gap-2 px-2 py-2 rounded text-sm transition-colors ${
-                isActive ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-700'
-              }`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '7px 8px',
+                borderRadius: 'var(--radius-md)',
+                fontSize: 13,
+                fontFamily: 'var(--font-sans)',
+                color: isActive ? 'var(--ink-1)' : 'var(--ink-2)',
+                background: isActive ? 'var(--green-tint)' : 'transparent',
+                textDecoration: 'none',
+                transition: 'background var(--dur-1)',
+                fontWeight: isActive ? 500 : 400,
+              }}
+              onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'var(--silver-1)' }}
+              onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
-              <span className="truncate flex-1">{b.name}</span>
-              <span title={b.lifecycle_stage ?? ''}>{stageIcon(b.lifecycle_stage)}</span>
+              <span style={{
+                width: 7,
+                height: 7,
+                borderRadius: 999,
+                background: stageColor(b.lifecycle_stage),
+                flexShrink: 0,
+              }} />
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {b.name}
+              </span>
             </Link>
           )
         })}
       </nav>
       <Link
         href="/projects"
-        className={`mt-2 px-2 py-1.5 rounded text-xs transition-colors ${
-          pathname === '/projects' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'
-        }`}
+        style={{
+          marginTop: 8,
+          padding: '6px 8px',
+          borderRadius: 'var(--radius-md)',
+          fontSize: 12,
+          fontFamily: 'var(--font-sans)',
+          color: pathname === '/projects' ? 'var(--green-press)' : 'var(--ink-3)',
+          background: pathname === '/projects' ? 'var(--green-tint)' : 'transparent',
+          textDecoration: 'none',
+          transition: 'background var(--dur-1)',
+        }}
       >
         + 전체 목록
       </Link>
@@ -96,9 +116,9 @@ function ProjectsLayoutInner({ children }: { children: React.ReactNode }) {
   }, [load])
 
   return (
-    <div className="flex flex-1 -m-6 min-h-screen">
+    <div style={{ display: 'flex', flex: 1, margin: '-24px', minHeight: '100vh' }}>
       <ProjectsSidebar businesses={businesses} loading={loading} />
-      <div className="flex-1 p-6 overflow-auto">{children}</div>
+      <div style={{ flex: 1, padding: 24, overflowY: 'auto' }}>{children}</div>
     </div>
   )
 }
