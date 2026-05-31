@@ -10,3 +10,5 @@ export { runCTOAgent } from "./agents/cto.js";
 export { runCOOAgent } from "./agents/coo.js";
 export { runCFOAgent } from "./agents/cfo.js";
 export { runRiskQAAgent } from "./agents/risk-qa.js";
+export { healFailedTask, classifyFailure } from "./self-heal.js";
+export type { HealOutcome, HealInput, FailureKind } from "./self-heal.js";

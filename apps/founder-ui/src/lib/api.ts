@@ -1,6 +1,8 @@
 const BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:13000'
+const ENV_TOKEN = process.env.NEXT_PUBLIC_NOCOBASE_TOKEN ?? ''
 
 function getToken(): string | null {
+  if (ENV_TOKEN) return ENV_TOKEN
   if (typeof window === 'undefined') return null
   return localStorage.getItem('l5_token')
 }
@@ -225,18 +227,24 @@ export const api = {
       body: JSON.stringify({ idea }),
     }).then(r => unwrap(r)),
 
-  currentTasks: () =>
-    request<{ data: { ok: boolean; data: TaskItem[] } }>('/api/monitor:currentTasks')
+  currentTasks: (businessId?: string | null) =>
+    request<{ data: { ok: boolean; data: TaskItem[] } }>(
+      `/api/monitor:currentTasks${businessId !== undefined ? `?business_id=${encodeURIComponent(businessId ?? 'common')}` : ''}`
+    )
       .then(r => unwrap(r) as TaskItem[])
       .catch(() => [] as TaskItem[]),
 
-  blockedTasks: () =>
-    request<{ data: { ok: boolean; data: TaskItem[] } }>('/api/monitor:blockedTasks')
+  blockedTasks: (businessId?: string | null) =>
+    request<{ data: { ok: boolean; data: TaskItem[] } }>(
+      `/api/monitor:blockedTasks${businessId !== undefined ? `?business_id=${encodeURIComponent(businessId ?? 'common')}` : ''}`
+    )
       .then(r => unwrap(r) as TaskItem[])
       .catch(() => [] as TaskItem[]),
 
-  approvalQueue: () =>
-    request<{ data: { ok: boolean; data: TaskItem[] } }>('/api/monitor:approvalQueue')
+  approvalQueue: (businessId?: string | null) =>
+    request<{ data: { ok: boolean; data: TaskItem[] } }>(
+      `/api/monitor:approvalQueue${businessId !== undefined ? `?business_id=${encodeURIComponent(businessId ?? 'common')}` : ''}`
+    )
       .then(r => unwrap(r) as TaskItem[])
       .catch(() => [] as TaskItem[]),
 

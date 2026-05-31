@@ -30,6 +30,19 @@ Rules:
 - phase reflects where the Founder is in the L5 orchestration loop.
 - risk_level follows D1-D5. External customer messages are D4+.
 - approval_required must be true for D4/D5 or any external customer-facing commitment.
+
+[FOUNDER APPROVAL GATE — MANDATORY]
+The following categories ALWAYS require founder approval. The CEO may NOT auto-approve them
+regardless of confidence. Set approval_required=true and risk_level >= D4 if the instruction
+involves any of:
+  1. Payments / spending money / signing contracts / committing budget
+  2. Outbound messages or documents that leave the company to a customer / partner / public
+     (customer email, marketing post, support reply, sales pitch, press release, social post)
+  3. Onboarding or removing a team member, vendor, or external collaborator
+  4. Public changes to brand, pricing, terms, or legal posture
+For all OTHER categories (internal planning, research, prototyping, internal restructuring,
+sub-agent task creation), the CEO judges autonomously and approval_required can be false.
+The founder's directive: "결제와 외부로 나가는 문서·메시지는 무조건 founder 확인. 그 외 범위는 CEO가 판단하고 대부분 승인.".
 - Never invent customer PII. Never include secrets.
 - business_id: if active businesses are listed below, pick the id of the best matching one.
   Set to null if the instruction clearly applies to the whole company (not one specific business).
@@ -39,7 +52,10 @@ Rules:
 - business_clarification_question: only present when needs_business_clarification is true.
 - new_business_proposal: only present when the instruction describes a brand-new business not in the active list.
   Do NOT create or act on it — only surface it.
-  If active business list is empty or absent, default business_id to null.`;
+  If active business list is empty or absent, default business_id to null.
+
+[OUTPUT LANGUAGE — STRICT]
+All free-text string values that the founder will read (goal, assumptions[], success_criteria[], business_clarification_question, new_business_proposal.title, new_business_proposal.one_liner) MUST be written in 한국어. JSON keys, enum values ("direction_alignment", "D1"-"D5", true/false), and identifiers (business_id) stay English. The founder reads Korean; English prose in these fields is not acceptable.`;
 
 export interface FounderMemoryEntry {
   insight: string;
@@ -53,12 +69,18 @@ export interface ActiveBusiness {
   one_liner?: string;
 }
 
+export interface ChatMessageContext {
+  role: 'founder' | 'ceo';
+  text: string;
+}
+
 export interface InterpretOptions {
   llm: LLMClient;
   now?: () => Date;
   idGenerator?: () => string;
   memories?: FounderMemoryEntry[];
   activeBusinesses?: ActiveBusiness[];
+  chatHistory?: ChatMessageContext[];
 }
 
 interface ParsedInterpretation {
@@ -98,8 +120,13 @@ export async function interpretFounderInstruction(
         .join('\n')
     : '\n\n## Active Businesses\n(none — default business_id to null)';
 
+  const chatHistorySection = opts.chatHistory && opts.chatHistory.length > 0
+    ? '\n\n## Chat History (previous conversation)\n' +
+      opts.chatHistory.map((m) => `${m.role === 'founder' ? 'Founder' : 'CEO'}: ${m.text}`).join('\n')
+    : '';
+
   const raw = await opts.llm.complete({
-    system: SYSTEM_PROMPT_BASE + businessSection + memorySection,
+    system: SYSTEM_PROMPT_BASE + businessSection + memorySection + chatHistorySection,
     user: userPrompt,
     trace_name: 'ceo.interpretFounderInstruction',
     trace_metadata: { instruction_id: instruction.id },

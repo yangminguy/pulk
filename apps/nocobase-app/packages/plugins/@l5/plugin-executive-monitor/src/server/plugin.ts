@@ -31,10 +31,30 @@ type MonitorContext = {
 
 type TaskRecord = Record<string, any>;
 
+// Read business_id from query string. Returns:
+//   { kind: 'common' }       — show company-wide tasks (business_id IS NULL)
+//   { kind: 'all' }           — no filter (legacy callers without business_id param)
+//   { kind: 'biz', id: '..'} — show only that business's tasks
+function readBusinessScope(ctx: MonitorContext): { kind: 'all' | 'common' | 'biz'; id?: string } {
+  const rawQuery = (ctx as any).request?.query ?? (ctx as any).query ?? {};
+  const raw = rawQuery['business_id'];
+  if (raw === undefined || raw === null) return { kind: 'all' };
+  const s = String(raw).trim();
+  if (!s || s === 'common') return { kind: 'common' };
+  return { kind: 'biz', id: s };
+}
+
+function withBusinessFilter(base: Record<string, any>, scope: ReturnType<typeof readBusinessScope>): Record<string, any> {
+  if (scope.kind === 'all') return base;
+  if (scope.kind === 'common') return { ...base, business_id: { $empty: true } };
+  return { ...base, business_id: scope.id };
+}
+
 async function currentTasks(ctx: MonitorContext) {
   const db = ctx.db || ctx.app.db;
+  const scope = readBusinessScope(ctx);
   const tasks = await db.getRepository('agent_tasks').find({
-    filter: { status: { $notIn: ['done', 'killed'] } },
+    filter: withBusinessFilter({ status: { $notIn: ['done', 'killed'] } }, scope),
     sort: ['-updated_at'],
   });
 
@@ -48,6 +68,9 @@ async function currentTasks(ctx: MonitorContext) {
       rationale: task.rationale,
       status: task.status,
       expected_output: task.expected_output,
+      decision: task.decision,
+      reasoning: task.reasoning,
+      next_action: task.next_action,
       next_output: task.next_output,
       next_owner: task.next_owner,
       stop_reason: task.stop_reason,
@@ -63,8 +86,9 @@ async function currentTasks(ctx: MonitorContext) {
 
 async function blockedTasks(ctx: MonitorContext) {
   const db = ctx.db || ctx.app.db;
+  const scope = readBusinessScope(ctx);
   const tasks = await db.getRepository('agent_tasks').find({
-    filter: { status: 'blocked' },
+    filter: withBusinessFilter({ status: 'blocked' }, scope),
     sort: ['-updated_at'],
   });
 
@@ -76,6 +100,9 @@ async function blockedTasks(ctx: MonitorContext) {
       task_title: task.title,
       source_instruction: instruction ? instruction.raw_text.slice(0, 120) : null,
       status: task.status,
+      decision: task.decision,
+      reasoning: task.reasoning,
+      next_action: task.next_action,
       blocker: task.blocker,
       next_owner: task.next_owner,
       approval_required: task.approval_required,
@@ -89,8 +116,9 @@ async function blockedTasks(ctx: MonitorContext) {
 
 async function approvalQueue(ctx: MonitorContext) {
   const db = ctx.db || ctx.app.db;
+  const scope = readBusinessScope(ctx);
   const tasks = await db.getRepository('agent_tasks').find({
-    filter: { approval_required: true, status: { $notIn: ['done', 'killed'] } },
+    filter: withBusinessFilter({ approval_required: true, status: { $notIn: ['done', 'killed'] } }, scope),
     sort: ['-updated_at'],
   });
 

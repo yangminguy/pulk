@@ -1,5 +1,46 @@
 # DECISIONS — L5 Business OS
 
+## 2026-05-30 — D3+ 승인 L5 단일화 + CTO phase 검토 verdict 반영
+
+**컨텍스트**:
+D3+ 승인 경로가 이원화돼 있었다. L5는 `executeTask`가 D3+ 태스크에 `acr_token`을 발급하고 Founder가 L5에서 승인하는데, ACR은 별도로 in-memory Release Gate(`workbench/approval` panel)에서 다시 승인을 요구했다. 더 큰 문제는, Hermes dispatcher가 픽업한(= Founder가 `approvePlan`으로 승인해 `approval_required=false`가 된) D4-D5 태스크를 ACR auto-dispatcher가 `manual_founder` 게이트로 **다시 막아** 영영 실행되지 않았다는 점이다. 또 중간 phase(`phase_complete`)의 verifier 결과가 계산만 되고 버려져, 실패한 중간 단계가 L5에 잡히지 않았다.
+
+**결정 1 — 승인은 L5를 단일 진실원(single source of truth)으로**
+- Hermes dispatcher는 `approval_required=false` 태스크만 ACR로 보낸다 → ACR에 도달한 intent는 이미 L5 게이트(자동 또는 Founder 승인)를 통과한 것. 따라서 `ACRIntent.l5_approved=true`(`packages/l5-core/src/types/acr-intent.ts`, `services/agent-runtime/src/agents/cto.ts`)로 표시하고, ACR은 이를 신뢰해 `manual_founder` 게이트를 통과시킨다(`auto-dispatcher.ts`, `workbench/dispatch` auto-dispatch 스케줄, `workbench/approval` Release Gate 스킵).
+- **양방향 동기화/Release Gate 영속화 대신 단일 승인원**을 택했다(더 단순, CLAUDE.md UI 단순화 부합). ACR Release Gate panel은 미사용으로 남겨 무해.
+- **예외: `auto_24h`(D3)는 시간 정책**이라 `l5_approved`로 우회하지 않는다 — D3는 Founder 명시 승인이 아니라 24h 자동 통과 대상이기 때문.
+
+**결정 2 — CTO phase 검토는 verdict 반영(경량), 본격 게이트 루프는 보류**
+- `phase_complete` 콜백(`plugin-orchestration/plugin.ts`)에서도 verifier verdict를 반영한다. fail/inconclusive면 `needs_review`로 올려 `cto-verification-loop`(`verifier:fail`+`retry=true`)가 재시도하거나 Founder가 검토한다. pass면 진행 메모만 남긴다.
+- ACR auto-dispatcher가 phase를 자동 드레인하는 흐름은 **그대로 둔다**(phase별 멈춤 게이트는 드레인과 충돌 → 본격 루프는 범위 외).
+
+---
+
+## 2026-05-30 — 사업/프로젝트 다중 레이어, 대화형 기획 및 시각적 로드맵
+
+**컨텍스트**: 
+사용자가 L5 Business OS를 사용하면서 단발성 지시 해석에서 벗어나 기획을 대화로 고도화(Multi-turn)하고, 사업(Business) 하위에 여러 프로젝트(Project) 레이어를 두며, 완료 태스크는 1주일 후 삭제하되 시각적인 프로젝트별 분기형 가로 로드맵(Roadmap Timeline)에 흔적이 보존되길 원한다.
+
+**결정 1 — 사업 ↔ 프로젝트 다중 레이어 도입 및 스코핑**
+- NocoBase에 `projects` 컬렉션을 신설하고 `businesses` 하위 1:N 관계로 둔다.
+- 창업자 지시(`founder_instructions`), CEO 해석(`ceo_interpretations`), 태스크(`agent_tasks`) 테이블에 `project_id`를 추가하여 대화와 계획을 프로젝트 수준으로 격리한다.
+
+**결정 2 — 대화 기록 영속화 및 대화형 기획 (Multi-turn) 구현**
+- NocoBase에 `chat_messages` 컬렉션을 신설하여 창업자-CEO 간의 전체 대화 히스토리를 데이터베이스에 영속화한다.
+- 다른 페이지로 갔다가 복귀하더라도 `chat:history` API를 호출하여 과거 대화와 제안된 임원 태스크 플랜 카드를 그대로 복구한다.
+- CEO Agent는 단발성 해석을 넘어, 과거 대화를 기반으로 추가 질문을 던지거나 의견을 제시하며, 최종적으로 기획이 정리된 시점에만 실행 계획(태스크 목록)을 JSON으로 제안한다.
+
+**결정 3 — 완료 태스크 7일 후 아카이브 및 삭제 데몬**
+- 완료/실패된 태스크(`done` | `killed`)는 7일이 지나면 `agent_tasks` 테이블에서 정리(delete)하여 성능과 가독성을 높인다.
+- 삭제 전, 로드맵 표시용 백업 테이블인 `project_roadmap_events`로 태스크 요약 정보(누가 수행했고, 기대 출력이 무엇이었으며, 최종 출력 요약이 무엇인지)를 복사하여 아카이브한다.
+- 이를 수행하는 `task-archiver` 데몬을 Hermes Runtime에 등록하고 매일 새벽 Cron으로 구동한다.
+
+**결정 4 — HSL 테마 기반 가로 줄기형 분기 로드맵 시각화**
+- Founder UI에 가로 스크롤 가능한 `RoadmapTimeline.tsx` 컴포넌트를 구축한다.
+- 중앙 핵심선(Core Spine)은 BPR 6단계를 표현하고, 상부 갈래(Branch Up)로는 과거 아카이빙된 태스크를, 하부 갈래(Branch Down)로는 현재 활성 및 예정된 태스크를 HSL harmonized 배지와 micro-animation을 적용하여 시각화한다.
+
+---
+
 ## 2026-05-30 — 로드맵 Phase 5: 배움 루프 (수집→검토→저장→참고)
 
 **컨텍스트**: 학습 루프의 밑단 순수 로직(`collectInsights`/`memorySection`/`founder_memory` 컬렉션)은 있었으나 어디서도 호출/주입되지 않아 "결과를 학습해 다음 실행을 개선"이 작동하지 않았다. self-learning은 changelog 원문 HTML을 그대로 저장했다.

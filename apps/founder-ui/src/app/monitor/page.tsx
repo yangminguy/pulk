@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import AuthGate from '@/components/AuthGate'
 import { api } from '@/lib/api'
+import { useBusiness } from '@/lib/business-context'
 
 // ---------------------------------------------------------------------------
 // Local Icon (same pattern as Sidebar.tsx)
@@ -471,6 +472,14 @@ function TaskCard({ task }: { task: any }) {
   const status: TaskStatus = task.status as TaskStatus
   const risk: RiskLevel | undefined = task.risk_level as RiskLevel | undefined
   const accent = cardAccentColor(status)
+  const [showWork, setShowWork] = useState(false)
+
+  const reasoning: string = typeof task.reasoning === 'string' ? task.reasoning : ''
+  const nextAction: string = typeof task.next_action === 'string' ? task.next_action : ''
+  const decision: string = typeof task.decision === 'string' ? task.decision : ''
+  // Self-heal events are tagged by Hermes with a [CTO ...] / [CEO ...] prefix.
+  const healMatch = reasoning.match(/^\[(CTO|CEO)\s[^\]]*\]/)
+  const hasWork = !!(reasoning || nextAction || decision)
 
   return (
     <div style={{
@@ -543,12 +552,57 @@ function TaskCard({ task }: { task: any }) {
         {/* Blocker */}
         {task.blocker && (
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
+            display: 'flex', alignItems: 'flex-start', gap: 6,
             marginTop: 6, fontSize: 12.5, color: 'var(--red)',
-            fontFamily: 'var(--font-sans)',
+            fontFamily: 'var(--font-sans)', lineHeight: 1.45, overflowWrap: 'anywhere',
           }}>
-            <Icon name="alert" size={13} stroke={1.8} />
+            <span style={{ flexShrink: 0, marginTop: 1 }}><Icon name="alert" size={13} stroke={1.8} /></span>
             {task.blocker}
+          </div>
+        )}
+
+        {/* Agent work — what the agent actually did/decided */}
+        {hasWork && (
+          <div style={{ marginTop: 8 }}>
+            {healMatch && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600,
+                color: 'var(--green-press)', background: 'var(--green-tint)',
+                padding: '1px 7px', borderRadius: 999, marginBottom: 6,
+              }}>
+                ⟳ {healMatch[1]} 자가복구
+              </span>
+            )}
+            {(nextAction || decision) && (
+              <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+                <span style={{ color: 'var(--ink-4)', fontFamily: 'var(--font-mono)', fontSize: 10.5, marginRight: 6 }}>현재 작업</span>
+                {nextAction || decision}
+              </div>
+            )}
+            {reasoning && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowWork(v => !v)}
+                  style={{
+                    marginTop: 4, background: 'none', border: 'none', padding: 0,
+                    color: 'var(--green-press)', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  {showWork ? '판단 근거 접기' : '판단 근거 보기'}
+                </button>
+                {showWork && (
+                  <div style={{
+                    marginTop: 6, fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.55,
+                    background: 'var(--bg-inset, var(--silver-1))', padding: '8px 10px',
+                    borderRadius: 6, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap',
+                  }}>
+                    {reasoning}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -574,12 +628,17 @@ function MonitorContent() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterType>('all')
   const [autoRefresh, setAutoRefresh] = useState(true)
+  const { selectedId, businesses } = useBusiness()
+  const scope = selectedId  // null = 회사 공통, string = 특정 사업
+  const scopeLabel = selectedId === null
+    ? '회사 공통'
+    : businesses.find(b => b.id === selectedId)?.name ?? '특정 사업'
 
   const load = useCallback(async () => {
     try {
       const [current, blocked] = await Promise.all([
-        api.currentTasks().catch(() => []),
-        api.blockedTasks().catch(() => []),
+        api.currentTasks(scope).catch(() => []),
+        api.blockedTasks(scope).catch(() => []),
       ])
       const currentArr = Array.isArray(current) ? current : (current as any)?.data ?? []
       const blockedArr = Array.isArray(blocked) ? blocked : (blocked as any)?.data ?? []
@@ -591,9 +650,10 @@ function MonitorContent() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [scope])
 
   useEffect(() => {
+    setLoading(true)
     load()
     if (!autoRefresh) return
     const interval = setInterval(load, 30000)
@@ -640,6 +700,9 @@ function MonitorContent() {
           }}>
             현황 모니터
           </h1>
+          <div style={{ marginTop: 4, fontSize: 12, color: 'var(--ink-3)', fontFamily: 'var(--font-mono)' }}>
+            범위 · <span style={{ color: 'var(--green-press)', fontWeight: 600 }}>{scopeLabel}</span>
+          </div>
         </div>
 
         {/* Controls */}

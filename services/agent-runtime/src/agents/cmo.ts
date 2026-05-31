@@ -1,76 +1,53 @@
-// CMO Agent — GTM messaging, content strategy, brand positioning.
-// External sends always require Founder approval before execution.
+// CMO Agent — PMF message, content, positioning, demand experiments, customer research.
+// SYSTEM_PROMPT derived from docs/AGENT_PROTOCOL.md (CMO section).
+// Backed by Claude Haiku via local `claude` CLI.
 
 import type { AgentInput, AgentOutput } from "./types.js";
+import { callHaikuJson } from "../llm/haiku-llm.js";
 
-interface OpenAIResponse {
-  choices: Array<{ message: { content: string | null } }>;
-}
+const SYSTEM_PROMPT = `You are the CMO (Chief Marketing Officer) of L5 Business OS.
 
-const SYSTEM_PROMPT = `You are the CMO of L5 Business OS. Your job is to design go-to-market messaging, content strategy, and brand positioning.
-Return ONLY valid JSON with this structure:
+Owns: PMF message, content, positioning, demand experiments, customer research.
+
+Must Do:
+- Stop before external publishing unless approval exists.
+- Base recommendations on PMF scoring rules.
+- Keep messages aligned with Founder DNA.
+- Always set risk_level appropriately for external-facing work.
+- Prefer drafting 2+ positioning variants for A/B comparison before recommending one.
+
+Return ONLY valid JSON in this exact schema:
 {
-  "decision": "string — what you decided to do",
-  "reasoning": "string — why this approach",
-  "next_action": "string — immediate next step (internal only, no external sends)",
+  "decision": "string — what you decided (e.g. positioning variants drafted, channel chosen)",
+  "reasoning": "string — why this approach; reference PMF hypothesis / target segment / success signal",
+  "next_action": "string — immediate internal step (draft, review, hypothesis test). NEVER a direct publish or external send",
   "risk_level": "D1"|"D2"|"D3"|"D4"|"D5",
   "requires_founder_approval": boolean
 }
-Rules:
-- Any external-facing content (emails, posts, ads, landing pages) → risk_level D3 or higher, requires_founder_approval true
-- Internal content drafts → risk_level D2, requires_founder_approval false
+
+Risk rules:
+- Any external-facing content (emails, posts, ads, landing pages) → D3+, requires_founder_approval true
+- Internal content drafts → D2, requires_founder_approval false
 - next_action must always be an internal draft step, never a direct publish/send`;
 
 export interface CMOAgentOutput extends AgentOutput {}
 
 export async function runCMOAgent(input: AgentInput): Promise<CMOAgentOutput> {
-  const apiKey = process.env["OPENAI_API_KEY"];
-  if (apiKey) {
-    try {
-      return await callOpenAI(input, apiKey);
-    } catch (err) {
-      console.warn("[CMO] OpenAI call failed, using fallback —", (err as Error).message);
-    }
-  }
-  return buildFallback(input);
-}
-
-async function callOpenAI(input: AgentInput, apiKey: string): Promise<CMOAgentOutput> {
   const userPrompt = `Task: ${input.task.title}\nRationale: ${input.task.rationale}\nExpected output: ${input.task.expected_output}`;
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      max_tokens: 512,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
-    }),
-  });
-  if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
-  const data = (await res.json()) as OpenAIResponse;
-  const content = data.choices[0]?.message?.content;
-  if (!content) throw new Error("Empty OpenAI response");
-  return JSON.parse(extractJson(content)) as CMOAgentOutput;
+  try {
+    return await callHaikuJson<CMOAgentOutput>(SYSTEM_PROMPT, userPrompt);
+  } catch (err) {
+    console.warn("[CMO] Haiku call failed, using fallback —", (err as Error).message);
+    return buildFallback(input);
+  }
 }
 
 function buildFallback(input: AgentInput): CMOAgentOutput {
   return {
     decision: `CMO review: "${input.task.title}" — drafted messaging strategy`,
-    reasoning: "No API key; returning deterministic CMO analysis placeholder.",
+    reasoning: "Claude CLI unavailable; returning deterministic CMO analysis placeholder.",
     next_action: "Draft message variants and positioning doc for Founder review.",
     risk_level: "D3",
     requires_founder_approval: true,
   };
-}
-
-function extractJson(raw: string): string {
-  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fence) return fence[1].trim();
-  const s = raw.indexOf("{");
-  const e = raw.lastIndexOf("}");
-  if (s === -1 || e <= s) throw new Error("No JSON in response");
-  return raw.slice(s, e + 1);
 }

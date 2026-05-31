@@ -1,6 +1,20 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-31 (Founder UI Joinery 디자인 전면 재적용 + Vercel 배포 준비)
+최종 업데이트: 2026-05-31 (모바일 UX 보강 + 사업/프로젝트 격리 + 자가치유 풀버전)
+
+---
+
+## 🟢 2026-05-31 (최신) — 모바일 UX + 격리 + 자가치유
+
+1. **LLM 백엔드 Claude CLI 전환 + 한국어 강제**: CEO interpretation + 7 임원 모두 Claude Haiku(로컬 `claude` CLI). `agent-runtime/src/llm/haiku-llm.ts` `callHaikuJson`에 `KO_OUTPUT_RULE`(한국어 강제) + JSON 실패 1회 자동 재시도. `l5-core/.../interpreter.ts` SYSTEM에도 한국어 규칙 + founder 승인 게이트(결제·외부발송·인원·브랜드공개) 추가.
+2. **사업↔프로젝트 격리 버그 수정**: `project:listActive`(plugin-business-portfolio)가 GET에서 `ctx.action.params.values`(빈 {})를 먼저 읽어 query를 무시 → 모든 사업에 전체 프로젝트 노출. `ctx.request.query` 우선으로 수정(src+dist/server/plugin.js). monitor `currentTasks/blockedTasks/approvalQueue`에 `business_id` 스코프 필터(`readBusinessScope`/`withBusinessFilter`, src+dist). 프론트 monitor/approval가 `selectedId` 전달 + "범위 · {사업명}" 표시.
+3. **모바일 레이아웃**: 사이드바 드로어 스크롤(`MobileShell` 100dvh+overflow), 로드맵 모바일 세로 타임라인(`RoadmapTimeline` `lg:hidden` 분기), 인박스 발견카드 반응형(`.j-discovery-row`: 모바일 세로 / 데스크탑 가로 스크롤) + 텍스트 clamp/wrap, monitor/review 카드 `overflowWrap`.
+4. **에이전트 작업 가시화**: monitor `currentTasks/blockedTasks`에 `decision/reasoning/next_action` 추가(src+dist). monitor TaskCard에 "현재 작업"(next_action) + "판단 근거 보기"(reasoning 펼침) + "⟳ CTO/CEO 자가복구" 배지.
+5. **자가치유 풀버전** (`agent-runtime/src/self-heal.ts` 신규): 임원 task 실패 시 `classifyFailure`로 분류 → technical은 `runCTOAgent`, planning/permission은 CEO(callHaikuJson)가 복구 지침 생성 → 원 에이전트(AGENT_MAP) 1회 재시도(단발·무재귀). 결제·외부발송·인원·브랜드는 `requires_founder_approval`로 founder 에스컬레이션. `hermes-runtime/src/tasks/task-dispatcher.ts` catch에서 `healFailedTask` 호출 → 성공 done/needs_review(+decision/reasoning/next_action 영속), 에스컬레이션 needs_review(승인필요), 실패 blocked. updater 타입을 agent-output 필드까지 받도록 확장.
+
+빌드: l5-core/agent-runtime/hermes-runtime/founder-ui 모두 tsc·next build exit 0. NocoBase(pid 64585)·Hermes gateway 재시작(LastExitStatus 0). Vercel prod 배포(`https://pulk-founder-ui.vercel.app`). 자가치유 dist 검증 완료(agent-runtime/dist/self-heal.js + index/task-dispatcher import 확인). NocoBase 플러그인은 dist 직접 패치 적용 — 정식 nocobase build로 추후 동기화 필요. 참고: [[nocobase-plugin-dist-patching]].
+
+**남은 과제**: 로드맵 줌·노드 탭 세부 패널, 자가치유 다회 시도 + 복구 트레일 영속 테이블, 레거시 task(business_id NULL) 백필.
 
 ---
 

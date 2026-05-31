@@ -33,10 +33,61 @@ export async function createAgentTask(
   payload: Omit<AgentTask, "id" | "created_at" | "updated_at">,
 ): Promise<string> {
   const now = new Date().toISOString();
+  let actualInstructionId = payload.instruction_id;
+  let actualInterpretationId = (payload as any).interpretation_id;
+
+  if (payload.instruction_id) {
+    try {
+      const checkRes = await apiFetch(`/api/founder_instructions:get?filterByTk=${payload.instruction_id}`);
+      if (!checkRes || !checkRes.data) {
+        throw new Error("not found");
+      }
+      actualInstructionId = checkRes.data.id;
+    } catch {
+      // Create a dummy instruction first to satisfy the DB foreign key constraint
+      const createRes = await apiFetch("/api/founder_instructions:create", {
+        method: "POST",
+        body: JSON.stringify({
+          raw_text: `Hermes automatically generated task: ${payload.title}`,
+          source: "manual",
+          status: "in_progress",
+          createdAt: now,
+          updatedAt: now,
+          business_id: payload.business_id ?? null,
+          project_id: (payload as any).project_id ?? null,
+        }),
+      });
+      actualInstructionId = createRes.data?.id ?? createRes.id;
+    }
+  }
+
+  if (!actualInterpretationId && actualInstructionId) {
+    try {
+      const createInterpRes = await apiFetch("/api/ceo_interpretations:create", {
+        method: "POST",
+        body: JSON.stringify({
+          instruction_id: actualInstructionId,
+          goal: `Interpretation for task: ${payload.title}`,
+          phase: payload.phase ?? "scale_automation",
+          risk_level: payload.risk_level ?? "D1",
+          createdAt: now,
+          updatedAt: now,
+          business_id: payload.business_id ?? null,
+          project_id: (payload as any).project_id ?? null,
+        }),
+      });
+      actualInterpretationId = createInterpRes.data?.id ?? createInterpRes.id;
+    } catch (err) {
+      console.warn("[nocobase-client] ceo_interpretations creation failed:", (err as Error).message);
+    }
+  }
+
   const data = await apiFetch("/api/agent_tasks:create", {
     method: "POST",
     body: JSON.stringify({
       ...payload,
+      instruction_id: actualInstructionId,
+      interpretation_id: actualInterpretationId,
       id: randomUUID(),
       created_at: now,
       updated_at: now,
@@ -118,3 +169,31 @@ export async function saveFounderMemory(entry: {
   });
   return data.data?.id ?? data.id;
 }
+
+export async function createProjectRoadmapEvent(event: {
+  project_id: string;
+  task_id: string;
+  title: string;
+  assigned_agent: string;
+  status: string;
+  risk_level: string;
+  phase: string;
+  rationale: string;
+  output_summary: string;
+  completed_at: string;
+}): Promise<void> {
+  await apiFetch("/api/project_roadmap_events:create", {
+    method: "POST",
+    body: JSON.stringify({
+      id: randomUUID(),
+      ...event,
+    }),
+  });
+}
+
+export async function deleteAgentTask(taskId: string): Promise<void> {
+  await apiFetch(`/api/agent_tasks:destroy?filterByTk=${taskId}`, {
+    method: "POST",
+  });
+}
+

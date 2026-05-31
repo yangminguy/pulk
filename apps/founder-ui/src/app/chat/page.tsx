@@ -817,18 +817,17 @@ function InboxTab({ businessId }: { businessId: string | null }) {
       {/* Today Discovery as insight card */}
       <TodayDiscoveryBanner businessId={businessId} />
 
-      <div style={{ flex: 1, display: 'flex', gap: 16, overflow: 'hidden', minHeight: 0 }}>
-        {/* Left list pane */}
-        <div style={{
-          width: 300,
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--paper-surface)',
-          border: '1px solid var(--silver-2)',
-          borderRadius: 8,
-          overflow: 'hidden',
-        }}>
+      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0 lg:overflow-hidden">
+        {/* Left list pane — full width on mobile; hidden when a task is open (master-detail) */}
+        <div
+          className={`${selectedTask ? 'hidden lg:flex' : 'flex'} flex-col w-full lg:w-[300px] lg:flex-shrink-0 max-h-[70vh] lg:max-h-full`}
+          style={{
+            background: 'var(--paper-surface)',
+            border: '1px solid var(--silver-2)',
+            borderRadius: 8,
+            overflow: 'hidden',
+          }}
+        >
           {/* pane header */}
           <div style={{
             padding: '10px 14px',
@@ -900,17 +899,17 @@ function InboxTab({ businessId }: { businessId: string | null }) {
           </div>
         </div>
 
-        {/* Right detail pane */}
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--paper-surface)',
-          border: '1px solid var(--silver-2)',
-          borderRadius: 8,
-          overflow: 'hidden',
-          minHeight: 300,
-        }}>
+        {/* Right detail pane — full width on mobile; hidden until a task is selected */}
+        <div
+          className={`${selectedTask ? 'flex' : 'hidden lg:flex'} flex-col flex-1 min-h-0`}
+          style={{
+            background: 'var(--paper-surface)',
+            border: '1px solid var(--silver-2)',
+            borderRadius: 8,
+            overflow: 'hidden',
+            minHeight: 300,
+          }}
+        >
           {selectedTask ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               {/* detail header */}
@@ -919,6 +918,18 @@ function InboxTab({ businessId }: { businessId: string | null }) {
                 borderBottom: '1px solid var(--silver-1)',
                 background: 'var(--paper-elevated)',
               }}>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedTask(null); setHandoffs([]) }}
+                  className="lg:hidden"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    background: 'none', border: 'none', padding: '0 0 8px', cursor: 'pointer',
+                    color: 'var(--green-press)', fontSize: 13, fontFamily: 'inherit', fontWeight: 600,
+                  }}
+                >
+                  ← 목록으로
+                </button>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 7 }}>
                   <AgentChip agent={selectedTask.assigned_agent} />
                   <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>결과 보고 및 검토</span>

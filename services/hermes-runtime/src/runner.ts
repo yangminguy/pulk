@@ -9,6 +9,8 @@ import {
   fetchBusinessRepoPaths,
   createAgentTask,
   updateAgentTask,
+  createProjectRoadmapEvent,
+  deleteAgentTask,
 } from "./api/nocobase-client.js";
 import { runRepetitionAnalyzer } from "./tasks/repetition-analyzer.js";
 import { runApprovalChecker } from "./tasks/approval-checker.js";
@@ -19,10 +21,12 @@ import { runTaskDispatcher } from "./tasks/task-dispatcher.js";
 import { runCTOVerificationLoop } from "./tasks/cto-verification-loop.js";
 import { runModelVerify } from "./tasks/model-verify.js";
 import { runSelfLearning } from "./tasks/self-learning.js";
+import { runTaskArchiver } from "./tasks/task-archiver.js";
 import type { DailyApprovalBrief } from "./tasks/approval-checker.js";
 import type { DailyBrief } from "./tasks/daily-brief-generator.js";
 
 const NOCOBASE_URL = process.env.NOCOBASE_URL ?? "http://localhost:13000";
+
 
 export async function runRepetitionAnalyzerLive() {
   const tasks = await fetchAgentTasks();
@@ -137,9 +141,61 @@ export async function syncD3AutoApprovals() {
 }
 
 export async function runModelVerifyLive() {
-  return runModelVerify();
+  const result = await runModelVerify();
+  if (result.deprecated_detected.length > 0) {
+    const existing = await fetchAgentTasks();
+    const hasDuplicate = existing.some(
+      (t) => t.source_ref === "hermes:model-verify" && t.status === "needs_review"
+    );
+    if (!hasDuplicate) {
+      const suggestionsBody =
+        `Deprecated: ${result.deprecated_detected.join(', ')}\n\n` +
+        result.remapping_suggestions
+          .map((s) => `• ${s.deprecated_model} → ${s.suggested_replacement} (${s.tier})`)
+          .join('\n');
+      
+      await createAgentTask({
+        instruction_id: randomUUID(),
+        assigned_agent: "CTO",
+        title: "MODEL_ROSTER Deprecation & Remapping Proposal",
+        rationale: "Hermes model-verify task detected deprecated models in the current MODEL_ROSTER: " + result.deprecated_detected.join(', '),
+        expected_output: suggestionsBody,
+        status: "needs_review",
+        approval_required: true,
+        risk_level: "D4",
+        phase: "scale_automation",
+        source_ref: "hermes:model-verify",
+      });
+    }
+  }
+  return result;
 }
 
 export async function runSelfLearningLive() {
   return runSelfLearning();
 }
+
+export async function runTaskArchiverLive() {
+  const tasks = await fetchAgentTasks();
+  return runTaskArchiver(
+    tasks,
+    async (t) => {
+      await createProjectRoadmapEvent({
+        project_id: (t as any).project_id ?? "common",
+        task_id: t.id,
+        title: t.title,
+        assigned_agent: t.assigned_agent,
+        status: t.status,
+        risk_level: t.risk_level ?? "D1",
+        phase: t.phase ?? "direction_alignment",
+        rationale: t.rationale,
+        output_summary: t.blocker ?? "Task archived after 1 week",
+        completed_at: new Date().toISOString(),
+      });
+    },
+    async (id) => {
+      await deleteAgentTask(id);
+    }
+  );
+}
+

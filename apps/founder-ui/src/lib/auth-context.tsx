@@ -9,21 +9,28 @@ interface AuthCtx {
 
 const AuthContext = createContext<AuthCtx>({ token: null, setToken: () => {}, signOut: () => {} })
 
+const ENV_TOKEN = process.env.NEXT_PUBLIC_NOCOBASE_TOKEN ?? ''
+const BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:13000'
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setTokenState] = useState<string | null>(null)
+  const [token, setTokenState] = useState<string | null>(ENV_TOKEN || null)
 
   useEffect(() => {
+    // 1순위: 빌드 시점에 주입된 영구 API key (Vercel env)
+    if (ENV_TOKEN) {
+      setTokenState(ENV_TOKEN)
+      return
+    }
+    // 2순위: localStorage 캐시
     const t = localStorage.getItem('l5_token')
     if (t) {
-      // 저장된 토큰 즉시 사용 (백그라운드에서 만료 체크)
       setTokenState(t)
-      fetch('http://localhost:13000/api/auth:check', { headers: { Authorization: `Bearer ${t}` } })
+      fetch(`${BASE}/api/auth:check`, { headers: { Authorization: `Bearer ${t}` } })
         .then(r => {
           if (!r.ok) {
-            // 만료 → 재로그인
             localStorage.removeItem('l5_token')
             setTokenState(null)
-            return fetch('http://localhost:13000/api/auth:signIn', {
+            return fetch(`${BASE}/api/auth:signIn`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ account: 'admin@nocobase.com', password: 'admin123' }),
@@ -35,8 +42,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .catch(() => {})
       return
     }
-    // 토큰 없음 → 자동 로그인
-    fetch('http://localhost:13000/api/auth:signIn', {
+    // 3순위: 자동 로그인 fallback (dev only)
+    fetch(`${BASE}/api/auth:signIn`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ account: 'admin@nocobase.com', password: 'admin123' }),
@@ -52,7 +59,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     else localStorage.removeItem('l5_token')
   }
 
-  const signOut = () => setToken(null)
+  const signOut = () => {
+    if (ENV_TOKEN) return  // env token이 주입된 환경에서는 로그아웃 disable
+    setToken(null)
+  }
 
   return <AuthContext.Provider value={{ token, setToken, signOut }}>{children}</AuthContext.Provider>
 }

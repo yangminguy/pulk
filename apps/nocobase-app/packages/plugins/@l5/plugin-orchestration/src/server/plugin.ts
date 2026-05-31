@@ -8,6 +8,7 @@ const {
   decomposeIntoWorkstreams,
   interpretFounderInstruction,
   createOpenAIClient,
+  createDefaultLLMClient,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/ceo-orchestration'));
 
 const {
@@ -59,7 +60,7 @@ export default class PluginOrchestrationServer extends Plugin {
     registerChatResource(this.app, this.db);
     registerCrudResources(this.app);
 
-    this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow', 'approvePlan', 'rejectPlan'], 'loggedIn');
+    this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow', 'approvePlan', 'rejectPlan', 'history'], 'loggedIn');
     this.app.acl.allow('agent', ['executeTask'], 'loggedIn');
     // taskCallback is a machine-to-machine callback from ACR (non-interactive,
     // long-running). Public ACL + non-expiring shared-secret guard in the handler
@@ -70,6 +71,9 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('ceo_interpretations', '*', 'loggedIn');
     this.app.acl.allow('agent_tasks', '*', 'loggedIn');
     this.app.acl.allow('agent_handoffs', '*', 'loggedIn');
+    this.app.acl.allow('projects', '*', 'loggedIn');
+    this.app.acl.allow('chat_messages', '*', 'loggedIn');
+    this.app.acl.allow('project_roadmap_events', '*', 'loggedIn');
   }
 
   async install() {}
@@ -89,7 +93,8 @@ async function ensureOrchestrationColumns(db: any) {
         ADD COLUMN IF NOT EXISTS phase text,
         ADD COLUMN IF NOT EXISTS source_ref text,
         ADD COLUMN IF NOT EXISTS acr_token text,
-        ADD COLUMN IF NOT EXISTS business_id text;
+        ADD COLUMN IF NOT EXISTS business_id text,
+        ADD COLUMN IF NOT EXISTS project_id text;
     `);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -99,7 +104,8 @@ async function ensureOrchestrationColumns(db: any) {
   try {
     await db.sequelize.query(`
       ALTER TABLE IF EXISTS founder_instructions
-        ADD COLUMN IF NOT EXISTS business_id text;
+        ADD COLUMN IF NOT EXISTS business_id text,
+        ADD COLUMN IF NOT EXISTS project_id text;
     `);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -109,7 +115,8 @@ async function ensureOrchestrationColumns(db: any) {
   try {
     await db.sequelize.query(`
       ALTER TABLE IF EXISTS ceo_interpretations
-        ADD COLUMN IF NOT EXISTS business_id text;
+        ADD COLUMN IF NOT EXISTS business_id text,
+        ADD COLUMN IF NOT EXISTS project_id text;
     `);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -130,6 +137,7 @@ function registerCollections(db: any) {
       { name: 'requested_phase', type: 'string' },
       { name: 'status', type: 'string', allowNull: false, defaultValue: 'new' },
       { name: 'business_id', type: 'string' },
+      { name: 'project_id', type: 'string' },
     ],
   }));
 
@@ -146,6 +154,7 @@ function registerCollections(db: any) {
       { name: 'risk_level', type: 'string', allowNull: false, defaultValue: 'D1' },
       { name: 'approval_required', type: 'boolean', defaultValue: false },
       { name: 'business_id', type: 'string' },
+      { name: 'project_id', type: 'string' },
     ],
   }));
 
@@ -169,6 +178,7 @@ function registerCollections(db: any) {
       { name: 'due_at', type: 'date' },
       { name: 'acr_token', type: 'string' },
       { name: 'business_id', type: 'string' },
+      { name: 'project_id', type: 'string' },
     ],
   }));
 
@@ -186,20 +196,123 @@ function registerCollections(db: any) {
       { name: 'approval_required', type: 'boolean', defaultValue: false },
     ],
   }));
+
+  db.collection(defineCollection({
+    name: 'chat_messages',
+    title: 'Chat Messages',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'project_id', type: 'string', allowNull: false },
+      { name: 'role', type: 'string', allowNull: false },
+      { name: 'text', type: 'text', allowNull: false },
+      { name: 'metadata', type: 'json', defaultValue: {} },
+    ],
+  }));
+
+  db.collection(defineCollection({
+    name: 'project_roadmap_events',
+    title: 'Project Roadmap Events',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'project_id', type: 'string', allowNull: false },
+      { name: 'task_id', type: 'string', allowNull: false },
+      { name: 'title', type: 'string', allowNull: false },
+      { name: 'assigned_agent', type: 'string', allowNull: false },
+      { name: 'status', type: 'string', allowNull: false },
+      { name: 'risk_level', type: 'string', allowNull: false },
+      { name: 'phase', type: 'string', allowNull: false },
+      { name: 'rationale', type: 'text', allowNull: false },
+      { name: 'output_summary', type: 'text', defaultValue: '' },
+      { name: 'completed_at', type: 'date', allowNull: false },
+    ],
+  }));
 }
 
 function registerChatResource(app: any, db: any) {
   app.resourcer.define({
     name: 'chat',
     actions: {
+      history: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const params = (ctx.action?.params as any) || {};
+        const query = (ctx.request as any)?.query || {};
+        const body = (ctx.request as any)?.body || {};
+        const project_id = params.project_id || params.values?.project_id || query.project_id || body.project_id;
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        const chatMessageRepo = db.getRepository('chat_messages');
+        const rows = await chatMessageRepo.find({
+          filter: { project_id },
+          sort: ['createdAt'],
+        });
+
+        const instructionIds = (rows ?? [])
+          .map((m: any) => m.metadata?.instructionId)
+          .filter(Boolean);
+
+        const statusMap: Record<string, string> = {};
+        if (instructionIds.length > 0) {
+          try {
+            const instructionRepo = db.getRepository('founder_instructions');
+            const instructions = await instructionRepo.find({
+              filter: { id: { $in: instructionIds } },
+            });
+            for (const inst of (instructions ?? [])) {
+              statusMap[String(inst.id)] = inst.status;
+            }
+          } catch (err) {
+            // ignore
+          }
+        }
+
+        ctx.body = {
+          ok: true,
+          data: (rows ?? []).map((m: any) => {
+            const metadata = { ...(m.metadata ?? {}) };
+            if (m.role === 'ceo' && metadata.instructionId) {
+              const status = statusMap[metadata.instructionId];
+              if (status === 'approved') {
+                metadata.planStatus = 'approved';
+              } else if (status === 'rejected') {
+                metadata.planStatus = 'rejected';
+              } else if (status === 'interpreted') {
+                metadata.planStatus = 'pending';
+              }
+            }
+            return {
+              id: m.id,
+              project_id: m.project_id,
+              role: m.role,
+              text: m.text,
+              metadata,
+              createdAt: m.createdAt || m.created_at,
+            };
+          }),
+        };
+        await next();
+      },
+
       submitInstruction: async (ctx: ActionContext, next: () => Promise<void>) => {
-        const { raw_text, intent, constraints, requested_phase } = getValues(ctx);
+        const { raw_text, intent, constraints, requested_phase, project_id } = getValues(ctx);
         if (!raw_text || typeof raw_text !== 'string') ctx.throw(400, 'raw_text is required');
 
         const instructionRepo = db.getRepository('founder_instructions');
         const interpretationRepo = db.getRepository('ceo_interpretations');
         const taskRepo = db.getRepository('agent_tasks');
         const now = new Date().toISOString();
+
+        // 1. Save Founder Message in chat_messages if project_id is provided
+        if (project_id) {
+          const chatMessageRepo = db.getRepository('chat_messages');
+          await chatMessageRepo.create({
+            values: {
+              id: randomUUID(),
+              project_id,
+              role: 'founder',
+              text: raw_text,
+              created_at: now,
+            },
+          });
+        }
 
         // Fetch active businesses for business_id inference.
         let activeBusinesses: { id: string; name: string; one_liner?: string }[] = [];
@@ -217,6 +330,20 @@ function registerChatResource(app: any, db: any) {
           // plugin-business-portfolio may not be loaded in all envs — safe to skip
         }
 
+        // Determine if business_id should be inferred from the current project
+        let inferredBusinessId: string | null = null;
+        if (project_id) {
+          try {
+            const projRepo = db.getRepository('projects');
+            const project = await projRepo.findOne({ filterByTk: project_id });
+            if (project) {
+              inferredBusinessId = project.business_id ?? null;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
         const instruction = {
           id: randomUUID(),
           raw_text,
@@ -226,6 +353,8 @@ function registerChatResource(app: any, db: any) {
           requested_phase,
           status: 'new',
           created_at: now,
+          project_id: project_id ?? null,
+          business_id: inferredBusinessId,
         };
         const instructionRecord = await instructionRepo.create({ values: instruction });
 
@@ -237,12 +366,35 @@ function registerChatResource(app: any, db: any) {
         // sent to the LLM. Best-effort: failure must not block interpretation.
         const memories = await loadFounderMemories(ctx);
 
+        // Fetch chat messages history context for this project if project_id is provided
+        let chatHistory: any[] = [];
+        if (project_id) {
+          try {
+            const chatMessageRepo = db.getRepository('chat_messages');
+            const messages = await chatMessageRepo.find({
+              filter: { project_id },
+              sort: ['createdAt'],
+            });
+            chatHistory = (messages ?? [])
+              .filter((m: any) => m.text && m.role)
+              .map((m: any) => ({
+                role: m.role,
+                text: m.text,
+              }));
+          } catch (err) {
+            // ignore
+          }
+        }
+
         const interpretationDraft = await interpretFounderInstruction(instruction as any, {
           llm,
           now: () => new Date(now),
           idGenerator: randomUUID,
-          activeBusinesses,
+          activeBusinesses: inferredBusinessId
+            ? activeBusinesses.filter(b => b.id === inferredBusinessId)
+            : activeBusinesses,
           memories,
+          chatHistory,
         });
 
         const {
@@ -253,12 +405,19 @@ function registerChatResource(app: any, db: any) {
           ...interpCore
         } = interpretationDraft as any;
 
-        const interpretation = { ...interpCore, id: randomUUID(), business_id: business_id ?? null };
+        const resolvedBusinessId = business_id ?? inferredBusinessId ?? null;
+
+        const interpretation = {
+          ...interpCore,
+          id: randomUUID(),
+          business_id: resolvedBusinessId,
+          project_id: project_id ?? null,
+        };
         const interpretationRecord = await interpretationRepo.create({ values: interpretation });
 
         await instructionRepo.update({
           filter: { id: instruction.id },
-          values: { status: 'interpreted', business_id: business_id ?? null },
+          values: { status: 'interpreted', business_id: resolvedBusinessId },
         });
 
         // instructionRecord is the pre-update reference; reflect the persisted
@@ -266,11 +425,27 @@ function registerChatResource(app: any, db: any) {
         const instructionOut = {
           ...((instructionRecord as any).toJSON?.() ?? instructionRecord),
           status: 'interpreted',
-          business_id: business_id ?? null,
+          business_id: resolvedBusinessId,
+          project_id: project_id ?? null,
         };
 
         // Ambiguous business: save records but stop task creation, return clarification question.
         if (needs_business_clarification) {
+          const ceoResponseText = business_clarification_question ?? '비즈니스에 대한 명확한 식별이 필요합니다.';
+          if (project_id) {
+            const chatMessageRepo = db.getRepository('chat_messages');
+            await chatMessageRepo.create({
+              values: {
+                id: randomUUID(),
+                project_id,
+                role: 'ceo',
+                text: ceoResponseText,
+                metadata: { needs_business_clarification: true, business_clarification_question },
+                created_at: now,
+              },
+            });
+          }
+
           ctx.body = {
             ok: true,
             data: {
@@ -297,7 +472,44 @@ function registerChatResource(app: any, db: any) {
 
         const taskRecords = [];
         for (const task of tasks) {
-          taskRecords.push(await taskRepo.create({ values: { ...task, business_id: business_id ?? null } }));
+          taskRecords.push(await taskRepo.create({
+            values: {
+              ...task,
+              business_id: resolvedBusinessId,
+              project_id: project_id ?? null,
+            },
+          }));
+        }
+
+        const ceoResponseText = interpretationRecord.goal ?? '지시를 분석했습니다.';
+        if (project_id) {
+          const chatMessageRepo = db.getRepository('chat_messages');
+          await chatMessageRepo.create({
+            values: {
+              id: randomUUID(),
+              project_id,
+              role: 'ceo',
+              text: ceoResponseText,
+              metadata: {
+                instructionId: instruction.id,
+                goal: interpretationRecord.goal,
+                phase: interpretationRecord.phase,
+                risk_level: interpretationRecord.risk_level,
+                assumptions: interpretationRecord.assumptions,
+                success_criteria: interpretationRecord.success_criteria,
+                proposed_tasks: taskRecords.map((t: any) => ({
+                  id: t.id,
+                  assigned_agent: t.assigned_agent,
+                  title: t.title,
+                  rationale: t.rationale,
+                  expected_output: t.expected_output,
+                  risk_level: t.risk_level,
+                  approval_required: t.approval_required,
+                })),
+              },
+              created_at: now,
+            },
+          });
         }
 
         ctx.body = {
@@ -320,7 +532,7 @@ function registerChatResource(app: any, db: any) {
         const { idea, current_phase } = getValues(ctx);
         if (!idea || typeof idea !== 'string') ctx.throw(400, 'idea is required');
 
-        const llm = process.env.OPENAI_API_KEY ? buildLLMClient(idea) : undefined;
+        const llm = buildLLMClient(idea);
         const result = llm
           ? await generateWorkflowWithLLM(
               { business_idea: idea, current_phase: current_phase ?? undefined },
@@ -352,6 +564,11 @@ function registerChatResource(app: any, db: any) {
           });
           approved_count++;
         }
+
+        await ctx.db.getRepository('founder_instructions').update({
+          filter: { id: instruction_id },
+          values: { status: 'approved' },
+        });
 
         ctx.body = { ok: true, data: { instruction_id, approved_count } };
         await next();
@@ -613,9 +830,7 @@ function registerCrudResources(app: any) {
           task.assigned_agent === 'CTO';
         if (shouldVerify) {
           try {
-            const verifierLLM = process.env.OPENAI_API_KEY
-              ? buildLLMClient(task.title ?? '')
-              : undefined;
+            const verifierLLM = buildLLMClient(task.title ?? '');
             verifierVerdict = await verifyCTOPhase(
               {
                 task_title: task.title,
@@ -675,12 +890,27 @@ function registerCrudResources(app: any) {
           updates.status = 'blocked';
           updates.blocker = [output_summary, phaseCtx].filter(Boolean).join(' | ');
         } else if (status === 'phase_complete') {
-          updates.blocker = `phase: ${phase} complete. next: ${next_owner || 'pending'}. ${phaseCtx}`.trim();
+          // Phase 검토 루프: 중간 phase 결과도 verifier로 평가한다(상단 shouldVerify는
+          // all_done/phase_complete 모두 포함). fail/inconclusive면 needs_review로 올려
+          // cto-verification-loop(verifier:fail + retry=true)가 재시도하거나 founder가
+          // 검토하게 한다. pass면 기존처럼 진행 메모만 남긴다(ACR auto-dispatcher가 다음
+          // phase를 자동 드레인하는 흐름은 그대로 둔다).
+          if (verifierVerdict && verifierVerdict.verdict === 'fail') {
+            updates.status = 'needs_review';
+            updates.approval_required = true;
+            updates.blocker = `verifier:fail ${verifierVerdict.reason}. retry=${verifierVerdict.retry_recommended}. phase=${phase}. ${phaseCtx}`.trim();
+          } else if (verifierVerdict && verifierVerdict.verdict === 'inconclusive') {
+            updates.status = 'needs_review';
+            updates.approval_required = true;
+            updates.blocker = `verifier:inconclusive ${verifierVerdict.reason}. phase=${phase}. ${phaseCtx}`.trim();
+          } else {
+            updates.blocker = `phase: ${phase} complete. next: ${next_owner || 'pending'}. ${phaseCtx}`.trim();
+          }
         } else if (status === 'needs_clarification') {
           // Phase 18: ACR raised clarifying questions. Try headless answer via CTO LLM;
           // escalate to Founder if risk >= D4 or LLM unavailable.
           const qs: string[] = Array.isArray(questions) ? questions.filter((q: unknown) => typeof q === 'string') : [];
-          const clarifyLLM = process.env.OPENAI_API_KEY ? buildLLMClient(task.title ?? '') : undefined;
+          const clarifyLLM = buildLLMClient(task.title ?? '');
           let clarification: any = null;
           try {
             clarification = await answerClarifications(
@@ -886,9 +1116,15 @@ function getValues(ctx: ActionContext): Record<string, any> {
 }
 
 function buildLLMClient(rawText: string) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (apiKey && typeof createOpenAIClient === 'function') {
-    return createOpenAIClient({ apiKey });
+  // Default: claude-cli (haiku) via createDefaultLLMClient.
+  // Falls back to OpenAI only if L5_LLM_BACKEND=openai + OPENAI_API_KEY set.
+  // If both backends unavailable / throw, fall back to deterministic LLM.
+  if (typeof createDefaultLLMClient === 'function') {
+    try {
+      return createDefaultLLMClient('default');
+    } catch {
+      // fall through to deterministic
+    }
   }
   return buildDeterministicLLM(rawText);
 }

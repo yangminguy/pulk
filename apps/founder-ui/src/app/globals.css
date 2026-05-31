@@ -250,3 +250,25 @@ html, body {
 .j-risk-d3 { background: var(--amber-tint); color: #8A5408; }
 .j-risk-d4 { background: #F7DCB6; color: #8A4E26; }
 .j-risk-d5 { background: var(--red-tint); color: #8C2A1F; }
+
+/* Inbox discovery row: vertical stack on mobile, horizontal scroll on desktop */
+.j-discovery-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+.j-discovery-card {
+  width: 100%;
+}
+@media (min-width: 1024px) {
+  .j-discovery-row {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .j-discovery-card {
+    min-width: 280px;
+    max-width: 280px;
+    flex-shrink: 0;
+  }
+}

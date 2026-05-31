@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import AuthGate from '@/components/AuthGate'
 import { api, type TaskItem } from '@/lib/api'
+import { useBusiness } from '@/lib/business-context'
 
 // ---------------------------------------------------------------------------
 // Local Icon (same pattern as Sidebar.tsx)
@@ -229,15 +230,20 @@ function ApprovalContent() {
   const [loading, setLoading] = useState(true)
   const [actionId, setActionId] = useState<string | null>(null)
   const [toast, setToast] = useState('')
+  const { selectedId, businesses } = useBusiness()
+  const scope = selectedId
+  const scopeLabel = selectedId === null
+    ? '회사 공통'
+    : businesses.find(b => b.id === selectedId)?.name ?? '특정 사업'
 
   const load = async () => {
     setLoading(true)
-    try { setItems(await api.approvalQueue()) }
+    try { setItems(await api.approvalQueue(scope)) }
     catch { setItems([]) }
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [scope])
 
   const showToast = (msg: string) => {
     setToast(msg)

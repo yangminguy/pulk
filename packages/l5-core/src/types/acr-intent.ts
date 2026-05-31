@@ -25,4 +25,12 @@ export interface ACRIntent {
   /** Absolute path to the project working directory on the host running ACR.
    * If omitted, ACR resolves cwd from registered project. */
   project_path?: string;
+  /** True when this task already cleared L5's approval gate before dispatch.
+   * The Hermes dispatcher only forwards tasks with approval_required=false, so
+   * any intent reaching ACR has passed L5 (either auto for D1-D2/D3 or an
+   * explicit Founder approval for D4-D5). ACR treats this as the single source
+   * of truth for the `manual_founder` release gate, instead of asking again in
+   * its own Release Gate panel. (auto_24h is a separate time policy and is NOT
+   * bypassed by this flag.) */
+  l5_approved?: boolean;
 }

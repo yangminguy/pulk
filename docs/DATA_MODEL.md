@@ -79,6 +79,70 @@ type Business = {
 };
 ```
 
+### Project
+
+```ts
+type Project = {
+  id: string;
+  business_id: string;
+  title: string;
+  description: string;
+  status: 'active' | 'completed' | 'killed';
+  repo_path?: string;
+  created_at: string;
+  updated_at: string;
+};
+```
+
+### ChatMessage
+
+```ts
+type ChatMessage = {
+  id: string;
+  project_id: string;
+  role: 'founder' | 'ceo';
+  text: string;
+  metadata?: {
+    goal?: string;
+    phase?: string;
+    risk_level?: string;
+    assumptions?: string[];
+    success_criteria?: string[];
+    proposed_tasks?: Array<{
+      id: string;
+      assigned_agent: string;
+      title: string;
+      rationale: string;
+      expected_output: string;
+      risk_level?: string;
+      approval_required?: boolean;
+    }>;
+  };
+  created_at: string;
+  updated_at: string;
+};
+```
+
+### ProjectRoadmapEvent
+
+```ts
+type ProjectRoadmapEvent = {
+  id: string;
+  project_id: string;
+  task_id: string;
+  title: string;
+  assigned_agent: string;
+  status: 'done' | 'killed';
+  risk_level: string;
+  phase: string;
+  rationale: string;
+  output_summary: string;
+  completed_at: string;
+  created_at: string;
+  updated_at: string;
+};
+```
+
 ### Workflow
 
 ```ts
@@ -307,6 +371,10 @@ type BusinessInsight = {
 
 ```text
 BusinessIdea 1 → 0..1 Business
+Business 1 → many Project
+Project 1 → many ChatMessage
+Project 1 → many AgentTask (via project_id)
+Project 1 → many ProjectRoadmapEvent (archived tasks)
 Business 1 → many Workflow
 Business 1 → many PMFExperiment
 Workflow 1 → many WorkflowStep

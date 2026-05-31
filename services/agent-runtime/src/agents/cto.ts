@@ -128,6 +128,10 @@ function buildDeterministicIntent(task: CTOAgentInput["task"], taskClass: TaskCl
     task_title: taskTitle,
     phases,
     created_at: new Date().toISOString(),
+    // Reaching dispatch means the Hermes dispatcher picked this task up, which it
+    // only does for approval_required=false tasks — i.e. L5's approval gate is
+    // already satisfied. ACR uses this to clear its manual_founder gate.
+    l5_approved: true,
   };
   const projectPath = resolveProjectPath(task);
   if (projectPath) intent.project_path = projectPath;
@@ -351,6 +355,8 @@ export async function runCTOAgent(
         task_title: taskTitle,
         phases: llmResult.phases.map((p) => toCTOPhase(p, taskTitle, resolvedTaskClass)),
         created_at: new Date().toISOString(),
+        // See buildDeterministicIntent: dispatcher only forwards approved tasks.
+        l5_approved: true,
         ...(projectPath ? { project_path: projectPath } : {}),
       };
     }

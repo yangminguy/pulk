@@ -117,6 +117,10 @@ describe('runCTOAgent — dev workflow SOP enforcement', () => {
 
     expect(out.clarifying_questions).toBeUndefined();
     expect(out.acr_intent.phases).toHaveLength(6);
+    // L5 single-approval: any intent reaching dispatch has cleared L5's gate
+    // (the Hermes dispatcher only forwards approval_required=false tasks), so
+    // ACR can clear its own manual_founder gate from this flag.
+    expect(out.acr_intent.l5_approved).toBe(true);
     expect(out.acr_intent.phases.map((p) => p.name)).toEqual([
       '오픈소스 조사',
       '스펙 작성',

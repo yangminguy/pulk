@@ -18,6 +18,7 @@ import {
   runCTOVerificationLoopLive,
   runModelVerifyLive,
   runSelfLearningLive,
+  runTaskArchiverLive,
 } from "./runner.js";
 
 const TASK_RUNNERS: Record<string, () => Promise<unknown>> = {
@@ -29,7 +30,9 @@ const TASK_RUNNERS: Record<string, () => Promise<unknown>> = {
   "cto-verification-loop": runCTOVerificationLoopLive,
   "model-verify": runModelVerifyLive,
   "self-learning": runSelfLearningLive,
+  "task-archiver": runTaskArchiverLive,
 };
+
 
 async function main() {
   const taskName = process.argv[2];

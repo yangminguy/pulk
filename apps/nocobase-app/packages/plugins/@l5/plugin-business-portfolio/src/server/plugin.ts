@@ -1,4 +1,6 @@
 import { Plugin } from '@nocobase/server';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   scoreFounderFit,
   generateBusinessBrief,
@@ -34,6 +36,29 @@ export class PluginBusinessPortfolioServer extends Plugin {
         this.app.logger.info(`[workspace-init] Initialised repo for business ${id}: ${repoPath}`);
       } catch (err: any) {
         this.app.logger.warn(`[workspace-init] Failed to init repo for business ${id}: ${err?.message ?? err}`);
+      }
+    });
+
+    this.db.on('projects.afterCreate', async (model: any) => {
+      if (model.get('repo_path')) return; // already set by caller
+      const id = model.get('id');
+      const businessId = model.get('business_id');
+      try {
+        const BusinessRepo = this.db.getRepository('businesses');
+        const biz = await BusinessRepo.findOne({ filterByTk: String(businessId) });
+        let businessRepoPath = biz?.get('repo_path');
+        if (!businessRepoPath) {
+          businessRepoPath = getRepoPath(businessId);
+          await ensureWorkspaceRepo(businessRepoPath);
+        }
+        const projectRepoPath = path.join(businessRepoPath, `project-${id}`);
+        if (!fs.existsSync(projectRepoPath)) {
+          fs.mkdirSync(projectRepoPath, { recursive: true });
+        }
+        await model.update({ repo_path: projectRepoPath });
+        this.app.logger.info(`[workspace-init] Initialised directory for project ${id}: ${projectRepoPath}`);
+      } catch (err: any) {
+        this.app.logger.warn(`[workspace-init] Failed to init project directory for ${id}: ${err?.message ?? err}`);
       }
     });
 
@@ -306,6 +331,44 @@ export class PluginBusinessPortfolioServer extends Plugin {
       },
     });
     this.app.acl.allow('business', ['listActive'], 'loggedIn');
+
+    // project resource
+    this.app.resourcer.define({
+      name: 'project',
+      actions: {
+        listActive: async (ctx: any, next: () => Promise<void>) => {
+          // NocoBase pre-fills ctx.action.params.values to {} on GET requests, so the
+          // previous `values || query` pattern silently dropped the business_id from the
+          // querystring. Read query first, fall back to values for POST clients.
+          const q = (ctx.request && ctx.request.query) || {};
+          const v = (ctx.action && ctx.action.params && ctx.action.params.values) || {};
+          const business_id = q.business_id ?? v.business_id;
+          const db: any = this.db;
+          let query = `SELECT id, business_id, title, description, status, "createdAt", "updatedAt" FROM projects WHERE status != 'deleted'`;
+          const replacements: any = {};
+          if (business_id) {
+            query += ` AND business_id = :business_id`;
+            replacements.business_id = String(business_id);
+          }
+          query += ` ORDER BY "updatedAt" DESC`;
+          const [rows] = await db.sequelize.query(query, { replacements }) as [Record<string, any>[], unknown];
+          ctx.body = {
+            ok: true,
+            data: rows.map((r) => ({
+              id: String(r['id']),
+              business_id: String(r['business_id']),
+              name: r['title'] ?? '',
+              description: r['description'] ?? '',
+              status: r['status'] ?? null,
+              updated_at: r['updatedAt'] ?? r['createdAt'] ?? null,
+            })),
+          };
+          await next();
+        },
+      },
+    });
+    this.app.acl.allow('project', ['listActive'], 'loggedIn');
+    this.app.acl.allow('projects', '*', 'loggedIn');
 
     this.app.on('afterStart', async () => {
       const FounderDnaRepo = this.db.getRepository('founder_dna');

@@ -103,10 +103,16 @@ function Overline({ children, style }: { children: React.ReactNode; style?: Reac
   )
 }
 
-function NavLink({ href, label, icon, active }: { href: string; label: string; icon: string; active: boolean }) {
+function NavLink({ href, label, icon, active, onNavigate }: { href: string; label: string; icon: string; active: boolean; onNavigate?: () => void }) {
   const [hover, setHover] = useState(false)
   return (
-    <Link href={href} style={navItemStyle(active, hover)} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+    <Link
+      href={href}
+      style={navItemStyle(active, hover)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onClick={onNavigate}
+    >
       <ActiveBar show={active} />
       <Icon name={icon} size={17} stroke={1.6} />
       <span style={{ flex: 1 }}>{label}</span>
@@ -143,7 +149,7 @@ function IconButton({ onClick, title, children }: { onClick: () => void; title: 
   )
 }
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const pathname = usePathname()
   const { token, signOut } = useAuth()
   const {
@@ -208,8 +214,9 @@ export default function Sidebar() {
         display: 'flex',
         flexDirection: 'column',
         gap: 14,
-        minHeight: '100vh',
-        overflowY: 'auto',
+        height: '100%',
+        minHeight: '100dvh',
+        boxSizing: 'border-box',
       }}
     >
       {/* Brand */}
@@ -300,9 +307,9 @@ export default function Sidebar() {
       <section style={{ borderTop: '1px solid var(--silver-2)', paddingTop: 10 }}>
         <Overline>메인</Overline>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <NavLink href="/chat" label="CEO 채팅" icon="message" active={isChatActive} />
-          <NavLink href="/approval" label="승인 대기" icon="check" active={pathname === '/approval'} />
-          <NavLink href="/projects" label="프로젝트" icon="folder" active={pathname.startsWith('/projects')} />
+          <NavLink href="/chat" label="CEO 채팅" icon="message" active={isChatActive} onNavigate={onNavigate} />
+          <NavLink href="/approval" label="승인 대기" icon="check" active={pathname === '/approval'} onNavigate={onNavigate} />
+          <NavLink href="/projects" label="프로젝트" icon="folder" active={pathname.startsWith('/projects')} onNavigate={onNavigate} />
         </nav>
       </section>
 
@@ -310,7 +317,7 @@ export default function Sidebar() {
       <section style={{ flex: 1 }}>
         <Overline>도구</Overline>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {NAV_TOOLS.map(t => <NavLink key={t.href} {...t} active={pathname === t.href} />)}
+          {NAV_TOOLS.map(t => <NavLink key={t.href} {...t} active={pathname === t.href} onNavigate={onNavigate} />)}
         </nav>
       </section>
 

@@ -425,8 +425,72 @@ export default function RoadmapTimeline() {
         </button>
       </div>
 
-      {/* Horizontal timeline board */}
-      <div style={{ overflowX: 'auto', overflowY: 'visible', padding: '0 0 16px' }}>
+      {/* Mobile vertical timeline (< lg) */}
+      <div className="lg:hidden" style={{ padding: '12px 14px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {BPR_PHASES.map((phase, idx) => {
+          const isPast = idx < activePhaseIndex
+          const isActive = idx === activePhaseIndex
+          const archivedItems = archivedEvents.filter(e => e.phase === phase.id)
+          const completedActiveTasks = activeTasks.filter(t => t.phase === phase.id && (t.status === 'done' || t.status === 'killed'))
+          const lowerItems = activeTasks.filter(t => t.phase === phase.id && t.status !== 'done' && t.status !== 'killed')
+          const upperItems = [
+            ...archivedItems.map(e => ({ id: e.id, title: e.title, agent: e.assigned_agent, status: e.status, completedAt: e.completed_at, summary: e.output_summary })),
+            ...completedActiveTasks.map(t => ({ id: t.task_id, title: t.task_title, agent: t.agent, status: t.status, completedAt: t.updated_at, summary: t.blocker || '완료된 작업' })),
+          ].sort((a, b) => new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime())
+          const hasAny = upperItems.length + lowerItems.length > 0
+          const nodeBg = isActive ? 'var(--green)' : isPast ? 'var(--green-tint-2)' : 'var(--paper-surface)'
+          const nodeColor = isActive ? '#fff' : isPast ? 'var(--green-press)' : 'var(--ink-4)'
+          const nodeBorder = isActive ? 'var(--green)' : isPast ? 'var(--green)' : 'var(--silver-3)'
+          return (
+            <div key={phase.id} style={{ position: 'relative', display: 'flex', gap: 12 }}>
+              {/* Rail + node */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 32 }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 999,
+                  background: nodeBg, border: `2px solid ${nodeBorder}`, color: nodeColor,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12,
+                  flexShrink: 0, zIndex: 2,
+                }}>
+                  {isPast ? <IconCheck size={11} /> : String(idx + 1)}
+                </div>
+                {idx < BPR_PHASES.length - 1 && (
+                  <div style={{ width: 2, flex: 1, minHeight: 28, background: isPast ? 'var(--green)' : 'var(--silver-2)', marginTop: 2 }} />
+                )}
+              </div>
+              {/* Phase content */}
+              <div style={{ flex: 1, minWidth: 0, paddingBottom: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+                  <span style={{
+                    fontFamily: 'var(--font-sans)', fontWeight: isActive ? 700 : 500, fontSize: 14,
+                    color: isActive ? 'var(--green-press)' : isPast ? 'var(--ink-1)' : 'var(--ink-3)',
+                  }}>{phase.name}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-4)', letterSpacing: '0.04em' }}>{phase.label}</span>
+                  {isActive && <span className="j-badge j-badge-live" style={{ marginLeft: 'auto' }}><span className="j-badge-dot" />진행중</span>}
+                </div>
+                {!hasAny && (
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-4)', fontStyle: 'italic', padding: '2px 0' }}>작업 없음</div>
+                )}
+                {upperItems.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: lowerItems.length > 0 ? 8 : 0 }}>
+                    {upperItems.map(item => (
+                      <UpperCard key={item.id} title={item.title} agent={item.agent} status={item.status} completedAt={item.completedAt} summary={item.summary} />
+                    ))}
+                  </div>
+                )}
+                {lowerItems.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {lowerItems.map(item => <LowerCard key={item.task_id} task={item} />)}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Horizontal timeline board (desktop ≥ lg) */}
+      <div className="hidden lg:block" style={{ overflowX: 'auto', overflowY: 'visible', padding: '0 0 16px' }}>
         <div style={{
           position: 'relative',
           minWidth: 1680,
