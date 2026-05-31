@@ -849,12 +849,11 @@ function registerCrudResources(app: any) {
 
         if (status === 'all_done') {
           if (verifierVerdict && verifierVerdict.verdict === 'fail') {
+            // Technical failure → CEO review loop + CTO self-heal, NOT Founder.
             updates.status = 'needs_review';
-            updates.approval_required = true;
             updates.blocker = `verifier:fail ${verifierVerdict.reason}. retry=${verifierVerdict.retry_recommended}. ${phaseCtx}`.trim();
           } else if (verifierVerdict && verifierVerdict.verdict === 'inconclusive') {
             updates.status = 'needs_review';
-            updates.approval_required = true;
             updates.blocker = `verifier:inconclusive ${verifierVerdict.reason}. ${phaseCtx}`.trim();
           } else {
             updates.status = 'done';
@@ -868,23 +867,21 @@ function registerCrudResources(app: any) {
           }
         } else if (status === 'empty_output') {
           // Phase 1: agent finished exit 0 but produced no file changes ("empty
-          // branch") after retries. Not a clean success — alert the founder.
+          // branch") after retries. Internal technical state → CEO review / CTO
+          // self-heal, not the Founder approval queue.
           updates.status = 'needs_review';
-          updates.approval_required = true;
           updates.blocker = [`empty_output: agent produced no file changes`, output_summary, phaseCtx]
             .filter(Boolean)
             .join(' | ');
         } else if (status === 'merge_conflict') {
           // Phase 2: clean run but the branch could not be auto-merged into the
-          // base. Surface as a founder review card; the branch is preserved.
+          // base. CEO review / CTO self-heal; the branch is preserved.
           updates.status = 'needs_review';
-          updates.approval_required = true;
           updates.blocker = [`merge_conflict${merge_target ? `->${merge_target}` : ''}: manual merge required`, phaseCtx]
             .filter(Boolean)
             .join(' | ');
         } else if (status === 'failed') {
           updates.status = 'needs_review';
-          updates.approval_required = true;
           updates.blocker = [output_summary, phaseCtx].filter(Boolean).join(' | ');
         } else if (status === 'blocked') {
           updates.status = 'blocked';
@@ -896,12 +893,11 @@ function registerCrudResources(app: any) {
           // 검토하게 한다. pass면 기존처럼 진행 메모만 남긴다(ACR auto-dispatcher가 다음
           // phase를 자동 드레인하는 흐름은 그대로 둔다).
           if (verifierVerdict && verifierVerdict.verdict === 'fail') {
+            // CEO review loop / CTO self-heal, not the Founder approval queue.
             updates.status = 'needs_review';
-            updates.approval_required = true;
             updates.blocker = `verifier:fail ${verifierVerdict.reason}. retry=${verifierVerdict.retry_recommended}. phase=${phase}. ${phaseCtx}`.trim();
           } else if (verifierVerdict && verifierVerdict.verdict === 'inconclusive') {
             updates.status = 'needs_review';
-            updates.approval_required = true;
             updates.blocker = `verifier:inconclusive ${verifierVerdict.reason}. phase=${phase}. ${phaseCtx}`.trim();
           } else {
             updates.blocker = `phase: ${phase} complete. next: ${next_owner || 'pending'}. ${phaseCtx}`.trim();
@@ -949,8 +945,9 @@ function registerCrudResources(app: any) {
             }
             updates.blocker = `clarification:answered ${qs.length} q. ${phaseCtx}`.trim();
           } else {
+            // Clarifications go to the CEO review lane — the CEO resolves them,
+            // not the Founder. (Founder gate = outbound message / payment only.)
             updates.status = 'needs_review';
-            updates.approval_required = true;
             updates.blocker = `clarification:escalate ${clarification.reason}. ${phaseCtx}`.trim();
           }
           ctx.body = {
@@ -964,16 +961,13 @@ function registerCrudResources(app: any) {
           return;
         } else if (status === 'risk_reassess') {
           // Phase 18: ACR re-evaluated risk based on packet content. Sync to L5
-          // agent_tasks.risk_level. Auto-promote approval_required when D3+.
+          // agent_tasks.risk_level. Risk level is an internal severity signal —
+          // it does NOT promote the Founder approval gate (outbound / payment only).
           const allowed = ['D1', 'D2', 'D3', 'D4', 'D5'];
           if (typeof new_risk_level !== 'string' || !allowed.includes(new_risk_level)) {
             ctx.throw(400, `risk_reassess requires new_risk_level in ${allowed.join('|')}`);
           }
-          const HIGH_RISK = ['D3', 'D4', 'D5'];
           updates.risk_level = new_risk_level;
-          if (HIGH_RISK.includes(new_risk_level)) {
-            updates.approval_required = true;
-          }
           updates.blocker = `risk_reassess: ${task.risk_level ?? 'n/a'} -> ${new_risk_level}. ${phaseCtx}`.trim();
           await taskRepo.update({ filterByTk: l5_task_id, values: updates });
           ctx.body = {

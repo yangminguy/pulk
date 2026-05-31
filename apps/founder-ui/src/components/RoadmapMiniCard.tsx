@@ -1,6 +1,18 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { api, RoadmapItem } from '@/lib/api'
+import { useInboxNav, type InboxTaskRef } from '@/lib/inbox-nav'
+
+function taskToRef(t: RoadmapItem): InboxTaskRef {
+  // RoadmapItem is a lightweight roadmap row (id == agent_tasks id). The inbox
+  // detail re-fetches the full task + handoffs by task_id, so the agent fills in.
+  return {
+    task_id: t.id,
+    assigned_agent: '—',
+    title: t.title,
+    status: t.status,
+  }
+}
 
 const ICONS: Record<string, string> = {
   check:    'M20 6L9 17l-5-5',
@@ -33,6 +45,7 @@ interface RoadmapMiniCardProps {
 }
 
 export default function RoadmapMiniCard({ businessId }: RoadmapMiniCardProps) {
+  const { openInboxTask } = useInboxNav()
   const [items, setItems] = useState<RoadmapItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -90,13 +103,22 @@ export default function RoadmapMiniCard({ businessId }: RoadmapMiniCardProps) {
         {preview.map((item, i) => {
           const cfg = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.pending
           return (
-            <div key={item.id} style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '10px 14px',
-              borderBottom: i < preview.length - 1 ? '1px solid var(--silver-1)' : 'none',
-            }}>
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => openInboxTask(taskToRef(item))}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                width: '100%',
+                textAlign: 'left',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '10px 14px',
+                borderBottom: i < preview.length - 1 ? '1px solid var(--silver-1)' : 'none',
+              }}>
               {/* status badge */}
               <span style={{
                 display: 'inline-flex',
@@ -138,7 +160,7 @@ export default function RoadmapMiniCard({ businessId }: RoadmapMiniCardProps) {
                   {item.due_date.slice(5, 10)}
                 </span>
               )}
-            </div>
+            </button>
           )
         })}
       </div>

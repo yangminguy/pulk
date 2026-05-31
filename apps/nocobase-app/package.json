@@ -3,6 +3,8 @@
   "private": true,
   "workspaces": [
     "packages/*/*",
+    "packages/*/*/*",
+    "packages/*/*",
     "packages/*/*/*"
   ],
   "engines": {
@@ -34,7 +36,7 @@
     "semver": "^7.7.1"
   },
   "dependencies": {
-    "@nocobase/cli": "2.0.57",
+    "@nocobase/cli": "2.0.60",
     "mariadb": "^2.5.6",
     "mysql2": "^3.14.0",
     "node-cron": "^4.2.1",
@@ -44,7 +46,7 @@
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
-    "@nocobase/devtools": "2.0.57"
+    "@nocobase/devtools": "2.0.60"
   },
   "packageManager": "yarn@1.22.22"
 }

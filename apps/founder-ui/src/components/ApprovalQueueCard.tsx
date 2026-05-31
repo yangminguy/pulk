@@ -1,6 +1,22 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { api, TaskItem } from '@/lib/api'
+import { useInboxNav, type InboxTaskRef } from '@/lib/inbox-nav'
+
+function taskToRef(t: TaskItem): InboxTaskRef {
+  return {
+    task_id: t.task_id,
+    assigned_agent: t.agent,
+    title: t.task_title,
+    status: t.status,
+    risk_level: t.risk_level ?? undefined,
+    approval_required: t.approval_required,
+    rationale: t.rationale,
+    expected_output: t.expected_output,
+    blocker: t.blocker ?? undefined,
+    source_instruction: t.source_instruction ?? undefined,
+  }
+}
 
 const ICONS: Record<string, string> = {
   check:   'M20 6L9 17l-5-5',
@@ -47,6 +63,7 @@ interface ApprovalQueueCardProps {
 }
 
 export default function ApprovalQueueCard({ businessId }: ApprovalQueueCardProps) {
+  const { openInboxTask } = useInboxNav()
   const [items, setItems] = useState<TaskItem[]>([])
   const [loading, setLoading] = useState(true)
   const [actionId, setActionId] = useState<string | null>(null)
@@ -219,19 +236,30 @@ export default function ApprovalQueueCard({ businessId }: ApprovalQueueCardProps
                 </span>
               </div>
 
-              {/* task title */}
-              <div style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: 'var(--ink-1)',
-                marginBottom: 9,
-                lineHeight: 1.35,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}>
+              {/* task title — tap to open full detail in the inbox */}
+              <button
+                type="button"
+                onClick={() => openInboxTask(taskToRef(item))}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: 'var(--ink-1)',
+                  marginBottom: 9,
+                  lineHeight: 1.35,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 {item.task_title}
-              </div>
+              </button>
 
               {/* action buttons */}
               <div style={{ display: 'flex', gap: 7 }}>

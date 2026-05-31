@@ -1,4 +1,3 @@
-import type { RiskLevel } from '../../types/entities';
 import type {
   CEOInterpretation,
   ExecutiveRole,
@@ -153,8 +152,10 @@ function buildWorkstream(
     title: `${rule.role} workstream: ${interp.goal}`,
     rationale: `Routed to ${rule.role} because goal matched ${rule.role} domain. Phase=${interp.phase}.`,
     expected_output: rule.expected_output,
-    approval_required:
-      rule.approval_required || interp.approval_required || elevatedRisk(interp.risk_level),
+    // Founder approval gate = domain category ONLY (CMO/CRO/CFO = outbound
+    // message / payment). Risk level (D3-D5) is an internal severity signal
+    // handled by the CEO review loop + CTO self-heal, never escalated to Founder.
+    approval_required: rule.approval_required || interp.approval_required,
     risk_level: interp.risk_level,
     phase: interp.phase,
   };
@@ -165,10 +166,6 @@ function findRule(role: ExecutiveRole): DomainRule {
   const rule = DOMAIN_RULES.find(r => r.role === role);
   if (!rule) throw new Error(`No domain rule for role ${role}`);
   return rule;
-}
-
-function elevatedRisk(level: RiskLevel): boolean {
-  return level === 'D3' || level === 'D4' || level === 'D5';
 }
 
 function defaultIdGen(role: ExecutiveRole): string {

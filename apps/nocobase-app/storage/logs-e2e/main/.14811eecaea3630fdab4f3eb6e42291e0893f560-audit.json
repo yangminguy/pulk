@@ -9,6 +9,11 @@
             "date": 1779869249703,
             "name": "/Users/wonminyang/Desktop/pulk/apps/nocobase-app/storage/logs-e2e/main/system_error_2026-05-27.log",
             "hash": "fd98ff8803e0bc446dd4175e1e694e895d5067b8bb58339167cb6ca42114089d"
+        },
+        {
+            "date": 1780101227264,
+            "name": "/Users/wonminyang/Desktop/pulk/apps/nocobase-app/storage/logs-e2e/main/system_error_2026-05-30.log",
+            "hash": "8321c79769947a482b88a539f2d579f2a9ed03f1d729999b7ee8f16677f038b0"
         }
     ],
     "hashType": "sha256"

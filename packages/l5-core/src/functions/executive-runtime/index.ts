@@ -111,18 +111,19 @@ export function executeAgentTask(
 
   const approval_routing = resolveApprovalRouting(result.risk_level);
 
-  // D3/D4/D5: force approval_required and needs_review
-  let approval_required = result.approval_required;
+  // High risk (D3-D5) routes to the CEO review loop (needs_review), NOT the
+  // Founder approval queue. The Founder gate (approval_required) is owned by the
+  // handler/interpreter and fires ONLY for outbound messages / payments.
+  // D5 additionally blocks until the CEO clears it.
+  const approval_required = result.approval_required;
   let updated_status = result.updated_status;
   let blocked = result.blocked;
 
   if (result.risk_level === 'D3' || result.risk_level === 'D4') {
-    approval_required = true;
     if (updated_status !== 'blocked') {
       updated_status = 'needs_review';
     }
   } else if (result.risk_level === 'D5') {
-    approval_required = true;
     blocked = true;
     if (updated_status !== 'blocked') {
       updated_status = 'needs_review';
