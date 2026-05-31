@@ -1,10 +1,28 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-05-31 (모바일 UX 보강 + 사업/프로젝트 격리 + 자가치유 풀버전)
+최종 업데이트: 2026-06-01 (Founder 승인 게이트 재정의 + 채팅 카드 네비게이션)
 
 ---
 
-## 🟢 2026-05-31 (최신) — 모바일 UX + 격리 + 자가치유
+## 🟢 2026-06-01 (최신) — Founder 승인 게이트 재정의 + 채팅 카드 네비게이션
+
+**문제**: Founder 승인 큐에 CTO/CPO/RiskQA 내부 작업(D4 등)이 올라옴. 규칙은 "아웃바운드 메시지 + 결제만 Founder 승인, 나머지는 CEO 자율, 에러는 CTO".
+
+**승인 모델 확정**(memory `l5-founder-approval-model`): ①계획 단위 1회 승인(CEO 제안→Founder go/no-go) ②실행 중 아웃바운드/결제만. 위험도 D1-D5는 내부 신호일 뿐 절대 게이트 아님. 검증실패/clarification은 `needs_review`(CEO 검토)로만. 에이전트는 헷갈리면 추론하지 말고 CEO와 상의.
+
+**코드(라이브)**: `l5-core/ceo-orchestration/decomposer.ts`(elevatedRisk 제거), `interpreter.ts`(승인 트리거=결제/아웃바운드 2개로 한정, 위험도 분리), `executive-runtime/index.ts`(D3-D5 강제 Founder승인 제거, needs_review만/D5 blocked). `plugin-orchestration/src/server/decompose.ts`(requiresApproval=interp.approval_required만) + taskCallback의 `approval_required=true` 7건 제거(src + dist/plugin.js sed 패치, node --check 통과). `plugin-executive-monitor` createTask `["D4","D5"]` → false(src+dist). l5-core 재빌드 + NocoBase 재시작 반영(HEALTH 200).
+
+**DB**: 미완료 `approval_required=true` 4건 → false. 승인 큐 0건(사용자 승인하에 정리).
+
+**프론트(배포 `pulk-founder-ui.vercel.app`)**: `RoadmapMiniCard` 행 + `ApprovalQueueCard` 제목 클릭 → `openInboxTask`로 인박스 상세 이동. `RoadmapItem`엔 agent/risk_level 없음 → taskToRef는 id/title/status만(상세는 task_id 재조회). next build exit 0.
+
+**커밋**: `2951d4e` (origin/feat/nocobase-real-mvp 동기화).
+
+**남은 follow-up**: orchestration dist/plugin.js가 src와 divergent한 오래된 번들 — 정식 `nocobase build` 파이프라인 부재로 dist 직접 패치 중. 에이전트 clarification을 needs_review 표시뿐 아니라 실제 CEO 상의 루프로 강화 필요. 참고: [[nocobase-plugin-dist-patching]].
+
+---
+
+## 🟢 2026-05-31 — 모바일 UX + 격리 + 자가치유
 
 1. **LLM 백엔드 Claude CLI 전환 + 한국어 강제**: CEO interpretation + 7 임원 모두 Claude Haiku(로컬 `claude` CLI). `agent-runtime/src/llm/haiku-llm.ts` `callHaikuJson`에 `KO_OUTPUT_RULE`(한국어 강제) + JSON 실패 1회 자동 재시도. `l5-core/.../interpreter.ts` SYSTEM에도 한국어 규칙 + founder 승인 게이트(결제·외부발송·인원·브랜드공개) 추가.
 2. **사업↔프로젝트 격리 버그 수정**: `project:listActive`(plugin-business-portfolio)가 GET에서 `ctx.action.params.values`(빈 {})를 먼저 읽어 query를 무시 → 모든 사업에 전체 프로젝트 노출. `ctx.request.query` 우선으로 수정(src+dist/server/plugin.js). monitor `currentTasks/blockedTasks/approvalQueue`에 `business_id` 스코프 필터(`readBusinessScope`/`withBusinessFilter`, src+dist). 프론트 monitor/approval가 `selectedId` 전달 + "범위 · {사업명}" 표시.
