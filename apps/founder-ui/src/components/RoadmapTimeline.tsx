@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api, ProjectRoadmapEventItem, TaskItem } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
+import { useInboxNav, type InboxTaskRef } from '@/lib/inbox-nav'
 
 // ── BPR phases (unchanged) ────────────────────────────────────────────────────
 const BPR_PHASES = [
@@ -105,21 +106,25 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ── Upper task card (archived / completed) ────────────────────────────────────
-function UpperCard({ title, agent, status, completedAt, summary }: {
+function UpperCard({ title, agent, status, completedAt, summary, onClick }: {
   title: string
   agent: string
   status: string
   completedAt: string
   summary: string
+  onClick?: () => void
 }) {
   return (
-    <div style={{
+    <div
+    onClick={onClick}
+    style={{
       width: '100%',
       background: 'var(--paper-elevated)',
       border: '1px solid var(--silver-2)',
       borderRadius: 6,
       padding: '10px 12px',
       display: 'flex', flexDirection: 'column', gap: 5,
+      cursor: onClick ? 'pointer' : 'default',
       transition: 'border-color 120ms, box-shadow 120ms',
     }}
     onMouseEnter={e => {
@@ -168,18 +173,21 @@ function UpperCard({ title, agent, status, completedAt, summary }: {
 }
 
 // ── Lower task card (active / pending) ───────────────────────────────────────
-function LowerCard({ task }: { task: TaskItem }) {
+function LowerCard({ task, onClick }: { task: TaskItem; onClick?: () => void }) {
   const isBlocked = task.status === 'blocked'
   const borderColor = isBlocked ? 'var(--red)' : 'var(--silver-2)'
 
   return (
-    <div style={{
+    <div
+    onClick={onClick}
+    style={{
       width: '100%',
       background: 'var(--paper-elevated)',
       border: `1px solid ${borderColor}`,
       borderRadius: 6,
       padding: '10px 12px',
       display: 'flex', flexDirection: 'column', gap: 5,
+      cursor: onClick ? 'pointer' : 'default',
       transition: 'border-color 120ms, box-shadow 120ms',
     }}
     onMouseEnter={e => {
@@ -306,8 +314,27 @@ function PhaseNode({ phase, isPast, isActive }: {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+function taskToRef(t: any): InboxTaskRef {
+  return {
+    task_id: t.task_id ?? t.id,
+    assigned_agent: t.agent ?? t.assigned_agent ?? '',
+    title: t.task_title ?? t.title ?? '',
+    rationale: t.rationale,
+    expected_output: t.expected_output,
+    decision: t.decision,
+    reasoning: t.reasoning,
+    next_action: t.next_action,
+    blocker: t.blocker,
+    risk_level: t.risk_level,
+    status: t.status,
+    approval_required: t.approval_required,
+    source_instruction: t.source_instruction,
+  }
+}
+
 export default function RoadmapTimeline() {
   const { selectedProjectId } = useBusiness()
+  const { openInboxTask } = useInboxNav()
   const [archivedEvents, setArchivedEvents] = useState<ProjectRoadmapEventItem[]>([])
   const [activeTasks, setActiveTasks] = useState<TaskItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -474,13 +501,14 @@ export default function RoadmapTimeline() {
                 {upperItems.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: lowerItems.length > 0 ? 8 : 0 }}>
                     {upperItems.map(item => (
-                      <UpperCard key={item.id} title={item.title} agent={item.agent} status={item.status} completedAt={item.completedAt} summary={item.summary} />
+                      <UpperCard key={item.id} title={item.title} agent={item.agent} status={item.status} completedAt={item.completedAt} summary={item.summary}
+                        onClick={() => openInboxTask({ task_id: item.id, assigned_agent: item.agent, title: item.title, status: item.status, reasoning: item.summary })} />
                     ))}
                   </div>
                 )}
                 {lowerItems.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {lowerItems.map(item => <LowerCard key={item.task_id} task={item} />)}
+                    {lowerItems.map(item => <LowerCard key={item.task_id} task={item} onClick={() => openInboxTask(taskToRef(item))} />)}
                   </div>
                 )}
               </div>
@@ -580,6 +608,7 @@ export default function RoadmapTimeline() {
                       status={item.status}
                       completedAt={item.completedAt}
                       summary={item.summary}
+                      onClick={() => openInboxTask({ task_id: item.id, assigned_agent: item.agent, title: item.title, status: item.status, reasoning: item.summary })}
                     />
                   ))}
 
@@ -619,7 +648,7 @@ export default function RoadmapTimeline() {
                   )}
 
                   {lowerItems.map(item => (
-                    <LowerCard key={item.task_id} task={item} />
+                    <LowerCard key={item.task_id} task={item} onClick={() => openInboxTask(taskToRef(item))} />
                   ))}
                 </div>
               </div>

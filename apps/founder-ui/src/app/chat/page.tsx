@@ -3,11 +3,11 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import AuthGate from '@/components/AuthGate'
 import TabLayout from '@/components/TabLayout'
 import RoadmapMiniCard from '@/components/RoadmapMiniCard'
-import TodayDiscoveryBanner from '@/components/TodayDiscoveryBanner'
 import ApprovalQueueCard from '@/components/ApprovalQueueCard'
 import RoadmapTimeline from '@/components/RoadmapTimeline'
 import { api } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
+import { InboxNavContext, useInboxNav, type InboxTaskRef } from '@/lib/inbox-nav'
 
 // ── Icon primitive (matches Sidebar.tsx pattern) ─────────────────────────────
 const ICONS: Record<string, string> = {
@@ -51,6 +51,23 @@ const RISK_CLASS: Record<string, string> = {
   D3: 'j-risk-d3',
   D4: 'j-risk-d4',
   D5: 'j-risk-d5',
+}
+
+const INBOX_STATUS_CLASS: Record<string, string> = {
+  queued: 'j-badge-draft',
+  running: 'j-badge-live',
+  blocked: 'j-badge-blocked',
+  needs_review: 'j-badge-review',
+  done: 'j-badge-live',
+  killed: 'j-badge-neutral',
+}
+const INBOX_STATUS_LABEL: Record<string, string> = {
+  queued: '대기',
+  running: '진행중',
+  blocked: '차단됨',
+  needs_review: '검토필요',
+  done: '완료',
+  killed: '종료',
 }
 
 // Agent monogram colors — matches primitives.jsx AGENTS palette
@@ -718,7 +735,6 @@ function ChatTab({ businessId }: { businessId: string | null }) {
       <div className="w-full lg:w-80 shrink-0 overflow-y-auto lg:max-h-full" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <RoadmapMiniCard businessId={businessId} />
         <ApprovalQueueCard businessId={businessId} />
-        <TodayDiscoveryBanner businessId={businessId} />
       </div>
     </div>
   )
@@ -734,7 +750,7 @@ function RoadmapTab({ businessId }: { businessId: string | null }) {
 }
 
 // ── Inbox Tab ────────────────────────────────────────────────────────────────
-function InboxTab({ businessId }: { businessId: string | null }) {
+function InboxTab({ businessId, pendingTask, onPendingConsumed }: { businessId: string | null; pendingTask?: InboxTaskRef | null; onPendingConsumed?: () => void }) {
   const { selectedProjectId } = useBusiness()
   const [tasks, setTasks] = useState<any[]>([])
   const [selectedTask, setSelectedTask] = useState<any | null>(null)
@@ -778,6 +794,15 @@ function InboxTab({ businessId }: { businessId: string | null }) {
     }
   }
 
+  // Roadmap / mini-card click hands a task in → open its detail directly.
+  useEffect(() => {
+    if (pendingTask) {
+      selectTask(pendingTask)
+      onPendingConsumed?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTask])
+
   const handleApprove = async () => {
     if (!selectedTask || actionLoading) return
     const taskId = selectedTask.task_id || selectedTask.id
@@ -813,10 +838,7 @@ function InboxTab({ businessId }: { businessId: string | null }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 12rem)', minHeight: 500, gap: 16 }}>
-      {/* Today Discovery as insight card */}
-      <TodayDiscoveryBanner businessId={businessId} />
-
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 9rem)', minHeight: 500, gap: 16 }}>
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0 lg:overflow-hidden">
         {/* Left list pane — full width on mobile; hidden when a task is open (master-detail) */}
         <div
@@ -939,38 +961,102 @@ function InboxTab({ businessId }: { businessId: string | null }) {
                   fontWeight: 500,
                   fontSize: 18,
                   color: 'var(--ink-1)',
-                  lineHeight: 1.3,
+                  lineHeight: 1.35,
                   margin: 0,
+                  overflowWrap: 'anywhere',
                 }}>
                   {selectedTask.title}
                 </h2>
+                {/* status / risk / approval / time */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 9 }}>
+                  {selectedTask.status && (
+                    <span className={`j-badge ${INBOX_STATUS_CLASS[selectedTask.status] ?? 'j-badge-neutral'}`}>
+                      {INBOX_STATUS_LABEL[selectedTask.status] ?? selectedTask.status}
+                    </span>
+                  )}
+                  {selectedTask.risk_level && (
+                    <span className={`j-badge ${RISK_CLASS[selectedTask.risk_level] ?? 'j-badge-neutral'}`}>{selectedTask.risk_level}</span>
+                  )}
+                  {selectedTask.approval_required && (
+                    <span className="j-badge j-badge-review">승인필요</span>
+                  )}
+                  {(selectedTask.updated_at || selectedTask.updatedAt) && (
+                    <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-4)' }}>
+                      {new Date(selectedTask.updated_at || selectedTask.updatedAt).toLocaleString('ko-KR')}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* scrollable content */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {/* task meta grid */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 12,
-                  background: 'var(--paper-elevated)',
-                  border: '1px solid var(--silver-1)',
-                  borderRadius: 6,
-                  padding: '13px 14px',
-                }}>
+                {/* task meta — stacked on mobile, 2-col on desktop */}
+                <div
+                  className="grid grid-cols-1 lg:grid-cols-2 gap-3"
+                  style={{
+                    background: 'var(--paper-elevated)',
+                    border: '1px solid var(--silver-1)',
+                    borderRadius: 6,
+                    padding: '13px 14px',
+                  }}
+                >
                   <div>
                     <div className="j-overline" style={{ marginBottom: 5 }}>수행 배경 (Rationale)</div>
-                    <p style={{ fontSize: 12.5, color: 'var(--ink-1)', lineHeight: 1.55, margin: 0 }}>
-                      {selectedTask.rationale}
+                    <p style={{ fontSize: 13, color: 'var(--ink-1)', lineHeight: 1.6, margin: 0, overflowWrap: 'anywhere' }}>
+                      {selectedTask.rationale || '—'}
                     </p>
                   </div>
                   <div>
                     <div className="j-overline" style={{ marginBottom: 5 }}>기대 산출물</div>
-                    <p style={{ fontSize: 12.5, color: 'var(--ink-1)', lineHeight: 1.55, margin: 0 }}>
-                      {selectedTask.expected_output}
+                    <p style={{ fontSize: 13, color: 'var(--ink-1)', lineHeight: 1.6, margin: 0, overflowWrap: 'anywhere' }}>
+                      {selectedTask.expected_output || '—'}
                     </p>
                   </div>
                 </div>
+
+                {/* 에이전트 판단 & 결과 — decision / reasoning / next_action */}
+                {(selectedTask.decision || selectedTask.reasoning || selectedTask.next_action) && (
+                  <div style={{ border: '1px solid var(--silver-2)', borderRadius: 6, overflow: 'hidden' }}>
+                    <div style={{ padding: '9px 13px', borderBottom: '1px solid var(--silver-1)', background: 'var(--paper-elevated)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="j-overline">에이전트 판단 &amp; 결과</span>
+                      {typeof selectedTask.reasoning === 'string' && /^\[(CTO|CEO)\s/.test(selectedTask.reasoning) && (
+                        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600, color: 'var(--green-press)', background: 'var(--green-tint)', padding: '1px 7px', borderRadius: 999 }}>
+                          ⟳ {selectedTask.reasoning.match(/^\[(CTO|CEO)\s/)![1]} 자가복구
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {selectedTask.decision && (
+                        <div>
+                          <div className="j-overline" style={{ marginBottom: 5 }}>결정 (Decision)</div>
+                          <p style={{ fontSize: 13, color: 'var(--ink-1)', lineHeight: 1.6, margin: 0, overflowWrap: 'anywhere' }}>{selectedTask.decision}</p>
+                        </div>
+                      )}
+                      {selectedTask.next_action && (
+                        <div style={{ background: 'var(--green-tint)', border: '1px solid var(--green-tint-2)', borderRadius: 6, padding: '10px 12px' }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--green-press)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Icon name="arrowR" size={12} stroke={2} /> 다음 액션 (Next Action)
+                          </div>
+                          <p style={{ fontSize: 13, color: 'var(--ink-1)', lineHeight: 1.55, margin: 0, overflowWrap: 'anywhere' }}>{selectedTask.next_action}</p>
+                        </div>
+                      )}
+                      {selectedTask.reasoning && (
+                        <div>
+                          <div className="j-overline" style={{ marginBottom: 5 }}>판단 근거 (Reasoning)</div>
+                          <p style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.6, margin: 0, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{selectedTask.reasoning}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 원 지시 (source instruction) */}
+                {selectedTask.source_instruction && (
+                  <div style={{ background: 'var(--bg-inset, var(--silver-1))', borderRadius: 6, padding: '10px 12px' }}>
+                    <div className="j-overline" style={{ marginBottom: 5 }}>Founder 원 지시</div>
+                    <p style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: 0, overflowWrap: 'anywhere' }}>{selectedTask.source_instruction}</p>
+                  </div>
+                )}
 
                 {/* blocker */}
                 {selectedTask.blocker && (
@@ -1162,6 +1248,12 @@ function InboxTab({ businessId }: { businessId: string | null }) {
 // ── Page shell ───────────────────────────────────────────────────────────────
 function ChatContent() {
   const { selectedId, businesses, selectedProjectId, projects } = useBusiness()
+  const [activeTab, setActiveTab] = useState('chat')
+  const [pendingTask, setPendingTask] = useState<InboxTaskRef | null>(null)
+  const openInboxTask = useCallback((t: InboxTaskRef) => {
+    setPendingTask(t)
+    setActiveTab('inbox')
+  }, [])
 
   const selectedBusiness = businesses.find(b => b.id === selectedId)
   const selectedProject = projects.find(p => p.id === selectedProjectId)
@@ -1171,6 +1263,7 @@ function ChatContent() {
     : '회사 공통'
 
   return (
+    <InboxNavContext.Provider value={{ openInboxTask }}>
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 3rem)' }}>
       {/* page header */}
       <div style={{
@@ -1208,16 +1301,23 @@ function ChatContent() {
         </p>
       </div>
 
-      <TabLayout>
-        {(activeTab) => (
+      <TabLayout active={activeTab} onChange={setActiveTab}>
+        {(tab) => (
           <>
-            {activeTab === 'chat' && <ChatTab businessId={selectedId} />}
-            {activeTab === 'roadmap' && <RoadmapTab businessId={selectedId} />}
-            {activeTab === 'inbox' && <InboxTab businessId={selectedId} />}
+            {tab === 'chat' && <ChatTab businessId={selectedId} />}
+            {tab === 'roadmap' && <RoadmapTab businessId={selectedId} />}
+            {tab === 'inbox' && (
+              <InboxTab
+                businessId={selectedId}
+                pendingTask={pendingTask}
+                onPendingConsumed={() => setPendingTask(null)}
+              />
+            )}
           </>
         )}
       </TabLayout>
     </div>
+    </InboxNavContext.Provider>
   )
 }
 

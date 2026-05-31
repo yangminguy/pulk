@@ -15,11 +15,18 @@ const DEFAULT_TABS: Tab[] = [
 interface TabLayoutProps {
   tabs?: Tab[]
   defaultTab?: string
+  active?: string
+  onChange?: (id: string) => void
   children: (activeTab: string) => React.ReactNode
 }
 
-export default function TabLayout({ tabs = DEFAULT_TABS, defaultTab, children }: TabLayoutProps) {
-  const [active, setActive] = useState(defaultTab ?? tabs[0]?.id ?? '')
+export default function TabLayout({ tabs = DEFAULT_TABS, defaultTab, active: controlledActive, onChange, children }: TabLayoutProps) {
+  const [internalActive, setInternalActive] = useState(defaultTab ?? tabs[0]?.id ?? '')
+  const active = controlledActive ?? internalActive
+  const setActive = (id: string) => {
+    if (onChange) onChange(id)
+    else setInternalActive(id)
+  }
 
   return (
     <div className="flex flex-col h-full">
