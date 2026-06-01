@@ -135,6 +135,8 @@ export type RoadmapItem = {
   priority: number | null
   due_date: string | null
   business_id: string | null
+  agent?: string | null
+  objective?: string | null
 }
 
 export type TodayDiscovery = {

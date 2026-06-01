@@ -5,12 +5,13 @@ import { useInboxNav, type InboxTaskRef } from '@/lib/inbox-nav'
 
 function taskToRef(t: RoadmapItem): InboxTaskRef {
   // RoadmapItem is a lightweight roadmap row (id == agent_tasks id). The inbox
-  // detail re-fetches the full task + handoffs by task_id, so the agent fills in.
+  // detail re-fetches the full task + handoffs by task_id for the rest.
   return {
     task_id: t.id,
-    assigned_agent: '—',
+    assigned_agent: t.agent ?? '—',
     title: t.title,
     status: t.status,
+    rationale: t.objective ?? undefined,
   }
 }
 
@@ -136,6 +137,26 @@ export default function RoadmapMiniCard({ businessId }: RoadmapMiniCardProps) {
                 <Icon name={cfg.icon} size={11} />
                 {cfg.label}
               </span>
+
+              {/* assigned agent */}
+              {item.agent && (
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '1px 6px',
+                  borderRadius: 4,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  fontFamily: 'var(--font-mono)',
+                  letterSpacing: '0.05em',
+                  background: 'var(--silver-1)',
+                  color: 'var(--ink-2)',
+                  flexShrink: 0,
+                  whiteSpace: 'nowrap',
+                }}>
+                  {item.agent}
+                </span>
+              )}
 
               {/* title */}
               <span style={{

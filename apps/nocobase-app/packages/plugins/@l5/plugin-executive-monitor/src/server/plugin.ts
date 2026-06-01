@@ -257,7 +257,7 @@ async function roadmapList(ctx: MonitorContext) {
   const replacements = isCommon ? {} : { business_id: rawId };
 
   const rows: TaskRecord[] = await db.sequelize.query(
-    `SELECT id, title, status, phase, business_id, updated_at, created_at
+    `SELECT id, title, status, phase, business_id, updated_at, created_at, assigned_agent, rationale
      FROM agent_tasks
      ${whereClause}
      ORDER BY updated_at DESC
@@ -276,6 +276,9 @@ async function roadmapList(ctx: MonitorContext) {
       priority: null,
       due_date: null,
       business_id: (t['business_id'] as string | null) ?? null,
+      // Show "which agent is doing what" in the founder-ui roadmap preview.
+      agent: (t['assigned_agent'] as string | null) ?? null,
+      objective: (t['rationale'] as string | null) ?? null,
     })),
   };
 }
