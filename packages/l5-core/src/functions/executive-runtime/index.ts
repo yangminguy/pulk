@@ -2,8 +2,11 @@
 
 import type { AgentTask, AgentHandoff } from '../../types/orchestration';
 import type { RiskLevel } from '../../types/entities';
-import type { HandlerResult } from './protocol';
-import { validateOutput } from './protocol';
+import type { HandlerResult, AgentOutput } from './protocol';
+import { validateOutput, buildHandoff } from './protocol';
+import type { LLMClient } from '../ceo-orchestration/types';
+import { reviewExecutiveOutput, type CEOReviewVerdict } from '../ceo-orchestration/review';
+import { runExecutive } from './executive-llm';
 import { cmoHandler } from './handlers/cmo-handler';
 import { croHandler } from './handlers/cro-handler';
 import { cpoHandler } from './handlers/cpo-handler';
@@ -144,5 +147,150 @@ export function executeAgentTask(
     handoff: result.handoff,
     validation_errors,
     approval_routing,
+  };
+}
+
+// ── Live execution (Haiku executive → Haiku CEO review) ─────────────────────
+// This is the real CEO-orchestration path. The sync executeAgentTask above stays
+// for offline/back-compat callers; live callers (the orchestration plugin) use
+// this so executives do real work and the CEO closes the loop to "done".
+
+export interface ExecuteAgentTaskLiveResult {
+  task_id: string;
+  /** Final task status the caller should persist. */
+  updated_status: AgentTask['status'];
+  /** Founder gate — true ONLY for genuine outbound-message / payment. */
+  approval_required: boolean;
+  blocked: boolean;
+  reason: string;
+  risk_level: HandlerResult['risk_level'];
+  source_ref?: string;
+  output: AgentOutput;
+  ceo_decision: CEOReviewVerdict['decision'];
+  ceo_note: string;
+  founder_reason?: string;
+  /** Executive work-product handoff + CEO review handoff, in chain order. */
+  handoffs: Array<Omit<AgentHandoff, 'id' | 'created_at'>>;
+  validation_errors: string[];
+}
+
+export async function executeAgentTaskLive(
+  task: AgentTask,
+  llm: LLMClient,
+  context?: Record<string, unknown>
+): Promise<ExecuteAgentTaskLiveResult> {
+  // 1) Executive does the real work.
+  let execResult: HandlerResult;
+  try {
+    execResult = await runExecutive({ task, context }, llm);
+  } catch (err) {
+    const reason = `${task.assigned_agent} execution failed: ${(err as Error).message.slice(0, 200)}`;
+    return {
+      task_id: task.id,
+      updated_status: 'blocked',
+      approval_required: false,
+      blocked: true,
+      reason,
+      risk_level: 'D2',
+      source_ref: task.source_ref,
+      output: failureOutput(task, reason),
+      ceo_decision: 'revise',
+      ceo_note: reason,
+      handoffs: [],
+      validation_errors: [],
+    };
+  }
+
+  const validation_errors = validateOutput(execResult.output);
+  const execHandoff = execResult.handoff;
+
+  // 2) CEO reviews the work product and decides the outcome.
+  let verdict: CEOReviewVerdict;
+  try {
+    verdict = await reviewExecutiveOutput(task, execResult.output, llm);
+  } catch (err) {
+    // CEO review failed → defer to founder rather than silently completing.
+    verdict = {
+      decision: 'escalate_founder',
+      ceo_note: `CEO 검토 실패로 파운더 확인이 필요합니다: ${(err as Error).message.slice(0, 160)}`,
+      founder_reason: 'CEO 자동 검토가 실패했습니다.',
+    };
+  }
+
+  // 3) Map verdict → final status + founder gate.
+  let updated_status: AgentTask['status'];
+  let approval_required = false;
+  switch (verdict.decision) {
+    case 'approve':
+    case 'revise':
+      updated_status = 'done';
+      break;
+    case 'escalate_founder':
+    default:
+      updated_status = 'needs_review';
+      approval_required = true;
+      break;
+  }
+
+  const ceoHandoff: Omit<AgentHandoff, 'id' | 'created_at'> = {
+    task_id: task.id,
+    from_agent: 'CEO',
+    to_agent: verdict.decision === 'escalate_founder' ? 'founder' : task.assigned_agent,
+    context: `CEO review of ${task.assigned_agent} work: ${task.title}`,
+    next_action:
+      verdict.decision === 'approve'
+        ? 'Task approved and marked done'
+        : verdict.decision === 'revise'
+          ? 'Finalized with CEO direction'
+          : 'Escalated to founder',
+    blocker: verdict.decision === 'escalate_founder' ? verdict.founder_reason : undefined,
+    approval_required,
+    what_was_completed: verdict.ceo_note,
+    what_remains_open: verdict.decision === 'escalate_founder' ? (verdict.founder_reason ?? '') : '',
+    why_next_agent_needed:
+      verdict.decision === 'escalate_founder'
+        ? '외부 발신 또는 결제는 파운더 승인이 필요합니다.'
+        : 'CEO closed the loop on this task.',
+  };
+
+  const handoffs: Array<Omit<AgentHandoff, 'id' | 'created_at'>> = [];
+  if (execHandoff) handoffs.push(execHandoff);
+  handoffs.push(ceoHandoff);
+
+  return {
+    task_id: task.id,
+    updated_status,
+    approval_required,
+    blocked: false,
+    reason: verdict.ceo_note,
+    risk_level: execResult.risk_level,
+    source_ref: task.source_ref,
+    output: execResult.output,
+    ceo_decision: verdict.decision,
+    ceo_note: verdict.ceo_note,
+    founder_reason: verdict.founder_reason,
+    handoffs,
+    validation_errors,
+  };
+}
+
+function failureOutput(task: AgentTask, reason: string): AgentOutput {
+  return {
+    current_situation: reason,
+    source_instruction: task.rationale,
+    goal: task.expected_output,
+    why_now: '',
+    bottleneck: reason,
+    root_cause: 'Executive LLM execution error',
+    options: [],
+    recommendation: '재시도가 필요합니다.',
+    action_items: ['작업을 다시 큐에 넣어 재시도'],
+    next_owner: 'ceo',
+    required_tools: [],
+    approval_required: false,
+    insight_to_record: '',
+    workflow_improvement_suggestion: '',
+    confidence_level: 'low',
+    risk_level: 'D2',
   };
 }

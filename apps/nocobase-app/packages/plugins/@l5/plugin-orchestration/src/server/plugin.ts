@@ -18,6 +18,7 @@ const {
 
 const {
   executeAgentTask,
+  executeAgentTaskLive,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/executive-runtime'));
 
 const {
@@ -1038,7 +1039,18 @@ function registerCrudResources(app: any) {
         }
 
         try {
-          const result = executeAgentTask(task);
+          // Mark running before the slow LLM work so the inbox shows live status
+          // while the executive + CEO are thinking.
+          try {
+            await taskRepo.update({
+              filterByTk: task_id,
+              values: { status: 'running', blocker: null },
+            });
+          } catch { /* non-fatal; continue */ }
+
+          // CEO-orchestration: executive does real work (Haiku) → CEO reviews (Haiku).
+          const llm = buildLLMClient(`${task.title ?? ''} ${task.rationale ?? ''}`);
+          const result = await executeAgentTaskLive(task, llm);
 
           let approval_required = result.approval_required;
 
@@ -1049,12 +1061,13 @@ function registerCrudResources(app: any) {
             ? randomUUID()
             : null;
 
-          // Save handoff if present
-          if (result.handoff) {
+          // Persist the full handoff chain: executive work product + CEO review,
+          // so the founder can scroll the inbox and see the work process.
+          for (const h of result.handoffs) {
             await handoffRepo.create({
               values: {
                 id: randomUUID(),
-                ...result.handoff,
+                ...h,
               },
             });
           }
@@ -1065,7 +1078,7 @@ function registerCrudResources(app: any) {
             values: {
               status: result.updated_status,
               approval_required,
-              blocker: result.output.bottleneck || null,
+              blocker: result.blocked ? result.reason : (result.output.bottleneck || null),
               ...(acr_token ? { acr_token } : {}),
             },
           });
@@ -1087,10 +1100,12 @@ function registerCrudResources(app: any) {
               status: result.updated_status,
               approval_required,
               acr_token,
-              approval_routing: result.approval_routing,
+              ceo_decision: result.ceo_decision,
+              ceo_note: result.ceo_note,
+              founder_reason: result.founder_reason,
               validation_errors: result.validation_errors,
               output: result.output,
-              handoff: result.handoff,
+              handoffs: result.handoffs,
               updated_task: updatedTask,
             },
           };
