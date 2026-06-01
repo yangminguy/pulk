@@ -4,7 +4,21 @@
 
 ---
 
-## 🟢 2026-06-01 (최신) — Founder 승인 게이트 재정의 + 채팅 카드 네비게이션
+## 🟢 2026-06-01 (최신) — CEO 오케스트레이션 엔진 + 실행 정상화 (라이브)
+
+**문제**: 작업이 항상 검토필요/차단됨에 쌓이고 진행중/완료가 없었음. 원인 = executive 핸들러가 결정론적 스텁(항상 needs_review/blocked)이고, risk-handler가 PII/위험도 키워드만 보고 무조건 차단.
+
+- **risk-handler** (커밋 `ace7ec1`): 위험도/PII 키워드 기반 무조건 차단 제거(`blocked=false`, 승인 게이트 부풀림 제거). l5-core dist 반영.
+- **Haiku 실행 + CEO 검토 루프** (커밋 `060d1c4`): 신규 `l5-core/executive-runtime/executive-llm.ts`(`runExecutive` — 임원별 Haiku 실제 산출물) + `ceo-orchestration/review.ts`(`reviewExecutiveOutput` — verdict approve/revise/escalate_founder). `executeAgentTaskLive(task, llm)`가 실행→CEO검토→상태(done/needs_review/blocked) 매핑 + 임원·CEO handoff 2건 영속(인박스에서 과정 보임). Founder 에스컬레이션은 아웃바운드/결제만(위험도 무관, 하드 세이프티넷).
+- **plugin-orchestration `executeTask`**: status=running 선기록 → `buildLLMClient` → `await executeAgentTaskLive` → handoff 루프 영속. src + dist/plugin.js 미러 패치(node --check 통과, 백업 보관). NocoBase 재시작(HEALTH 200, DIST_LIVE=1).
+- 신규 테스트 11개 통과. 기존 실패 3개(decomposer/executive-runtime/approval-routing)는 스텁 가정이라 **무관**(baseline 동일).
+- **로드맵 미리보기** (커밋 `92ab34b`): `/api/roadmap:list`가 `assigned_agent`+`rationale` 반환(src+dist), `RoadmapMiniCard`가 에이전트 칩 표시.
+
+**남은 follow-up**: ① 동기 `executeAgentTask` 스텁 잔존(라이브는 `executeAgentTaskLive`만 사용). ② `executeTask`가 Haiku 2콜이라 지연 증가 — 액션 타임아웃 여유 확인 권장. ③ plugin dist는 수동 패치(정식 `nocobase build` 부재). ④ 임원↔CEO 1라운드만 — 다회 왕복/팀 협업 확장 여지. 참고: [[nocobase-plugin-dist-patching]], [[l5-founder-approval-model]].
+
+---
+
+## 🟢 2026-06-01 — Founder 승인 게이트 재정의 + 채팅 카드 네비게이션
 
 **문제**: Founder 승인 큐에 CTO/CPO/RiskQA 내부 작업(D4 등)이 올라옴. 규칙은 "아웃바운드 메시지 + 결제만 Founder 승인, 나머지는 CEO 자율, 에러는 CTO".
 
