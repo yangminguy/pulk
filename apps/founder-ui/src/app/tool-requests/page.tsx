@@ -3,6 +3,21 @@ import { useEffect, useState, useCallback } from 'react'
 import AuthGate from '@/components/AuthGate'
 import { api, ToolRequestItem } from '@/lib/api'
 
+// ── Self-mod (CTO self-modification) chip config ──────────────────────────────
+const SELFMOD_CHIP: Record<string, { label: string; bg: string; fg: string; dot: string; pulse?: boolean }> = {
+  sent:           { label: '보냄',         bg: 'var(--silver-1)',  fg: 'var(--ink-2)',       dot: 'var(--silver-4)', pulse: true },
+  in_progress:    { label: 'CTO 작업 중',  bg: 'var(--green-tint)', fg: 'var(--green-press)', dot: 'var(--green)',    pulse: true },
+  awaiting_apply: { label: '승인 대기',     bg: 'var(--amber-tint)', fg: '#8A5408',           dot: 'var(--amber)',    pulse: true },
+  applied:        { label: '적용됨',        bg: 'var(--green-tint)', fg: 'var(--green-press)', dot: 'var(--green)' },
+  rejected:       { label: '반려',          bg: 'var(--red-tint)',   fg: '#8C2A1F',           dot: 'var(--red)' },
+  rolled_back:    { label: '롤백',          bg: 'var(--red-tint)',   fg: '#8C2A1F',           dot: 'var(--red)' },
+}
+
+// Send button enabled only when no active self-mod child is in flight
+function canSendToCTO(status?: string | null): boolean {
+  return !status || status === 'rejected' || status === 'rolled_back'
+}
+
 type FilterStatus = 'all' | 'needs_review' | 'done' | 'killed' | 'queued'
 
 // ── Joinery badge tones ───────────────────────────────────────────────────────
@@ -138,12 +153,52 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
+// ── Self-mod status chip ──────────────────────────────────────────────────────
+function SelfModChip({ status }: { status: string }) {
+  const cfg = SELFMOD_CHIP[status]
+  if (!cfg) return null
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      padding: '3px 9px', borderRadius: 999,
+      fontSize: 11.5, fontWeight: 500, lineHeight: 1.4,
+      background: cfg.bg, color: cfg.fg, whiteSpace: 'nowrap',
+      fontFamily: 'var(--font-sans)',
+    }}>
+      <span style={{
+        width: 6, height: 6, borderRadius: 999, background: cfg.dot,
+        animation: cfg.pulse ? 'j-pulse 1.8s ease-in-out infinite' : undefined,
+      }} />
+      자가수정: {cfg.label}
+    </span>
+  )
+}
+
 // ── Main content ──────────────────────────────────────────────────────────────
 function ToolRequestsContent() {
   const [items, setItems] = useState<ToolRequestItem[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterStatus>('all')
   const [autoRefresh, setAutoRefresh] = useState(true)
+  const [sendingId, setSendingId] = useState<string | null>(null)
+
+  const sendToCTO = useCallback(async (taskId: string) => {
+    setSendingId(taskId)
+    // optimistic: set local chip to 'sent'
+    setItems(prev => prev.map(i =>
+      i.task_id === taskId ? { ...i, self_mod_status: 'sent' } : i
+    ))
+    try {
+      await api.sendToolRequestToCTO(taskId)
+    } catch {
+      // revert optimistic chip on failure
+      setItems(prev => prev.map(i =>
+        i.task_id === taskId ? { ...i, self_mod_status: null } : i
+      ))
+    } finally {
+      setSendingId(null)
+    }
+  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -365,6 +420,9 @@ function ToolRequestsContent() {
                     승인필요
                   </span>
                 )}
+
+                {/* Self-mod status chip */}
+                {item.self_mod_status && <SelfModChip status={item.self_mod_status} />}
               </div>
 
               {/* Pattern name */}
@@ -431,6 +489,29 @@ function ToolRequestsContent() {
               }}>
                 {relativeTime(item.updated_at)}
               </p>
+
+              {/* Self-mod action row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
+                <button
+                  onClick={() => sendToCTO(item.task_id)}
+                  disabled={!canSendToCTO(item.self_mod_status) || sendingId === item.task_id}
+                  className="j-btn j-btn-primary j-btn-sm"
+                >
+                  CTO에게 전송
+                </button>
+
+                {item.self_mod_status === 'awaiting_apply' && (
+                  <a
+                    href="/approval"
+                    style={{
+                      fontSize: 12.5, fontWeight: 500, color: 'var(--green-press)',
+                      fontFamily: 'var(--font-sans)', textDecoration: 'none',
+                    }}
+                  >
+                    승인 큐에서 diff 검토 →
+                  </a>
+                )}
+              </div>
             </div>
           )
         })}

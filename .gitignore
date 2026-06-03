@@ -6,6 +6,7 @@ node_modules/
 dist/
 build/
 out/
+.next/
 *.tsbuildinfo
 
 # Environment & secrets
@@ -43,6 +44,8 @@ Thumbs.db
 # NocoBase runtime
 apps/nocobase/storage/
 apps/nocobase/.env
+apps/nocobase-app/storage/
+storage/
 
 # Hermes runtime cron/state artifacts (contain tokens/PII — never commit)
 apps/nocobase-app/cron_*

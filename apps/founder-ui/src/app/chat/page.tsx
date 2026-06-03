@@ -4,7 +4,10 @@ import AuthGate from '@/components/AuthGate'
 import TabLayout from '@/components/TabLayout'
 import RoadmapMiniCard from '@/components/RoadmapMiniCard'
 import ApprovalQueueCard from '@/components/ApprovalQueueCard'
+import ConsultationCard from '@/components/ConsultationCard'
+import SynthesisCard from '@/components/SynthesisCard'
 import RoadmapTimeline from '@/components/RoadmapTimeline'
+import { AgentOutputDetail } from '@/components/AgentOutputDetail'
 import { api } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
 import { InboxNavContext, useInboxNav, type InboxTaskRef } from '@/lib/inbox-nav'
@@ -92,11 +95,19 @@ type ProposedTask = {
   approval_required?: boolean
 }
 
+type SynthesisPayload = {
+  decision_summary: string
+  contributions: { agent: string; task_title: string; summary: string; status: string }[]
+  open_gaps: string[]
+  next_actions: { kind: 'approve' | 'delegate' | 'hold'; label: string; target_agent?: string; reason: string }[]
+}
+
 type CEOMessage = {
   id: string
-  role: 'founder' | 'ceo'
+  role: 'founder' | 'ceo' | 'chief_of_staff'
   text: string
   instructionId?: string
+  synthesis?: SynthesisPayload
   interpretation?: {
     goal?: string
     phase?: string
@@ -387,6 +398,7 @@ function InterpretationPanel({ interpretation }: {
 // ── Chat Tab ─────────────────────────────────────────────────────────────────
 function ChatTab({ businessId }: { businessId: string | null }) {
   const { selectedProjectId } = useBusiness()
+  const { openInboxTask } = useInboxNav()
   const [messages, setMessages] = useState<CEOMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -414,6 +426,12 @@ function ChatTab({ businessId }: { businessId: string | null }) {
           },
           proposedTasks: meta.proposed_tasks,
           planStatus: meta.planStatus ?? (meta.proposed_tasks ? 'pending' : undefined),
+          synthesis: meta.kind === 'synthesis' ? {
+            decision_summary: meta.decision_summary ?? m.text,
+            contributions: meta.contributions ?? [],
+            open_gaps: meta.open_gaps ?? [],
+            next_actions: meta.next_actions ?? [],
+          } : undefined,
         } as CEOMessage
       })
       setMessages(formatted)
@@ -457,6 +475,14 @@ function ChatTab({ businessId }: { businessId: string | null }) {
 
       if (selectedProjectId) {
         await fetchHistory(selectedProjectId)
+      } else if ((res as any)?.needs_clarification) {
+        // CEO needs more info before planning — show the question, no plan card.
+        const r = res as any
+        setMessages(prev => [...prev, {
+          id: (Date.now() + 1).toString(),
+          role: 'ceo',
+          text: r.clarification_question ?? '진행을 위해 추가 정보가 필요합니다.',
+        }])
       } else {
         const interp = (res as any)?.interpretation ?? {}
         const tasks: ProposedTask[] = ((res as any)?.tasks ?? []).map((t: any) => ({
@@ -525,6 +551,27 @@ function ChatTab({ businessId }: { businessId: string | null }) {
       setError(err instanceof Error ? err.message : '거절 실패')
     }
   }
+
+  const handleSynthesisAction = useCallback(async (
+    instructionId: string,
+    msg: CEOMessage,
+    kind: 'approve' | 'delegate' | 'hold',
+    targetAgent?: string,
+  ) => {
+    // 'delegate' was removed — the synthesis card no longer spawns new tasks.
+    // It only closes (approve) or holds; detail is read in the inbox.
+    void msg; void targetAgent
+    try {
+      if (kind === 'approve') {
+        await api.closeInstruction(instructionId)
+      }
+      if (selectedProjectId) {
+        await fetchHistory(selectedProjectId)
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '처리 실패')
+    }
+  }, [selectedProjectId, fetchHistory])
 
   // No project selected state
   if (businessId !== null && !selectedProjectId) {
@@ -642,10 +689,25 @@ function ChatTab({ businessId }: { businessId: string | null }) {
                   }}>
                     <AgentChip agent="CEO" showLabel={false} />
                     <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-3)' }}>
-                      CEO Agent
+                      {msg.role === 'chief_of_staff' ? 'Chief of Staff' : 'CEO Agent'}
                     </span>
                   </div>
 
+                  {/* synthesis deliverable card */}
+                  {msg.synthesis && msg.instructionId ? (
+                    <SynthesisCard
+                      instructionId={msg.instructionId}
+                      decisionSummary={msg.synthesis.decision_summary}
+                      contributions={msg.synthesis.contributions}
+                      openGaps={msg.synthesis.open_gaps}
+                      nextActions={msg.synthesis.next_actions}
+                      onAction={(kind, targetAgent) =>
+                        handleSynthesisAction(msg.instructionId!, msg, kind, targetAgent)}
+                      onOpenTask={(taskId, c) =>
+                        openInboxTask({ task_id: taskId, assigned_agent: c.agent, title: c.task_title, status: c.status })}
+                    />
+                  ) : (
+                  <>
                   {/* main message text */}
                   <div style={{ fontWeight: 500, whiteSpace: 'pre-wrap' }}>{msg.text}</div>
 
@@ -663,6 +725,8 @@ function ChatTab({ businessId }: { businessId: string | null }) {
                       onApprove={handleApprove}
                       onReject={handleReject}
                     />
+                  )}
+                  </>
                   )}
                 </div>
               )}
@@ -735,6 +799,7 @@ function ChatTab({ businessId }: { businessId: string | null }) {
       <div className="w-full lg:w-80 shrink-0 overflow-y-auto lg:max-h-full" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <RoadmapMiniCard businessId={businessId} />
         <ApprovalQueueCard businessId={businessId} />
+        <ConsultationCard businessId={businessId} />
       </div>
     </div>
   )
@@ -787,8 +852,20 @@ function InboxTab({ businessId, pendingTask, onPendingConsumed }: { businessId: 
     setFeedback('')
     try {
       const taskId = task.task_id || task.id
-      const res = await api.getTaskHandoffs(taskId)
+      // Roadmap/mini-card refs carry no output — fetch the full task so the real
+      // work product (AgentOutputDetail) renders the same as a list-selected task.
+      const [res, detail] = await Promise.all([
+        api.getTaskHandoffs(taskId),
+        task.output ? Promise.resolve(null) : api.getTaskDetail(taskId),
+      ])
       setHandoffs(res)
+      if (detail) {
+        setSelectedTask((prev: any) =>
+          prev && (prev.task_id || prev.id) === taskId
+            ? { ...detail, ...prev, output: detail.output ?? prev.output }
+            : prev
+        )
+      }
     } catch (err) {
       console.error('Handoff 로드 실패:', err)
     }
@@ -858,7 +935,7 @@ function InboxTab({ businessId, pendingTask, onPendingConsumed }: { businessId: 
             alignItems: 'center',
             justifyContent: 'space-between',
           }}>
-            <span className="j-overline">검토 대기 중인 산출물</span>
+            <span className="j-overline">임원 과제 현황</span>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>
               {tasks.length}건
             </span>
@@ -872,7 +949,7 @@ function InboxTab({ businessId, pendingTask, onPendingConsumed }: { businessId: 
               </div>
             ) : tasks.length === 0 ? (
               <div style={{ padding: '32px 14px', color: 'var(--ink-4)', fontSize: 12.5, textAlign: 'center' }}>
-                현재 검토 대기 중인 에이전트 산출물이 없습니다.
+                표시할 임원 과제가 없습니다.
               </div>
             ) : (
               tasks.map(task => {
@@ -902,8 +979,11 @@ function InboxTab({ businessId, pendingTask, onPendingConsumed }: { businessId: 
                       <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-2)' }}>
                         {task.assigned_agent} Agent
                       </span>
+                      <span className={`j-badge ${INBOX_STATUS_CLASS[task.status] ?? 'j-badge-neutral'}`} style={{ marginLeft: 'auto' }}>
+                        {INBOX_STATUS_LABEL[task.status] ?? task.status}
+                      </span>
                       {task.risk_level && (
-                        <span className={`j-badge ${riskCls}`} style={{ marginLeft: 'auto' }}>
+                        <span className={`j-badge ${riskCls}`}>
                           {task.risk_level}
                         </span>
                       )}
@@ -1098,7 +1178,9 @@ function InboxTab({ businessId, pendingTask, onPendingConsumed }: { businessId: 
                   </div>
 
                   <div style={{ padding: '14px 13px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    {handoffs.length === 0 ? (
+                    {/* Real work product (agent_tasks.output) — the concrete deliverable */}
+                    {selectedTask.output && <AgentOutputDetail output={selectedTask.output} />}
+                    {handoffs.length === 0 && !selectedTask.output ? (
                       <div>
                         <div className="j-overline" style={{ marginBottom: 6 }}>상세 결과 내용</div>
                         <div style={{
@@ -1165,7 +1247,9 @@ function InboxTab({ businessId, pendingTask, onPendingConsumed }: { businessId: 
                 </div>
               </div>
 
-              {/* action panel */}
+              {/* action panel — only for review-pending tasks. In-progress /
+                  done tasks are read-only (the founder is just viewing the work). */}
+              {(selectedTask.status === 'needs_review' || selectedTask.approval_required) ? (
               <div style={{
                 padding: '14px 18px',
                 borderTop: '1px solid var(--silver-1)',
@@ -1207,6 +1291,11 @@ function InboxTab({ businessId, pendingTask, onPendingConsumed }: { businessId: 
                   </div>
                 </div>
               </div>
+              ) : (
+              <div style={{ padding: '12px 18px', borderTop: '1px solid var(--silver-1)', background: 'var(--paper-elevated)', fontSize: 12, color: 'var(--ink-4)', textAlign: 'center' }}>
+                {selectedTask.status === 'done' ? '완료된 과제입니다. 결과를 확인하세요.' : '진행 중인 과제입니다.'}
+              </div>
+              )}
             </div>
           ) : (
             <div style={{

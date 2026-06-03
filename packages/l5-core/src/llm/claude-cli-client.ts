@@ -1,13 +1,17 @@
 // Claude CLI-backed LLMClient adapter.
 //
 // Shells out to the local `claude` binary with `-p --model <id> --output-format json`,
-// pipes the combined system+user prompt over stdin, and parses the JSON result.
+// passes the combined system+user prompt to `claude -p <prompt>` and parses
+// the JSON result.
 //
 // Includes a small in-memory LRU+TTL cache to short-circuit duplicate prompts that
 // happen within a single process (e.g. retries inside a workflow run).
 
 import { spawn as nodeSpawn } from 'child_process';
 import { createHash } from 'crypto';
+import { writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import type { LLMClient } from '../functions/ceo-orchestration/types';
 
 export type ClaudeCLIModel = 'opus' | 'haiku';
@@ -26,6 +30,22 @@ const MODEL_ID_MAP: Record<ClaudeCLIModel, string> = {
 const CACHE_MAX_ENTRIES = 50;
 const CACHE_TTL_MS = 60_000;
 const DEFAULT_TIMEOUT_MS = 60_000;
+
+// Each `claude -p` spawn otherwise loads the host project's MCP servers
+// (claude.ai Supabase/Google etc.), which adds ~5s cold-start per round AND
+// triggers OAuth login popups. The executive tool-loop uses our own text-based
+// tool protocol, not claude CLI MCP, so MCP is dead weight here. We force an
+// empty MCP config via --strict-mcp-config to cut each round ~8.8s → ~4.2s.
+// (perf fix 2026-06-02)
+const EMPTY_MCP_CONFIG_PATH = (() => {
+  try {
+    const p = join(tmpdir(), 'l5-claude-cli-empty-mcp.json');
+    writeFileSync(p, '{"mcpServers":{}}');
+    return p;
+  } catch {
+    return null;
+  }
+})();
 
 interface CacheEntry {
   value: string;
@@ -135,10 +155,13 @@ function runClaude(
   cwd?: string,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const args = ['-p', '--model', modelId, '--output-format', 'json'];
+    const args = ['-p', prompt, '--model', modelId, '--output-format', 'json'];
+    if (EMPTY_MCP_CONFIG_PATH) {
+      args.push('--strict-mcp-config', '--mcp-config', EMPTY_MCP_CONFIG_PATH);
+    }
     const child = spawnImpl('claude', args, {
       cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     let stdout = '';
@@ -190,15 +213,6 @@ function runClaude(
       }
     });
 
-    try {
-      child.stdin?.write(prompt);
-      child.stdin?.end();
-    } catch (err) {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      reject(new Error(`claude-cli failed: stdin write error (${(err as Error).message})`));
-    }
   });
 }
 

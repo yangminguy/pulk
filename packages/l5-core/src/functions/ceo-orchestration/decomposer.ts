@@ -69,12 +69,14 @@ export async function decomposeIntoWorkstreams(
   opts: DecomposeOptions = {}
 ): Promise<Workstream[]> {
   const idGen = opts.idGenerator ?? defaultIdGen;
+  const routingMode = inferRoutingMode(interpretation);
 
   if (opts.llm) {
     try {
       const roles = await resolveRolesWithLLM(interpretation, opts.llm);
-      if (roles.length > 0) {
-        return roles.map(({ role, rationale }) => {
+      const selected = applyRoutingMode(roles, routingMode);
+      if (selected.length > 0) {
+        return selected.map(({ role, rationale }) => {
           const rule = findRule(role);
           const ws = buildWorkstream(rule, interpretation, idGen(role));
           return { ...ws, rationale };
@@ -93,8 +95,12 @@ export async function decomposeIntoWorkstreams(
 
   const matched = DOMAIN_RULES.filter(rule => rule.keywords.test(haystack));
   const rules = matched.length > 0 ? matched : [findRule(opts.fallback_role ?? 'CPO')];
+  const selectedRules = applyRoutingMode(
+    rules.map(rule => ({ role: rule.role, rationale: `Keyword match for ${rule.role}` })),
+    routingMode
+  ).map(({ role }) => findRule(role));
 
-  return rules.map(rule => buildWorkstream(rule, interpretation, idGen(rule.role)));
+  return selectedRules.map(rule => buildWorkstream(rule, interpretation, idGen(rule.role)));
 }
 
 const LLM_SYSTEM = `You are the CEO Agent routing engine for L5 Business OS.
@@ -102,6 +108,9 @@ Given a business goal, decide which executive roles should handle it.
 Return ONLY valid JSON: { "assignments": [{ "role": "CMO"|"CRO"|"CPO"|"CTO"|"COO"|"CFO"|"RiskQA", "rationale": string }] }
 Rules:
 - Assign 1-3 roles. Only assign roles with clear work to do.
+- If the founder asks for a quick draft, first pass, lightweight result, "핵심만",
+  "빠르게", "간단히", "초안", or "몇 개 에이전트만", assign 1 role by default and
+  at most 2 roles when two roles are clearly essential.
 - CMO: external messaging, brand, marketing, content, campaign
 - CRO: sales, revenue, leads, pipeline, customer outreach
 - CPO: product, PMF, user research, feature, onboarding
@@ -160,6 +169,55 @@ function buildWorkstream(
     phase: interp.phase,
   };
   return ws;
+}
+
+type RoutingMode = 'normal' | 'few' | 'single';
+
+function inferRoutingMode(interpretation: CEOInterpretation): RoutingMode {
+  const text = [
+    interpretation.goal,
+    ...interpretation.assumptions,
+    ...interpretation.success_criteria,
+  ].join(' ');
+
+  if (/(하나만|1개|한\s*명|single|one agent|one role|one pass)/i.test(text)) {
+    return 'single';
+  }
+  if (/(빠르게|빠른|간단|가볍|초안|먼저|핵심만|몇\s*개|일부|소수|quick|fast|draft|lightweight|first pass|few agents|minimal)/i.test(text)) {
+    return 'few';
+  }
+  return 'normal';
+}
+
+function applyRoutingMode(
+  roles: { role: ExecutiveRole; rationale: string }[],
+  mode: RoutingMode
+): { role: ExecutiveRole; rationale: string }[] {
+  const deduped = dedupeRoles(roles);
+  if (mode === 'normal') return deduped.slice(0, 3);
+
+  const risk = deduped.find(r => r.role === 'RiskQA');
+  const nonRisk = deduped.filter(r => r.role !== 'RiskQA');
+  const limit = mode === 'single' ? 1 : 2;
+  const selected = nonRisk.slice(0, limit);
+
+  // Keep RiskQA only when there is room; a "quick" pass should not fan out
+  // unless risk/compliance was one of the explicitly matched domains.
+  if (risk && selected.length < limit) selected.push(risk);
+  return selected.length > 0 ? selected : deduped.slice(0, limit);
+}
+
+function dedupeRoles(
+  roles: { role: ExecutiveRole; rationale: string }[]
+): { role: ExecutiveRole; rationale: string }[] {
+  const seen = new Set<ExecutiveRole>();
+  const out: { role: ExecutiveRole; rationale: string }[] = [];
+  for (const role of roles) {
+    if (seen.has(role.role)) continue;
+    seen.add(role.role);
+    out.push(role);
+  }
+  return out;
 }
 
 function findRule(role: ExecutiveRole): DomainRule {

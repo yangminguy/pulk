@@ -119,3 +119,26 @@ export function estimateToolBuildingEffort(input: ToolRequestInput): string {
     return 'Low - simple automation';
   }
 }
+
+// P3-4: deterministic acceptance criteria for a CTO self-modification task,
+// derived from the originating Tool Request. Used both for the ACR phase
+// expected_output and the M6 post-apply verification prompt. Pure.
+export interface SelfModOrigin {
+  task_title?: string;
+  rationale?: string;
+  source_ref?: string | null;
+}
+
+export function buildSelfModAcceptanceCriteria(origin: SelfModOrigin): string[] {
+  const pattern =
+    (origin.source_ref && origin.source_ref.replace(/^repetition-pattern:/, '')) ||
+    origin.task_title ||
+    '제안된 개선';
+  return [
+    '변경은 별도 브랜치에서만 이뤄지고 main에 직접 머지되지 않는다.',
+    '기존 테스트가 모두 통과한다 (exit_code === 0).',
+    `제안된 반복 작업/개선(${pattern})이 실제로 자동화·토큰 절감되었음을 diff가 보여준다.`,
+    '변경 범위가 제안과 무관한 파일로 번지지 않는다 (surgical).',
+    'self-modifying 변경이므로 founder 승인 전에는 적용되지 않는다.',
+  ];
+}

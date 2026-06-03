@@ -43,8 +43,7 @@ function Icon({ name, size = 16, stroke = 1.6, color = 'currentColor' }: { name:
 
 const NAV_TOOLS = [
   { href: '/monitor', label: '현황 모니터', icon: 'activity' },
-  { href: '/workflow', label: '워크플로 팩토리', icon: 'factory' },
-  { href: '/memory', label: 'Memory Review', icon: 'database' },
+  { href: '/memory', label: '지식', icon: 'database' },
   { href: '/control-room', label: 'Control Room', icon: 'sliders' },
   { href: '/tool-requests', label: 'Tool Requests', icon: 'wrench' },
 ]

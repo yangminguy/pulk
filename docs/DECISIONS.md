@@ -1,5 +1,80 @@
 # DECISIONS — L5 Business OS
 
+## 2026-06-03 — 사용자 플로우 정합화: 산출물 영속화 · CEO 되묻기 · synthesis delegate 제거 · 인박스 business 스코프
+
+**컨텍스트**: 창업자가 채워진 콘솔을 실사용하며 발견한 어긋남(산출물 미가시·뷰 불일치·원치 않는 새 task·필터 미작동)을 조사해 근원 수정. 네 가지 설계 결정을 기록한다.
+
+1. **임원 산출물(AgentOutput)을 agent_tasks.output(jsonb)에 영속**한다. 이전엔 풍부한 output이 handoff.context 한 조각만 남고 버려져 synthesis·인박스·모니터가 보여줄 알맹이가 없었다. output이 모든 산출물 가시화의 단일 소스. (기존 테이블이라 NocoBase collection sync가 컬럼을 안 만들어 **psql ALTER 병행** 필요 — output_summary 선례.)
+
+2. **synthesis의 'delegate' next_action을 제거**한다. 종합 보고서의 "최종 보고서 작성"이 새 instruction→새 임원 task를 생성해 창업자를 놀라게 했다("기존 결과를 더 보고 싶었지 새 작업을 원한 게 아니다"). 종합 카드는 approve/hold만, 기존 산출물 상세는 기여 행 클릭→인박스. 추가 작업은 창업자가 채팅으로 명시적으로 지시(이제 CEO 되묻기와 결합). open_gaps는 '서술'만, task로 위임하지 않는다.
+
+3. **CEO 되묻기(clarification) 게이트 신설**. 지시가 실행 계획을 세우기에 정보 부족이면 task를 만들지 않고 한국어 질문을 chat에 반환(`needs_clarification`/`resolveClarification`, business 모호성과 통합·business 우선). 이는 창업자의 기획 대화이며 승인 게이트(결제/외부발신)와 무관 — 위험도=게이트 아님 원칙 유지. 과도한 되묻기 금지(합리적 가정 가능하면 진행).
+
+4. **인박스는 project가 아닌 business 단위로 스코프**한다. task가 project=A에 있는데 사이드바가 project=B를 자동선택하면 "로드맵엔 보이는데 인박스엔 없음"이 발생했다. 창업자는 사업 단위로 임원 과제 전체를 한 곳에서 보길 원하므로 getInboxTasks를 business_id 기준으로 변경(project_id 미사용).
+
+---
+
+## 2026-06-03 — 운영 콘솔 재편: 종합 산출물 키스톤 + CTO 자가수정 게이트 예외
+
+**컨텍스트**: 창업자 통증 — 지시 후 각 에이전트 결과가 종합돼 최종 산출물로 돌아오지 않아 다음 세션 진행 불가. + UI 정리(워크플로 팩토리 제거), 메모리 자동 큐레이션, Control Room CTO 현황, Tool Request 자가수정 요구.
+
+**결정**:
+1. **종합 산출물(Chief of Staff)이 키스톤** — 모니터링·회의보다 우선. instruction의 모든 task가 terminal(done/killed, ≥1 done)이 되는 즉시 executeTask 꼬리에서 종합→단일 `founder_deliverables` + 채팅 카드. 멱등은 instruction.status='synthesized' claim + UNIQUE(instruction_id). `generateFounderBrief`는 일일 상태 문자열용이라 재사용 안 하고 신규 `synthesizeDeliverable`(contributions 구조는 코드 소유, LLM은 summary만 → 산출 구조가 현실과 어긋날 수 없음 + 결정론 fallback).
+2. **모니터링은 DB-derived(v1)** — task_activity 테이블 신설 대신 기존 status+blocker prefix+delegations/consultations 조인으로 라이브 상태 도출. l5-core 순수 `deriveLiveStatus`. 도구 실시간 이름은 도구 off 기본이라 보류.
+3. **지식 자동 큐레이션 + soft-delete** — raw JSON 수동 카드 폐기. 규칙(pii_high/too_short/dup/저점수) 우선, 경계만 LLM. 자동 폐기는 즉시 영구삭제 금지 → status='discarded' + purge_at(+30d) 유예 + 복원, 일일 cron 퍼지. 좋은 지식 유실 방지.
+4. **Control Room은 degrade-first** — ACR엔 쓸 API가 없어(별도 repo, L5→ACR 풀 코드 dead) L5측(transport stub + 트리 빌더 + 페이지)만 먼저. `ACR_EXECUTION_ENABLED=1` + ACR repo에 read-only `GET /api/l5/execution` 추가 시 실행정보 라이브. 미연결시 agent_tasks만으로 축소.
+5. **CTO 자가수정 = 위험도 게이트의 의도적 예외** — 프로젝트 원칙 "위험도는 게이트가 아님(아웃바운드/결제만)"의 단 하나의 예외로 **코드 변이 승인 게이트**를 둔다. 기본 `L5_SELFMOD_AUTO_APPLY_FLOOR=D3`(자동 적용 0, 전부 승인). 브랜치 격리(머지는 명시 승인) + diff 미리보기 + deny-list(plugin-orchestration/.env/launchd/SECURITY_/approval 변경 거부) + 롤백 + 실행중 프로세스는 자기 핫스왑 불가 → `applied:needs_restart` 정직 표면화. M6 `runDelegationLoop`로 post-apply 검증 재사용. [[l5-founder-approval-model]]
+6. **subagent 병렬 빌드** — 충돌 없는 단위로 분해(l5-core 순수 모듈 3개 동시, 플러그인 2 레인, UI 페이지별). 공유 파일(src/index.ts, api.ts)은 메인이 병합. 같은 plugin.js를 동시 편집 금지(레인 분리).
+
+**영향**: l5-core 5 신규 모듈(503/506, 3건 pre-existing 무관) + 플러그인 2개 src+dist + founder-ui 6 페이지. E2E 라이브: P1 종합·P3-4 자가수정 통과. 발견·수정: sendToCTO FK 코어션→raw SQL. 상세 `docs/HANDOFF.md` 최신.
+
+---
+
+## 2026-06-02 — M6 임원↔임원 위임 + 검증 반복 루프 (CEO 게이트, 결정론 컨트롤러)
+
+**컨텍스트**: 임원(CMO)이 산출 도중 다른 임원(CTO)의 작업이 필요할 때, 매 검증 라운드마다 CEO를 거치면 비용·지연이 폭증한다. "CEO 경유 위임 + 의도대로 나올 때까지 반복"을 원하되, 루프 본체가 CEO를 매번 태우면 안 된다.
+
+**결정**:
+1. **CEO=게이트, 루프=결정론 컨트롤러** — 위임 진입(open→in_progress)과 이탈(예산소진 escalate)만 게이트. 반복 본체(`runDelegationLoop`, l5-core 순수)는 LLM·I/O 미접촉, 제어·종료가 모두 코드. LLM은 "제작"(`runWork`)과 "채점"(`verify`)에만 → 매 라운드 CEO 비용 0. spec §3.3.
+2. **검증은 풀 산출이 아니라 체크리스트** — 요청 임원(CMO)이 `acceptance_criteria` 대비 `{pass, feedback}`만 LLM으로 산출(`buildVerificationPrompt`/`parseVerdict`). 파싱 실패/모호는 보수적으로 fail → garbage 응답에 루프가 잘못 resolved되지 않음.
+3. **decomposer 대신 단일 work task reissue** — 위임 1건당 CTO task를 새로 분해/배정하지 않고, 단일 work task를 라운드마다 rationale에 피드백을 주입해 재실행. 위임은 이미 목표가 명확(objective+criteria)하므로 분해 불필요 — 더 단순하고 라운드 간 맥락 유지가 쉽다.
+4. **`advance`는 동기 드라이버** — `delegation:advance`가 전체 루프를 한 HTTP 요청에서 동기 구동(라운드당 executeAgentTaskLive ~1–2분). consultation의 동기 패턴과 일관. 무인 자동 트리거(dispatcher)는 추후. 워커에는 `ask_*` 도구를 주지 않아 중첩 위임 차단.
+5. **창업자 승인 모델 계승** — 위임이 외부발신/결제/고위험을 유발하면 기존 게이트 적용. 위임 자체는 게이트 아님(내부 협업). [[l5-founder-approval-model]]
+
+**영향**: l5-core `functions/delegation/`(index/tool/loop/verify) 24테스트 + plugin-orchestration src/dist 배선(테이블·컬렉션·`ask_executive`·`delegation` 리소스). **D6 라이브 통과(2026-06-02)**: `scripts/d6-delegation-smoke.sh` → advance 122s → resolved/round1, CTO done, origin CMO task 재개. 상세 `docs/HANDOFF.md` 최신 + spec `docs/EXECUTIVE_DELEGATION_SPEC.md`.
+
+---
+
+## 2026-06-02 — 임원 도구 루프 라이브화: claude CLI MCP off + 첫 라운드 도구 강제
+
+**컨텍스트**: M1~M5 도구 플랫폼은 단위/E2E로 통과했으나, 라이브 `executeTask`(도구 루프)가 claude CLI 타임아웃으로 blocked였다. 계측으로 원인 2개를 격리: (1) `claude -p` 매 spawn이 host 프로젝트 MCP 서버를 콜드 로드(라운드당 ~8.8s + OAuth 팝업), (2) haiku가 도구를 건너뛰고 첫 턴에 전체 산출물을 한 번에 생성(65s).
+
+**결정**:
+1. **claude CLI를 MCP off로 spawn** — `--strict-mcp-config --mcp-config <빈 json>`. 임원 도구는 우리 텍스트 프로토콜이라 claude CLI 네이티브 MCP는 불필요(dead weight). 라운드당 8.8s→4.2s + Dia 브라우저 OAuth 로그인 팝업 제거. 빈 MCP json은 모듈 로드 시 tmpdir에 1회 기록. 대안(cwd 격리)은 측정상 효과 미미해 기각.
+2. **첫 라운드 도구 강제 유도** — 약한 모델(haiku)이 도구를 회피하므로 iteration 0 & tools>0이면 "산출물 전에 반드시 tool_call로 정보 수집" 지시. 산출물을 버리지 않으므로 추가 비용 0. 코드 하드강제(거부·재시도) 대신 프롬프트 제약을 택해 무한루프 리스크 회피.
+3. **계측 로그 opt-in** — `L5_TOOL_LOOP_DEBUG=1` → stderr로 라운드별 소요/도구 실행시간/raw head. 기본 off(상시 노이즈 방지), 원인 격리 시에만 사용. HANDOFF follow-up #1 충족.
+4. **도구 루프는 동기 HTTP 기본 OFF 유지** — executeTask 도구 루프는 138s 소요 → 동기 action 기본값은 `L5_EXECUTIVE_TOOLS` 미설정 시 단발+recall. 상시화는 비동기 dispatcher 경로로 분리해야 한다는 결정 보류(별도 작업).
+
+**영향**: 수정 3파일(`claude-cli-client.ts`/`.test.ts`, `tool-loop.ts`). 라이브 end-to-end로 CMO가 `secondbrain.read` 실호출(venv spawn 2.8s ok) → 학습 → done(executeTask 138s, 타임아웃 해소) 확인. 회귀 21/21+7/7 pass. 상세 `docs/HANDOFF.md` 최신 항목.
+
+---
+
+## 2026-06-02 — 임원 도구 플랫폼 + 세컨 브레인 양방향 인사이트 (M1~M5)
+
+**컨텍스트**: 임원 AI는 "텍스트 산출물만 내는 직원"이었다(도구 호출 0, 메모리는 CEO에만 주입). 창업자 지시로 도구를 쥐고·지식을 양방향으로 다루고·창업자와 협의하는 플랫폼이 필요해졌다.
+
+**결정**:
+1. **텍스트 기반 도구 루프** — `LLMClient`(Claude CLI)에 네이티브 tool-calling이 없으므로, 시스템 프롬프트로 도구 목록을 주고 `{"tool_call":{name,args}}`/최종 산출물을 구분 파싱하는 루프(`runExecutiveWithTools`)로 구현. SDK 도입/런타임 교체 없이 현 인프라에서 도구 사용 가능. 도구 0개면 기존 단발 `runExecutive` 폴백(하위호환).
+2. **l5-core 순수성 유지 + transport 주입** — 외부 IO(세컨브레인 MCP, 영상생성기)는 `InsightSource`/`SecondBrainTransport`/`VideoFactoryTransport` 인터페이스로 추상화하고 실 IO는 plugin 측 transport에 둠. l5-core는 mock으로 테스트. env 미설정 시 transport=null → graceful disable.
+3. **인사이트 양방향, 단 쓰기는 CEO 게이트** — 읽기는 founder_memory + 세컨브레인을 전 임원에 주입. 쓰기(임원 능동·세컨브레인 적립)는 반드시 `founder_memory.pending` → `monitor:saveMemory`(CEO 검토) → `saved` 경유. saved 승격 시점에만 세컨브레인 `append`(PII high 제외). 인사이트 오염 방지 + 기존 배움루프 정책 계승.
+4. **도구는 임원별 소속** — ACR=CTO 도구, 영상생성기=CMO 도구(`allowed_roles:['CMO']`). 도구 레지스트리가 역할 권한을 강제(tool-loop가 비허용 역할 거부).
+5. **협의는 비동기 레코드 + 재개** — LLM이 사람을 동기 대기할 수 없으므로 `ask_founder`→`executive_consultations`(awaiting_founder)→task needs_review로 끊고, `consultation:respond`로 resolved+task queued 복귀, 재실행 시 `formatConsultationForPrompt`를 recalledInsights로 주입해 이어감.
+6. **L5 자기확장은 사람이** — pulk가 `L5_PROTECTED_PATHS`라 ACR이 L5 본체를 못 건드림 + 단일 spawn 한계로, 플랫폼 코어(M1~M5)는 사람(서브에이전트 파이프라인)이 구현. 깔린 뒤 사업 작업(영상 제작 등)만 임원이 자율 수행.
+
+**영향**: 신규 l5-core 모듈 5개 + plugin transport 2개 + 컬렉션 1개 + UI 1개. l5-core 410/413(3 pre-existing 무관), 브라우저 E2E 콘솔/네트워크 0. dist 수동 패치(정식 nocobase build 부재 — 기존 관행). 상세 `docs/HANDOFF.md` 2026-06-02 최신 항목.
+
+---
+
 ## 2026-05-30 — D3+ 승인 L5 단일화 + CTO phase 검토 verdict 반영
 
 **컨텍스트**:

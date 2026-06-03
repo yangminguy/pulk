@@ -5,6 +5,35 @@ import { api, type TaskItem } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
 
 // ---------------------------------------------------------------------------
+// Self-mod (CTO self-modification) — approval-queue items may carry diff fields
+// that are not yet on the shared TaskItem type. Access them via this local
+// extension with optional chaining and degrade gracefully when absent.
+// ---------------------------------------------------------------------------
+type SelfModFields = {
+  acr_diff?: string | null
+  acr_branch?: string | null
+  acr_pr_url?: string | null
+  self_mod_origin?: string | null
+}
+type ApprovalItem = TaskItem & SelfModFields
+
+const MAX_DIFF_LINES = 2000
+
+function isSelfMod(item: ApprovalItem): boolean {
+  return Boolean(
+    item.acr_diff ||
+    item.self_mod_origin ||
+    (item.source_ref?.startsWith('selfmod:') ?? false)
+  )
+}
+
+function clampDiff(diff: string): { text: string; truncated: boolean } {
+  const lines = diff.split('\n')
+  if (lines.length <= MAX_DIFF_LINES) return { text: diff, truncated: false }
+  return { text: lines.slice(0, MAX_DIFF_LINES).join('\n'), truncated: true }
+}
+
+// ---------------------------------------------------------------------------
 // Local Icon (same pattern as Sidebar.tsx)
 // ---------------------------------------------------------------------------
 const ICONS: Record<string, string> = {
@@ -75,18 +104,70 @@ function AgentBadge({ agent }: { agent: string }) {
 // ---------------------------------------------------------------------------
 // Single approval card
 // ---------------------------------------------------------------------------
+function SelfModDiff({ item }: { item: ApprovalItem }) {
+  const [open, setOpen] = useState(false)
+  if (!item.acr_diff) return null
+  const { text, truncated } = clampDiff(item.acr_diff)
+  return (
+    <div style={{ margin: '4px 0 14px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="j-btn j-btn-secondary j-btn-sm"
+          style={{ gap: 5 }}
+        >
+          {open ? '▾' : '▸'} diff 미리보기
+        </button>
+        {item.acr_branch && (
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--ink-3)',
+            background: 'var(--silver-1)', padding: '2px 8px', borderRadius: 4,
+          }}>
+            branch: {item.acr_branch}
+          </span>
+        )}
+        {item.acr_pr_url && (
+          <a href={item.acr_pr_url} target="_blank" rel="noopener noreferrer" style={{
+            fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 500,
+            color: 'var(--green-press)', textDecoration: 'none',
+          }}>
+            PR 보기 →
+          </a>
+        )}
+      </div>
+      {open && (
+        <pre style={{
+          margin: 0, maxHeight: 360, overflow: 'auto',
+          background: 'var(--ink-1)', color: 'var(--paper-surface)',
+          fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.5,
+          padding: '12px 14px', borderRadius: 6,
+          whiteSpace: 'pre', tabSize: 2,
+        }}>
+          {text}
+          {truncated && `\n\n… (diff가 ${MAX_DIFF_LINES}줄을 초과해 잘렸습니다)`}
+        </pre>
+      )}
+    </div>
+  )
+}
+
 function ApprovalCard({
   item,
   onApprove,
   onReject,
+  onApply,
+  onRollback,
   busy,
 }: {
-  item: TaskItem
+  item: ApprovalItem
   onApprove: () => void
   onReject: () => void
+  onApply: () => void
+  onRollback: () => void
   busy: boolean
 }) {
   const accent = riskAccentColor(item.risk_level ?? undefined)
+  const selfMod = isSelfMod(item)
 
   return (
     <div style={{
@@ -154,30 +235,56 @@ function ApprovalCard({
           </p>
         )}
 
+        {/* Self-mod diff preview (only when this is a self-mod item) */}
+        {selfMod && <SelfModDiff item={item} />}
+
         {/* Hairline */}
         <hr className="j-hairline" style={{ margin: '14px 0 14px 0' }} />
 
         {/* Action row */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button
-            onClick={onApprove}
-            disabled={busy}
-            className="j-btn j-btn-primary"
-            style={{ gap: 6 }}
-          >
-            <Icon name="check" size={14} stroke={2} />
-            승인
-          </button>
-          <button
-            onClick={onReject}
-            disabled={busy}
-            className="j-btn j-btn-danger"
-            style={{ gap: 6 }}
-          >
-            <Icon name="x" size={14} />
-            거절
-          </button>
-        </div>
+        {selfMod ? (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              onClick={onApply}
+              disabled={busy}
+              className="j-btn j-btn-primary"
+              style={{ gap: 6 }}
+            >
+              <Icon name="check" size={14} stroke={2} />
+              적용
+            </button>
+            <button
+              onClick={onRollback}
+              disabled={busy}
+              className="j-btn j-btn-danger"
+              style={{ gap: 6 }}
+            >
+              <Icon name="x" size={14} />
+              롤백
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              onClick={onApprove}
+              disabled={busy}
+              className="j-btn j-btn-primary"
+              style={{ gap: 6 }}
+            >
+              <Icon name="check" size={14} stroke={2} />
+              승인
+            </button>
+            <button
+              onClick={onReject}
+              disabled={busy}
+              className="j-btn j-btn-danger"
+              style={{ gap: 6 }}
+            >
+              <Icon name="x" size={14} />
+              거절
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -226,7 +333,7 @@ function EmptyState() {
 // Approval content
 // ---------------------------------------------------------------------------
 function ApprovalContent() {
-  const [items, setItems] = useState<TaskItem[]>([])
+  const [items, setItems] = useState<ApprovalItem[]>([])
   const [loading, setLoading] = useState(true)
   const [actionId, setActionId] = useState<string | null>(null)
   const [toast, setToast] = useState('')
@@ -267,6 +374,28 @@ function ApprovalContent() {
       await api.rejectTask(taskId)
       setItems(prev => prev.filter(i => i.task_id !== taskId))
       showToast('거절되었습니다')
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : '오류')
+    } finally { setActionId(null) }
+  }
+
+  const applyMod = async (taskId: string) => {
+    setActionId(taskId)
+    try {
+      await api.applySelfMod(taskId)
+      showToast('적용되었습니다')
+      await load()
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : '오류')
+    } finally { setActionId(null) }
+  }
+
+  const rollbackMod = async (taskId: string) => {
+    setActionId(taskId)
+    try {
+      await api.rollbackSelfMod(taskId)
+      showToast('롤백되었습니다')
+      await load()
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : '오류')
     } finally { setActionId(null) }
@@ -355,6 +484,8 @@ function ApprovalContent() {
               item={item}
               onApprove={() => approve(item.task_id)}
               onReject={() => reject(item.task_id)}
+              onApply={() => applyMod(item.task_id)}
+              onRollback={() => rollbackMod(item.task_id)}
               busy={actionId === item.task_id}
             />
           ))}

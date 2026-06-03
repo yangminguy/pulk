@@ -20,6 +20,8 @@ Return ONLY valid JSON matching this schema:
   "business_id": string | null,
   "needs_business_clarification": boolean,
   "business_clarification_question": string | null,
+  "needs_clarification": boolean,
+  "clarification_question": string | null,
   "new_business_proposal": { "title": string, "one_liner": string } | null
 }
 
@@ -50,12 +52,22 @@ The founder's directive: "결제와 외부로 나가는 문서·메시지는 무
   provide a short business_clarification_question. Do NOT set business_id when clarification is needed.
 - needs_business_clarification: true only when it is genuinely unclear which business applies.
 - business_clarification_question: only present when needs_business_clarification is true.
+- needs_clarification: true ONLY when the CEO is genuinely blocked and cannot produce even
+  a useful internal draft. Do NOT ask merely because target/scope/success criteria are
+  incomplete. For internal planning, PMF experiments, messaging drafts, research, specs,
+  or analysis, proceed with sensible assumptions and record them in assumptions[].
+  Ask only when the instruction is referential/vague with no recoverable object ("그거 진행해줘",
+  "지난번 것 해줘" without chat history), or when a payment/outbound/legal action is requested
+  but the concrete recipient/amount/content is missing. The default posture is: assume, draft,
+  and let the founder review the result.
+- clarification_question: only present when needs_clarification is true. One focused Korean
+  question (or a short bundle) asking exactly what you need to proceed.
 - new_business_proposal: only present when the instruction describes a brand-new business not in the active list.
   Do NOT create or act on it — only surface it.
   If active business list is empty or absent, default business_id to null.
 
 [OUTPUT LANGUAGE — STRICT]
-All free-text string values that the founder will read (goal, assumptions[], success_criteria[], business_clarification_question, new_business_proposal.title, new_business_proposal.one_liner) MUST be written in 한국어. JSON keys, enum values ("direction_alignment", "D1"-"D5", true/false), and identifiers (business_id) stay English. The founder reads Korean; English prose in these fields is not acceptable.`;
+All free-text string values that the founder will read (goal, assumptions[], success_criteria[], business_clarification_question, clarification_question, new_business_proposal.title, new_business_proposal.one_liner) MUST be written in 한국어. JSON keys, enum values ("direction_alignment", "D1"-"D5", true/false), and identifiers (business_id) stay English. The founder reads Korean; English prose in these fields is not acceptable.`;
 
 export interface FounderMemoryEntry {
   insight: string;
@@ -93,12 +105,16 @@ interface ParsedInterpretation {
   business_id: string | null;
   needs_business_clarification: boolean;
   business_clarification_question?: string;
+  needs_clarification: boolean;
+  clarification_question?: string;
   new_business_proposal?: { title: string; one_liner: string };
 }
 
 export type InterpretResult = CEOInterpretation & {
   needs_business_clarification: boolean;
   business_clarification_question?: string;
+  needs_clarification: boolean;
+  clarification_question?: string;
   new_business_proposal?: { title: string; one_liner: string };
 };
 
@@ -147,10 +163,14 @@ export async function interpretFounderInstruction(
     approval_required: parsed.approval_required,
     business_id: parsed.business_id,
     needs_business_clarification: parsed.needs_business_clarification,
+    needs_clarification: parsed.needs_clarification,
     created_at: now,
   };
   if (parsed.business_clarification_question !== undefined) {
     result.business_clarification_question = parsed.business_clarification_question;
+  }
+  if (parsed.clarification_question !== undefined) {
+    result.clarification_question = parsed.clarification_question;
   }
   if (parsed.new_business_proposal !== undefined) {
     result.new_business_proposal = parsed.new_business_proposal;
@@ -189,9 +209,13 @@ function parseInterpretation(raw: string, activeBusinesses: ActiveBusiness[]): P
     approval_required: obj.approval_required,
     business_id: businessId,
     needs_business_clarification: needsClarification,
+    needs_clarification: Boolean(obj.needs_clarification),
   };
   if (needsClarification && typeof obj.business_clarification_question === 'string') {
     parsed.business_clarification_question = obj.business_clarification_question;
+  }
+  if (parsed.needs_clarification && typeof obj.clarification_question === 'string') {
+    parsed.clarification_question = obj.clarification_question;
   }
   if (obj.new_business_proposal && typeof obj.new_business_proposal.title === 'string') {
     parsed.new_business_proposal = {

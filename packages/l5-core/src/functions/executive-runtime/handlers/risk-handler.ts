@@ -10,13 +10,13 @@ export function riskHandler(input: HandlerInput): HandlerResult {
   const hasPii = /(pii|personal data|email|phone|customer data|private|privacy)/i.test(text);
   const externalSend = /(send|publish|customer|client|lead|outreach|proposal|public)/i.test(text);
   const elevatedRisk = task.risk_level === 'D3' || task.risk_level === 'D4' || task.risk_level === 'D5';
-  // Risk/QA is an INTERNAL review step: it documents flags and hands the result to
-  // the CEO. It must NOT hard-block internal analysis just because the text mentions
-  // PII/risk, and it must NOT self-escalate the Founder approval gate — that fires
-  // only for a genuine outbound send / payment, decided at planning time. So we
-  // never block, never inflate approval, and preserve the task's own risk level.
-  const blocked = false;
-  const approvalRequired = task.approval_required;
+  // Risk/QA is an INTERNAL review step: it does not block merely because risk is
+  // high, but it must catch a real outbound/PII action that arrived without the
+  // founder gate. That is the narrow exception: external send/payment gates are
+  // mandatory, while internal planning keeps flowing to CEO review.
+  const missingExternalGate = externalSend && !task.approval_required;
+  const blocked = missingExternalGate;
+  const approvalRequired = task.approval_required || externalSend;
   const riskLevel: RiskLevel = task.risk_level ?? 'D2';
 
   const output = {
@@ -31,11 +31,11 @@ export function riskHandler(input: HandlerInput): HandlerResult {
       'Block action and require additional approval or PII review',
       'Downgrade action scope to reduce risk level',
     ],
-    recommendation: 'Block any action missing risk_level, pii_level, or approval gate — do not allow D3-D5 without explicit sign-off',
+    recommendation: 'Block external-send/payment actions that lack a founder gate; route internal risk findings to CEO review',
     action_items: [
       'Verify risk_level is assigned to the action',
       'Verify pii_level is assigned to any customer data used',
-      'Verify approval gate exists for D3-D5 actions',
+      'Verify approval gate exists for external-send/payment actions',
       'Verify LLM trace does not include unnecessary PII',
       'Return review result to CEO with pass/block decision',
     ],
@@ -64,7 +64,7 @@ export function riskHandler(input: HandlerInput): HandlerResult {
       details: {
         pii: hasPii ? 'flagged' : 'not detected',
         external_send: externalSend ? 'flagged' : 'not detected',
-        approval_gate: approvalRequired ? 'required' : 'not required',
+        approval_gate: task.approval_required ? 'required' : (externalSend ? 'missing' : 'not required'),
         elevated_risk: elevatedRisk ? String(task.risk_level) : 'not detected',
       },
       approval_required: approvalRequired,
@@ -73,7 +73,7 @@ export function riskHandler(input: HandlerInput): HandlerResult {
     approval_required: approvalRequired,
     blocked,
     reason: blocked
-      ? 'Blocked or routed to approval because PII/external/elevated-risk work cannot execute silently.'
+      ? 'Blocked because an external-send action was missing the founder approval gate.'
       : 'Risk review completed without a blocking approval gap.',
     risk_level: riskLevel,
     source_ref: task.source_ref,

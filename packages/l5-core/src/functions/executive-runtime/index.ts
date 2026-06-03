@@ -7,6 +7,8 @@ import { validateOutput, buildHandoff } from './protocol';
 import type { LLMClient } from '../ceo-orchestration/types';
 import { reviewExecutiveOutput, type CEOReviewVerdict } from '../ceo-orchestration/review';
 import { runExecutive } from './executive-llm';
+import { runExecutiveWithTools as _runExecutiveWithTools } from './tool-loop';
+import type { ExecutiveTool } from './tools/types';
 import { cmoHandler } from './handlers/cmo-handler';
 import { croHandler } from './handlers/cro-handler';
 import { cpoHandler } from './handlers/cpo-handler';
@@ -17,6 +19,9 @@ import { riskHandler } from './handlers/risk-handler';
 import { chiefOfStaffHandler } from './handlers/chief-of-staff-handler';
 
 export type { AgentOutput, HandlerInput, HandlerResult } from './protocol';
+export type { ExecutiveTool, ToolResult, ToolPermission, ToolCallRequest, ToolRunContext } from './tools/types';
+export { ToolRegistry, createToolRegistry } from './tools/registry';
+export { runExecutiveWithTools } from './tool-loop';
 
 export type ApprovalRouting = 'D3_auto_24h' | 'D4_manual' | 'D5_double_gate' | null;
 
@@ -174,15 +179,40 @@ export interface ExecuteAgentTaskLiveResult {
   validation_errors: string[];
 }
 
+export interface ExecuteAgentTaskLiveOptions {
+  context?: Record<string, unknown>;
+  /** Formatted insight text from recallInsights+formatInsightsForPrompt. Injected into executive prompt. */
+  recalledInsights?: string;
+  /** M3: optional executive tools (e.g. secondbrain.read/write). Passed to the tool-calling loop. */
+  tools?: ExecutiveTool[];
+}
+
 export async function executeAgentTaskLive(
   task: AgentTask,
   llm: LLMClient,
-  context?: Record<string, unknown>
+  options?: ExecuteAgentTaskLiveOptions | Record<string, unknown>
 ): Promise<ExecuteAgentTaskLiveResult> {
-  // 1) Executive does the real work.
+  // Support both old signature (context object) and new options object.
+  // Distinguish by checking for known ExecuteAgentTaskLiveOptions keys.
+  let context: Record<string, unknown> | undefined;
+  let recalledInsights: string | undefined;
+  let tools: ExecutiveTool[] | undefined;
+  if (options !== undefined) {
+    if ('recalledInsights' in options || 'context' in options || 'tools' in options) {
+      const opts = options as ExecuteAgentTaskLiveOptions;
+      context = opts.context;
+      recalledInsights = opts.recalledInsights;
+      tools = opts.tools;
+    } else {
+      // Legacy: plain context object passed directly
+      context = options as Record<string, unknown>;
+    }
+  }
+
+  // 1) Executive does the real work (with optional recalled insights and tools injected).
   let execResult: HandlerResult;
   try {
-    execResult = await runExecutive({ task, context }, llm);
+    execResult = await _runExecutiveWithTools({ task, context }, llm, { recalledInsights, tools });
   } catch (err) {
     const reason = `${task.assigned_agent} execution failed: ${(err as Error).message.slice(0, 200)}`;
     return {

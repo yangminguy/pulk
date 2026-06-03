@@ -6,6 +6,59 @@
 
 이 리포트는 보고서 인용이 아니라 worker-6가 직접 실행한 명령 결과에 기반한다.
 
+## 0. Current QA Addendum — 2026-06-03
+
+작성자: Codex  
+범위: 신규 기능 변경분 중심 QA wiring 복구, CEO 되묻기/agent fanout 정책 수정, generated/runtime artifact 추적 제거, 전체 smoke/E2E 재검증, archive 청소
+
+### 최종 판정
+
+PASS. 이번 변경분 기준 workspace typecheck/lint/test/build, NocoBase E2E, Founder UI E2E 전체, authenticated smoke, autopilot smoke, D6 delegation smoke가 통과했다. Docker CLI 부재는 계속 optional warning이며 현재 SQLite/NocoBase smoke에는 필요하지 않았다.
+
+### 직접 실행 결과
+
+| 검증 | 명령 | 결과 |
+|------|------|------|
+| `@l5/core` typecheck/build/test | `corepack pnpm --filter @l5/core typecheck`, `build`, `test -- --runInBand` | PASS (48 suites / 516 tests) |
+| `@l5/agent-runtime` test | `corepack pnpm --filter @l5/agent-runtime test -- --runInBand` | PASS (1 suite / 5 tests) |
+| `@l5/hermes-runtime` test/typecheck | `corepack pnpm --filter @l5/hermes-runtime test -- --runInBand`, `typecheck` | PASS (13 suites / 86 tests) |
+| Founder UI typecheck/build | `corepack pnpm --dir apps/founder-ui typecheck`, `build` | PASS |
+| Founder UI E2E smoke | `corepack pnpm --dir apps/founder-ui e2e` | PASS (`/chat`, `/monitor`, `/memory`, `/control-room`, `/tool-requests`, `/approval`) |
+| NocoBase app tests | `corepack pnpm --dir apps/nocobase-app test` | PASS |
+| Plugin builds | `nocobase build @l5/plugin-orchestration`, `nocobase build @l5/plugin-executive-monitor` | PASS |
+| Authenticated NocoBase smoke | `corepack pnpm smoke:nocobase-auth` | PASS |
+| Structural validate | `corepack pnpm validate` | PASS (22 passed / 1 optional Docker warning / 0 failed) |
+| Workspace typecheck/lint/test/build | `corepack pnpm -r typecheck`, `corepack pnpm -r --if-present lint`, `corepack pnpm -r test`, `corepack pnpm -r build` | PASS |
+| NocoBase E2E | `corepack pnpm --dir apps/nocobase-app e2e test` | PASS (1 passed) |
+| Founder UI detailed E2E | `verify-changes.mjs`, `verify-live.mjs`, `e2e-projects.mjs` | PASS |
+| Autopilot smoke | `corepack pnpm tsx scripts/smoke-autopilot-e2e.ts` | PASS |
+| D6 delegation smoke | `node scripts/d6-delegation-smoke.mjs` | PASS |
+
+### 이번 QA에서 정리한 항목
+
+| 항목 | 상태 |
+|------|------|
+| `.next/`, `apps/nocobase-app/storage/` tracked artifact noise | fixed: git index에서 제거하고 `.gitignore`에 추가 |
+| `services/agent-runtime` test script 누락 | fixed: Jest test script/devDeps 추가 |
+| `apps/founder-ui` E2E script 누락 | fixed: `pnpm --dir apps/founder-ui e2e` 추가 |
+| CEO 되묻기 과다 | fixed: actionable goal+assumptions/success criteria면 진행, 진짜 blocked/승인 누락만 질문 |
+| agent task fanout 과다 | fixed: quick/few/single intent를 감지해 기본 1-2개 agent로 제한 |
+| RiskQA gate 정책 | fixed: D3-D5 자체가 아니라 외부발신/결제/승인 누락을 차단 |
+| NocoBase plugin test CSS import failure | fixed: client CSS import 대신 package/source 구조 검증 |
+| `node-cron` plugin build bundling failure | fixed: app-level runtime dependency로 lazy load |
+| authenticated smoke stale expectations | fixed: vague prompt는 clarification, concrete internal prompt는 task 생성으로 검증 |
+| NocoBase E2E auth setup | fixed: generated auth setup + SQLite isolation script |
+| Claude CLI smoke invocation | fixed: `claude -p <prompt>` invocation and token log redaction |
+| Project E2E stale dependency/text checks | fixed: `@playwright/test` import and current header assertions |
+| `apps/nocobase` legacy scaffold | fixed: excluded from pnpm workspace QA; remains reference-only |
+| `artifacts/`, `work-orders/` active-doc noise | fixed: moved under `docs/archive/2026-06-03-cleanup/` |
+
+### 남은 청소 후보
+
+`reports/` 안의 HTML 계획서는 현재 문서에서 active reference로 쓰이고 있어 통째로 이동하지 않았다. `docs/legacy`와 장기 `docs/HANDOFF.md` 로그 분리는 히스토리 참조가 많아 이번 패스에서는 보존했다.
+
+아래 섹션은 이전 QA 기록이며, 현재 상태는 이 addendum을 우선한다.
+
 ## 0. Current QA Addendum — 2026-05-27
 
 작성자: Codex  
@@ -39,8 +92,6 @@ PASS. 다음 UI/Phase Summary 작업으로 넘어갈 수 있는 상태다. 단, 
 | SQLite에서 PostgreSQL 전용 `ALTER TABLE` 경고 | fixed |
 | Recursive lint용 `@l5/core` ESLint config 부재 | fixed |
 | Docker CLI 부재로 인한 validate 실패 | fixed as optional warning |
-
-아래 섹션은 이전 QA 기록이며, 현재 상태는 이 addendum을 우선한다.
 
 ## 1. Verification Results (직접 실행)
 

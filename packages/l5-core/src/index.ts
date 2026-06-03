@@ -23,5 +23,11 @@ export * from './functions/cto-clarification';
 export * from './functions/cto-decision';
 export * from './functions/cto-design';
 export * from './functions/project-status/builder';
+export * from './functions/consultation';
+export { createAskFounderTool } from './functions/consultation/tool';
+export * from './functions/delegation'; // tool + loop + verify re-exported from index
+export * from './functions/chief-of-staff'; // P1 — founder synthesis deliverable
+export * from './functions/monitor'; // P2 — live agent status derivation
+export * from './functions/cto-control-room'; // P3-3 — control room tree builder
 export { createClaudeCLIClient } from './llm/claude-cli-client';
 export type { ClaudeCLIModel, ClaudeCLIClientOptions } from './llm/claude-cli-client';

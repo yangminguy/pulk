@@ -64,10 +64,13 @@ export function createDefaultLLMClient(role: LLMRole): LLMClient {
     return createOpenAIClient({ apiKey, model: 'gpt-4o' });
   }
 
-  // Default: claude-cli.
+  // Default: claude-cli. Executive tool-loop runs may make several LLM round
+  // trips with a larger prompt (tool list + recalled insights), so the default
+  // 60s per-call timeout is too tight; allow override via env.
+  const timeoutMs = Number(process.env.L5_LLM_TIMEOUT_MS) || 300_000;
   if (role === 'cto-design') {
-    return createClaudeCLIClient({ model: 'opus' });
+    return createClaudeCLIClient({ model: 'opus', timeoutMs });
   }
   // cto-verify and default both use haiku.
-  return createClaudeCLIClient({ model: 'haiku' });
+  return createClaudeCLIClient({ model: 'haiku', timeoutMs });
 }

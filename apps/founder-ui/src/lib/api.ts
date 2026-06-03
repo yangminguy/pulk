@@ -33,6 +33,18 @@ function unwrap<T>(r: { data: { ok?: boolean; data?: T } | T }): T {
   return inner as T
 }
 
+// The executive's full work product, persisted on agent_tasks.output.
+export type AgentOutputLite = {
+  goal?: string
+  current_situation?: string
+  bottleneck?: string
+  recommendation?: string
+  options?: string[]
+  action_items?: string[]
+  insight_to_record?: string
+  confidence_level?: string
+}
+
 export type TaskItem = {
   task_id: string
   agent: string
@@ -46,6 +58,7 @@ export type TaskItem = {
   phase: string | null
   source_ref: string | null
   blocker: string | null
+  output?: AgentOutputLite | null
   updated_at: string
 }
 
@@ -61,6 +74,70 @@ export type ToolRequestItem = {
   approval_required: boolean
   updated_at: string
   created_at: string
+  self_mod_status?: string | null
+  acr_branch?: string | null
+  acr_diff?: string | null
+  acr_pr_url?: string | null
+}
+
+// P2 — live agent status
+export type LiveStatusAgent = {
+  task_id: string
+  agent: string
+  task_title: string
+  raw_status: string
+  live_status: string
+  counterpart: string | null
+  current_action: string
+  risk_level: string | null
+  phase: string | null
+  approval_required: boolean
+  updated_at: string
+}
+export type LiveStatusGroup = {
+  instruction_id: string
+  instruction_text: string
+  agents: LiveStatusAgent[]
+}
+
+// P3-3 — control room tree
+export type ControlRoomDevTask = {
+  task_id: string
+  title: string
+  agent: string
+  status: string
+  risk_level: string | null
+  phase: string | null
+  branch?: string | null
+  phase_label?: string | null
+  exec_status?: string | null
+  changed_files?: number | null
+  log_tail?: string | null
+}
+export type ControlRoomProject = {
+  project_id: string | null
+  project_name: string
+  dev_tasks: ControlRoomDevTask[]
+}
+export type ControlRoomBusiness = {
+  business_id: string | null
+  business_name: string
+  projects: ControlRoomProject[]
+}
+
+// P3-2 — curation summary
+export type CurationSummaryItem = {
+  id: string
+  insight: string
+  reason?: string | null
+  discarded_at?: string | null
+}
+export type CurationSummaryData = {
+  week_start: string
+  saved: CurationSummaryItem[]
+  discarded: CurationSummaryItem[]
+  needs_review: CurationSummaryItem[]
+  totals: { saved: number; discarded: number; needs_review: number }
 }
 
 export type ActiveBusiness = {
@@ -159,9 +236,15 @@ export type ProjectItem = {
 export type ChatMessageItem = {
   id: string
   project_id: string
-  role: 'founder' | 'ceo'
+  role: 'founder' | 'ceo' | 'chief_of_staff'
   text: string
   metadata?: {
+    kind?: 'synthesis'
+    deliverable_id?: string
+    decision_summary?: string
+    contributions?: Array<{ agent: string; task_id?: string; task_title: string; summary: string; status: string }>
+    open_gaps?: string[]
+    next_actions?: Array<{ kind: 'approve' | 'delegate' | 'hold'; label: string; target_agent?: string; reason: string }>
     instructionId?: string
     planStatus?: 'pending' | 'approved' | 'rejected'
     goal?: string
@@ -223,6 +306,12 @@ export const api = {
       body: JSON.stringify({ instruction_id }),
     }).then(r => unwrap(r)),
 
+  closeInstruction: (id: string) =>
+    request<{ data: unknown }>('/api/founder_instructions:update', {
+      method: 'POST',
+      body: JSON.stringify({ filterByTk: id, values: { status: 'closed' } }),
+    }).then(r => r.data),
+
   generateWorkflow: (idea: string) =>
     request<{ data: { ok: boolean; data: unknown } }>('/api/chat:generateWorkflow', {
       method: 'POST',
@@ -278,6 +367,65 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ id }),
     }),
+
+  // P2 — live agent status, grouped by instruction. Pass businessId to scope to
+  // a business (null/undefined → 'common' so the monitor matches the sidebar
+  // selection; backend treats missing param as all-businesses).
+  liveStatus: (businessId?: string | null, instructionId?: string) => {
+    const params = new URLSearchParams()
+    if (businessId !== undefined) params.set('business_id', businessId ?? 'common')
+    if (instructionId) params.set('instruction_id', instructionId)
+    const qs = params.toString()
+    return request<{ data: { ok: boolean; data: LiveStatusGroup[] } }>(
+      `/api/monitor:liveStatus${qs ? `?${qs}` : ''}`
+    )
+      .then(r => unwrap(r) as LiveStatusGroup[])
+      .catch(() => [] as LiveStatusGroup[])
+  },
+
+  // P3-3 — control room tree (Business ▸ Project ▸ dev-task)
+  controlRoomTree: (businessId?: string) =>
+    request<{ data: { ok: boolean; data: ControlRoomBusiness[] } }>(
+      `/api/monitor:controlRoomTree${businessId ? `?business_id=${encodeURIComponent(businessId)}` : ''}`
+    )
+      .then(r => unwrap(r) as ControlRoomBusiness[])
+      .catch(() => [] as ControlRoomBusiness[]),
+
+  // P3-2 — knowledge auto-curation
+  curationSummary: () =>
+    request<{ data: { ok: boolean; data: CurationSummaryData } }>('/api/monitor:curationSummary')
+      .then(r => unwrap(r) as CurationSummaryData)
+      .catch(() => ({ week_start: '', saved: [], discarded: [], needs_review: [], totals: { saved: 0, discarded: 0, needs_review: 0 } } as CurationSummaryData)),
+
+  curate: () =>
+    request<{ data: { ok: boolean; data: unknown } }>('/api/monitor:curate', { method: 'POST', body: '{}' })
+      .then(r => unwrap(r))
+      .catch(() => null),
+
+  overrideCuration: (id: string, decision: 'save' | 'discard' | 'restore') =>
+    request<unknown>('/api/monitor:overrideCuration', {
+      method: 'POST',
+      body: JSON.stringify({ id, decision }),
+    }),
+
+  // P3-4 — Tool Request → CTO self-modification
+  sendToolRequestToCTO: (task_id: string) =>
+    request<{ data: { ok: boolean; data: unknown } }>('/api/monitor:sendToCTO', {
+      method: 'POST',
+      body: JSON.stringify({ task_id }),
+    }).then(r => r.data),
+
+  applySelfMod: (task_id: string) =>
+    request<{ data: { ok: boolean; data: unknown } }>('/api/monitor:applySelfMod', {
+      method: 'POST',
+      body: JSON.stringify({ task_id }),
+    }).then(r => r.data),
+
+  rollbackSelfMod: (task_id: string) =>
+    request<{ data: { ok: boolean; data: unknown } }>('/api/monitor:rollbackSelfMod', {
+      method: 'POST',
+      body: JSON.stringify({ task_id }),
+    }).then(r => r.data),
 
   currentPhase: () =>
     request<{ data: {
@@ -408,13 +556,16 @@ export const api = {
       .then(r => r.data as TaskItem[])
       .catch(() => [] as TaskItem[]),
 
-  getInboxTasks: (projectId: string | null, businessId: string | null) => {
-    let query = `/api/agent_tasks:list?filter[status]=needs_review&pageSize=200`
-    if (projectId) {
-      query += `&filter[$or][0][project_id]=${encodeURIComponent(projectId)}&filter[$or][1][project_id][$empty]=true`
-    } else {
-      query += `&filter[project_id][$empty]=true`
-    }
+  getInboxTasks: (_projectId: string | null, businessId: string | null) => {
+    // Inbox shows every executive's work (in-progress + needs_review + done),
+    // not just review-pending, so the founder can see what each agent is doing
+    // and read the real deliverable. Killed tasks are excluded. Newest first.
+    //
+    // Scoped by BUSINESS only — not project. The founder selects a business and
+    // wants every exec's task for it in one place; auto-selecting a project would
+    // hide tasks filed under a different project of the same business (the
+    // "shows in roadmap but missing from inbox" bug).
+    let query = `/api/agent_tasks:list?filter[status][$ne]=killed&sort=-updatedAt&pageSize=200`
     if (businessId && businessId !== 'common') {
       query += `&filter[business_id]=${encodeURIComponent(businessId)}`
     } else {
@@ -431,4 +582,12 @@ export const api = {
     )
       .then(r => r.data as HandoffItem[])
       .catch(() => [] as HandoffItem[]),
+
+  // Single agent_task with its full output — used by the monitor drill-down.
+  getTaskDetail: (taskId: string) =>
+    request<{ data: TaskItem[] }>(
+      `/api/agent_tasks:list?filter[id]=${encodeURIComponent(taskId)}&pageSize=1`
+    )
+      .then(r => (Array.isArray(r.data) ? r.data[0] ?? null : null))
+      .catch(() => null),
 }

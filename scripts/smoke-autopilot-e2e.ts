@@ -50,7 +50,11 @@ async function main(): Promise<void> {
     method: 'POST',
     token,
     body: {
-      raw_text: `verify-autopilot.md 파일을 샌드박스 로컬 프로젝트 루트에 생성해줘.`,
+      raw_text: [
+        'CTO Agent 한 명만 실행해서 자율 실행 루프를 검증해줘.',
+        `${sandboxPath} 샌드박스 프로젝트 루트에 ${testFile} 파일을 생성하면 성공이야.`,
+        '외부 발송이나 유료 작업은 하지 말고, 로컬 샌드박스 파일 생성만 수행해.',
+      ].join(' '),
       intent: 'ACR E2E 자율 실행 루프 작동 검증',
     },
   }) as any;
@@ -89,7 +93,7 @@ async function main(): Promise<void> {
   try {
     // gateway.js를 실행하여 dispatcher 가 해당 큐 태스크를 pick up 하게 함
     const dispatchCmd = `NOCOBASE_TOKEN="${token}" node services/hermes-runtime/dist/gateway.js task-dispatcher`;
-    console.log(`Executing: ${dispatchCmd}`);
+    console.log('Executing: NOCOBASE_TOKEN="<redacted>" node services/hermes-runtime/dist/gateway.js task-dispatcher');
     const output = execSync(dispatchCmd, {
       env: {
         ...process.env,

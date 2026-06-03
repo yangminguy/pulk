@@ -2,11 +2,14 @@ import { randomUUID } from 'crypto';
 import path from 'path';
 import { defineCollection } from '@nocobase/database';
 import { Plugin } from '@nocobase/server';
+import { makeSecondBrainTransport } from './secondbrain-transport';
+import { makeVideoFactoryTransport } from './video-factory-transport';
 
 const {
   assignExecutiveTasks,
   decomposeIntoWorkstreams,
   interpretFounderInstruction,
+  resolveClarification,
   createOpenAIClient,
   createDefaultLLMClient,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/ceo-orchestration'));
@@ -23,15 +26,46 @@ const {
 
 const {
   collectInsights,
+  formatInsightsForPrompt,
+  recallInsights,
+  createSecondBrainSource,
+  createSecondBrainTools,
+  createVideoFactoryTools,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/memory'));
+
+// M3: build secondbrain transport once at module load. null when env not set.
+const _secondBrainTransport = makeSecondBrainTransport();
+
+// M5: build video-factory transport once at module load. null when env not set.
+const _videoFactoryTransport = makeVideoFactoryTransport();
 
 const {
   verifyCTOPhase,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cto-verification'));
 
 const {
+  openConsultation,
+  resolveConsultation,
+  formatConsultationForPrompt,
+  createAskFounderTool,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/consultation'));
+
+const {
   answerClarifications,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cto-clarification'));
+
+// M6: executive-to-executive delegation (ask_executive tool + verification loop).
+const {
+  createAskExecutiveTool,
+  runDelegationLoop,
+  buildVerificationPrompt,
+  parseVerdict,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/delegation'));
+
+// P1: Chief of Staff synthesis — aggregate an instruction's task outputs into one founder deliverable.
+const {
+  synthesizeDeliverable,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/chief-of-staff'));
 
 type ActionContext = {
   app?: any;
@@ -60,6 +94,8 @@ export default class PluginOrchestrationServer extends Plugin {
     registerCollections(this.db);
     registerChatResource(this.app, this.db);
     registerCrudResources(this.app);
+    registerConsultationResource(this.app, this.db);
+    registerDelegationResource(this.app, this.db);
 
     this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow', 'approvePlan', 'rejectPlan', 'history'], 'loggedIn');
     this.app.acl.allow('agent', ['executeTask'], 'loggedIn');
@@ -75,6 +111,9 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('projects', '*', 'loggedIn');
     this.app.acl.allow('chat_messages', '*', 'loggedIn');
     this.app.acl.allow('project_roadmap_events', '*', 'loggedIn');
+    this.app.acl.allow('consultation', ['list', 'respond'], 'loggedIn');
+    this.app.acl.allow('delegation', ['list', 'advance'], 'loggedIn');
+    this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
   }
 
   async install() {}
@@ -95,7 +134,12 @@ async function ensureOrchestrationColumns(db: any) {
         ADD COLUMN IF NOT EXISTS source_ref text,
         ADD COLUMN IF NOT EXISTS acr_token text,
         ADD COLUMN IF NOT EXISTS business_id text,
-        ADD COLUMN IF NOT EXISTS project_id text;
+        ADD COLUMN IF NOT EXISTS project_id text,
+        ADD COLUMN IF NOT EXISTS self_mod_origin text,
+        ADD COLUMN IF NOT EXISTS self_mod_status text,
+        ADD COLUMN IF NOT EXISTS acr_branch text,
+        ADD COLUMN IF NOT EXISTS acr_diff text,
+        ADD COLUMN IF NOT EXISTS acr_pr_url text;
     `);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -122,6 +166,78 @@ async function ensureOrchestrationColumns(db: any) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     db.logger?.warn?.(`Could not ensure ceo_interpretations contract columns: ${message}`);
+  }
+
+  // M4: executive_consultations table
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS executive_consultations (
+        id text PRIMARY KEY,
+        task_id text NOT NULL,
+        business_id text,
+        from_agent text NOT NULL,
+        question text NOT NULL,
+        options json,
+        status text NOT NULL DEFAULT 'awaiting_founder',
+        founder_response text,
+        resolved_at timestamptz,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure executive_consultations table: ${message}`);
+  }
+
+  // M6: executive_delegations table
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS executive_delegations (
+        id text PRIMARY KEY,
+        from_agent text NOT NULL,
+        to_agent text NOT NULL,
+        origin_task_id text NOT NULL,
+        work_task_id text,
+        objective text NOT NULL,
+        acceptance_criteria json,
+        status text NOT NULL DEFAULT 'open',
+        round int NOT NULL DEFAULT 0,
+        max_rounds int NOT NULL DEFAULT 3,
+        last_feedback text,
+        result_summary text,
+        business_id text,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure executive_delegations table: ${message}`);
+  }
+
+  // P1: founder_deliverables table + UNIQUE(instruction_id) idempotency backstop
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS founder_deliverables (
+        id text PRIMARY KEY,
+        instruction_id text NOT NULL,
+        project_id text,
+        business_id text,
+        decision_summary text NOT NULL,
+        contributions json DEFAULT '[]',
+        open_gaps json DEFAULT '[]',
+        next_actions json DEFAULT '[]',
+        chat_message_id text,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_founder_deliverables_instruction
+        ON founder_deliverables (instruction_id);
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure founder_deliverables table: ${message}`);
   }
 }
 
@@ -180,6 +296,14 @@ function registerCollections(db: any) {
       { name: 'acr_token', type: 'string' },
       { name: 'business_id', type: 'string' },
       { name: 'project_id', type: 'string' },
+      { name: 'self_mod_origin', type: 'string' },
+      { name: 'self_mod_status', type: 'string' },
+      { name: 'acr_branch', type: 'string' },
+      { name: 'acr_diff', type: 'text' },
+      { name: 'acr_pr_url', type: 'string' },
+      // Full executive AgentOutput (goal/options/recommendation/action_items …)
+      // so the inbox/monitor/synthesis can surface the real work product.
+      { name: 'output', type: 'json' },
     ],
   }));
 
@@ -225,6 +349,61 @@ function registerCollections(db: any) {
       { name: 'rationale', type: 'text', allowNull: false },
       { name: 'output_summary', type: 'text', defaultValue: '' },
       { name: 'completed_at', type: 'date', allowNull: false },
+    ],
+  }));
+
+  // M4: executive_consultations
+  db.collection(defineCollection({
+    name: 'executive_consultations',
+    title: 'Executive Consultations',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'task_id', type: 'string', allowNull: false },
+      { name: 'business_id', type: 'string' },
+      { name: 'from_agent', type: 'string', allowNull: false },
+      { name: 'question', type: 'text', allowNull: false },
+      { name: 'options', type: 'json' },
+      { name: 'status', type: 'string', allowNull: false, defaultValue: 'awaiting_founder' },
+      { name: 'founder_response', type: 'text' },
+      { name: 'resolved_at', type: 'date' },
+    ],
+  }));
+
+  // M6: executive_delegations
+  db.collection(defineCollection({
+    name: 'executive_delegations',
+    title: 'Executive Delegations',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'from_agent', type: 'string', allowNull: false },
+      { name: 'to_agent', type: 'string', allowNull: false },
+      { name: 'origin_task_id', type: 'string', allowNull: false },
+      { name: 'work_task_id', type: 'string' },
+      { name: 'objective', type: 'text', allowNull: false },
+      { name: 'acceptance_criteria', type: 'json', defaultValue: [] },
+      { name: 'status', type: 'string', allowNull: false, defaultValue: 'open' },
+      { name: 'round', type: 'integer', defaultValue: 0 },
+      { name: 'max_rounds', type: 'integer', defaultValue: 3 },
+      { name: 'last_feedback', type: 'text' },
+      { name: 'result_summary', type: 'text' },
+      { name: 'business_id', type: 'string' },
+    ],
+  }));
+
+  // P1: founder_deliverables — one synthesized deliverable per instruction
+  db.collection(defineCollection({
+    name: 'founder_deliverables',
+    title: 'Founder Deliverables',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'instruction_id', type: 'string', allowNull: false },
+      { name: 'project_id', type: 'string' },
+      { name: 'business_id', type: 'string' },
+      { name: 'decision_summary', type: 'text', allowNull: false },
+      { name: 'contributions', type: 'json', defaultValue: [] },
+      { name: 'open_gaps', type: 'json', defaultValue: [] },
+      { name: 'next_actions', type: 'json', defaultValue: [] },
+      { name: 'chat_message_id', type: 'string' },
     ],
   }));
 }
@@ -401,6 +580,8 @@ function registerChatResource(app: any, db: any) {
         const {
           needs_business_clarification,
           business_clarification_question,
+          needs_clarification,
+          clarification_question,
           new_business_proposal,
           business_id,
           ...interpCore
@@ -430,9 +611,15 @@ function registerChatResource(app: any, db: any) {
           project_id: project_id ?? null,
         };
 
-        // Ambiguous business: save records but stop task creation, return clarification question.
-        if (needs_business_clarification) {
-          const ceoResponseText = business_clarification_question ?? '비즈니스에 대한 명확한 식별이 필요합니다.';
+        // Clarification gate: if the CEO needs more from the founder — either an
+        // ambiguous business OR a general planning gap — save the records but stop
+        // task creation and return the question. This is the founder's planning
+        // conversation: ask, then decompose once answered. (resolveClarification
+        // is the pure l5-core decision; business ambiguity wins when both fire.)
+        const clarification = resolveClarification(interpretationDraft);
+        if (clarification.needs) {
+          const ceoResponseText = clarification.question ?? '진행을 위해 추가 정보가 필요합니다.';
+          const isBiz = clarification.kind === 'business';
           if (project_id) {
             const chatMessageRepo = db.getRepository('chat_messages');
             await chatMessageRepo.create({
@@ -441,7 +628,13 @@ function registerChatResource(app: any, db: any) {
                 project_id,
                 role: 'ceo',
                 text: ceoResponseText,
-                metadata: { needs_business_clarification: true, business_clarification_question },
+                metadata: {
+                  kind: 'clarification',
+                  clarification_kind: clarification.kind,
+                  clarification_question: clarification.question,
+                  // keep legacy flag for back-compat with existing clients
+                  ...(isBiz ? { needs_business_clarification: true, business_clarification_question: clarification.question } : {}),
+                },
                 created_at: now,
               },
             });
@@ -452,8 +645,11 @@ function registerChatResource(app: any, db: any) {
             data: {
               instruction: instructionOut,
               interpretation: interpretationRecord,
-              needs_business_clarification: true,
-              business_clarification_question: business_clarification_question ?? null,
+              needs_clarification: true,
+              clarification_kind: clarification.kind,
+              clarification_question: clarification.question,
+              needs_business_clarification: isBiz,
+              business_clarification_question: isBiz ? clarification.question : null,
               tasks: [],
               ...(new_business_proposal ? { new_business_proposal } : {}),
             },
@@ -856,6 +1052,23 @@ function registerCrudResources(app: any) {
           } else if (verifierVerdict && verifierVerdict.verdict === 'inconclusive') {
             updates.status = 'needs_review';
             updates.blocker = `verifier:inconclusive ${verifierVerdict.reason}. ${phaseCtx}`.trim();
+          } else if (typeof task?.source_ref === 'string' && task.source_ref.startsWith('selfmod:')) {
+            // P3-4: a CTO self-modification passed the verifier. Do NOT auto-merge;
+            // persist the structured diff/branch and gate it to the founder approval
+            // queue (diff preview → Apply/Reject). Floor default D3 ⇒ always gated.
+            const floor = process.env.L5_SELFMOD_AUTO_APPLY_FLOOR || 'D3';
+            const rank = (r?: string) => ({ D1: 1, D2: 2, D3: 3, D4: 4, D5: 5 }[r ?? 'D3'] ?? 3);
+            updates.status = 'needs_review';
+            updates.approval_required = rank(task.risk_level) >= rank(floor);
+            updates.self_mod_status = 'awaiting_apply';
+            updates.acr_branch = branch ?? null;
+            updates.acr_diff = diff_summary ?? null;
+            if (pr_url) updates.acr_pr_url = pr_url;
+            updates.blocker = `selfmod:awaiting_apply 변경 검토 필요${branch ? ` (branch=${branch})` : ''}`;
+            // reflect on the origin Tool Request
+            if (task.self_mod_origin) {
+              await taskRepo.update({ filterByTk: task.self_mod_origin, values: { self_mod_status: 'awaiting_apply' } }).catch(() => {});
+            }
           } else {
             updates.status = 'done';
             // Phase 2: record how the work was merged (or left for review).
@@ -1050,7 +1263,224 @@ function registerCrudResources(app: any) {
 
           // CEO-orchestration: executive does real work (Haiku) → CEO reviews (Haiku).
           const llm = buildLLMClient(`${task.title ?? ''} ${task.rationale ?? ''}`);
-          const result = await executeAgentTaskLive(task, llm);
+
+          // M2+M3: recall insights from founder_memory + secondbrain (if configured).
+          // Best-effort: failure must not block task execution.
+          let recalledInsights: string | undefined;
+          try {
+            const sources: any[] = [makeFounderMemoryInsightSource(ctx)];
+            if (_secondBrainTransport && typeof createSecondBrainSource === 'function') {
+              sources.push(createSecondBrainSource(_secondBrainTransport));
+            }
+            const insightRecords = typeof recallInsights === 'function'
+              ? await recallInsights({ sources, limit: 20 })
+              : [];
+            const formatted: string = insightRecords.length > 0 && typeof formatInsightsForPrompt === 'function'
+              ? formatInsightsForPrompt(insightRecords)
+              : '';
+            if (formatted) recalledInsights = formatted;
+          } catch (err) {
+            console.warn('[executeTask] memory recall for executive failed:', err);
+          }
+
+          // M3: build secondbrain tools so the executive can actively query/propose.
+          const sbTools: any[] = [];
+          try {
+            if (_secondBrainTransport && typeof createSecondBrainSource === 'function' && typeof createSecondBrainTools === 'function') {
+              const sbSource = createSecondBrainSource(_secondBrainTransport);
+              // proposeWrite: routes executive write proposals into founder_memory pending (CEO gate).
+              const proposeWrite = async (req: any) => {
+                const result = await makeFounderMemoryInsightSource(ctx).write!(req);
+                return result.ok
+                  ? { ok: true, data: { queued: true, message: 'CEO 검토 큐에 추가됨' } }
+                  : { ok: false, error: result.error };
+              };
+              sbTools.push(...createSecondBrainTools({ source: sbSource, proposeWrite }));
+            }
+          } catch (err) {
+            console.warn('[executeTask] secondbrain tools build failed:', err);
+          }
+
+          // M5: video-factory tools — CMO-exclusive tools for video content generation.
+          // allowed_roles: ['CMO'] means the tool-loop auto-rejects other roles.
+          // Graceful: if transport is null (env not set), tools are simply not added.
+          try {
+            if (_videoFactoryTransport && typeof createVideoFactoryTools === 'function') {
+              sbTools.push(...createVideoFactoryTools(_videoFactoryTransport));
+            }
+          } catch (err) {
+            console.warn('[executeTask] video-factory tools build failed:', err);
+          }
+
+          // M4: ask_founder tool — lets any executive pause and ask the founder
+          // a question. When called, it inserts a consultation record and
+          // returns data.await_founder=true so the tool-loop terminates early.
+          try {
+            if (typeof createAskFounderTool === 'function') {
+              const proposeConsultation = async (req: any): Promise<any> => {
+                const consultationRepo = ctx.db.getRepository('executive_consultations');
+                const rec = openConsultation({ id: randomUUID(), ...req });
+                await consultationRepo.create({ values: rec });
+                // Mark task as needs_review so the UI surfaces the pause
+                await taskRepo.update({
+                  filterByTk: task_id,
+                  values: {
+                    status: 'needs_review',
+                    blocker: `awaiting_founder: ${req.question.slice(0, 120)}`,
+                  },
+                });
+                return { ok: true, data: { await_founder: true, consultation_id: rec.id } };
+              };
+              sbTools.push(createAskFounderTool({ propose: proposeConsultation }));
+            }
+          } catch (err) {
+            console.warn('[executeTask] ask_founder tool build failed:', err);
+          }
+
+          // M6: ask_executive tool — lets an executive delegate work to another
+          // executive (via CEO orchestration). Inserts an `open` delegation record
+          // and pauses this task (blocker=awaiting_delegation:<id>). The delegation
+          // is driven to resolution by the `delegation/advance` action.
+          try {
+            if (typeof createAskExecutiveTool === 'function') {
+              const proposeDelegation = async (req: any): Promise<any> => {
+                const delegationRepo = ctx.db.getRepository('executive_delegations');
+                const did = randomUUID();
+                await delegationRepo.create({
+                  values: {
+                    id: did,
+                    from_agent: req.from_agent,
+                    to_agent: req.to_agent,
+                    origin_task_id: req.origin_task_id,
+                    objective: req.objective,
+                    acceptance_criteria: req.acceptance_criteria,
+                    status: 'open',
+                    round: 0,
+                    max_rounds: req.max_rounds,
+                    business_id: req.business_id ?? task.business_id ?? null,
+                  },
+                });
+                await taskRepo.update({
+                  filterByTk: task_id,
+                  values: {
+                    status: 'needs_review',
+                    blocker: `awaiting_delegation: ${did}`,
+                  },
+                });
+                return { ok: true, data: { delegation_opened: true, delegation_id: did } };
+              };
+              sbTools.push(createAskExecutiveTool({ propose: proposeDelegation }));
+            }
+          } catch (err) {
+            console.warn('[executeTask] ask_executive tool build failed:', err);
+          }
+
+          // M4: inject resolved consultations for this task into recalledInsights
+          // so the executive re-run has the founder's answer as context.
+          try {
+            const consultationRepo = ctx.db.getRepository('executive_consultations');
+            const resolvedOnes = await consultationRepo.find({
+              filter: { task_id: task.id, status: 'resolved' },
+              sort: ['-createdAt'],
+            });
+            if (resolvedOnes && resolvedOnes.length > 0 && typeof formatConsultationForPrompt === 'function') {
+              const consultationContext = resolvedOnes
+                .map((c: any) => formatConsultationForPrompt(c))
+                .filter(Boolean)
+                .join('\n\n');
+              if (consultationContext) {
+                recalledInsights = recalledInsights
+                  ? `${recalledInsights}\n\n${consultationContext}`
+                  : consultationContext;
+              }
+            }
+          } catch (err) {
+            console.warn('[executeTask] consultation context inject failed:', err);
+          }
+
+          // M6: inject resolved delegations for this origin task so the requesting
+          // executive re-run sees the delegated work's result as context.
+          try {
+            const delegationRepo = ctx.db.getRepository('executive_delegations');
+            const resolvedDels = await delegationRepo.find({
+              filter: { origin_task_id: task.id, status: 'resolved' },
+              sort: ['-createdAt'],
+            });
+            if (resolvedDels && resolvedDels.length > 0) {
+              const delContext = resolvedDels
+                .map(
+                  (d: any) =>
+                    `# 위임 결과 (${d.to_agent} → ${d.from_agent})\n` +
+                    `목표: ${d.objective}\n결과: ${d.result_summary ?? '(요약 없음)'}`,
+                )
+                .join('\n\n');
+              if (delContext) {
+                recalledInsights = recalledInsights
+                  ? `${recalledInsights}\n\n${delContext}`
+                  : delContext;
+              }
+            }
+          } catch (err) {
+            console.warn('[executeTask] delegation context inject failed:', err);
+          }
+
+          // Multi-tool tool-loop makes several slow claude rounds (+ npx/python
+          // spawns) — too heavy for a synchronous HTTP action. Default OFF: the
+          // executive still LEARNS from secondbrain via recalledInsights (fast
+          // read). Set L5_EXECUTIVE_TOOLS=1 to enable active tool-calling
+          // (suitable only for an async/dispatcher path). (perf fix 2026-06-02)
+          const enableExecTools = process.env.L5_EXECUTIVE_TOOLS === '1';
+          const result = await executeAgentTaskLive(task, llm, {
+            recalledInsights,
+            tools: enableExecTools ? sbTools : [],
+          });
+
+          // M4: if ask_founder was invoked during the tool loop, the task is already
+          // set to needs_review with an awaiting_founder: blocker. Re-read the current
+          // task state; if it was set to needs_review by ask_founder, skip the normal
+          // status update so the consultation pause is preserved.
+          const taskAfterExec = await taskRepo.findOne({ filter: { id: task_id } });
+          const consultationOpened =
+            taskAfterExec?.status === 'needs_review' &&
+            typeof taskAfterExec?.blocker === 'string' &&
+            taskAfterExec.blocker.startsWith('awaiting_founder:');
+          if (consultationOpened) {
+            ctx.body = {
+              ok: true,
+              data: {
+                task_id,
+                status: 'needs_review',
+                approval_required: false,
+                deferred: true,
+                message: '창업자 협의 대기 중. 답변 후 재실행됩니다.',
+              },
+            };
+            await next();
+            return;
+          }
+
+          // M6: if ask_executive was invoked, the task is paused with an
+          // awaiting_delegation: blocker. Skip the normal status update; the
+          // delegation/advance action drives the loop and resumes this task.
+          const delegationOpened =
+            taskAfterExec?.status === 'needs_review' &&
+            typeof taskAfterExec?.blocker === 'string' &&
+            taskAfterExec.blocker.startsWith('awaiting_delegation:');
+          if (delegationOpened) {
+            ctx.body = {
+              ok: true,
+              data: {
+                task_id,
+                status: 'needs_review',
+                approval_required: false,
+                deferred: true,
+                delegation_id: taskAfterExec.blocker.split('awaiting_delegation:')[1]?.trim() || null,
+                message: '임원 위임 진행 중. 검증 루프 완료 후 재개됩니다.',
+              },
+            };
+            await next();
+            return;
+          }
 
           let approval_required = result.approval_required;
 
@@ -1072,18 +1502,26 @@ function registerCrudResources(app: any) {
             });
           }
 
-          // Update task status
+          // Update task status. Persist the full AgentOutput so the inbox,
+          // monitor drill-down, and Chief-of-Staff synthesis can show the real
+          // work product (not just a one-line handoff context).
           await taskRepo.update({
             filterByTk: task_id,
             values: {
               status: result.updated_status,
               approval_required,
               blocker: result.blocked ? result.reason : (result.output.bottleneck || null),
+              output: result.output ?? null,
               ...(acr_token ? { acr_token } : {}),
             },
           });
 
           const updatedTask = await taskRepo.findOne({ filter: { id: task_id } });
+
+          // P1: if this was the last task of its instruction to go terminal,
+          // Chief of Staff synthesizes one founder deliverable card. Best-effort.
+          await maybeSynthesizeInstruction(ctx, task.instruction_id ?? updatedTask?.instruction_id)
+            .catch((err: any) => console.warn('[synthesis] skipped:', err?.message));
 
           // Phase 5 (learning loop) — collection link. When a completed task
           // produced a reusable insight, persist it as a pending founder_memory
@@ -1120,8 +1558,295 @@ function registerCrudResources(app: any) {
   });
 }
 
+// M4: consultation resource — list (poll) + respond (founder reply → task resume)
+function registerConsultationResource(app: any, db: any) {
+  app.resourcer.define({
+    name: 'consultation',
+    actions: {
+      list: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const params = (ctx.action?.params as any) || {};
+        const query = (ctx.request as any)?.query || {};
+        const business_id = params.business_id || query.business_id || null;
+        const status = params.status || query.status || 'awaiting_founder';
+
+        const repo = db.getRepository('executive_consultations');
+        const filter: Record<string, any> = { status };
+        if (business_id) filter.business_id = business_id;
+
+        const rows = await repo.find({ filter, sort: ['-createdAt'] });
+        ctx.body = { ok: true, data: rows ?? [] };
+        await next();
+      },
+
+      respond: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const { id, founder_response } = getValues(ctx) as {
+          id?: string;
+          founder_response?: string;
+        };
+        if (!id) ctx.throw(400, 'id is required');
+        if (!founder_response || typeof founder_response !== 'string' || !founder_response.trim()) {
+          ctx.throw(400, 'founder_response is required');
+        }
+
+        const repo = db.getRepository('executive_consultations');
+        const existing = await repo.findOne({ filter: { id } });
+        if (!existing) ctx.throw(404, `Consultation ${id} not found`);
+
+        const updated = resolveConsultation(existing, founder_response);
+        await repo.update({
+          filter: { id },
+          values: {
+            status: updated.status,
+            founder_response: updated.founder_response,
+            resolved_at: updated.resolved_at,
+          },
+        });
+
+        // Resume: put the task back to queued so it can be re-executed with the founder's answer.
+        if (existing.task_id) {
+          const taskRepo = db.getRepository('agent_tasks');
+          const task = await taskRepo.findOne({ filter: { id: existing.task_id } });
+          if (task && task.status === 'needs_review') {
+            await taskRepo.update({
+              filterByTk: existing.task_id,
+              values: { status: 'queued', blocker: null },
+            });
+          }
+        }
+
+        ctx.body = { ok: true, data: updated };
+        await next();
+      },
+    },
+  });
+}
+
 function getValues(ctx: ActionContext): Record<string, any> {
   return ctx.action?.params?.values ?? ctx.request?.body ?? {};
+}
+
+// M6: build the worker (target executive) tool suite — secondbrain + video only.
+// Deliberately excludes ask_founder/ask_executive so a delegated worker cannot
+// open a nested delegation. Mirrors the executeTask secondbrain/video build.
+function buildWorkerTools(ctx: ActionContext): any[] {
+  const tools: any[] = [];
+  try {
+    if (
+      _secondBrainTransport &&
+      typeof createSecondBrainSource === 'function' &&
+      typeof createSecondBrainTools === 'function'
+    ) {
+      const sbSource = createSecondBrainSource(_secondBrainTransport);
+      const proposeWrite = async (req: any) => {
+        const result = await makeFounderMemoryInsightSource(ctx).write!(req);
+        return result.ok
+          ? { ok: true, data: { queued: true, message: 'CEO 검토 큐에 추가됨' } }
+          : { ok: false, error: result.error };
+      };
+      tools.push(...createSecondBrainTools({ source: sbSource, proposeWrite }));
+    }
+  } catch (err) {
+    console.warn('[delegation] secondbrain tools build failed:', err);
+  }
+  try {
+    if (_videoFactoryTransport && typeof createVideoFactoryTools === 'function') {
+      tools.push(...createVideoFactoryTools(_videoFactoryTransport));
+    }
+  } catch (err) {
+    console.warn('[delegation] video-factory tools build failed:', err);
+  }
+  return tools;
+}
+
+// M6: delegation resource — list (poll) + advance (deterministic verification
+// loop driver). `advance` runs runDelegationLoop synchronously: each round the
+// target executive does the work (executeAgentTaskLive) and the requester scores
+// it (buildVerificationPrompt + parseVerdict). The CEO LLM is NOT run per round —
+// loop control is deterministic. See EXECUTIVE_DELEGATION_SPEC.md §3.3.
+function registerDelegationResource(app: any, db: any) {
+  app.resourcer.define({
+    name: 'delegation',
+    actions: {
+      list: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const params = (ctx.action?.params as any) || {};
+        const query = (ctx.request as any)?.query || {};
+        const status = params.status || query.status || null;
+        const repo = db.getRepository('executive_delegations');
+        const filter: Record<string, any> = {};
+        if (status) filter.status = status;
+        const rows = await repo.find({ filter, sort: ['-createdAt'] });
+        ctx.body = { ok: true, data: rows ?? [] };
+        await next();
+      },
+
+      advance: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const { id } = getValues(ctx) as { id?: string };
+        if (!id) ctx.throw(400, 'id is required');
+
+        const repo = db.getRepository('executive_delegations');
+        const taskRepo = db.getRepository('agent_tasks');
+        const handoffRepo = db.getRepository('agent_handoffs');
+
+        const del = await repo.findOne({ filter: { id } });
+        if (!del) ctx.throw(404, `Delegation ${id} not found`);
+        if (del.status === 'resolved' || del.status === 'escalated') {
+          ctx.body = { ok: true, data: { id, status: del.status, message: '이미 종료된 위임입니다.' } };
+          await next();
+          return;
+        }
+
+        const criteria: string[] = Array.isArray(del.acceptance_criteria)
+          ? del.acceptance_criteria
+          : [];
+        const maxRounds = Math.max(1, Math.min(5, Number(del.max_rounds) || 3));
+        const debug = process.env.L5_DELEGATION_DEBUG === '1';
+        // Worker tools follow the same gate as executeTask (heavy sync path).
+        const workerTools = process.env.L5_EXECUTIVE_TOOLS === '1' ? buildWorkerTools(ctx) : [];
+
+        await repo.update({ filterByTk: id, values: { status: 'in_progress' } });
+
+        const origin = await taskRepo.findOne({ filter: { id: del.origin_task_id } });
+        let workTask: any = del.work_task_id
+          ? await taskRepo.findOne({ filter: { id: del.work_task_id } })
+          : null;
+
+        const runWork = async (round: number, feedback: string | null) => {
+          const rationale = feedback
+            ? `${del.objective}\n\n[이전 검증 피드백 — 반드시 반영]\n${feedback}`
+            : del.objective;
+          const expected = `다음 수용 기준을 모두 충족: ${criteria.join(' / ')}`;
+          if (!workTask) {
+            const wid = randomUUID();
+            workTask = {
+              id: wid,
+              instruction_id: origin?.instruction_id ?? del.origin_task_id,
+              interpretation_id: origin?.interpretation_id ?? null,
+              assigned_agent: del.to_agent,
+              title: `[위임] ${String(del.objective).slice(0, 80)}`,
+              rationale,
+              expected_output: expected,
+              status: 'running',
+              risk_level: origin?.risk_level ?? 'D2',
+              phase: origin?.phase ?? null,
+              business_id: del.business_id ?? origin?.business_id ?? null,
+              project_id: origin?.project_id ?? null,
+            };
+            await taskRepo.create({ values: workTask });
+            await repo.update({ filterByTk: id, values: { work_task_id: wid } });
+          } else {
+            await taskRepo.update({
+              filterByTk: workTask.id,
+              values: { rationale, status: 'running', blocker: null },
+            });
+            workTask = { ...workTask, rationale };
+          }
+
+          const llm = buildLLMClient(`${workTask.title} ${rationale}`);
+          const res = await executeAgentTaskLive(workTask, llm, { tools: workerTools });
+          try {
+            for (const h of res.handoffs || []) {
+              await handoffRepo.create({ values: { id: randomUUID(), ...h } });
+            }
+          } catch { /* handoff persistence best-effort */ }
+          await taskRepo.update({ filterByTk: workTask.id, values: { status: res.updated_status } });
+          return { output: res.output };
+        };
+
+        const verify = async (workOutput: unknown) => {
+          const llm = buildLLMClient(String(del.objective));
+          const prompt = buildVerificationPrompt({
+            from_agent: del.from_agent,
+            to_agent: del.to_agent,
+            objective: del.objective,
+            acceptance_criteria: criteria,
+            workOutput,
+          });
+          const raw = await llm.complete({
+            system: prompt.system,
+            user: prompt.user,
+            trace_name: 'delegation_verify',
+            trace_metadata: { delegation_id: id, from_agent: del.from_agent },
+          });
+          return parseVerdict(raw);
+        };
+
+        const onRound = async (round: number, verdict: { pass: boolean; feedback: string }) => {
+          if (debug) {
+            console.error(
+              `[delegation ${id}] round ${round} pass=${verdict.pass} fb=${String(verdict.feedback).slice(0, 120)}`,
+            );
+          }
+          await repo.update({
+            filterByTk: id,
+            values: { round, last_feedback: verdict.feedback || null },
+          });
+        };
+
+        let loopResult: any;
+        try {
+          loopResult = await runDelegationLoop(maxRounds, { runWork, verify, onRound });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          await repo.update({
+            filterByTk: id,
+            values: { status: 'escalated', last_feedback: `루프 오류: ${message}` },
+          });
+          if (del.origin_task_id) {
+            await taskRepo.update({
+              filterByTk: del.origin_task_id,
+              values: { status: 'needs_review', blocker: `awaiting_founder: 위임(${del.to_agent}) 실행 오류` },
+            });
+          }
+          ctx.throw(500, `Delegation loop failed: ${message}`);
+        }
+
+        if (loopResult.status === 'resolved') {
+          const summary =
+            typeof loopResult.output === 'string'
+              ? loopResult.output
+              : JSON.stringify(loopResult.output ?? {});
+          await repo.update({
+            filterByTk: id,
+            values: { status: 'resolved', round: loopResult.rounds, result_summary: summary.slice(0, 4000) },
+          });
+          // Resume the requesting task; resolved-delegation injection (executeTask)
+          // feeds the worker's result back into its re-run.
+          if (del.origin_task_id) {
+            await taskRepo.update({
+              filterByTk: del.origin_task_id,
+              values: { status: 'queued', blocker: null },
+            });
+          }
+        } else {
+          await repo.update({
+            filterByTk: id,
+            values: { status: 'escalated', round: loopResult.rounds, last_feedback: loopResult.reason },
+          });
+          if (del.origin_task_id) {
+            await taskRepo.update({
+              filterByTk: del.origin_task_id,
+              values: {
+                status: 'needs_review',
+                blocker: `awaiting_founder: 위임(${del.to_agent}) 검증 예산 소진`,
+              },
+            });
+          }
+        }
+
+        ctx.body = {
+          ok: true,
+          data: {
+            id,
+            status: loopResult.status,
+            rounds: loopResult.rounds,
+            work_task_id: workTask?.id ?? del.work_task_id ?? null,
+            output: loopResult.output,
+          },
+        };
+        await next();
+      },
+    },
+  });
 }
 
 function buildLLMClient(rawText: string) {
@@ -1144,6 +1869,94 @@ function buildLLMClient(rawText: string) {
 // (dedup by source_task_id). The founder_memory collection is owned by the
 // executive-monitor plugin; we look it up at request time and no-op if it is
 // not registered. Pure-domain extraction lives in l5-core (collectInsights).
+// P1: when all tasks of one instruction are terminal (done/killed, ≥1 done),
+// synthesize a single founder deliverable and post it to chat. Idempotent via
+// instruction status claim + UNIQUE(instruction_id). Best-effort (caller .catch).
+async function maybeSynthesizeInstruction(ctx: ActionContext, instruction_id: string | undefined): Promise<void> {
+  if (!instruction_id) return;
+  const db = ctx.db;
+  const instructionRepo = db.getRepository('founder_instructions');
+  const taskRepo = db.getRepository('agent_tasks');
+  const handoffRepo = db.getRepository('agent_handoffs');
+  const chatRepo = db.getRepository('chat_messages');
+  const deliverableRepo = db.getRepository('founder_deliverables');
+
+  const tasks = await taskRepo.find({ filter: { instruction_id } });
+  if (!tasks.length) return;
+  const allTerminal = tasks.every((t: any) => t.status === 'done' || t.status === 'killed');
+  if (!allTerminal) return;
+  if (!tasks.some((t: any) => t.status === 'done')) return; // don't synthesize an all-killed plan
+
+  // Idempotency: claim the instruction. If already synthesized, stop.
+  const inst = await instructionRepo.findOne({ filter: { id: instruction_id } });
+  if (!inst || inst.status === 'synthesized') return;
+  await instructionRepo.update({
+    filter: { id: instruction_id, status: { $ne: 'synthesized' } },
+    values: { status: 'synthesized' },
+  });
+
+  // Collect handoffs per (non-killed) task → outcomes
+  const outcomes: any[] = [];
+  for (const t of tasks.filter((t: any) => t.status !== 'killed')) {
+    const hs = await handoffRepo.find({ filter: { task_id: t.id }, sort: ['createdAt'] });
+    const work = hs.find((h: any) => h.from_agent === t.assigned_agent);
+    const ceo = hs.find((h: any) => h.from_agent === 'CEO');
+    // The real work product (agent_tasks.output) so synthesis reflects concrete
+    // recommendations/action items, not just one-line handoff notes.
+    let output: any = t.output ?? undefined;
+    if (typeof output === 'string') {
+      try { output = JSON.parse(output); } catch { output = undefined; }
+    }
+    outcomes.push({ task: t, work_handoff: work, ceo_handoff: ceo, output });
+  }
+
+  const interp = await db.getRepository('ceo_interpretations').findOne({ filter: { instruction_id } });
+  const llm = buildLLMClient(inst.raw_text ?? '');
+  const result = await synthesizeDeliverable(
+    { instruction_text: inst.raw_text ?? '', ceo_goal: interp?.goal ?? '', outcomes },
+    llm,
+  );
+
+  // Persist deliverable (UNIQUE(instruction_id) is the idempotency backstop — a
+  // duplicate insert throws and is swallowed by the caller's .catch).
+  const deliverableId = randomUUID();
+  const chatId = randomUUID();
+  await deliverableRepo.create({
+    values: {
+      id: deliverableId,
+      instruction_id,
+      project_id: inst.project_id ?? null,
+      business_id: inst.business_id ?? null,
+      decision_summary: result.decision_summary,
+      contributions: result.contributions,
+      open_gaps: result.open_gaps,
+      next_actions: result.next_actions,
+      chat_message_id: chatId,
+    },
+  });
+
+  // Post the ONE founder deliverable card into chat (skip if no project to post to).
+  if (inst.project_id) {
+    await chatRepo.create({
+      values: {
+        id: chatId,
+        project_id: inst.project_id,
+        role: 'chief_of_staff',
+        text: result.decision_summary,
+        metadata: {
+          kind: 'synthesis',
+          instructionId: instruction_id,
+          deliverable_id: deliverableId,
+          decision_summary: result.decision_summary,
+          contributions: result.contributions,
+          open_gaps: result.open_gaps,
+          next_actions: result.next_actions,
+        },
+      },
+    });
+  }
+}
+
 async function persistTaskInsight(ctx: ActionContext, task: any, result: any): Promise<void> {
   if (typeof collectInsights !== 'function') return;
 
@@ -1228,6 +2041,62 @@ async function loadFounderMemories(ctx: ActionContext): Promise<
     console.warn('[interpret] founder memory recall failed:', err);
     return [];
   }
+}
+
+// M2: InsightSource adapter for founder_memory.
+// Implements the InsightSource interface from l5-core/insight-bus.
+// M3 will add a secondbrain source alongside this one.
+// read()  → loadFounderMemories (saved, non-high-PII only)
+// write() → pending insert into founder_memory (CEO gate still required for saved promotion)
+function makeFounderMemoryInsightSource(ctx: ActionContext) {
+  return {
+    name: 'founder_memory' as const,
+    async read(filter: { role?: string; limit?: number }) {
+      const memories = await loadFounderMemories(ctx);
+      const limited = filter.limit ? memories.slice(0, filter.limit) : memories;
+      return limited.map((m: { insight: string; workflow_improvement?: string; phase?: string }) => ({
+        insight: m.insight,
+        pii_level: 'none' as const,
+        phase: m.phase,
+        origin: 'founder_memory',
+      }));
+    },
+    async write(req: {
+      insight: string;
+      source_agent?: string;
+      source_task_id?: string;
+      pii_level: 'none' | 'low' | 'high';
+      phase?: string;
+    }): Promise<{ ok: boolean; error?: string }> {
+      let repo: any;
+      try {
+        repo = ctx.db.getRepository('founder_memory');
+      } catch {
+        return { ok: false, error: 'founder_memory collection not registered' };
+      }
+      if (!repo) return { ok: false, error: 'founder_memory repo unavailable' };
+      try {
+        if (req.source_task_id) {
+          const existing = await repo.findOne({ filter: { source_task_id: req.source_task_id } });
+          if (existing) return { ok: true }; // idempotent
+        }
+        await repo.create({
+          values: {
+            id: randomUUID(),
+            insight: req.insight,
+            source_agent: req.source_agent ?? null,
+            source_task_id: req.source_task_id ?? null,
+            pii_level: req.pii_level,
+            phase: req.phase ?? null,
+            approval_status: 'pending', // CEO gate — never bypass
+          },
+        });
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
+      }
+    },
+  };
 }
 
 // Best-effort Telegram notification for cycle completion.

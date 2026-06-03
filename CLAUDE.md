@@ -49,8 +49,9 @@ L5 Business OS는 Founder의 성향, 회사 문화, 누적 인사이트를 기�
 ## Important Directories
 
 ```text
-apps/nocobase/                  # NocoBase shell and L5 plugins
-apps/nocobase/packages/plugins/ # @l5/plugin-* packages
+apps/nocobase-app/              # runnable NocoBase app and live L5 plugins
+apps/nocobase-app/packages/plugins/@l5/
+apps/nocobase/                  # legacy scaffold/reference only; excluded from workspace QA
 packages/l5-core/               # portable Business OS logic
 services/agent-runtime/         # Mastra agents and workflows
 services/hermes-runtime/        # Trigger.dev Hermes tasks

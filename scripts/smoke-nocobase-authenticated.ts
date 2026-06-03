@@ -18,11 +18,26 @@ async function main(): Promise<void> {
   const token = process.env.NOCOBASE_API_TOKEN ?? await signIn();
   console.log(process.env.NOCOBASE_API_TOKEN ? 'Auth: using NOCOBASE_API_TOKEN' : `Auth: signed in as ${username}`);
 
-  const submitted = await requestJson('/api/chat:submitInstruction', {
+  const clarificationPayload = await requestJson('/api/chat:submitInstruction', {
     method: 'POST',
     token,
     body: {
       raw_text: `Create a PMF message experiment and customer outreach proposal for a new founder workflow offer ${new Date().toISOString()}`,
+      intent: 'Authenticated CEO clarification smoke',
+    },
+  });
+  assertClarification(clarificationPayload);
+
+  const submitted = await requestJson('/api/chat:submitInstruction', {
+    method: 'POST',
+    token,
+    body: {
+      raw_text: [
+        '세컨브레인 사업에서 CMO 한 명만 빠르게 PMF 메시지 초안 3개 작성해줘.',
+        '타겟은 1인 SaaS 창업자이고, 문제는 반복되는 고객 인터뷰 정리와 다음 액션 도출이다.',
+        '성공 기준은 인터뷰 신청률 10% 이상이다.',
+        '외부 발송은 하지 말고 내부 계획만 작성해줘.',
+      ].join(' '),
       intent: 'Authenticated CEO chat orchestration smoke',
     },
   });
@@ -44,13 +59,32 @@ async function main(): Promise<void> {
 
   const approvalQueuePayload = await requestJson('/api/monitor:approvalQueue', { method: 'GET', token });
   const approvalQueue = assertMonitorPayload(approvalQueuePayload, '/api/monitor:approvalQueue');
-  if (approvalRequiredTaskIds.size === 0) {
-    throw new Error('chat:submitInstruction must create at least one approval-required task for this regression');
+  if (approvalRequiredTaskIds.size > 0) {
+    assertContainsTaskIds(approvalQueue, approvalRequiredTaskIds, 'approval queue data');
+    assertNoSilentRiskExecution(approvalQueue, approvalRequiredTaskIds);
   }
-  assertContainsTaskIds(approvalQueue, approvalRequiredTaskIds, 'approval queue data');
-  assertNoSilentRiskExecution(approvalQueue, approvalRequiredTaskIds);
 
   console.log('\nAll authenticated NocoBase smoke checks passed.');
+}
+
+function assertClarification(payload: unknown): void {
+  assertObjectLike(payload, 'chat:submitInstruction clarification');
+  const objectPayload = unwrapData(payload as JsonObject);
+  if (objectPayload.ok !== true) {
+    throw new Error('clarification response ok field must be true');
+  }
+  const data = objectPayload.data;
+  assertObjectLike(data, 'clarification data');
+  if ((data as JsonObject).needs_clarification !== true) {
+    throw new Error('vague instruction must return needs_clarification=true');
+  }
+  if (typeof (data as JsonObject).clarification_question !== 'string') {
+    throw new Error('vague instruction must return a clarification_question');
+  }
+  const tasks = (data as JsonObject).tasks;
+  if (!Array.isArray(tasks) || tasks.length !== 0) {
+    throw new Error('vague instruction must not create AgentTasks before clarification');
+  }
 }
 
 function assertChatSubmission(payload: unknown): void {

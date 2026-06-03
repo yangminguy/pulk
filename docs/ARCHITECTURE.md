@@ -226,7 +226,40 @@ Avoid:
 7. NocoBase/PostgreSQL stores task state, outputs, approvals, BPR, memory candidates
 8. Executive Monitor reads task/handoff state for Founder monitoring
 9. Hermes detects stalled tasks, approval needs, deadlines, and recurring bottlenecks
-10. CEO/Chief of Staff synthesize Founder brief and next decisions
+10. When all tasks of one instruction reach terminal (done/killed, ≥1 done),
+    Chief of Staff synthesizes ONE FounderDeliverable + posts it as a chat card (P1)
+```
+
+## Data Flow — Founder Console (2026-06-03 재편)
+
+> 콘솔을 "지시 → 자동 수행(가시화) → 종합 산출물 → 다음 지시" 루프로 재편. 기능 배치 원칙: 판단 로직은 `l5-core`(순수·테스트 가능), IO/배선은 플러그인, 화면은 founder-ui. 상세 `docs/specs/P1~P3-4.md`, 계획 `reports/l5-console-redesign-plan.html`.
+
+```text
+[P1 종합 산출물 — 키스톤]
+executeTask 꼬리 → maybeSynthesizeInstruction(완료 감지, 멱등)
+  → l5-core synthesizeDeliverable (Chief of Staff, contributions 코드소유 + LLM summary + 결정론 fallback)
+  → founder_deliverables + chat 'chief_of_staff/synthesis' 카드 → SynthesisCard (approve=close / delegate=신규 instruction / hold)
+
+[P2 실시간 모니터링]
+monitor:liveStatus → l5-core deriveLiveStatus (agent_tasks + delegations + consultations + blocker 조인, DB-derived)
+  → monitor 페이지: 지시별 그룹 · 상태점(조사중/대화중→누구와/대기/검토중) · 8s 폴링
+
+[P3-2 지식 자동 큐레이션]
+monitor:curate sweep → l5-core curateInsight (pii_high/too_short/dup/점수밴드)
+  → auto_save: 세컨브레인 append / auto_discard: soft-delete +30d(cron 퍼지) / needs_review
+  → 지식 페이지: 주간 저장·폐기 요약 + 복원 (raw JSON 폐기)
+
+[P3-3 Control Room]
+monitor:controlRoomTree → l5-core buildControlRoomTree (businesses ▸ projects ▸ CTO dev-tasks)
+  → ACR 실행정보는 acr-execution-transport (ACR_EXECUTION_ENABLED + ACR GET /api/l5/execution; 미연결 시 우아한 축소)
+  → control-room 페이지: 사업▸프로젝트▸개발과제 트리 + branch/phase/log strip
+
+[P3-4 CTO 자가수정 — D3+ 코드변이 게이트]
+Tool Request → monitor:sendToCTO → self-mod CTO task(source_ref=selfmod:*, raw SQL insert로 FK 우회)
+  → Hermes dispatcher → runCTOAgent → ACR(브랜치) → agent:taskCallback(pass)
+  → orchestration: status=awaiting_apply + acr_diff/branch 영속 + 승인 게이트(floor 기본 D3)
+  → approval 페이지 diff 미리보기 → applySelfMod(deny-list + needs_restart 정직성) / rollbackSelfMod(브랜치 폐기)
+  → post-apply M6 runDelegationLoop 검증
 ```
 
 ## Data Flow — Business / PMF Workstream

@@ -73,15 +73,16 @@ describe('createClaudeCLIClient', () => {
     await expect(promise).resolves.toBe('hello world');
     expect(calls).toHaveLength(1);
     expect(calls[0].command).toBe('claude');
-    expect(calls[0].args).toEqual([
+    expect(calls[0].args.slice(0, 6)).toEqual([
       '-p',
+      'sys\n\nusr',
       '--model',
       'claude-haiku-4-5',
       '--output-format',
       'json',
     ]);
-    expect(child.stdin.write).toHaveBeenCalledWith('sys\n\nusr');
-    expect(child.stdin.end).toHaveBeenCalled();
+    // MCP servers are forced off to avoid per-spawn cold-start + OAuth popups.
+    expect(calls[0].args).toContain('--strict-mcp-config');
   });
 
   it('maps opus model alias to claude-opus-4-7', async () => {

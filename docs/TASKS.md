@@ -1,7 +1,109 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-05-31 (Founder UI Joinery 디자인 전면 재적용 완료, Vercel 배포 준비). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-06-03 (QA wiring 재정비 + 전체 E2E/smoke 통과 + archive 청소). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+
+## QA wiring 재정비 + 정책 수정 (2026-06-03)
+
+> 기능 추가 후 끊긴 QA 연결과 generated/runtime artifact dirty noise를 먼저 정리하고, 실행 가능한 E2E/smoke까지 통과시켰다.
+
+- [x] `.next/`, `apps/nocobase-app/storage/` 추적 제거 + `.gitignore` 반영.
+- [x] `services/agent-runtime` Jest test script/devDeps 연결.
+- [x] `apps/founder-ui` E2E script 승격 + stale 로그인/anchor 수정.
+- [x] CEO 되묻기 정책 조정: actionable goal이면 assumptions로 진행, 진짜 blocked/승인 누락만 질문.
+- [x] agent fanout 조정: quick/few/single intent는 1-2개 agent만 태움.
+- [x] RiskQA gate 정리: D3-D5 blanket block 제거, 외부발신/결제/승인 누락 차단.
+- [x] NocoBase plugin CSS import test failure 수정.
+- [x] plugin-executive-monitor `node-cron` build bundling failure 수정.
+- [x] authenticated smoke 최신 정책으로 갱신.
+- [x] NocoBase E2E auth setup + SQLite isolation script 추가.
+- [x] autopilot/D6 smoke 최신 스키마와 orchestration 정책에 맞게 갱신.
+- [x] 검증: workspace typecheck/lint/test/build, Founder UI 전체 E2E, NocoBase E2E, authenticated/autopilot/D6 smoke, `pnpm validate`.
+- [x] 청소: `apps/nocobase` workspace 제외, `artifacts/` + `work-orders/` archive 이동.
+- [ ] 남은 청소 후보: `docs/legacy`, active reference가 남은 `reports/`, HANDOFF 장기 로그 분리.
+
+## 사용자 플로우 정합화 (2026-06-03, 계획=`~/.claude/plans/agile-watching-owl.md`)
+
+> 창업자 실사용 피드백(산출물 미가시·뷰 불일치·원치 않는 새 task·필터 미작동)을 근원 수정. 근원 = 임원 산출물 미영속.
+
+- [x] **A 산출물 영속화 (키스톤)** — agent_tasks.output(jsonb) + executeTask 저장 + handoff fallback. psql ALTER 병행. 라이브 확인.
+- [x] **B synthesize 실데이터** — output을 LLM 프롬프트에 전달, "메타설명 금지". 테스트 10/10.
+- [x] **C 인박스 = 결과물 + 진행상태** — AgentOutputDetail 공용 컴포넌트, 필터 killed제외 전부+상태칩, **business 스코프로 수정**(project 자동선택 0건 버그). 라이브 스크린샷.
+- [x] **D 로드맵 재정의 + 드릴다운** — 이미 클릭→인박스. selectTask output 보강 fetch.
+- [x] **E 모니터 드릴다운** — AgentLiveCard 클릭 → TaskDrillDownModal(output+handoff). 라이브.
+- [x] **F 사업 필터** — liveStatus(businessId) + controlRoomTree bizFilter. 라이브(세컨=4/QA=0).
+- [x] **G CEO 되묻기** — needs_clarification + resolveClarification(6테스트). 라이브(모호지시→질문).
+- [x] **H delegate 정리** — synthesis delegate drop, 기여 클릭→인박스. 테스트 + Playwright(`e2e/verify-changes.mjs`).
+- [x] **라이브 executeTask 전체 흐름 실증 (A/B/H, 실제 LLM)** — 지시→3 task. COO executeTask 2:17→done+output 실저장(권고+action 10), RiskQA 3:39→done+output. 모든 task terminal→synthesis 자동 생성(구체 산출물 종합), next_actions=approve/hold만(delegate 없음), instruction=synthesized. `e2e/verify-live.mjs`로 synthesis 카드+인박스 실 output 시각 확인(에러 0).
+- [~] **CTO 라이브 실행** — executeTask가 CTO는 `deferred:true`(Hermes dispatcher→ACR 전담). ACR 미연결(stub)이라 라이브 미실행 → **다음 작업 c에서 연결**.
+
+> **다음 작업 순서 (사용자 지정 2026-06-03)**: **c(CTO/ACR 실행 연결) 먼저** → b(M7 채팅 임원 라운드테이블, 아래) 나중. 커밋은 사용자가 직접 진행.
+> **c = CTO/ACR 연결**: ACR repo에 `GET /api/l5/execution` 라우트 추가 + `ACR_EXECUTION_ENABLED=1`. 연결 시 control-room 실행정보 라이브 + executeTask CTO deferred 경로가 실제 ACR 실행으로 이어짐.
+
+## M6: 임원 위임 + 검증 반복 루프 (2026-06-02, spec=`docs/EXECUTIVE_DELEGATION_SPEC.md`)
+
+> 목표: 임원(CMO)이 CEO를 통해 다른 임원(CTO)에게 위임하고, 결과가 의도대로 나올 때까지 검증-수정 루프를 자동 반복. CEO는 진입/이탈 게이트만(매 반복 미개입), 루프 본체는 결정론적 컨트롤러.
+
+- [x] **D1 `ask_executive` 도구 (l5-core 순수)**: `delegation/index.ts`(`DelegationRequest`+`validateDelegationRequest`: 유효 역할/자기위임 금지/수용기준 필수/max_rounds 1–5) + `delegation/tool.ts`(`createAskExecutiveTool({ propose })`, ask_founder 복제, 반환 `data.delegation_opened=true`). 단위 11 테스트 통과. src/index.ts 재수출.
+- [x] **D2 `executive_delegations` 컬렉션 + plugin propose**: `CREATE TABLE IF NOT EXISTS executive_delegations`(ensureOrchestrationColumns) + 컬렉션 등록 + executeTask 내 `createAskExecutiveTool({ propose })` — 위임 레코드 insert(status=open) + origin task needs_review(blocker=`awaiting_delegation:<id>`). `executive_consultations` 패턴 재사용. 라이브 로드 확인(재기동 후 `delegation:list`/`executive_delegations:list` 200).
+- [x] **D3 CEO 위임 오케스트레이션**: `delegation:advance` 액션이 게이트(open→in_progress) + 위임 레코드 → to_agent용 work task 생성(objective→rationale, acceptance_criteria→expected_output, business_id/phase/risk 승계). decomposer 대신 단일 work task를 라운드마다 reissue(피드백 주입)하는 경량 방식 채택.
+- [x] **D4 `runDelegationLoop` 컨트롤러 (l5-core 순수)**: `delegation/loop.ts` — 결정론 루프(`runWork`(제작)→`verify`(검증)→fail시 feedback 재투입), pass→resolved / 예산 소진→escalated. LLM·I/O 미접촉(주입형). 단위 4 테스트 통과. **CEO 매 라운드 미개입 보장.** + `delegation/verify.ts`(`buildVerificationPrompt`/`parseVerdict`, 검증 7 테스트).
+- [x] **D5 plugin 구동**: `delegation:advance`가 `runDelegationLoop` 동기 구동 — runWork=`executeAgentTaskLive`(work task, secondbrain/video 도구), verify=요청 임원 LLM 채점(`buildVerificationPrompt`+`parseVerdict`). resolved→origin task queued 재개(result_summary를 recalledInsights로 주입) / escalated→origin needs_review(`awaiting_founder: …`). onRound마다 round/last_feedback 저장.
+- [x] **D6 E2E + 라이브 검증**: ✅ **2026-06-02 라이브 통과.** `scripts/d6-delegation-smoke.sh`(SQL 시드 CMO→CTO 위임 + `delegation:advance`). 결과: **advance 122s → status=resolved, round=1.** CTO work task=done(실제 세컨브레인 MCP 개선안 산출), CMO 검증 1라운드 pass, **origin CMO task needs_review→queued 재개(blocker 해제)**, handoff 체인(CTO→ceo, CEO→CTO) 적재. result_summary 저장(재개 시 recalledInsights 주입용). 시드 레코드 정리 완료. (worker는 `L5_EXECUTIVE_TOOLS` off라 도구 없이 LLM 산출만 — 루프 본체 검증엔 충분.)
+
+## 🎯 운영 콘솔 재편 + 종합 산출물 (창업자 통증 기반 재우선순위, 계획서 `reports/l5-console-redesign-plan.html`)
+
+> 창업자(2026-06-02): "지시는 되는데 각 에이전트 결과가 종합돼 최종 산출물로 안 와서 다음 세션을 못 간다. UI도 안 쓰는 게 많다." → 콘솔을 "지시→자동수행(가시화)→종합 산출물→다음 지시" 루프로 재편. **M7/M8보다 우선.**
+
+> 진행(2026-06-02): 설계 5종 `docs/specs/P*.md` 완료(subagent 병렬). l5-core 순수 두뇌 3개 구현·통합 완료 — chief-of-staff/synthesize(P1, 11테), monitor/live-status(P2, 27테), memory/curation(P3-2, 22테), tsc 0·build clean. 사이드바 워크플로 팩토리 제거 + Memory→"지식" 리네임. **남음: 플러그인 배선(2개 플러그인)+UI+ACR 연동.**
+
+> ✅ **2026-06-03 전부 구현·라이브 검증 완료** (subagent 병렬). 설계 5종 `docs/specs/P*.md`. l5-core 순수 두뇌 5개(synthesize/live-status/curation/cto-control-room/selfmod-criteria, 신규 테스트 전부 통과, 전체 503/506 — 3건은 pre-existing baseline 무관). 플러그인 2개(orchestration+executive-monitor) src+dist 미러 배선. founder-ui 6개 페이지(chat 종합카드·monitor·memory→지식·control-room·tool-requests·approval) tsc 0 + next build 통과. E2E: P1 종합 라이브 통과(executeTask→founder_deliverables+채팅카드), P3-4 sendToCTO/applySelfMod 라이브 통과. 백엔드 엔드포인트 전부 200. 발견 버그(sendToCTO FK 코어션) raw SQL로 수정.
+
+- [x] **P0 데이터 초기화**: task+chat+memory 전부 삭제(트랜잭션). businesses(4)·projects(5) 보존.
+- [x] **P1 종합 산출물 (키스톤)**: `chief-of-staff/synthesize.ts`(신규, generateFounderBrief는 모양 안 맞아 미재사용) + orchestration `maybeSynthesizeInstruction`(executeTask 꼬리, instruction status 'synthesized' 멱등 + UNIQUE(instruction_id)) + `founder_deliverables` 컬렉션/테이블 + UI `SynthesisCard`(chat). **라이브 통과.**
+- [x] **P2 실시간 모니터링**: `monitor/live-status.ts`(DB-derived, task_activity 테이블 불필요) + executive-monitor `monitor:liveStatus`(delegations+consultations+blocker 조인) + monitor 페이지 지시별 그룹·상태점·8s 폴링.
+- [x] **P3 UI 재편**: ①사이드바 워크플로 팩토리 제거 + Memory→"지식" ②`memory/curation.ts` + `monitor:curate`/`curationSummary`/`overrideCuration` + 지식 페이지(자동 저장/폐기, soft-delete 30일 유예, hermes 퍼지 cron) ③`cto-control-room` 트리 빌더 + `monitor:controlRoomTree` + control-room 사업▸프로젝트▸개발과제 트리(ACR transport는 stub, `ACR_EXECUTION_ENABLED=1`+ACR GET 라우트 시 활성) ④`buildSelfModAcceptanceCriteria` + `monitor:sendToCTO`/`applySelfMod`/`rollbackSelfMod`(D3+ 게이트·deny-list·needs_restart 정직성·M6 verify) + taskCallback diff 영속화 + tool-requests [CTO에게 전송] 버튼/칩 + approval diff 미리보기.
+- 안전: 자가수정=D3+ 고위험(승인/diff/롤백/deny-list), 자동폐기 soft-delete 30일 유예.
+- 남은 후속(env/cross-repo): ACR `GET /api/l5/execution` 라우트(별도 repo) → 켜면 control-room 실행정보 라이브. self-mod 실제 ACR 머지(현재 needs_restart 표면화). worker 도구 활성(`L5_EXECUTIVE_TOOLS=1`).
+
+## M8: 위임 루프 라이브 자율화 (계획, 미착수 — 계획서 `reports/l5-collaboration-roadmap.html`)
+
+> M6 위임 엔진의 "수동·도구없음·1회" 제약 3가지를 푼다. 대부분 기존 코드 배선. 무인화할수록 예산·승인 게이트·비용 상한을 함께.
+
+- [ ] **M8.1 worker 도구 활성 (후속 1, 공수 S)**: `L5_EXECUTIVE_TOOLS=1` + secondbrain/video transport env 주입 → 위임받은 임원이 실제 도구(secondbrain.read 등)로 자료 보고 제작. 동기 HTTP 가드(라운드 타임아웃·도구 수 제한) 동반. 재사용: `buildWorkerTools()`, M3/M5 transport, MCP-off claude CLI.
+- [ ] **M8.2 ask_executive 자동발화 (후속 2, 공수 M)**: 임원 tool-loop가 "다른 역할 산출물 필요 시 `ask_executive` 호출" 유도(프롬프트+도구 노출). CMO가 막히면 자율적으로 CTO 위임 → `awaiting_delegation` → advance. 재사용: M6 ask_executive 도구(이미 executeTask 배선), 첫라운드 도구강제 패턴.
+- [ ] **M8.3 무인 트리거 dispatcher (후속 3, 공수 M)**: Hermes cron이 `status=open` 위임 폴링 → 자동 `delegation:advance`. 장시간 루프는 비동기 잡 큐로 분리(동기 HTTP 탈피). 완료/에스컬레이션 시 채팅·승인큐 알림. 재사용: 기존 Hermes launchd cron(1분), task dispatcher.
+
+## M7: CEO 채팅 멀티에이전트 라운드테이블 — 임원이 회의에 참여 (계획, 미착수)
+
+> 창업자 요청(2026-06-02): "에이전트들이 내 채팅에 실제로 들어와서 회의". 현재 채팅 role은 `founder|ceo` 1:1 — 임원은 백그라운드 실행자라 대화에 못 들어온다. 이를 "회의 참여자"로 승격. 합의가 곧 M6 위임·실행으로(=M8과 결합). 계획서 `reports/l5-collaboration-roadmap.html`. **회의 컨트롤러는 `runDelegationLoop`의 일반화(2인 위임 → N인 발언).**
+
+- [ ] **M7.1 스키마 (공수 S)**: `chat_messages`에 `speaker`(역할)·`meeting_id`·`turn` 추가, role 확장(`founder|ceo|cmo|cto|…`). `meetings` 테이블(참여자·턴예산·상태·합의). executive_delegations DDL 패턴 재사용.
+- [ ] **M7.2 회의 컨트롤러 (공수 L)**: 참여자 턴 오케스트레이션(라운드로빈 또는 CEO 지명형 — *창업자 결정 필요*). 각 턴=임원 LLM이 스레드 전체 보고 발언 1개 생성→chat_messages 적재. 턴 예산 종료. CEO 합의 요약. executive-runtime에 "토론 모드" 프롬프트 신규.
+- [ ] **M7.3 UI (공수 M)**: 참여자 칩·에이전트 색상/아바타·발언 스트림(폴링 또는 SSE)·창업자 중간 개입 입력. chat/page.tsx + Joinery 토큰.
+- [ ] **M7.4 합의→실행 결선 (공수 M)**: 승인된 합의안 → CEO decomposer로 태스크 생성 + 임원간 위임(ask_executive, M8.2) 자동 개시. 회의 중 위임 진행을 스레드 인라인 표시.
+
+> **연계 주의**: 🔥1순위 1.2(멀티턴 대화형 기획)는 M7과 강하게 겹침(대화 맥락 누적) → 함께 설계. 다발 LLM 호출이라 비동기/SSE 인프라(M8.3과 공유) + 턴 예산 사실상 필수. 관측·안전(Langfuse/비용 상한)을 선결 안전장치로.
+
+## M5: 도구 발전 루프 결선 + 영상 생성기 도구 등록 + E2E (2026-06-02)
+
+- [x] **M5.1 VideoFactoryTransport + createVideoFactoryTools (l5-core 순수)**: `packages/l5-core/src/functions/memory/video-factory.ts`. 인터페이스: `configure(preset)`, `generate(brief)`, `getConfig?()`. CMO 전용 도구 3개: `video_factory.configure` / `video_factory.generate` / `video_factory.get_config`. `createInMemoryVideoFactoryTransport(seed?)` mock 포함.
+- [x] **M5.2 plugin video-factory-transport**: `plugin-orchestration/src/server/video-factory-transport.ts`. `makeVideoFactoryTransport()` — env(`VIDEO_FACTORY_URL`, `VIDEO_FACTORY_TOKEN`) 읽어 실 transport, 없으면 null(graceful). 실 호출 매핑 한 곳 + TODO 주석.
+- [x] **M5.3 memory/index.ts + l5-core/src/index.ts 재수출 추가**: `VideoFactoryTransport`, `createVideoFactoryTools`, `createInMemoryVideoFactoryTransport`.
+- [x] **M5.4 plugin executeTask 배선**: `_videoFactoryTransport` 모듈 레벨 초기화 + sbTools 배열에 `createVideoFactoryTools` 주입(CMO 전용, null graceful). src + dist/plugin.js 미러 패치 + node --check 통과.
+- [x] **M5.5 도구 발전 루프 결선**: `video_factory.configure` description에 "recalledInsights에 합의 방식이 있으면 generate 전에 먼저 호출하라" 유도 문구 포함. M4 협의 결과는 이미 recalledInsights로 주입되므로 추가 코드 배선 없이 CMO가 올바른 순서로 도구를 호출함.
+- [x] **M5.6 전체 E2E 통합 테스트**: `packages/l5-core/src/functions/executive-runtime/__tests__/m1-m5-e2e.test.ts`. 9개 테스트 전부 통과. 시나리오: A(secondbrain.read→ask_founder), B(resolved consultation→configure+generate), C(role guard CRO 거부), D(in-memory transport 데이터 무결성).
+- [x] **M5.7 검증**: l5-core tsc --noEmit 0에러 + jest 9/9 pass(신규) + 410/413 전체(3건 pre-existing 무관) + npm run build clean. plugin-orchestration tsc --noEmit 0에러 + node --check dist/plugin.js clean.
+
+## M4: 창업자 ↔ 임원 협의 채널 (2026-06-02)
+
+- [x] **M4.1 l5-core consultation 상태머신**: `openConsultation`, `resolveConsultation`, `formatConsultationForPrompt` + 타입 `ConsultationRecord`/`ConsultationRequest`/`ConsultationStatus`. 단위 테스트 9개 통과.
+- [x] **M4.2 ask_founder 도구 팩토리**: `createAskFounderTool({ propose })` — 임원이 tool-loop 도중 창업자에게 직접 질문. ToolResult `data.await_founder=true` 신호.
+- [x] **M4.3 executive_consultations 컬렉션**: plugin-orchestration에 정의 + CREATE TABLE IF NOT EXISTS DDL. 필드: id/task_id/business_id/from_agent/question/options/status/founder_response/resolved_at.
+- [x] **M4.4 plugin executeTask 배선**: ask_founder 도구 조립 + proposeConsultation(consultation insert + needs_review 마킹) + resolved consultation recalledInsights 주입 + consultationOpened 조기 종료.
+- [x] **M4.5 consultation:list / consultation:respond 액션**: business/status 필터 폴링 + resolveConsultation 적용 + 태스크 queued 복귀. ACL loggedIn.
+- [x] **M4.6 ConsultationCard UI**: 30초 폴링 + 선택지 버튼/textarea + 낙관적 제거 + Joinery 디자인. chat 우측 패널에 장착.
+- [x] **M4.7 검증**: l5-core tsc/test/build clean. plugin tsc + node --check dist clean. founder-ui tsc + next build 12 prerender 성공.
 
 ## ✨ 2026-05-31 — Founder UI Joinery 디자인 전면 재적용
 
@@ -1000,3 +1102,50 @@ L5 Business OS
 | founder-ui tsc | ✅ 0 errors |
 | hermes-runtime tests | ✅ 24 PASS |
 | 라이브 D2 E2E | ✅ CEO 해석 → business_id 추론 → dispatcher 폴링 → CTO phase 분해 → ACR dispatch |
+
+---
+
+## 🆕 2026-06-02 — 임원 도구 플랫폼 + 세컨 브레인 양방향 인사이트
+
+기획서: `reports/secondbrain-tool-platform-plan.html`. 목표 = 창업자의 자연어 지시("CMO에 영상 생성기 도구 연결 + 세컨브레인 학습 + 함께 정해 발전")가 실제로 작동하는 플랫폼 구축. 모든 부품은 **전 임원 공용**.
+
+**확정 결정:** 세컨브레인=MCP 서버 기존(클라이언트만 연결, Pulk 인사이트 적립이 목표) · 영상생성기=CMO 도구(별도 로컬, ACR=CTO 도구와 구분) · 세컨브레인 쓰기=CEO 검토 후 · 읽기=7개 임원 공용.
+
+**구현 주체:** 사람(개발팀). pulk는 `L5_PROTECTED_PATHS`로 ACR 차단되어 CTO 자가구현 불가(층 B). 부품이 깔린 뒤 사업 작업(영상 제작 등)은 CMO 자율 수행(층 A).
+
+### 현재 진단 (코드 근거)
+- ✅ 인사이트 쓰기(자동추출): `persistTaskInsight`(`plugin.ts:1147`) → `collectInsights`(`memory/collector.ts`) → `founder_memory` pending
+- ✅ 인사이트 읽기 → CEO: `loadFounderMemories`(`plugin.ts:368`) → CEO 해석에 주입
+- ❌ 인사이트 읽기 → **임원**: `executive-llm.ts`에 주입 없음 (CMO가 과거 학습 못 봄)
+- ❌ 외부 세컨브레인(MCP): 코드 0
+- ❌ 임원 tool-calling: `required_tools:[]` 소비처 없음, Haiku 1회 호출만
+- ❌ 창업자↔임원 다회 협의: 없음
+
+### M1 — 임원 공용 도구 런타임 (tool-calling loop)  [x] 2026-06-02
+- `executive-runtime/tool-loop.ts`(`runExecutiveWithTools`) + `tools/registry.ts`(`ToolRegistry`) + `tools/types.ts`(`ExecutiveTool`). LLMClient 네이티브 tool-calling 부재 → 텍스트 기반 도구 루프. `required_tools` 소비. 도구 0개면 `runExecutive` 폴백. `buildHandlerResult` 추출.
+- verify: 신규 12 테스트 통과, l5-core tsc 0, dist 재빌드. ✅
+
+### M2 — 양방향 인사이트 버스 (내부부터)  [x] 2026-06-02
+- `memory/insight-bus.ts`(`InsightSource`/`recallInsights`/`formatInsightsForPrompt`). 임원 실행에 founder_memory(saved, PII high 제외) 주입(끊긴 고리 연결). `executeAgentTaskLive(...,{recalledInsights})` 확장. plugin `makeFounderMemoryInsightSource`. 능동 쓰기 pending→CEO검토 게이트 유지.
+- verify: 신규 13 테스트 통과(임원 A→B recall 통합 포함), dist 패치. ✅
+
+### M3 — 세컨 브레인 MCP 게이트웨이 (전 임원 공용)  [x] 2026-06-02
+- `l5-core/src/functions/memory/secondbrain-source.ts`: `SecondBrainTransport`, `createSecondBrainSource`, `createSecondBrainTools`, `createInMemorySecondBrainTransport` 구현.
+- `plugin-orchestration/src/server/secondbrain-transport.ts`: env(`SECONDBRAIN_MCP_URL`/`SECONDBRAIN_MCP_TOKEN`) 기반 실 transport. 미설정 시 null(graceful disable).
+- `executeAgentTaskLive` options에 `tools?: ExecutiveTool[]` 확장(기존 호환 보존).
+- `executeTask`: founder_memory + secondbrain 양쪽 recall + secondbrain 도구 tool-loop에 제공.
+- `plugin-executive-monitor` saveMemory: `saved` 승격 시 secondbrain append(best-effort, PII high 제외). src + dist 패치.
+- 테스트 12개 신규 통과. tsc noEmit 양 플러그인 clean. `node --check` 양 dist 통과.
+- MCP 실 서버 스키마 미상 → transport에 TODO 주석 집중(M4 연결 시 한 파일만 수정).
+- verify: 세컨브레인 read/write E2E + PII 제외 동기화 확인 → 실 MCP 엔드포인트 연결 후 확인 예정(env 설정만으로 활성화)
+
+### M4 — 창업자 ↔ 임원 협의 채널  [x] 2026-06-02
+- 컬렉션 `executive_consultations`(자동 생성) + l5-core `consultation/`(상태머신 + `formatConsultationForPrompt`) + `ask_founder` 도구 + actions `consultation:list`/`consultation:respond`(→task queued) + UI `ConsultationCard`(chat 우측 패널). resolved 협의는 재실행 시 recalledInsights 주입.
+- verify: 신규 9 테스트, next build 12 페이지, NocoBase 재기동 후 `consultation:list` 200, 브라우저 렌더(콘솔/네트워크 0). ✅
+- **브라우저 테스트가 잡은 버그**: ConsultationCard 응답 unwrap(`res.data`→`res.data.data`) — `items.map` 크래시 수정 후 통과.
+
+### M5 — 도구 발전 루프 결선 + 전체 E2E  [x] 2026-06-02
+- `memory/video-factory.ts`(`createVideoFactoryTools` CMO 전용) + plugin `video-factory-transport.ts`(env→null). "발전"은 프롬프트 유도(합의 방식→configure→generate). 전체 흐름 E2E.
+- verify: E2E 9 테스트(secondbrain.read→ask_founder→재개→configure+generate, 역할권한, write CEO게이트). l5-core 410/413(3 pre-existing 무관). ✅
+
+**순서 의존:** M1(토대) → M2 → M3 → M4 → M5. **전부 완료 + 라이브/브라우저 검증.** 실연결 TODO: 세컨브레인 MCP(`SECONDBRAIN_MCP_URL/TOKEN`)·영상생성기(`VIDEO_FACTORY_URL/TOKEN`) env 설정 + transport 매핑(미설정 시 graceful).

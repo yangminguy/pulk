@@ -3,7 +3,7 @@
  * Usage: node scripts/e2e-projects.mjs
  * Requires: npx playwright install chromium (first time)
  */
-import { chromium } from 'playwright'
+import { chromium } from '@playwright/test'
 
 const BASE = process.env.FOUNDER_UI_URL ?? 'http://localhost:3002'
 
@@ -35,19 +35,19 @@ async function run() {
   await page.goto(`${BASE}${projectHref}`, { waitUntil: 'networkidle', timeout: 15000 })
 
   // Check for required section headers
-  const content = await page.content()
-  const hasCTOPlan = content.includes('CTO Plan timeline')
-  const hasAgentActivity = content.includes('Agent activity')
+  const content = await page.evaluate(() => document.body.innerText)
+  const hasCTOPlan = content.includes('CTO Plan Timeline')
+  const hasAgentActivity = content.includes('Agent Activity')
 
   if (hasCTOPlan && hasAgentActivity) {
-    console.log('[e2e] PASS: "CTO Plan timeline" and "Agent activity" headers found')
+    console.log('[e2e] PASS: "CTO Plan Timeline" and "Agent Activity" headers found')
     await browser.close()
     process.exit(0)
   } else {
     console.error('[e2e] FAIL: Missing required section headers')
-    if (!hasCTOPlan) console.error('  - Missing: "CTO Plan timeline"')
-    if (!hasAgentActivity) console.error('  - Missing: "Agent activity"')
-    console.error('[DOM dump]', content.slice(0, 3000))
+    if (!hasCTOPlan) console.error('  - Missing: "CTO Plan Timeline"')
+    if (!hasAgentActivity) console.error('  - Missing: "Agent Activity"')
+    console.error('[Text dump]', content.slice(0, 3000))
     await browser.close()
     process.exit(1)
   }

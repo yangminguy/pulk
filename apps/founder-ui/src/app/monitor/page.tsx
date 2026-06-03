@@ -1,8 +1,9 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import AuthGate from '@/components/AuthGate'
-import { api } from '@/lib/api'
+import { api, type LiveStatusGroup, type LiveStatusAgent, type TaskItem } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
+import { AgentOutputDetail } from '@/components/AgentOutputDetail'
 
 // ---------------------------------------------------------------------------
 // Local Icon (same pattern as Sidebar.tsx)
@@ -92,45 +93,47 @@ function AgentBadge({ agent }: { agent: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Status badge mapping → j-badge classes
+// Live-status visual map (P2 — Real-time Agent Monitoring)
 // ---------------------------------------------------------------------------
-type TaskStatus = 'queued' | 'running' | 'blocked' | 'needs_review' | 'done' | 'killed'
-type RiskLevel = 'D1' | 'D2' | 'D3' | 'D4' | 'D5'
+type LiveStatus =
+  | 'queued' | 'investigating' | 'talking' | 'awaiting_founder'
+  | 'awaiting_delegation' | 'under_review' | 'done' | 'blocked'
 
-const STATUS_BADGE: Record<TaskStatus, string> = {
-  queued:       'j-badge j-badge-draft',
-  running:      'j-badge j-badge-live',
-  blocked:      'j-badge j-badge-blocked',
-  needs_review: 'j-badge j-badge-review',
-  done:         'j-badge j-badge-live',
-  killed:       'j-badge j-badge-neutral',
-}
-const STATUS_LABELS: Record<TaskStatus, string> = {
-  queued:       '대기',
-  running:      '진행중',
-  blocked:      '차단됨',
-  needs_review: '검토필요',
-  done:         '완료',
-  killed:       '종료',
-}
-const STATUS_DOT: Record<TaskStatus, boolean> = {
-  queued: true, running: true, blocked: true, needs_review: true, done: true, killed: false,
+type LiveMeta = {
+  label: string
+  emoji: string
+  dot: string        // dot color token
+  badge: string      // j-badge class for the status pill
+  pulse?: boolean     // pulsing dot for live work
 }
 
-// Risk class (uses j-badge + j-risk-dN for background, but we render as a badge pill)
-const RISK_CLASS: Record<RiskLevel, string> = {
-  D1: 'j-badge j-risk-d1',
-  D2: 'j-badge j-risk-d2',
-  D3: 'j-badge j-risk-d3',
-  D4: 'j-badge j-risk-d4',
-  D5: 'j-badge j-risk-d5',
+const LIVE_META: Record<LiveStatus, LiveMeta> = {
+  investigating:       { label: '조사 중',    emoji: '🔍', dot: 'var(--green)',    badge: 'j-badge j-badge-live',    pulse: true },
+  talking:             { label: '대화 중',    emoji: '💬', dot: 'var(--blue)',     badge: 'j-badge j-badge-ref' },
+  awaiting_founder:    { label: '창업자 대기', emoji: '⏳', dot: 'var(--amber)',    badge: 'j-badge j-badge-review' },
+  awaiting_delegation: { label: '위임 대기',  emoji: '🤝', dot: 'var(--amber)',    badge: 'j-badge j-badge-review' },
+  under_review:        { label: 'CEO 검토',   emoji: '🧠', dot: 'var(--silver-4)', badge: 'j-badge j-badge-neutral' },
+  done:                { label: '완료',       emoji: '✓',  dot: 'var(--silver-4)', badge: 'j-badge j-badge-draft' },
+  blocked:             { label: '차단됨',     emoji: '⛔', dot: 'var(--red)',      badge: 'j-badge j-badge-blocked' },
+  queued:              { label: '대기열',     emoji: '·',  dot: 'var(--silver-4)', badge: 'j-badge j-badge-draft' },
 }
 
-// Left accent bar color for cards that need attention
-function cardAccentColor(status: TaskStatus): string | null {
-  if (status === 'blocked') return 'var(--red)'
-  if (status === 'needs_review') return 'var(--amber)'
-  return null
+function liveMeta(s: string): LiveMeta {
+  return LIVE_META[s as LiveStatus] ?? LIVE_META.queued
+}
+
+// Status dot — pulses (green) for active investigation, static otherwise.
+function StatusDot({ live_status }: { live_status: string }) {
+  const m = liveMeta(live_status)
+  return (
+    <span
+      className={m.pulse ? 'monitor-dot-pulse' : undefined}
+      style={{
+        width: 9, height: 9, borderRadius: 999, flexShrink: 0,
+        background: m.dot, display: 'inline-block',
+      }}
+    />
+  )
 }
 
 function relativeTime(dateStr: string): string {
@@ -454,167 +457,159 @@ function PhaseTransitionPanel() {
 }
 
 // ---------------------------------------------------------------------------
-// Filter tabs
+// Counterpart chip — AgentBadge for executives, plain pill for Founder/CEO
 // ---------------------------------------------------------------------------
-type FilterType = 'all' | 'running' | 'blocked' | 'needs_review'
+const EXECUTIVES = new Set(Object.keys(AGENT_PASTEL))
 
-const TABS: { key: FilterType; label: string }[] = [
-  { key: 'all', label: '전체' },
-  { key: 'running', label: '진행중' },
-  { key: 'blocked', label: '차단됨' },
-  { key: 'needs_review', label: '검토필요' },
+function CounterpartChip({ counterpart }: { counterpart: string }) {
+  const isExec = EXECUTIVES.has(counterpart) && counterpart !== 'CEO'
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ color: 'var(--ink-4)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>→</span>
+      {isExec ? (
+        <AgentBadge agent={counterpart} />
+      ) : (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center',
+          padding: '2px 8px', borderRadius: 999,
+          fontSize: 11.5, fontWeight: 600, lineHeight: 1.4,
+          background: 'var(--silver-1)', color: 'var(--ink-2)',
+          fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap',
+        }}>
+          {counterpart}
+        </span>
+      )}
+    </span>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Status legend — rendered once
+// ---------------------------------------------------------------------------
+const LEGEND_ORDER: LiveStatus[] = [
+  'investigating', 'talking', 'awaiting_founder', 'under_review', 'done', 'blocked', 'queued',
 ]
 
-// ---------------------------------------------------------------------------
-// Task card
-// ---------------------------------------------------------------------------
-function TaskCard({ task }: { task: any }) {
-  const status: TaskStatus = task.status as TaskStatus
-  const risk: RiskLevel | undefined = task.risk_level as RiskLevel | undefined
-  const accent = cardAccentColor(status)
-  const [showWork, setShowWork] = useState(false)
-
-  const reasoning: string = typeof task.reasoning === 'string' ? task.reasoning : ''
-  const nextAction: string = typeof task.next_action === 'string' ? task.next_action : ''
-  const decision: string = typeof task.decision === 'string' ? task.decision : ''
-  // Self-heal events are tagged by Hermes with a [CTO ...] / [CEO ...] prefix.
-  const healMatch = reasoning.match(/^\[(CTO|CEO)\s[^\]]*\]/)
-  const hasWork = !!(reasoning || nextAction || decision)
-
+function StatusLegend() {
   return (
     <div style={{
-      background: 'var(--paper-surface)',
-      border: '1px solid var(--silver-2)',
+      display: 'flex', flexWrap: 'wrap', gap: '8px 16px',
+      padding: '12px 16px', marginBottom: 24,
+      background: 'var(--paper-surface)', border: '1px solid var(--silver-2)',
       borderRadius: 8,
-      overflow: 'hidden',
-      display: 'flex',
-      transition: 'border-color 120ms',
     }}>
-      {/* Left accent bar */}
-      {accent && (
-        <div style={{ width: 4, flexShrink: 0, background: accent }} />
-      )}
-
-      <div style={{ flex: 1, padding: '14px 16px' }}>
-        {/* Top row — badges */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8, alignItems: 'center' }}>
-          {/* Agent */}
-          {task.agent && <AgentBadge agent={task.agent} />}
-
-          {/* Status */}
-          <span className={STATUS_BADGE[status] ?? 'j-badge j-badge-neutral'}>
-            {STATUS_DOT[status] && <span className="j-badge-dot" />}
-            {STATUS_LABELS[status] ?? task.status}
+      {LEGEND_ORDER.map(s => {
+        const m = LIVE_META[s]
+        return (
+          <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <StatusDot live_status={s} />
+            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 12, color: 'var(--ink-3)' }}>
+              {m.label}
+            </span>
           </span>
+        )
+      })}
+    </div>
+  )
+}
 
-          {/* Risk */}
-          {risk && (
-            <span className={`j-badge ${RISK_CLASS[risk] ?? 'j-badge-neutral'}`}>
-              {risk}
-            </span>
-          )}
+// ---------------------------------------------------------------------------
+// Agent live card — one per agent under an instruction group
+// ---------------------------------------------------------------------------
+function AgentLiveCard({ agent, onSelect }: { agent: LiveStatusAgent; onSelect?: (taskId: string) => void }) {
+  const m = liveMeta(agent.live_status)
+  const accent =
+    agent.live_status === 'blocked' ? 'var(--red)'
+    : agent.live_status === 'awaiting_founder' || agent.live_status === 'awaiting_delegation' ? 'var(--amber)'
+    : null
 
-          {/* Approval required */}
-          {task.approval_required && (
-            <span className="j-badge j-badge-review">
-              <span className="j-badge-dot" />
-              승인필요
-            </span>
-          )}
+  return (
+    <div
+      onClick={() => onSelect?.(agent.task_id)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect?.(agent.task_id) } }}
+      style={{
+        background: 'var(--paper-surface)',
+        border: '1px solid var(--silver-2)',
+        borderRadius: 8,
+        overflow: 'hidden',
+        display: 'flex',
+        cursor: onSelect ? 'pointer' : 'default',
+        transition: 'border-color 120ms, box-shadow 120ms',
+      }}
+      onMouseEnter={e => { if (onSelect) { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--green)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 6px rgba(0,0,0,0.06)' } }}
+      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--silver-2)'; (e.currentTarget as HTMLDivElement).style.boxShadow = 'none' }}
+    >
+      {accent && <div style={{ width: 4, flexShrink: 0, background: accent }} />}
 
-          {/* Phase */}
-          {task.phase && (
+      <div style={{ flex: 1, padding: '12px 16px' }}>
+        {/* Top row — dot + agent + status badge + counterpart */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+          <StatusDot live_status={agent.live_status} />
+          {agent.agent && <AgentBadge agent={agent.agent} />}
+          <span className={m.badge}>{m.emoji} {m.label}</span>
+          {agent.counterpart && <CounterpartChip counterpart={agent.counterpart} />}
+          {agent.risk_level && (
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>
-              {task.phase}
+              {agent.risk_level}
             </span>
           )}
         </div>
 
-        {/* Title */}
+        {/* Task title */}
         <div style={{
           fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 14,
           color: 'var(--ink-1)', marginBottom: 4, lineHeight: 1.35,
         }}>
-          {task.task_title}
+          {agent.task_title}
         </div>
 
-        {/* Rationale */}
-        {task.rationale && (
-          <div style={{
-            fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5,
-            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-            overflow: 'hidden', marginBottom: task.blocker ? 6 : 0,
-          }}>
-            {task.rationale}
-          </div>
-        )}
-
-        {/* Blocker */}
-        {task.blocker && (
-          <div style={{
-            display: 'flex', alignItems: 'flex-start', gap: 6,
-            marginTop: 6, fontSize: 12.5, color: 'var(--red)',
-            fontFamily: 'var(--font-sans)', lineHeight: 1.45, overflowWrap: 'anywhere',
-          }}>
-            <span style={{ flexShrink: 0, marginTop: 1 }}><Icon name="alert" size={13} stroke={1.8} /></span>
-            {task.blocker}
-          </div>
-        )}
-
-        {/* Agent work — what the agent actually did/decided */}
-        {hasWork && (
-          <div style={{ marginTop: 8 }}>
-            {healMatch && (
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600,
-                color: 'var(--green-press)', background: 'var(--green-tint)',
-                padding: '1px 7px', borderRadius: 999, marginBottom: 6,
-              }}>
-                ⟳ {healMatch[1]} 자가복구
-              </span>
-            )}
-            {(nextAction || decision) && (
-              <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
-                <span style={{ color: 'var(--ink-4)', fontFamily: 'var(--font-mono)', fontSize: 10.5, marginRight: 6 }}>현재 작업</span>
-                {nextAction || decision}
-              </div>
-            )}
-            {reasoning && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setShowWork(v => !v)}
-                  style={{
-                    marginTop: 4, background: 'none', border: 'none', padding: 0,
-                    color: 'var(--green-press)', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit',
-                  }}
-                >
-                  {showWork ? '판단 근거 접기' : '판단 근거 보기'}
-                </button>
-                {showWork && (
-                  <div style={{
-                    marginTop: 6, fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.55,
-                    background: 'var(--bg-inset, var(--silver-1))', padding: '8px 10px',
-                    borderRadius: 6, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap',
-                  }}>
-                    {reasoning}
-                  </div>
-                )}
-              </>
-            )}
+        {/* Current action one-liner */}
+        {agent.current_action && (
+          <div style={{ fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+            {agent.current_action}
           </div>
         )}
 
         {/* Timestamp */}
-        {task.updated_at && (
-          <div style={{
-            marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: 11,
-            color: 'var(--ink-4)',
-          }}>
-            {relativeTime(task.updated_at)}
+        {agent.updated_at && (
+          <div style={{ marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>
+            {relativeTime(agent.updated_at)}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Instruction group — section header + agent cards
+// ---------------------------------------------------------------------------
+function InstructionGroup({ group, onSelect }: { group: LiveStatusGroup; onSelect?: (taskId: string) => void }) {
+  return (
+    <div style={{ marginBottom: 28 }}>
+      {/* Group header */}
+      <div style={{
+        display: 'flex', alignItems: 'baseline', gap: 10,
+        marginBottom: 10, flexWrap: 'wrap',
+      }}>
+        <div style={{
+          fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 17,
+          color: 'var(--ink-1)', letterSpacing: '-0.01em', lineHeight: 1.3,
+        }}>
+          {group.instruction_text || '미지정 지시'}
+        </div>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>
+          에이전트 {group.agents.length}
+        </span>
+      </div>
+
+      {/* Agent cards */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {group.agents.map(a => (
+          <AgentLiveCard key={a.task_id} agent={a} onSelect={onSelect} />
+        ))}
       </div>
     </div>
   )
@@ -624,10 +619,10 @@ function TaskCard({ task }: { task: any }) {
 // Monitor content
 // ---------------------------------------------------------------------------
 function MonitorContent() {
-  const [tasks, setTasks] = useState<any[]>([])
+  const [groups, setGroups] = useState<LiveStatusGroup[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<FilterType>('all')
   const [autoRefresh, setAutoRefresh] = useState(true)
+  const [drillTaskId, setDrillTaskId] = useState<string | null>(null)
   const { selectedId, businesses } = useBusiness()
   const scope = selectedId  // null = 회사 공통, string = 특정 사업
   const scopeLabel = selectedId === null
@@ -636,53 +631,50 @@ function MonitorContent() {
 
   const load = useCallback(async () => {
     try {
-      const [current, blocked] = await Promise.all([
-        api.currentTasks(scope).catch(() => []),
-        api.blockedTasks(scope).catch(() => []),
-      ])
-      const currentArr = Array.isArray(current) ? current : (current as any)?.data ?? []
-      const blockedArr = Array.isArray(blocked) ? blocked : (blocked as any)?.data ?? []
-      const map = new Map<string, any>()
-      ;[...currentArr, ...blockedArr].forEach(t => map.set(t.task_id, t))
-      setTasks(Array.from(map.values()))
+      const data = await api.liveStatus(scope)
+      setGroups(Array.isArray(data) ? data : [])
     } catch {
-      setTasks([])
+      setGroups([])
     } finally {
       setLoading(false)
     }
   }, [scope])
 
+  // Reload immediately when scope changes.
   useEffect(() => {
     setLoading(true)
     load()
+  }, [scope, load])
+
+  // Visibility-aware 8s polling: skip ticks while the tab is hidden,
+  // and refresh once on becoming visible again.
+  useEffect(() => {
     if (!autoRefresh) return
-    const interval = setInterval(load, 30000)
-    return () => clearInterval(interval)
-  }, [load, autoRefresh])
+    const interval = setInterval(() => {
+      if (!document.hidden) load()
+    }, 8000)
+    const onVisible = () => { if (!document.hidden) load() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [autoRefresh, load])
 
-  const filtered = tasks.filter(t => {
-    if (filter === 'all') return true
-    if (filter === 'running') return t.status === 'running' || t.status === 'queued'
-    if (filter === 'blocked') return t.status === 'blocked'
-    if (filter === 'needs_review') return t.status === 'needs_review' || t.approval_required
-    return true
-  })
-
-  // Summary counts
-  const blockedCount  = tasks.filter(t => t.status === 'blocked').length
-  const reviewCount   = tasks.filter(t => t.status === 'needs_review' || t.approval_required).length
-  const runningCount  = tasks.filter(t => t.status === 'running').length
-
-  const tabCount = (key: FilterType): number => {
-    if (key === 'all') return tasks.length
-    if (key === 'running') return tasks.filter(t => t.status === 'running' || t.status === 'queued').length
-    if (key === 'blocked') return blockedCount
-    if (key === 'needs_review') return reviewCount
-    return 0
-  }
+  const totalAgents = groups.reduce((n, g) => n + g.agents.length, 0)
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 24px 64px' }}>
+      {/* Pulsing dot keyframes for live (investigating) status */}
+      <style>{`
+        @keyframes monitorDotPulse {
+          0%   { box-shadow: 0 0 0 0 rgba(31,166,77,0.45); }
+          70%  { box-shadow: 0 0 0 5px rgba(31,166,77,0); }
+          100% { box-shadow: 0 0 0 0 rgba(31,166,77,0); }
+        }
+        .monitor-dot-pulse { animation: monitorDotPulse 1.6s ease-out infinite; }
+      `}</style>
+
       <PhaseTransitionPanel />
 
       {/* Page header */}
@@ -725,55 +717,8 @@ function MonitorContent() {
         </div>
       </div>
 
-      {/* Status summary strip */}
-      {!loading && tasks.length > 0 && (
-        <div style={{
-          display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap',
-        }}>
-          <MetricPill label="진행중" value={runningCount} tone="live" />
-          {blockedCount > 0 && <MetricPill label="차단됨" value={blockedCount} tone="blocked" />}
-          {reviewCount > 0 && <MetricPill label="검토필요" value={reviewCount} tone="review" />}
-        </div>
-      )}
-
-      {/* Filter tabs */}
-      <div style={{
-        display: 'flex', gap: 0, marginBottom: 20,
-        borderBottom: '1px solid var(--silver-2)',
-      }}>
-        {TABS.map(tab => {
-          const active = filter === tab.key
-          const count = tabCount(tab.key)
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setFilter(tab.key)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                borderBottom: active ? '2px solid var(--green)' : '2px solid transparent',
-                marginBottom: -1,
-                padding: '8px 16px',
-                cursor: 'pointer',
-                fontFamily: 'var(--font-sans)',
-                fontSize: 13.5,
-                fontWeight: active ? 600 : 400,
-                color: active ? 'var(--green-press)' : 'var(--ink-3)',
-                display: 'flex', alignItems: 'center', gap: 6,
-                transition: 'color 120ms, border-color 120ms',
-              }}
-            >
-              {tab.label}
-              <span style={{
-                fontFamily: 'var(--font-mono)', fontSize: 11,
-                color: active ? 'var(--green-press)' : 'var(--ink-4)',
-              }}>
-                {count}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      {/* Legend */}
+      {!loading && totalAgents > 0 && <StatusLegend />}
 
       {/* Loading */}
       {loading && (
@@ -783,7 +728,7 @@ function MonitorContent() {
       )}
 
       {/* Empty state */}
-      {!loading && filtered.length === 0 && (
+      {!loading && totalAgents === 0 && (
         <div style={{ textAlign: 'center', padding: '60px 0' }}>
           <div style={{
             width: 44, height: 44, borderRadius: 12,
@@ -794,43 +739,107 @@ function MonitorContent() {
             <Icon name="activity" size={20} stroke={1.4} />
           </div>
           <div style={{ fontSize: 14, color: 'var(--ink-3)', fontFamily: 'var(--font-sans)' }}>
-            {filter === 'all' ? '활성 Task가 없습니다' : '해당 항목이 없습니다'}
+            진행 중인 작업이 없습니다.
           </div>
         </div>
       )}
 
-      {/* Task list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {filtered.map(task => (
-          <TaskCard key={task.task_id} task={task} />
-        ))}
-      </div>
+      {/* Instruction-grouped live view */}
+      {!loading && groups.map(g => (
+        <InstructionGroup key={g.instruction_id || '__none__'} group={g} onSelect={setDrillTaskId} />
+      ))}
+
+      {drillTaskId && <TaskDrillDownModal taskId={drillTaskId} onClose={() => setDrillTaskId(null)} />}
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// MetricPill — compact summary at top
+// Drill-down modal — how an agent actually worked (full output + handoff chain)
 // ---------------------------------------------------------------------------
-function MetricPill({ label, value, tone }: { label: string; value: number; tone: 'live' | 'blocked' | 'review' }) {
-  const TONE_STYLE = {
-    live:    { background: 'var(--green-tint)', color: 'var(--green-press)' },
-    blocked: { background: 'var(--red-tint)',   color: '#8C2A1F' },
-    review:  { background: 'var(--amber-tint)', color: '#8A5408' },
-  }
-  const s = TONE_STYLE[tone]
+function TaskDrillDownModal({ taskId, onClose }: { taskId: string; onClose: () => void }) {
+  const [task, setTask] = useState<TaskItem | null>(null)
+  const [handoffs, setHandoffs] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    Promise.all([api.getTaskDetail(taskId), api.getTaskHandoffs(taskId)])
+      .then(([t, hs]) => { if (alive) { setTask(t as TaskItem | null); setHandoffs(Array.isArray(hs) ? hs : []) } })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [taskId])
+
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 8,
-      padding: '8px 14px', borderRadius: 8,
-      ...s,
-    }}>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 500, lineHeight: 1 }}>
-        {value}
-      </span>
-      <span style={{ fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 500 }}>
-        {label}
-      </span>
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(20,22,24,0.42)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 50 }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: 'var(--paper-surface)', border: '1px solid var(--silver-2)', borderRadius: 10, width: '100%', maxWidth: 640, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      >
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--silver-1)', background: 'var(--paper-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <span className="j-overline">에이전트 작업 상세</span>
+          <button onClick={onClose} className="j-btn j-btn-secondary j-btn-sm" aria-label="닫기">
+            <Icon name="x" size={14} stroke={2} /> 닫기
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {loading ? (
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-4)' }}>로딩 중…</div>
+          ) : (
+            <>
+              {task && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                    {task.agent && <AgentBadge agent={task.agent} />}
+                    {task.status && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>{task.status}</span>}
+                    {task.risk_level && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>{task.risk_level}</span>}
+                  </div>
+                  <h2 style={{ fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 17, color: 'var(--ink-1)', margin: 0, lineHeight: 1.35 }}>
+                    {task.task_title || (task as any).title}
+                  </h2>
+                </div>
+              )}
+
+              {task?.blocker && (
+                <div style={{ background: 'var(--amber-tint)', border: '1px solid #DDB87A', borderRadius: 6, padding: '11px 13px', fontSize: 12.5, color: '#8A5408' }}>
+                  <div style={{ fontWeight: 600, marginBottom: 3 }}>병목 (Blocker)</div>
+                  <div style={{ lineHeight: 1.5 }}>{task.blocker}</div>
+                </div>
+              )}
+
+              {/* The real work product */}
+              {task?.output ? (
+                <AgentOutputDetail output={task.output} />
+              ) : (
+                <div style={{ fontSize: 12.5, color: 'var(--ink-4)' }}>아직 산출물이 기록되지 않았습니다.</div>
+              )}
+
+              {/* Handoff chain — how the work moved between agents / CEO */}
+              {handoffs.length > 0 && (
+                <div>
+                  <div className="j-overline" style={{ marginBottom: 8 }}>업무 이관 기록 (Handoffs)</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {handoffs.map((h: any) => (
+                      <div key={h.id} style={{ border: '1px solid var(--silver-1)', borderRadius: 6, padding: '10px 12px' }}>
+                        <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-3)', marginBottom: 4 }}>
+                          {h.from_agent} → {h.to_agent}
+                        </div>
+                        {h.context && <p style={{ fontSize: 12, color: 'var(--ink-1)', lineHeight: 1.55, margin: 0, whiteSpace: 'pre-wrap' }}>{h.context}</p>}
+                        {h.what_was_completed && <p style={{ fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5, margin: '6px 0 0' }}>✓ {h.what_was_completed}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

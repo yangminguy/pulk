@@ -120,6 +120,57 @@ function parseExecutiveOutput(raw: string): RawExecutiveOutput {
 }
 
 /**
+ * Convert a parsed executive output into a HandlerResult.
+ * Exported so the tool-calling loop can reuse the same mapping without
+ * duplicating the approval/handoff logic.
+ */
+export function buildHandlerResult(
+  task: HandlerInput['task'],
+  parsed: RawExecutiveOutput,
+  requiredTools: string[] = [],
+): HandlerResult {
+  const role = task.assigned_agent;
+  const approval_required = parsed.needs_outbound_or_payment;
+
+  const output: AgentOutput = {
+    current_situation: parsed.current_situation || `${role} reviewed: ${task.title}`,
+    source_instruction: task.rationale,
+    goal: parsed.goal || task.expected_output,
+    why_now: parsed.why_now,
+    bottleneck: parsed.bottleneck,
+    root_cause: parsed.root_cause,
+    options: parsed.options,
+    recommendation: parsed.recommendation,
+    action_items: parsed.action_items.length ? parsed.action_items : [parsed.recommendation],
+    next_owner: 'ceo',
+    required_tools: requiredTools,
+    approval_required,
+    insight_to_record: parsed.insight_to_record,
+    workflow_improvement_suggestion: parsed.workflow_improvement_suggestion,
+    confidence_level: parsed.confidence_level,
+    risk_level: parsed.risk_level,
+  };
+
+  return {
+    status: 'completed',
+    created_tasks: [],
+    approval_required,
+    blocked: false,
+    reason: `${role} produced work product`,
+    risk_level: parsed.risk_level,
+    source_ref: task.source_ref,
+    output,
+    updated_status: 'running',
+    handoff: buildHandoff(task, output, {
+      what_was_completed: output.recommendation || output.current_situation,
+      what_remains_open: output.bottleneck || 'CEO review',
+      why_next_agent_needed: 'CEO reviews the work product and decides completion',
+      must_not_lose: output.insight_to_record || output.goal,
+    }),
+  };
+}
+
+/**
  * Run an executive agent against a task using the LLM and return a real
  * HandlerResult. The CEO review loop (reviewExecutiveOutput) decides the final
  * status; this function returns status 'completed' as the executive's own view.
@@ -143,44 +194,8 @@ export async function runExecutive(input: HandlerInput, llm: LLMClient): Promise
   });
 
   const parsed = parseExecutiveOutput(rawText);
-
-  // Founder gate fires ONLY for genuine outbound/payment — never on risk level.
-  const approval_required = parsed.needs_outbound_or_payment;
-
-  const output: AgentOutput = {
-    current_situation: parsed.current_situation || `${role} reviewed: ${task.title}`,
-    source_instruction: task.rationale,
-    goal: parsed.goal || task.expected_output,
-    why_now: parsed.why_now,
-    bottleneck: parsed.bottleneck,
-    root_cause: parsed.root_cause,
-    options: parsed.options,
-    recommendation: parsed.recommendation,
-    action_items: parsed.action_items.length ? parsed.action_items : [parsed.recommendation],
-    next_owner: 'ceo',
-    required_tools: [],
-    approval_required,
-    insight_to_record: parsed.insight_to_record,
-    workflow_improvement_suggestion: parsed.workflow_improvement_suggestion,
-    confidence_level: parsed.confidence_level,
-    risk_level: parsed.risk_level,
-  };
-
-  return {
-    status: 'completed',
-    created_tasks: [],
-    approval_required,
-    blocked: false,
-    reason: `${role} produced work product`,
-    risk_level: parsed.risk_level,
-    source_ref: task.source_ref,
-    output,
-    updated_status: 'running',
-    handoff: buildHandoff(task, output, {
-      what_was_completed: output.recommendation,
-      what_remains_open: output.bottleneck || 'CEO review',
-      why_next_agent_needed: 'CEO reviews the work product and decides completion',
-      must_not_lose: output.insight_to_record || output.goal,
-    }),
-  };
+  return buildHandlerResult(task, parsed);
 }
+
+// Re-export helpers needed by tool-loop.ts
+export { buildSystemPrompt, parseExecutiveOutput, extractJson };

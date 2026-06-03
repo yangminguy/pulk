@@ -13,8 +13,5 @@
       "require": "./client.js",
       "default": "./client.js"
     }
-  },
-  "dependencies": {
-    "node-cron": "^4.2.1"
   }
 }
