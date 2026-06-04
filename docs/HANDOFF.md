@@ -1,6 +1,21 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (Thumbnail Pattern Card — Strategy Decision Panel 구현+리뷰 완료)
+최종 업데이트: 2026-06-04 (State Machine Validation 스펙 작성 완료)
+
+---
+
+## 🟢 2026-06-04 (최신) — State Machine Validation 스펙 작성
+
+**배경**: 15+ 엔티티 상태 전환이 플러그인에서 raw status 쓰기로 실행되며 l5-core에 유효 전환 정의 없음. 오픈소스 조사(XState/Robot/typescript-fsm) 결과 `build` 결정 → `createTransitionValidator` 제네릭 팩토리 + lookup table 패턴.
+
+**완료**: `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md` 작성.
+- 4개 엔티티 전환 룩업 테이블 정의 (AgentTask 11, FounderInstruction 6, ToolRequest 7, BusinessIdea 5 = 29 edges)
+- `createTransitionValidator<S>` 제네릭 팩토리 + 4개 편의 함수 API 설계
+- 측정 가능한 acceptance criteria 7개 (edge 수 단언, 유효/무효 판정, tsc 0, 테스트 통과)
+- 영향 파일 3개 식별 (`transitions.ts` 신규, `transitions.test.ts` 이전 phase 작성 완료, `index.ts` re-export)
+- 플러그인 통합은 별도 후속 단계로 분리
+
+**다음**: `transitions.ts` 구현 → 실패 테스트 통과 → re-export → typecheck+test.
 
 ---
 
