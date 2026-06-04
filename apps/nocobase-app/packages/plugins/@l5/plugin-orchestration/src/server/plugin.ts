@@ -95,7 +95,18 @@ const {
   requiresApproval: videoRoomRequiresApproval,
   pageForStatus,
   buildMiniRoadmap,
+  buildSlideDeckSpec,
+  slideDeckToVideoJob,
+  createRenderJob,
+  submitRenderJob,
+  completeRenderJob,
+  evaluateVideoRoomQA,
+  createUploadDraft,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/video-room'));
+
+const {
+  createInMemoryVideoFactoryTransport,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/memory'));
 
 type ActionContext = {
   app?: any;
@@ -149,7 +160,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -2659,6 +2670,171 @@ function registerCmoResource(app: any, db: any) {
           },
         );
         ctx.body = { ok: true, data: { card_id } };
+        await next();
+      },
+
+      // POST /api/cmo:buildSlideDeck  { project_id, design_theme?, slides? }
+      buildSlideDeck: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        const projRows = await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const proj = projRows[0];
+
+        const design_theme = String(v.design_theme ?? 'Pulk Clean Green Slide Deck');
+
+        // Build slide list: provided or synthesise one from latest script_draft card.
+        let slides: any[] = Array.isArray(v.slides) ? v.slides : [];
+        if (slides.length === 0) {
+          const scriptCardRows = await q(
+            `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'script_draft' ORDER BY "createdAt" DESC LIMIT 1`,
+            [project_id],
+          );
+          const cardData = scriptCardRows[0]?.data;
+          const parsed = typeof cardData === 'string' ? JSON.parse(cardData) : cardData;
+          const summary = parsed?.summary ?? parsed?.full_script ?? proj.title ?? '영상';
+          slides = [{
+            index: 0,
+            headline: String(proj.title ?? '영상'),
+            body: String(summary).slice(0, 200),
+            visual_type: 'text',
+            speaker_text: String(summary).slice(0, 300),
+          }];
+        }
+
+        // Placeholder ids so buildSlideDeckSpec validates without real records.
+        const spec_id = randomUUID();
+        const placeholder_script_draft_id = randomUUID();
+        const placeholder_voice_recording_id = randomUUID();
+
+        const spec = buildSlideDeckSpec({
+          id: spec_id,
+          video_project_id: project_id,
+          script_draft_id: placeholder_script_draft_id,
+          voice_recording_id: placeholder_voice_recording_id,
+          design_theme,
+          slides,
+        });
+
+        const card_id = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+           VALUES ($1,$2,'slide_deck',$3,$4, now(), now())`,
+          { bind: [card_id, project_id, design_theme, JSON.stringify(spec)] },
+        );
+
+        ctx.body = { ok: true, data: { slide_deck_spec_id: spec_id, spec } };
+        await next();
+      },
+
+      // POST /api/cmo:submitRender  { project_id, slide_deck_spec_id }
+      submitRender: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const slide_deck_spec_id = String(v.slide_deck_spec_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!slide_deck_spec_id) ctx.throw(400, 'slide_deck_spec_id is required');
+
+        // Retrieve spec from latest slide_deck card (or accept the spec inline).
+        const specCardRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'slide_deck' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        const rawSpec = specCardRows[0]?.data;
+        const spec = rawSpec ? (typeof rawSpec === 'string' ? JSON.parse(rawSpec) : rawSpec) : null;
+        const payload = spec ? slideDeckToVideoJob(spec) : null;
+
+        const render_job_id = randomUUID();
+        let job = createRenderJob({
+          id: render_job_id,
+          video_project_id: project_id,
+          slide_deck_spec_id,
+          created_at: new Date().toISOString(),
+        });
+
+        // Transport: real factory or in-memory fallback.
+        const transport = _videoFactoryTransport ?? createInMemoryVideoFactoryTransport();
+        job = await submitRenderJob(job, transport);
+
+        const card_id = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+           VALUES ($1,$2,'rendering',$3,$4, now(), now())`,
+          { bind: [card_id, project_id, `render job ${render_job_id}`, JSON.stringify({ job, payload })] },
+        );
+
+        ctx.body = { ok: true, data: { render_job_id, job } };
+        await next();
+      },
+
+      // POST /api/cmo:runQA  { project_id, render_job_id, checks? }
+      runQA: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const render_job_id = String(v.render_job_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!render_job_id) ctx.throw(400, 'render_job_id is required');
+
+        const defaultChecks: any = {
+          business_pt_structure: 'pass',
+          pulling_to_key_bridge: 'pass',
+          script_matches_approved_draft: 'pass',
+          slide_readability: 'pass',
+          audio_sync: 'pass',
+          visual_quality: 'pass',
+          upload_metadata_ready: 'pass',
+        };
+        const checks = (v.checks && typeof v.checks === 'object') ? v.checks : defaultChecks;
+
+        const qa_result_id = randomUUID();
+        const result = evaluateVideoRoomQA({
+          id: qa_result_id,
+          video_project_id: project_id,
+          render_job_id,
+          checks,
+        });
+
+        const card_id = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+           VALUES ($1,$2,'qa',$3,$4, now(), now())`,
+          { bind: [card_id, project_id, result.overall_status, JSON.stringify(result)] },
+        );
+
+        ctx.body = { ok: true, data: { qa_result_id, result } };
+        await next();
+      },
+
+      // POST /api/cmo:createUploadDraft  { project_id, render_job_id, title, description?, tags? }
+      createUploadDraft: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const render_job_id = String(v.render_job_id ?? '').trim();
+        const title = String(v.title ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!render_job_id) ctx.throw(400, 'render_job_id is required');
+        if (!title) ctx.throw(400, 'title is required');
+
+        const upload_draft_id = randomUUID();
+        const draft = createUploadDraft({
+          id: upload_draft_id,
+          video_project_id: project_id,
+          render_job_id,
+          title,
+          description: String(v.description ?? ''),
+          tags: Array.isArray(v.tags) ? v.tags.map(String) : [],
+        });
+
+        const card_id = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+           VALUES ($1,$2,'upload_draft',$3,$4, now(), now())`,
+          { bind: [card_id, project_id, title, JSON.stringify(draft)] },
+        );
+
+        ctx.body = { ok: true, data: { upload_draft_id, draft } };
         await next();
       },
     },

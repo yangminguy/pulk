@@ -540,6 +540,30 @@ export const api = {
       body: JSON.stringify(input),
     }).then(r => unwrap(r)),
 
+  cmoBuildSlideDeck: (project_id: string, opts?: { design_theme?: string; slides?: unknown[] }) =>
+    request<{ data: { ok: boolean; data: { slide_deck_spec_id: string; spec: unknown } } }>('/api/cmo:buildSlideDeck', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, ...(opts ?? {}) }),
+    }).then(r => unwrap(r)),
+
+  cmoSubmitRender: (project_id: string, slide_deck_spec_id: string) =>
+    request<{ data: { ok: boolean; data: { render_job_id: string; job: unknown } } }>('/api/cmo:submitRender', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, slide_deck_spec_id }),
+    }).then(r => unwrap(r)),
+
+  cmoRunQA: (project_id: string, render_job_id: string, checks?: Record<string, string>) =>
+    request<{ data: { ok: boolean; data: { qa_result_id: string; result: unknown } } }>('/api/cmo:runQA', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, render_job_id, checks }),
+    }).then(r => unwrap(r)),
+
+  cmoCreateUploadDraft: (input: { project_id: string; render_job_id: string; title: string; description?: string; tags?: string[] }) =>
+    request<{ data: { ok: boolean; data: { upload_draft_id: string; draft: unknown } } }>('/api/cmo:createUploadDraft', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }).then(r => unwrap(r)),
+
   closeInstruction: (id: string) =>
     request<{ data: unknown }>('/api/founder_instructions:update', {
       method: 'POST',
