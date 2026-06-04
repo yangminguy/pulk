@@ -1,0 +1,24 @@
+{
+  "name": "@l5/plugin-orchestration",
+  "version": "0.0.1",
+  "main": "src/server/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/server/index.ts",
+      "require": "./src/server/index.ts",
+      "default": "./src/server/index.ts",
+      "types": "./src/server/index.ts"
+    },
+    "./client": {
+      "import": "./src/client/index.ts",
+      "require": "./src/client/index.ts",
+      "default": "./src/client/index.ts",
+      "types": "./src/client/index.ts"
+    }
+  },
+  "dependencies": {
+    "@l5/core": "workspace:*",
+    "@nocobase/server": "*",
+    "@nocobase/database": "*"
+  }
+}

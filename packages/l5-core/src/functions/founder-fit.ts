@@ -61,6 +61,20 @@ function extractKeywords(text: string): string[] {
     .slice(0, 20);
 }
 
+// Stem-based match so morphological variants count as the same keyword
+// (e.g. "automated" vs "automation", "ai-powered" vs "ai").
+function keywordsMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  const stem = (w: string) => w.replace(/[^a-z]/g, '').slice(0, 4);
+  const stemA = stem(a);
+  const stemB = stem(b);
+  return stemA.length >= 3 && stemA === stemB;
+}
+
+function countKeywordMatches(ideaKeywords: string[], dnaKeywords: string[]): number {
+  return ideaKeywords.filter(k => dnaKeywords.some(d => keywordsMatch(k, d))).length;
+}
+
 function calculateInterestFit(ideaKeywords: string[], dnaList: FounderDNA[]): number {
   const interestDNA = dnaList.filter(d => d.category === 'business_preference');
 
@@ -71,7 +85,7 @@ function calculateInterestFit(ideaKeywords: string[], dnaList: FounderDNA[]): nu
 
   interestDNA.forEach(dna => {
     const dnaKeywords = extractKeywords(dna.statement);
-    const matches = ideaKeywords.filter(k => dnaKeywords.includes(k)).length;
+    const matches = countKeywordMatches(ideaKeywords, dnaKeywords);
 
     if (matches > 0) {
       matchCount += matches * dna.confidence;
@@ -93,17 +107,17 @@ function calculateSkillFit(ideaKeywords: string[], dnaList: FounderDNA[]): numbe
 
   skillDNA.forEach(dna => {
     const keywords = extractKeywords(dna.statement);
-    const relevance = ideaKeywords.filter(k => keywords.includes(k)).length > 0 ? dna.confidence : 0;
+    const relevance = countKeywordMatches(ideaKeywords, keywords) > 0 ? dna.confidence : 0;
     strengthScore += relevance;
   });
 
   weaknessDNA.forEach(dna => {
     const keywords = extractKeywords(dna.statement);
-    const relevance = ideaKeywords.filter(k => keywords.includes(k)).length > 0 ? dna.confidence : 0;
+    const relevance = countKeywordMatches(ideaKeywords, keywords) > 0 ? dna.confidence : 0;
     weaknessScore += relevance;
   });
 
-  const baseScore = Math.min(100, Math.round(strengthScore * 10));
+  const baseScore = Math.min(100, Math.round(strengthScore * 12));
   const adjustedScore = Math.max(0, baseScore - weaknessScore * 5);
 
   return adjustedScore;

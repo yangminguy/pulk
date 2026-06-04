@@ -18,18 +18,33 @@ NC='\033[0m'
 
 failed=0
 passed=0
+warned=0
 
 run_check() {
   local check_name=$1
   local check_cmd=$2
 
-  echo -n "${BLUE}→${NC} $check_name: "
+  printf "%b %s: " "${BLUE}→${NC}" "$check_name"
   if eval "$check_cmd" > /dev/null 2>&1; then
     echo -e "${GREEN}PASS${NC}"
-    ((passed++))
+    ((passed+=1))
   else
     echo -e "${RED}FAIL${NC}"
-    ((failed++))
+    ((failed+=1))
+  fi
+}
+
+run_optional_check() {
+  local check_name=$1
+  local check_cmd=$2
+
+  printf "%b %s: " "${BLUE}→${NC}" "$check_name"
+  if eval "$check_cmd" > /dev/null 2>&1; then
+    echo -e "${GREEN}PASS${NC}"
+    ((passed+=1))
+  else
+    echo -e "${YELLOW}WARN${NC}"
+    ((warned+=1))
   fi
 }
 
@@ -37,8 +52,8 @@ run_check() {
 echo "Step 1: Environment Checks"
 echo "────────────────────────────────────────"
 run_check "Node.js installed" "node --version"
-run_check "pnpm installed" "pnpm --version"
-run_check "Docker available" "docker --version"
+run_check "pnpm available via pnpm/corepack" "pnpm --version || corepack pnpm --version"
+run_optional_check "Docker available (optional for local sqlite QA)" "docker --version"
 run_check ".env.example exists" "[ -f .env.example ]"
 echo ""
 
@@ -78,7 +93,7 @@ echo ""
 
 # Summary
 echo "═══════════════════════════════════════════════════════════════"
-echo -e "Results: ${GREEN}${passed} PASSED${NC}, ${RED}${failed} FAILED${NC}"
+echo -e "Results: ${GREEN}${passed} PASSED${NC}, ${YELLOW}${warned} WARNINGS${NC}, ${RED}${failed} FAILED${NC}"
 echo "═══════════════════════════════════════════════════════════════"
 
 if [ $failed -gt 0 ]; then

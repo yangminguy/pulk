@@ -1,0 +1,96 @@
+import { decomposeIntoWorkstreams } from '../decomposer';
+import type { CEOInterpretation } from '../types';
+
+function makeInterp(over: Partial<CEOInterpretation> = {}): CEOInterpretation {
+  return {
+    id: 'interp_1',
+    instruction_id: 'fi_1',
+    goal: 'Launch marketing campaign',
+    phase: 'execution_build',
+    assumptions: [],
+    success_criteria: [],
+    risk_level: 'D2',
+    approval_required: false,
+    created_at: '2026-05-26T00:00:00Z',
+    ...over,
+  };
+}
+
+describe('decomposeIntoWorkstreams', () => {
+  it('routes marketing/messaging text to CMO', async () => {
+    const ws = await decomposeIntoWorkstreams(makeInterp({ goal: 'launch marketing campaign with new positioning' }));
+    expect(ws.some(w => w.domain === 'CMO')).toBe(true);
+  });
+
+  it('routes sales/revenue text to CRO', async () => {
+    const ws = await decomposeIntoWorkstreams(makeInterp({ goal: 'build sales pipeline and outreach proposal' }));
+    expect(ws.some(w => w.domain === 'CRO')).toBe(true);
+  });
+
+  it('routes pmf/product text to CPO', async () => {
+    const ws = await decomposeIntoWorkstreams(makeInterp({ goal: 'run pmf experiment with product interviews' }));
+    expect(ws.some(w => w.domain === 'CPO')).toBe(true);
+  });
+
+  it('routes tech/automation text to CTO', async () => {
+    const ws = await decomposeIntoWorkstreams(makeInterp({ goal: 'build internal automation tool', assumptions: ['engineering effort needed'] }));
+    expect(ws.some(w => w.domain === 'CTO')).toBe(true);
+  });
+
+  it('routes finance/cost text to CFO', async () => {
+    const ws = await decomposeIntoWorkstreams(makeInterp({ goal: 'set pricing and review subscription cost' }));
+    expect(ws.some(w => w.domain === 'CFO')).toBe(true);
+  });
+
+  it('routes risk/compliance text to RiskQA', async () => {
+    const ws = await decomposeIntoWorkstreams(makeInterp({ goal: 'review pii consent and compliance policy' }));
+    expect(ws.some(w => w.domain === 'RiskQA')).toBe(true);
+  });
+
+  it('uses fallback (CPO) when no keywords match', async () => {
+    const ws = await decomposeIntoWorkstreams(
+      makeInterp({ goal: 'xyzzy', assumptions: [], success_criteria: [] })
+    );
+    expect(ws).toHaveLength(1);
+    expect(ws[0].domain).toBe('CPO');
+  });
+
+  it('does not require founder approval for D4/D5 internal work by risk alone', async () => {
+    const ws = await decomposeIntoWorkstreams(
+      makeInterp({ goal: 'product interview with customers', risk_level: 'D4' })
+    );
+    const cpoWs = ws.find(w => w.domain === 'CPO');
+    expect(cpoWs?.approval_required).toBe(false);
+  });
+
+  it('marks workstream as approval_required when interpretation.approval_required is true', async () => {
+    const ws = await decomposeIntoWorkstreams(
+      makeInterp({ goal: 'product interview', risk_level: 'D1', approval_required: true })
+    );
+    expect(ws[0].approval_required).toBe(true);
+  });
+
+  it('propagates instruction_id and interpretation_id', async () => {
+    const ws = await decomposeIntoWorkstreams(makeInterp({ goal: 'marketing copy review' }));
+    expect(ws[0].instruction_id).toBe('fi_1');
+    expect(ws[0].interpretation_id).toBe('interp_1');
+  });
+
+  it('limits quick first-pass routing to a few core agents', async () => {
+    const ws = await decomposeIntoWorkstreams(makeInterp({
+      goal: '빠르게 founder workflow offer PMF message outreach 초안 핵심만 보고 싶다',
+      assumptions: ['먼저 소수 에이전트만 작업한다.'],
+      success_criteria: ['빠른 결과물을 확인한다.'],
+    }));
+    expect(ws.length).toBeLessThanOrEqual(2);
+    expect(ws.map(w => w.domain)).toEqual(['CMO', 'CPO']);
+  });
+
+  it('limits explicit single-agent routing to one core agent', async () => {
+    const ws = await decomposeIntoWorkstreams(makeInterp({
+      goal: '하나만 먼저 product pmf messaging 초안 작성',
+      assumptions: ['한 명의 에이전트만 먼저 작업한다.'],
+    }));
+    expect(ws).toHaveLength(1);
+  });
+});

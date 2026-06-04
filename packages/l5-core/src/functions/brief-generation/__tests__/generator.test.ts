@@ -32,7 +32,10 @@ describe('generateBusinessBrief', () => {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         pii_level: 'none',
-        searchable_tags: ['response_time', 'customer_satisfaction']
+        searchable_tags: ['response_time', 'customer_satisfaction'],
+        suggested_tags: ['pmf_learning'],
+        approval_status: 'approved',
+        contains_pii: false
       }
     ],
     founder_dna: [

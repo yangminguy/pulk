@@ -4,6 +4,7 @@
   "description": "L5 Business OS MVP - AI-powered Founder Operating System",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@9.15.0",
   "scripts": {
     "install:all": "pnpm install",
     "dev:all": "pnpm -r dev",
@@ -11,12 +12,23 @@
     "test:all": "pnpm -r test",
     "lint:all": "pnpm -r lint",
     "typecheck:all": "pnpm -r typecheck",
+    "qa:static": "pnpm -r typecheck && pnpm -r --if-present lint && pnpm -r build",
+    "qa:test": "pnpm -r test",
+    "qa:e2e:nocobase": "corepack pnpm --dir apps/nocobase-app e2e test",
+    "qa:e2e:founder": "corepack pnpm --dir apps/founder-ui e2e && corepack pnpm --dir apps/founder-ui exec node e2e/verify-changes.mjs && corepack pnpm --dir apps/founder-ui exec node e2e/verify-live.mjs && corepack pnpm --dir apps/founder-ui exec node scripts/e2e-projects.mjs",
+    "qa:smoke:autopilot": "tsx scripts/smoke-autopilot-e2e.ts",
+    "qa:smoke:delegation": "node scripts/d6-delegation-smoke.mjs",
+    "qa:all": "pnpm qa:static && pnpm qa:test && pnpm smoke:nocobase-auth && pnpm qa:e2e:nocobase && pnpm qa:e2e:founder",
     "validate": "bash scripts/validate.sh",
     "check-env": "bash scripts/check-env.sh",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f",
-    "demo": "tsx scripts/demo-mvp-loop.ts"
+    "demo": "tsx scripts/demo-mvp-loop.ts",
+    "smoke:nocobase-auth": "tsx scripts/smoke-nocobase-authenticated.ts"
+  },
+  "dependencies": {
+    "@l5/core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.3.0",

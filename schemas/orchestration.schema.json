@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "L5 Orchestration Schema",
+  "description": "Schema for CEO Agent coordination: FounderInstruction, CEOInterpretation, AgentTask, AgentHandoff",
+  "definitions": {
+    "RiskLevel": {
+      "type": "string",
+      "enum": ["D1", "D2", "D3", "D4", "D5"]
+    },
+    "AgentRole": {
+      "type": "string",
+      "enum": ["CEO", "ChiefOfStaff", "CMO", "CRO", "CPO", "CTO", "COO", "CFO", "RiskQA", "Culture"]
+    },
+    "OrchestrationPhase": {
+      "type": "string",
+      "enum": [
+        "direction_alignment",
+        "market_pmf_diagnosis",
+        "offer_workflow_redesign",
+        "execution_system_build",
+        "monitoring_optimization"
+      ]
+    },
+    "FounderInstruction": {
+      "type": "object",
+      "required": ["id", "raw_text", "source", "status", "created_at"],
+      "properties": {
+        "id": { "type": "string" },
+        "raw_text": { "type": "string" },
+        "source": { "type": "string", "enum": ["chat", "manual", "import"] },
+        "intent": { "type": "string" },
+        "constraints": { "type": "array", "items": { "type": "string" } },
+        "requested_phase": { "type": "string" },
+        "status": { "type": "string", "enum": ["new", "interpreted", "in_progress", "closed"] },
+        "business_id": { "type": ["string", "null"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "CEOInterpretation": {
+      "type": "object",
+      "required": ["id", "instruction_id", "goal", "assumptions", "phase", "success_criteria", "risk_level", "approval_required", "created_at"],
+      "properties": {
+        "id": { "type": "string" },
+        "instruction_id": { "type": "string" },
+        "goal": { "type": "string" },
+        "assumptions": { "type": "array", "items": { "type": "string" } },
+        "phase": { "$ref": "#/definitions/OrchestrationPhase" },
+        "success_criteria": { "type": "array", "items": { "type": "string" } },
+        "risk_level": { "$ref": "#/definitions/RiskLevel" },
+        "approval_required": { "type": "boolean" },
+        "business_id": { "type": ["string", "null"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "AgentTask": {
+      "type": "object",
+      "required": ["id", "instruction_id", "assigned_agent", "title", "rationale", "expected_output", "status", "approval_required", "created_at", "updated_at"],
+      "properties": {
+        "id": { "type": "string" },
+        "instruction_id": { "type": "string" },
+        "interpretation_id": { "type": "string" },
+        "assigned_agent": { "$ref": "#/definitions/AgentRole" },
+        "title": { "type": "string" },
+        "rationale": { "type": "string" },
+        "expected_output": { "type": "string" },
+        "status": { "type": "string", "enum": ["queued", "running", "blocked", "needs_review", "done", "killed"] },
+        "approval_required": { "type": "boolean" },
+        "blocker": { "type": "string" },
+        "due_at": { "type": "string", "format": "date-time" },
+        "business_id": { "type": ["string", "null"] },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "AgentHandoff": {
+      "type": "object",
+      "required": ["id", "task_id", "from_agent", "context", "next_action", "approval_required", "created_at"],
+      "properties": {
+        "id": { "type": "string" },
+        "task_id": { "type": "string" },
+        "from_agent": { "type": "string" },
+        "to_agent": { "type": "string" },
+        "context": { "type": "string" },
+        "next_action": { "type": "string" },
+        "blocker": { "type": "string" },
+        "approval_required": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

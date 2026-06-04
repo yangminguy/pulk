@@ -81,7 +81,7 @@ export function generateFounderBrief(data: {
 }): string {
   const lines: string[] = [];
 
-  lines.push('# Founder's Daily Operating Brief');
+  lines.push("# Founder's Daily Operating Brief");
   lines.push(`Date: ${data.date.toISOString().split('T')[0]}`);
   lines.push('');
 

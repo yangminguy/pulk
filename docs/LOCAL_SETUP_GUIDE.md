@@ -30,10 +30,7 @@ PGPASSWORD=l5_secure_password psql -h localhost -U l5_user -d l5_business_os -c 
 ### 3. Setup NocoBase
 
 ```bash
-cd apps/nocobase
-
-# Install NocoBase (follow official guide or use npm)
-npm install nocodb
+cd apps/nocobase-app
 
 # Create .env file
 cp ../../.env.example .env
@@ -102,9 +99,9 @@ docker-compose up postgres
 
 **Terminal 2 - NocoBase:**
 ```bash
-cd apps/nocobase
-npm start
-# Visit http://localhost:8080
+cd apps/nocobase-app
+pnpm dev
+# Visit http://localhost:13000
 ```
 
 **Terminal 3 (optional) - Project:**
@@ -275,11 +272,11 @@ pnpm test -- --verbose
 ps aux | grep nocobase
 
 # Check logs
-cd apps/nocobase
-npm start  # Run in foreground to see logs
+cd apps/nocobase-app
+pnpm dev  # Run in foreground to see logs
 
-# Verify port 8080 is free
-lsof -i :8080
+# Verify port 13000 is free
+lsof -i :13000
 ```
 
 ## Next Steps After Setup

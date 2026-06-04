@@ -1,0 +1,19 @@
+{
+  "name": "@l5/plugin-agent-staffing",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/server/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/server/index.ts",
+      "types": "./src/server/index.ts"
+    },
+    "./client": {
+      "import": "./src/client/index.ts",
+      "types": "./src/client/index.ts"
+    }
+  },
+  "dependencies": {
+    "@l5/core": "workspace:*"
+  }
+}

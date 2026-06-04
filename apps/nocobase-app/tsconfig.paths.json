@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "@@/*": [
+        ".dumi/tmp/*"
+      ],
+      "@l5/plugin-business-portfolio/client": [
+        "packages/plugins/@l5/plugin-business-portfolio/src/client"
+      ],
+      "@l5/plugin-business-portfolio/package.json": [
+        "packages/plugins/@l5/plugin-business-portfolio/package.json"
+      ],
+      "@l5/plugin-business-portfolio": [
+        "packages/plugins/@l5/plugin-business-portfolio/src"
+      ],
+      "@l5/plugin-executive-monitor/client": [
+        "packages/plugins/@l5/plugin-executive-monitor/src/client"
+      ],
+      "@l5/plugin-executive-monitor/package.json": [
+        "packages/plugins/@l5/plugin-executive-monitor/package.json"
+      ],
+      "@l5/plugin-executive-monitor": [
+        "packages/plugins/@l5/plugin-executive-monitor/src"
+      ],
+      "@l5/plugin-orchestration/client": [
+        "packages/plugins/@l5/plugin-orchestration/src/client"
+      ],
+      "@l5/plugin-orchestration/package.json": [
+        "packages/plugins/@l5/plugin-orchestration/package.json"
+      ],
+      "@l5/plugin-orchestration": [
+        "packages/plugins/@l5/plugin-orchestration/src"
+      ]
+    }
+  }
+}

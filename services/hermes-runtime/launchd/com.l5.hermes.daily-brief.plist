@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.l5.hermes.daily-brief</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE_PATH__</string>
+    <string>__HERMES_DIR__/dist/gateway.js</string>
+    <string>daily-brief</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>18</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NOCOBASE_URL</key>
+    <string>http://localhost:13000</string>
+    <key>ACR_BASE_URL</key>
+    <string>http://localhost:3001</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/daily-brief.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/daily-brief.err</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

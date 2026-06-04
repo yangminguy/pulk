@@ -1,6 +1,6 @@
 # L5 Business OS MVP - Quick Start
 
-**Status**: Phase 0-2 Complete (Foundation Ready)  
+**Status**: Live QA passing (2026-06-03)  
 **Time to Read**: 3 minutes
 
 ## What Is This?
@@ -18,7 +18,7 @@ L5 Business OS는 Founder가 새로운 사업 아이디어를 입력하면:
 
 이 과정을 **반자동으로 운영**하는 내부 운영 시스템입니다.
 
-## What's Done (Phase 0-2)
+## What's Done Now
 
 ✅ **L5 Core Package**
 - Founder Fit 평점 시스템
@@ -26,7 +26,7 @@ L5 Business OS는 Founder가 새로운 사업 아이디어를 입력하면:
 - Tool Request 판단 로직
 - Approval 게이트 규칙
 - Brief 생성 함수
-- 모두 테스트 완료 (27 tests, 100% pass)
+- workspace tests/typecheck/build are wired through pnpm
 
 ✅ **Documentation**
 - Product PRD, Architecture, Data Model
@@ -37,7 +37,8 @@ L5 Business OS는 Founder가 새로운 사업 아이디어를 입력하면:
 ✅ **Project Structure**
 - Monorepo (pnpm workspaces)
 - Docker setup for PostgreSQL
-- Plugin scaffolds ready
+- Live NocoBase app: `apps/nocobase-app`
+- Legacy scaffold excluded from workspace: `apps/nocobase`
 - Git initialized
 
 ## What Needs to Happen Now
@@ -52,20 +53,16 @@ cd /Users/wonminyang/Desktop/pulk
 cat docs/LOCAL_SETUP_GUIDE.md
 
 # Quick setup:
-docker-compose up -d postgres   # Start PostgreSQL
-cd apps/nocobase
-npm install nocodb
-npm start                         # Start NocoBase at http://localhost:8080
+cd apps/nocobase-app
+pnpm dev
 ```
 
 ### Step 2: Verify L5 Core Works
 
 ```bash
-cd packages/l5-core
-pnpm install
-pnpm test
-
-# Should see: PASS (27 passed tests)
+corepack pnpm qa:static
+corepack pnpm qa:test
+corepack pnpm smoke:nocobase-auth
 ```
 
 ### Step 3: Create Collections in NocoBase
