@@ -29,6 +29,22 @@
 
 ---
 
+## 🟢 2026-06-04 — State Machine Validation 실패 테스트 작성
+
+**완료**: `packages/l5-core/src/functions/state-machine/__tests__/transitions.test.ts`가 스펙 AC를 red 테스트로 고정한다.
+- edge count: AgentTask 11, FounderInstruction 6, ToolRequest 7, BusinessIdea 5
+- `createTransitionValidator` 제네릭 팩토리 유효/무효 판정
+- 엔티티별 validator 4개 유효 전환 2개 이상 + terminal→non-terminal 무효 전환
+
+**Red 검증**:
+- 명령: `corepack pnpm --filter @l5/core test -- state-machine/__tests__/transitions.test.ts`
+- 결과: 실패(exit 1)
+- 핵심 오류: `TS2307: Cannot find module '../transitions' or its corresponding type declarations.`
+
+**다음**: 구현 단계에서 `packages/l5-core/src/functions/state-machine/transitions.ts`를 추가하고 `packages/l5-core/src/index.ts` re-export 후 core test/typecheck를 통과시킨다.
+
+---
+
 ## 🟢 2026-06-04 (최신) — Thumbnail Pattern Card: Strategy Decision Panel 리뷰 완료
 
 **판정: LGTM — 수정 요청 없음.**

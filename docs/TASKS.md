@@ -43,9 +43,10 @@
 
 > **배경**: 15+ 엔티티 상태 전환이 플러그인에서 raw status 쓰기로 실행되며 l5-core에 유효 전환 정의 없음. 오픈소스 조사(XState/Robot/typescript-fsm) 결과 `build` 결정. `createTransitionValidator` 제네릭 팩토리 + lookup table 패턴. **스펙: `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md` (AC 7개, 영향 파일 3개).**
 > **Acceptance Criteria**: (1) 팩토리 제네릭 동작 (2) edge 수 11/6/7/5 단언 (3) 유효 전환 valid===true (4) 무효 전환 valid===false+reason (5) pnpm test 통과 (6) tsc 0 (7) index.ts re-export.
+> **Red 검증(2026-06-04)**: `corepack pnpm --filter @l5/core test -- state-machine/__tests__/transitions.test.ts` → 실패(exit 1). 현재 구현 파일 `src/functions/state-machine/transitions.ts`가 없어 `TS2307: Cannot find module '../transitions'`로 red 확인.
 
 - [x] `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md` — 요구사항 명세 + 측정 가능 AC 7개 + 영향 파일 목록
-- [~] `state-machine/__tests__/transitions.test.ts` — 실패 테스트 작성 완료 (이전 phase), 구현 대기
+- [x] `state-machine/__tests__/transitions.test.ts` — 실패 테스트 작성 완료 + red 확인 (`TS2307` 구현 모듈 부재)
 - [ ] `state-machine/transitions.ts` — `createTransitionValidator` + 4개 lookup table (AgentTask 11, FounderInstruction 6, ToolRequest 7, BusinessIdea 5 = 29 edges)
 - [ ] `l5-core/src/index.ts` re-export + typecheck + test 통과
 
