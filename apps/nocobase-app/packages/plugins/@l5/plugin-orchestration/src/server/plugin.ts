@@ -72,6 +72,12 @@ const {
   runCtoPlanningTurn,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cto-planning'));
 
+// M9.5: roadmap burndown — derive per-milestone progress from linked dev-tasks.
+const {
+  deriveRoadmapItemStatus,
+  summarizeRoadmap,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/roadmap'));
+
 type ActionContext = {
   app?: any;
   db: any;
@@ -120,7 +126,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('consultation', ['list', 'respond'], 'loggedIn');
     this.app.acl.allow('delegation', ['list', 'advance'], 'loggedIn');
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
-    this.app.acl.allow('cto', ['planMessage', 'approvePlan'], 'loggedIn');
+    this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
   }
@@ -1877,6 +1883,59 @@ function registerCtoPlanningResource(app: any, db: any) {
           ok: true,
           data: { new_project, project_id, instruction_id, roadmap_item_ids, task_ids },
         };
+        await next();
+      },
+
+      // GET/POST /api/cto:roadmapProgress?business_id=&project_id=
+      // Burndown: each roadmap item with its done/total task count + status, so
+      // the Control Room shows the overall plan shrinking as tasks complete.
+      roadmapProgress: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const query = (ctx.request as any)?.query || {};
+        const vals = getValues(ctx);
+        const business_id = query.business_id ?? vals.business_id ?? null;
+        const project_id = query.project_id ?? vals.project_id ?? null;
+
+        const where: string[] = [`ri.source = 'cto_planning'`];
+        const bind: any[] = [];
+        if (business_id) {
+          bind.push(String(business_id));
+          where.push(`ri.business_id = $${bind.length}`);
+        }
+        if (project_id) {
+          bind.push(String(project_id));
+          where.push(`ri.project_id = $${bind.length}`);
+        }
+
+        const rows = await db.sequelize.query(
+          `SELECT ri.id, ri.title, ri.sequence, ri.project_id, ri.business_id,
+                  COUNT(t.id)::int AS total,
+                  COUNT(t.id) FILTER (WHERE t.status = 'done')::int AS done,
+                  COUNT(t.id) FILTER (WHERE t.status NOT IN ('done','killed','queued'))::int AS running
+             FROM roadmap_items ri
+             LEFT JOIN agent_tasks t ON t.roadmap_item_id = ri.id
+            WHERE ${where.join(' AND ')}
+            GROUP BY ri.id, ri.title, ri.sequence, ri.project_id, ri.business_id
+            ORDER BY ri.business_id NULLS FIRST, ri.project_id NULLS FIRST, ri.sequence ASC`,
+          { bind, type: db.sequelize.QueryTypes.SELECT },
+        );
+
+        const items = rows.map((r: any) => {
+          const total = Number(r.total) || 0;
+          const done = Number(r.done) || 0;
+          const running = Number(r.running) || 0;
+          return {
+            id: r.id,
+            title: r.title,
+            sequence: Number(r.sequence) || 0,
+            project_id: r.project_id != null ? String(r.project_id) : null,
+            business_id: r.business_id != null ? String(r.business_id) : null,
+            total,
+            done,
+            status: deriveRoadmapItemStatus({ total, done, running }),
+          };
+        });
+
+        ctx.body = { ok: true, data: { items, summary: summarizeRoadmap(items) } };
         await next();
       },
     },

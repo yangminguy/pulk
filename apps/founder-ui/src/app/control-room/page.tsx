@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import AuthGate from '@/components/AuthGate'
-import { api, ControlRoomBusiness, ControlRoomDevTask, CtoPlan } from '@/lib/api'
+import { api, ControlRoomBusiness, ControlRoomDevTask, CtoPlan, RoadmapProgressItem, RoadmapProgressSummary } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
 
 // ── Joinery status tokens ─────────────────────────────────────────────────────
@@ -744,12 +744,120 @@ function CtoPlanningPanel({ onApproved }: { onApproved: () => void }) {
   )
 }
 
+// ── M9.5: roadmap burndown panel ──────────────────────────────────────────────
+const ROADMAP_STATUS: Record<string, { label: string; bg: string; fg: string }> = {
+  done: { label: '완료', bg: 'var(--green-tint, #E3F3E8)', fg: 'var(--green)' },
+  active: { label: '진행 중', bg: 'var(--amber-tint)', fg: '#8A5408' },
+  planned: { label: '대기', bg: 'var(--silver-1)', fg: 'var(--ink-3)' },
+}
+
+function RoadmapBar({ done, total }: { done: number; total: number }) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0
+  return (
+    <div style={{ height: 6, background: 'var(--silver-2)', borderRadius: 3, overflow: 'hidden', width: '100%' }}>
+      <div style={{ height: '100%', width: `${pct}%`, background: 'var(--green)', borderRadius: 3, transition: 'width 0.3s' }} />
+    </div>
+  )
+}
+
+function RoadmapProgressPanel({ refreshSignal }: { refreshSignal: number }) {
+  const { selectedId } = useBusiness()
+  const [items, setItems] = useState<RoadmapProgressItem[]>([])
+  const [summary, setSummary] = useState<RoadmapProgressSummary | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  const load = useCallback(async () => {
+    try {
+      const res = await api.ctoRoadmapProgress(selectedId ?? null)
+      setItems(res.items ?? [])
+      setSummary(res.summary ?? null)
+    } catch {
+      // best-effort; roadmap is optional context
+    } finally {
+      setLoaded(true)
+    }
+  }, [selectedId])
+
+  useEffect(() => {
+    load()
+  }, [load, refreshSignal])
+
+  // Nothing planned yet → don't take up space.
+  if (!loaded || items.length === 0) return null
+
+  return (
+    <div
+      style={{
+        border: '1px solid var(--silver-2)',
+        borderRadius: 8,
+        background: 'var(--paper-surface)',
+        padding: '14px 16px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 14, color: 'var(--ink-1)', fontWeight: 600 }}>로드맵 진행</div>
+        {summary && (
+          <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+            {summary.percent}% · 작업 {summary.done_tasks}/{summary.total_tasks} 완료 · 단계 {summary.done_items}/{summary.item_count}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {items.map(it => {
+          const tone = ROADMAP_STATUS[it.status] ?? ROADMAP_STATUS.planned
+          return (
+            <div key={it.id} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)', minWidth: 16 }}>
+                  {it.sequence}
+                </span>
+                <span
+                  style={{
+                    fontSize: 13,
+                    color: it.status === 'done' ? 'var(--ink-3)' : 'var(--ink-1)',
+                    fontWeight: 500,
+                    textDecoration: it.status === 'done' ? 'line-through' : 'none',
+                    flex: 1,
+                  }}
+                >
+                  {it.title}
+                </span>
+                <span
+                  style={{
+                    fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 4,
+                    background: tone.bg, color: tone.fg, whiteSpace: 'nowrap',
+                  }}
+                >
+                  {tone.label}
+                </span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)', minWidth: 32, textAlign: 'right' }}>
+                  {it.done}/{it.total}
+                </span>
+              </div>
+              <div style={{ paddingLeft: 24 }}>
+                <RoadmapBar done={it.done} total={it.total} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function ControlRoomContent() {
   const { businesses, selectedId, setSelectedId } = useBusiness()
   const [tree, setTree] = useState<ControlRoomBusiness[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
+  // Bumped on each refresh tick and on plan approval so the roadmap burndown
+  // reloads in step with the task tree.
+  const [refreshSignal, setRefreshSignal] = useState(0)
 
   const load = useCallback(async () => {
     try {
@@ -767,7 +875,10 @@ function ControlRoomContent() {
     setLoading(true)
     load()
     if (!autoRefresh) return
-    const interval = setInterval(load, 10000)
+    const interval = setInterval(() => {
+      load()
+      setRefreshSignal(s => s + 1)
+    }, 10000)
     return () => clearInterval(interval)
   }, [load, autoRefresh])
 
@@ -874,7 +985,10 @@ function ControlRoomContent() {
       <div style={{ height: 1, background: 'var(--silver-2)' }} />
 
       {/* M10: CTO conversational planning */}
-      <CtoPlanningPanel onApproved={load} />
+      <CtoPlanningPanel onApproved={() => { load(); setRefreshSignal(s => s + 1) }} />
+
+      {/* M9.5: roadmap burndown */}
+      <RoadmapProgressPanel refreshSignal={refreshSignal} />
 
       {/* ACR degraded banner */}
       {!loading && acrMissing && (

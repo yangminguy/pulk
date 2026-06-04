@@ -308,6 +308,25 @@ export type CtoPlan = {
   project_proposal: CtoProjectProposal | null
   token_estimate?: PlanTokenEstimate | null
 }
+export type RoadmapProgressItem = {
+  id: string
+  title: string
+  sequence: number
+  project_id: string | null
+  business_id: string | null
+  total: number
+  done: number
+  status: 'planned' | 'active' | 'done'
+}
+export type RoadmapProgressSummary = {
+  item_count: number
+  done_items: number
+  total_tasks: number
+  done_tasks: number
+  percent: number
+}
+export type RoadmapProgressResult = { items: RoadmapProgressItem[]; summary: RoadmapProgressSummary }
+
 export type CtoPlanMessageResult = { reply: string; plan: CtoPlan | null; cto_message_id: string }
 export type CtoApproveResult = {
   new_project: boolean
@@ -360,6 +379,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ cto_message_id }),
     }).then(r => unwrap(r)) as Promise<CtoApproveResult>,
+
+  // M9.5: roadmap burndown — per-milestone done/total task progress.
+  ctoRoadmapProgress: (businessId?: string | null) =>
+    request<{ data: { ok: boolean; data: RoadmapProgressResult } }>('/api/cto:roadmapProgress', {
+      method: 'POST',
+      body: JSON.stringify({ business_id: businessId ?? null }),
+    }).then(r => unwrap(r)) as Promise<RoadmapProgressResult>,
 
   closeInstruction: (id: string) =>
     request<{ data: unknown }>('/api/founder_instructions:update', {
