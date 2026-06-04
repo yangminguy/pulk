@@ -1,6 +1,61 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (공통 Header & Mini Roadmap UI 리뷰 — LGTM)
+최종 업데이트: 2026-06-04 (Product Strategy Card 리뷰 — LGTM)
+
+---
+
+## 🟢 2026-06-04 — Product Strategy Card (상품/타깃/문제/목표 정의) 리뷰
+
+**판정: LGTM.** 5파일 +470/-7줄. 차단 이슈 없음. non-blocking info 3건.
+
+### AC 검증 결과
+
+| AC | 기준 | 결과 |
+|---|---|---|
+| AC1 | `ProductStrategyData` 타입 + `AgentOutputLite` 확장 | PASS — `api.ts:55-62` 타입 정의, `api.ts:74` optional 필드 추가 |
+| AC2 | `product_strategy` 존재 시 전용 패널 렌더링, 없으면 기존 동작 | PASS — 테스트에서 양성/음성 모두 확인 (`.product-strategy-panel.test.tsx:27-54`) |
+| AC3 | 읽기 모드: 4개 필드 라벨+값 표시 | PASS — 테스트 assert로 상품/타깃/문제/목표 라벨+값 14개 단언 통과 |
+| AC4 | 편집 모드: 수정→textarea→저장→API 호출→읽기 복귀 | PASS (구현 확인) — `AgentOutputDetail.tsx:119-137` useState+save+cancel, SSR 테스트에서 "수정" 버튼 존재 확인. 클릭 흐름은 브라우저 E2E 필요(후속) |
+| AC5 | confidence 배지 조건부 표시 (3단계 색상) | PASS — 테스트에서 `72/100` + `var(--green` 단언 통과 |
+| AC6 | 모바일 반응형 (2열→1열) | PASS (구현 확인) — `gridTemplateColumns: repeat(auto-fit, minmax(180px, 1fr))` 으로 자동 반응형 |
+| AC7 | typecheck 통과 | PASS — 구현 phase에서 `corepack pnpm --dir apps/founder-ui typecheck` exit 0 |
+| AC8 | 기존 패널 regression 없음 | PASS — intro-analysis + strategy-decision 테스트 모두 통과 |
+
+### 파일별 리뷰
+
+#### 1. `apps/founder-ui/src/lib/api.ts` (+16줄) — LGTM
+
+- **`ProductStrategyData`** (L55-62): 스펙과 정확히 일치. 4개 필수 필드(product/target/problem/goal) + 2개 optional(confidence/rationale). OK.
+- **`AgentOutputLite.product_strategy`** (L74): optional 추가. 기존 타입 호환성 유지. OK.
+- **`api.updateTaskOutput`** (L454-458): NocoBase `filterByTk` + `values` 패턴. 기존 `closeInstruction`과 동일 패턴. OK.
+
+#### 2. `apps/founder-ui/src/components/AgentOutputDetail.tsx` (+153/-7줄) — LGTM
+
+- **시그니처** (L8): `taskId?: string` prop 추가. optional이므로 기존 호출부 regression 없음. OK.
+- **분기 로직** (L12-13, L23-33): `hasProductStrategy = Boolean(productStrategy?.product)` — intro_analysis 다음 순서. 스펙 4.3 일치. OK.
+- **`ProductStrategyPanel`** (L101-213): 읽기/편집 모드, draft/current 분리, save/cancel, 4필드 그리드, confidence 배지(`getHookScoreStyle` 재사용), rationale `<details>`. 스펙 4.1-4.2 충족. OK.
+- **`RetentionCurve`** (L295-318): recharts `LineChart` → 순수 SVG 교체. SSR 테스트 안정화 + 번들 축소. OK.
+
+#### 3. `__tests__/AgentOutputDetail.product-strategy-panel.test.tsx` (+54줄) — LGTM
+
+- SSR `renderToStaticMarkup` 패턴 — 기존 테스트와 동일. OK.
+- 양성 테스트 14개 assert + 음성 테스트 2개 assert. AC1-5,8 커버. OK.
+
+#### 4. `docs/specs/product-strategy-card-oss-research.md` (+89줄) — LGTM
+
+- 3개 도메인 × 2-3 후보 비교. 채택/배제 근거 명확. OK.
+
+#### 5. `docs/specs/product-strategy-card-spec.md` (+165줄) — LGTM
+
+- AC 8개, 영향 파일 2개, 데이터 모델, 레이아웃 명세. 구현과 정합. OK.
+
+### Non-blocking info (수정 불필요, 참고용)
+
+| # | 파일:줄 | 내용 | 심각도 |
+|---|---------|------|--------|
+| I-1 | `AgentOutputDetail.tsx:128` | **save() 에러 시 사용자 피드백 없음** — `try/finally`에서 catch 없이 에러가 조용히 무시됨. ConsultationCard도 동일 패턴(silent catch)이므로 일관성 있지만, 후속으로 저장 실패 toast 일괄 추가 권장 | info |
+| I-2 | `AgentOutputDetail.tsx:295-318` | **RetentionCurve가 linear 보간** — 기존 recharts `type="monotone"`은 cardinal spline, 새 SVG는 직선 연결. 데이터 포인트 많으면 차이 미미. SSR 안정성 우선 트레이드오프로 판단 | info |
+| I-3 | `AgentOutputDetail.tsx:128` | **`updateTaskOutput`이 output 전체를 덮어씀** — `{ ...output, product_strategy: draft }`로 기존 필드 보존하나, NocoBase JSON 컬럼이 deep merge가 아닌 replace일 수 있음. 현재는 product_strategy만 편집하므로 실질 문제 없으나, 동시 편집 시나리오에서 재검토 필요 | info |
 
 ---
 
