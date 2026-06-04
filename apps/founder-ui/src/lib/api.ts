@@ -404,8 +404,30 @@ export type CmoMarketingPlan = {
   risk_level: string
   requires_founder_approval: boolean
 }
-export type CmoChatMessageResult = { reply: string; plan: CmoMarketingPlan | null; cmo_message_id: string }
+export type CmoChatMessageResult = {
+  reply: string
+  plan?: CmoMarketingPlan | null
+  proposal: any | null
+  gate: any | null
+  ready_to_advance: boolean
+  status: string
+  cmo_message_id: string
+}
 export type CmoApproveResult = { approved: boolean; task_ids: string[] }
+export type CmoCreateProjectInput = {
+  title: string
+  product: string
+  target_audience: string
+  business_goal: string
+  business_id?: string | null
+  project_type?: string | null
+}
+export type CmoSaveCardInput = {
+  project_id: string
+  stage: string
+  summary?: string
+  data?: unknown
+}
 export type CtoApproveResult = {
   new_project: boolean
   project_id: string | null
@@ -465,15 +487,15 @@ export const api = {
       body: JSON.stringify({ business_id: businessId ?? null }),
     }).then(r => unwrap(r)) as Promise<RoadmapProgressResult>,
 
-  // CMO conversational marketing planning (mirrors CTO pattern).
+  // CMO conversational marketing planning — project_id-based (Video Room).
   cmoChatMessage: (
-    thread_id: string,
+    project_id: string,
     founder_message: string,
-    opts?: { business_id?: string | null; project_id?: string | null },
+    opts?: { business_id?: string | null },
   ) =>
     request<{ data: { ok: boolean; data: CmoChatMessageResult } }>('/api/cmo:chatMessage', {
       method: 'POST',
-      body: JSON.stringify({ thread_id, founder_message, ...(opts ?? {}) }),
+      body: JSON.stringify({ project_id, founder_message, ...(opts ?? {}) }),
     }).then(r => unwrap(r)) as Promise<CmoChatMessageResult>,
 
   cmoApprovePlan: (cmo_message_id: string) =>
@@ -481,6 +503,42 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ cmo_message_id }),
     }).then(r => unwrap(r)) as Promise<CmoApproveResult>,
+
+  cmoCreateProject: (input: CmoCreateProjectInput) =>
+    request<{ data: { ok: boolean; data: { project_id: string; status: string } } }>('/api/cmo:createProject', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }).then(r => unwrap(r)),
+
+  cmoListProjects: () =>
+    request<{ data: { ok: boolean; data: { projects: unknown[] } } }>('/api/cmo:listProjects', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }).then(r => unwrap(r)),
+
+  cmoGetProject: (project_id: string) =>
+    request<{ data: { ok: boolean; data: unknown } }>('/api/cmo:getProject', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)),
+
+  cmoAdvanceStatus: (project_id: string) =>
+    request<{ data: { ok: boolean; data: { status: string } } }>('/api/cmo:advanceStatus', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)),
+
+  cmoDecideGate: (gate_id: string, decision: 'approved' | 'rejected' | 'needs_revision', note?: string) =>
+    request<{ data: { ok: boolean; data: { gate_id: string; decision: string; status: string } } }>('/api/cmo:decideGate', {
+      method: 'POST',
+      body: JSON.stringify({ gate_id, decision, note }),
+    }).then(r => unwrap(r)),
+
+  cmoSaveCard: (input: CmoSaveCardInput) =>
+    request<{ data: { ok: boolean; data: { card_id: string } } }>('/api/cmo:saveCard', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }).then(r => unwrap(r)),
 
   closeInstruction: (id: string) =>
     request<{ data: unknown }>('/api/founder_instructions:update', {

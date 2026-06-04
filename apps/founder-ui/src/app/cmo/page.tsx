@@ -143,9 +143,7 @@ function AgentChip() {
 // ── Chat Tab ────────────────────────────────────────────────────────────────
 function CmoChatTab() {
   const { selectedId } = useBusiness()
-  const [threadId] = useState(
-    () => `cmo-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now())}`,
-  )
+  const [projectId, setProjectId] = useState<string | null>(null)
   const [messages, setMessages] = useState<CmoMsg[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -156,6 +154,21 @@ function CmoChatTab() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Lazily create a project on first send so the backend has a video_room_projects row.
+  const ensureProject = async (): Promise<string> => {
+    if (projectId) return projectId
+    const res = await api.cmoCreateProject({
+      title: 'CMO 대화',
+      product: '',
+      target_audience: '',
+      business_goal: 'brand_growth',
+      business_id: selectedId ?? null,
+    })
+    const pid = res.project_id
+    setProjectId(pid)
+    return pid
+  }
+
   const send = async () => {
     const text = input.trim()
     if (!text || sending) return
@@ -164,8 +177,9 @@ function CmoChatTab() {
     setSending(true)
     setMessages(m => [...m, { role: 'founder', text }])
     try {
-      const res = await api.cmoChatMessage(threadId, text, { business_id: selectedId ?? null })
-      setMessages(m => [...m, { role: 'cmo', text: res.reply, plan: res.plan, cmo_message_id: res.cmo_message_id }])
+      const pid = await ensureProject()
+      const res = await api.cmoChatMessage(pid, text, { business_id: selectedId ?? null })
+      setMessages(m => [...m, { role: 'cmo', text: res.reply, plan: res.plan ?? null, cmo_message_id: res.cmo_message_id }])
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : '전송 실패')
     } finally {

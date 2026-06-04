@@ -85,6 +85,18 @@ const {
   summarizeRoadmap,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/roadmap'));
 
+// CMO Video Room — strategy turn + state machine.
+const {
+  runCmoStrategyTurn,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cmo-strategy'));
+
+const {
+  advanceStatus: advanceVideoRoomStatus,
+  requiresApproval: videoRoomRequiresApproval,
+  pageForStatus,
+  buildMiniRoadmap,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/video-room'));
+
 type ActionContext = {
   app?: any;
   db: any;
@@ -115,6 +127,7 @@ export default class PluginOrchestrationServer extends Plugin {
     registerConsultationResource(this.app, this.db);
     registerDelegationResource(this.app, this.db);
     registerCtoPlanningResource(this.app, this.db);
+    registerCmoResource(this.app, this.db);
     registerVideoProjectResource(this.app, this.db);
 
     this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow', 'approvePlan', 'rejectPlan', 'history'], 'loggedIn');
@@ -136,6 +149,8 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard'], 'loggedIn');
+    this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
   }
@@ -285,6 +300,89 @@ async function ensureOrchestrationColumns(db: any) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     db.logger?.warn?.(`Could not ensure video_projects table: ${message}`);
+  }
+
+  // CMO Video Room tables.
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS cmo_planning_messages (
+        id text PRIMARY KEY,
+        thread_id text NOT NULL,
+        project_id text,
+        business_id text,
+        role text NOT NULL,
+        text text NOT NULL,
+        proposal jsonb,
+        gate jsonb,
+        ready_to_advance boolean NOT NULL DEFAULT false,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure cmo_planning_messages table: ${message}`);
+  }
+
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS video_room_projects (
+        id text PRIMARY KEY,
+        title text NOT NULL,
+        business_id text,
+        product text,
+        target_audience text,
+        business_goal text,
+        project_type text,
+        status text NOT NULL DEFAULT 'strategy_chat',
+        current_page text NOT NULL DEFAULT 'strategy',
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure video_room_projects table: ${message}`);
+  }
+
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS video_room_cards (
+        id text PRIMARY KEY,
+        video_project_id text NOT NULL,
+        stage text NOT NULL,
+        summary text,
+        data jsonb,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure video_room_cards table: ${message}`);
+  }
+
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS video_room_gates (
+        id text PRIMARY KEY,
+        video_project_id text NOT NULL,
+        gate_type text NOT NULL,
+        page text,
+        title text,
+        context text,
+        options jsonb,
+        recommended_option text,
+        status text NOT NULL DEFAULT 'pending',
+        decided_by text,
+        decided_at timestamptz,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure video_room_gates table: ${message}`);
   }
 }
 
@@ -502,6 +600,69 @@ function registerCollections(db: any) {
       { name: 'output_metadata', type: 'json' },
       { name: 'error', type: 'text' },
       { name: 'job_path', type: 'string' },
+    ],
+  }));
+
+  // CMO Video Room collections.
+  db.collection(defineCollection({
+    name: 'cmo_planning_messages',
+    title: 'CMO Planning Messages',
+    fields: [
+      { name: 'id', type: 'string', primaryKey: true },
+      { name: 'thread_id', type: 'string', allowNull: false },
+      { name: 'project_id', type: 'string' },
+      { name: 'business_id', type: 'string' },
+      { name: 'role', type: 'string', allowNull: false },
+      { name: 'text', type: 'text', allowNull: false },
+      { name: 'proposal', type: 'json' },
+      { name: 'gate', type: 'json' },
+      { name: 'ready_to_advance', type: 'boolean', defaultValue: false },
+    ],
+  }));
+
+  db.collection(defineCollection({
+    name: 'video_room_projects',
+    title: 'Video Room Projects',
+    fields: [
+      { name: 'id', type: 'string', primaryKey: true },
+      { name: 'title', type: 'text', allowNull: false },
+      { name: 'business_id', type: 'string' },
+      { name: 'product', type: 'text' },
+      { name: 'target_audience', type: 'text' },
+      { name: 'business_goal', type: 'string' },
+      { name: 'project_type', type: 'string' },
+      { name: 'status', type: 'string', defaultValue: 'strategy_chat' },
+      { name: 'current_page', type: 'string', defaultValue: 'strategy' },
+    ],
+  }));
+
+  db.collection(defineCollection({
+    name: 'video_room_cards',
+    title: 'Video Room Cards',
+    fields: [
+      { name: 'id', type: 'string', primaryKey: true },
+      { name: 'video_project_id', type: 'string', allowNull: false },
+      { name: 'stage', type: 'string', allowNull: false },
+      { name: 'summary', type: 'text' },
+      { name: 'data', type: 'json' },
+    ],
+  }));
+
+  db.collection(defineCollection({
+    name: 'video_room_gates',
+    title: 'Video Room Gates',
+    fields: [
+      { name: 'id', type: 'string', primaryKey: true },
+      { name: 'video_project_id', type: 'string', allowNull: false },
+      { name: 'gate_type', type: 'string', allowNull: false },
+      { name: 'page', type: 'string' },
+      { name: 'title', type: 'text' },
+      { name: 'context', type: 'text' },
+      { name: 'options', type: 'json' },
+      { name: 'recommended_option', type: 'string' },
+      { name: 'status', type: 'string', defaultValue: 'pending' },
+      { name: 'decided_by', type: 'string' },
+      { name: 'decided_at', type: 'date' },
     ],
   }));
 }
@@ -2174,6 +2335,330 @@ function registerCtoPlanningResource(app: any, db: any) {
         });
 
         ctx.body = { ok: true, data: { items, summary: summarizeRoadmap(items) } };
+        await next();
+      },
+    },
+  });
+}
+
+// CMO Video Room resource — strategy chat, project management, gate decisions.
+function registerCmoResource(app: any, db: any) {
+  const SELECT = db.sequelize.QueryTypes.SELECT;
+  const q = (sql: string, bind: any[] = []) =>
+    db.sequelize.query(sql, { bind, type: SELECT });
+
+  // Shared helper: approve a pending gate for a project and optionally advance status.
+  async function approveGateForProject(project_id: string, gate_id: string, decision: string) {
+    await db.sequelize.query(
+      `UPDATE video_room_gates SET status = $1, decided_by = 'founder', decided_at = now(), "updatedAt" = now() WHERE id = $2`,
+      { bind: [decision, gate_id] },
+    );
+    if (decision === 'approved') {
+      const projRows = await q(
+        `SELECT status FROM video_room_projects WHERE id = $1`,
+        [project_id],
+      );
+      if (projRows[0]) {
+        const newStatus = advanceVideoRoomStatus(projRows[0].status, { gateApproved: true });
+        const newPage = pageForStatus(newStatus);
+        await db.sequelize.query(
+          `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
+          { bind: [newStatus, newPage, project_id] },
+        );
+        return newStatus;
+      }
+    }
+    return null;
+  }
+
+  app.resourcer.define({
+    name: 'cmo',
+    actions: {
+      // POST /api/cmo:createProject  { title, product, target_audience, business_goal, business_id?, project_type? }
+      createProject: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const title = String(v.title ?? '').trim();
+        if (!title) ctx.throw(400, 'title is required');
+        const project_id = randomUUID();
+        const product = String(v.product ?? '');
+        const target_audience = String(v.target_audience ?? '');
+        const business_goal = String(v.business_goal ?? '');
+        const business_id = v.business_id != null ? String(v.business_id) : null;
+        const project_type = String(v.project_type ?? 'single_video');
+        await db.sequelize.query(
+          `INSERT INTO video_room_projects (id, title, business_id, product, target_audience, business_goal, project_type, status, current_page, "createdAt", "updatedAt")
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'strategy_chat','strategy', now(), now())`,
+          { bind: [project_id, title, business_id, product, target_audience, business_goal, project_type] },
+        );
+        ctx.body = { ok: true, data: { project_id, status: 'strategy_chat' } };
+        await next();
+      },
+
+      // POST /api/cmo:listProjects
+      listProjects: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const projects = await q(
+          `SELECT * FROM video_room_projects ORDER BY "createdAt" DESC`,
+        );
+        ctx.body = { ok: true, data: { projects } };
+        await next();
+      },
+
+      // POST /api/cmo:getProject  { project_id }
+      getProject: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const projRows = await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const project = projRows[0];
+        const cards = await q(`SELECT * FROM video_room_cards WHERE video_project_id = $1 ORDER BY "createdAt" ASC`, [project_id]);
+        const gates = await q(`SELECT * FROM video_room_gates WHERE video_project_id = $1 ORDER BY "createdAt" ASC`, [project_id]);
+        const messages = await q(
+          `SELECT id, role, text, proposal, gate, ready_to_advance, "createdAt" FROM cmo_planning_messages WHERE thread_id = $1 ORDER BY "createdAt" ASC`,
+          [project_id],
+        );
+        const roadmap = buildMiniRoadmap(project.status);
+        ctx.body = { ok: true, data: { project, cards, gates, messages, roadmap } };
+        await next();
+      },
+
+      // POST /api/cmo:chatMessage  { project_id, founder_message }
+      chatMessage: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const founder_message = String(v.founder_message ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!founder_message) ctx.throw(400, 'founder_message is required');
+
+        // Load project context.
+        const projRows = await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const proj = projRows[0];
+
+        // Load conversation history (thread_id = project_id).
+        const historyRows = await q(
+          `SELECT role, text FROM cmo_planning_messages WHERE thread_id = $1 ORDER BY "createdAt" ASC`,
+          [project_id],
+        );
+        const history = historyRows.map((r: any) => ({ role: r.role, text: r.text }));
+
+        // Check context_loaded (any card already persisted for this project).
+        const cardCount = await q(
+          `SELECT COUNT(*) AS cnt FROM video_room_cards WHERE video_project_id = $1`,
+          [project_id],
+        );
+        const context_loaded = Number(cardCount[0]?.cnt ?? 0) > 0;
+
+        // Pulling set size (cards at pulling_content_set_selection stage).
+        const pullingRows = await q(
+          `SELECT COUNT(*) AS cnt FROM video_room_cards WHERE video_project_id = $1 AND stage = 'pulling_content_set_selection'`,
+          [project_id],
+        );
+        const pulling_set_size = Number(pullingRows[0]?.cnt ?? 0);
+
+        // Key content title (latest approved key_content_approval card summary).
+        const keyRows = await q(
+          `SELECT summary FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_approval' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        const selected_key_content_title = keyRows[0]?.summary ?? null;
+
+        // Persist the founder message.
+        const founderId = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO cmo_planning_messages (id, thread_id, project_id, business_id, role, text, "createdAt", "updatedAt")
+           VALUES ($1,$2,$3,$4,'founder',$5, now(), now())`,
+          { bind: [founderId, project_id, project_id, proj.business_id ?? null, founder_message] },
+        );
+
+        // Run the CMO strategy turn.
+        const llm = buildLLMClient(founder_message);
+        const strategyCtx = {
+          status: proj.status,
+          product: proj.product ?? null,
+          target_audience: proj.target_audience ?? null,
+          business_goal: proj.business_goal ?? null,
+          context_loaded,
+          selected_key_content_title,
+          pulling_set_size,
+        };
+        const result = await runCmoStrategyTurn(history, founder_message, strategyCtx, { llm });
+        const reply = String(result?.reply ?? '계속 이야기해 주세요.');
+        const proposal = result?.proposal ?? null;
+        const gate = result?.gate ?? null;
+        const ready_to_advance = result?.ready_to_advance ?? false;
+
+        // Persist the CMO reply.
+        const cmoId = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO cmo_planning_messages (id, thread_id, project_id, business_id, role, text, proposal, gate, ready_to_advance, "createdAt", "updatedAt")
+           VALUES ($1,$2,$3,$4,'cmo',$5,$6,$7,$8, now(), now())`,
+          {
+            bind: [
+              cmoId,
+              project_id,
+              project_id,
+              proj.business_id ?? null,
+              reply,
+              proposal ? JSON.stringify(proposal) : null,
+              gate ? JSON.stringify(gate) : null,
+              ready_to_advance,
+            ],
+          },
+        );
+
+        // If a proposal (stage card), persist it.
+        if (proposal) {
+          const cardId = randomUUID();
+          await db.sequelize.query(
+            `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+             VALUES ($1,$2,$3,$4,$5, now(), now())`,
+            {
+              bind: [
+                cardId,
+                project_id,
+                String(proposal.stage ?? proj.status),
+                String(proposal.summary ?? ''),
+                proposal.data ? JSON.stringify(proposal.data) : null,
+              ],
+            },
+          );
+        }
+
+        // If a gate, persist it.
+        if (gate) {
+          const gateId = randomUUID();
+          await db.sequelize.query(
+            `INSERT INTO video_room_gates (id, video_project_id, gate_type, page, title, context, options, recommended_option, status, "createdAt", "updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending', now(), now())`,
+            {
+              bind: [
+                gateId,
+                project_id,
+                String(gate.gate_type ?? ''),
+                pageForStatus(proj.status),
+                String(gate.title ?? ''),
+                String(gate.context ?? ''),
+                gate.options ? JSON.stringify(gate.options) : null,
+                gate.recommended_option ?? null,
+              ],
+            },
+          );
+        }
+
+        ctx.body = {
+          ok: true,
+          data: {
+            reply,
+            proposal,
+            gate,
+            ready_to_advance,
+            status: proj.status,
+            cmo_message_id: cmoId,
+            plan: null,
+          },
+        };
+        await next();
+      },
+
+      // POST /api/cmo:advanceStatus  { project_id }
+      advanceStatus: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const projRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const currentStatus = projRows[0].status;
+        if (videoRoomRequiresApproval(currentStatus)) {
+          ctx.throw(400, 'approval gate must be cleared');
+        }
+        const newStatus = advanceVideoRoomStatus(currentStatus);
+        const newPage = pageForStatus(newStatus);
+        await db.sequelize.query(
+          `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
+          { bind: [newStatus, newPage, project_id] },
+        );
+        ctx.body = { ok: true, data: { status: newStatus } };
+        await next();
+      },
+
+      // POST /api/cmo:decideGate  { gate_id, decision, note? }
+      decideGate: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const gate_id = String(v.gate_id ?? '').trim();
+        const decision = String(v.decision ?? '').trim();
+        if (!gate_id) ctx.throw(400, 'gate_id is required');
+        if (!['approved', 'rejected', 'needs_revision'].includes(decision)) {
+          ctx.throw(400, 'decision must be approved, rejected, or needs_revision');
+        }
+        const gateRows = await q(`SELECT * FROM video_room_gates WHERE id = $1`, [gate_id]);
+        if (!gateRows[0]) ctx.throw(404, `gate ${gate_id} not found`);
+        const gateRow = gateRows[0];
+        const newStatus = await approveGateForProject(gateRow.video_project_id, gate_id, decision);
+        const projRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [gateRow.video_project_id]);
+        const status = newStatus ?? projRows[0]?.status ?? null;
+        ctx.body = { ok: true, data: { gate_id, decision, status } };
+        await next();
+      },
+
+      // POST /api/cmo:approvePlan  { cmo_message_id }  — backward-compat with old cmoChatMessage flow
+      approvePlan: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const cmo_message_id = String(v.cmo_message_id ?? '').trim();
+        if (!cmo_message_id) ctx.throw(400, 'cmo_message_id is required');
+        const msgRows = await q(
+          `SELECT * FROM cmo_planning_messages WHERE id = $1`,
+          [cmo_message_id],
+        );
+        if (!msgRows[0]) ctx.throw(404, `cmo message ${cmo_message_id} not found`);
+        const msg = msgRows[0];
+        const project_id = msg.project_id;
+
+        // Try to find and approve the latest pending gate for this project.
+        const pendingGates = await q(
+          `SELECT id FROM video_room_gates WHERE video_project_id = $1 AND status = 'pending' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (pendingGates[0]) {
+          await approveGateForProject(project_id, pendingGates[0].id, 'approved');
+        } else {
+          // No gate: just advance status if not requires approval.
+          const projRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [project_id]);
+          if (projRows[0] && !videoRoomRequiresApproval(projRows[0].status)) {
+            const newStatus = advanceVideoRoomStatus(projRows[0].status);
+            const newPage = pageForStatus(newStatus);
+            await db.sequelize.query(
+              `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
+              { bind: [newStatus, newPage, project_id] },
+            );
+          }
+        }
+        ctx.body = { ok: true, data: { approved: true, task_ids: [] } };
+        await next();
+      },
+
+      // POST /api/cmo:saveCard  { project_id, stage, summary, data }
+      saveCard: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const stage = String(v.stage ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!stage) ctx.throw(400, 'stage is required');
+        const card_id = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+           VALUES ($1,$2,$3,$4,$5, now(), now())`,
+          {
+            bind: [
+              card_id,
+              project_id,
+              stage,
+              String(v.summary ?? ''),
+              v.data ? JSON.stringify(v.data) : null,
+            ],
+          },
+        );
+        ctx.body = { ok: true, data: { card_id } };
         await next();
       },
     },
