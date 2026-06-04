@@ -14,6 +14,7 @@
     "typecheck:all": "pnpm -r typecheck",
     "qa:static": "pnpm -r typecheck && pnpm -r --if-present lint && pnpm -r build",
     "qa:test": "pnpm -r test",
+    "test:videoqa": "corepack pnpm --dir packages/l5-core exec jest videoqa",
     "qa:e2e:nocobase": "corepack pnpm --dir apps/nocobase-app e2e test",
     "qa:e2e:founder": "corepack pnpm --dir apps/founder-ui e2e && corepack pnpm --dir apps/founder-ui exec node e2e/verify-changes.mjs && corepack pnpm --dir apps/founder-ui exec node e2e/verify-live.mjs && corepack pnpm --dir apps/founder-ui exec node scripts/e2e-projects.mjs",
     "qa:smoke:autopilot": "tsx scripts/smoke-autopilot-e2e.ts",
