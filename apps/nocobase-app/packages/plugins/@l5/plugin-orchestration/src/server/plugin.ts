@@ -33,6 +33,13 @@ const {
   createVideoFactoryTools,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/memory'));
 
+const {
+  createVideoProject,
+  advanceToGenerating,
+  completeVideoProject,
+  failVideoProject,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/video-project'));
+
 // M3: build secondbrain transport once at module load. null when env not set.
 const _secondBrainTransport = makeSecondBrainTransport();
 
@@ -108,6 +115,7 @@ export default class PluginOrchestrationServer extends Plugin {
     registerConsultationResource(this.app, this.db);
     registerDelegationResource(this.app, this.db);
     registerCtoPlanningResource(this.app, this.db);
+    registerVideoProjectResource(this.app, this.db);
 
     this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow', 'approvePlan', 'rejectPlan', 'history'], 'loggedIn');
     this.app.acl.allow('agent', ['executeTask'], 'loggedIn');
@@ -129,6 +137,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
+    this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
   }
 
   async install() {}
@@ -253,6 +262,29 @@ async function ensureOrchestrationColumns(db: any) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     db.logger?.warn?.(`Could not ensure founder_deliverables table: ${message}`);
+  }
+
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS video_projects (
+        id text PRIMARY KEY,
+        business_id text,
+        topic text NOT NULL,
+        angle text,
+        format text,
+        status text NOT NULL DEFAULT 'draft',
+        config_snapshot jsonb,
+        output_url text,
+        output_metadata jsonb,
+        error text,
+        job_path text,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure video_projects table: ${message}`);
   }
 }
 
@@ -452,6 +484,24 @@ function registerCollections(db: any) {
       { name: 'open_gaps', type: 'json', defaultValue: [] },
       { name: 'next_actions', type: 'json', defaultValue: [] },
       { name: 'chat_message_id', type: 'string' },
+    ],
+  }));
+
+  db.collection(defineCollection({
+    name: 'video_projects',
+    title: 'Video Projects',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'business_id', type: 'string' },
+      { name: 'topic', type: 'text', allowNull: false },
+      { name: 'angle', type: 'string' },
+      { name: 'format', type: 'string' },
+      { name: 'status', type: 'string', allowNull: false, defaultValue: 'draft' },
+      { name: 'config_snapshot', type: 'json' },
+      { name: 'output_url', type: 'text' },
+      { name: 'output_metadata', type: 'json' },
+      { name: 'error', type: 'text' },
+      { name: 'job_path', type: 'string' },
     ],
   }));
 }
@@ -1362,7 +1412,7 @@ function registerCrudResources(app: any) {
           // Graceful: if transport is null (env not set), tools are simply not added.
           try {
             if (_videoFactoryTransport && typeof createVideoFactoryTools === 'function') {
-              sbTools.push(...createVideoFactoryTools(_videoFactoryTransport));
+              sbTools.push(...createVideoFactoryTools(createTrackedVideoFactoryTransport(ctx, task.business_id ?? null)));
             }
           } catch (err) {
             console.warn('[executeTask] video-factory tools build failed:', err);
@@ -1677,6 +1727,194 @@ function registerConsultationResource(app: any, db: any) {
   });
 }
 
+function registerVideoProjectResource(app: any, db: any) {
+  app.resourcer.define({
+    name: 'video-project',
+    actions: {
+      list: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const params = (ctx.action?.params as any) || {};
+        const query = (ctx.request as any)?.query || {};
+        const business_id = params.business_id || query.business_id || null;
+        const filter: Record<string, any> = {};
+        if (business_id) filter.business_id = business_id;
+
+        const rows = await db.getRepository('video_projects').find({
+          filter,
+          sort: ['-createdAt'],
+        });
+        ctx.body = { ok: true, data: rows ?? [] };
+        await next();
+      },
+
+      create: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project = createVideoProject({
+          id: v.id ?? randomUUID(),
+          business_id: v.business_id ?? null,
+          topic: v.topic,
+          angle: v.angle ?? null,
+          format: v.format ?? null,
+          config_snapshot: v.config_snapshot ?? null,
+        });
+
+        const rec = await db.getRepository('video_projects').create({ values: project });
+        (ctx as any).status = 201;
+        ctx.body = { ok: true, data: rec };
+        await next();
+      },
+
+      advance: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const { id } = getValues(ctx) as { id?: string };
+        if (!id) ctx.throw(400, 'id is required');
+
+        const repo = db.getRepository('video_projects');
+        const existing = await repo.findOne({ filter: { id } });
+        if (!existing) ctx.throw(404, `VideoProject ${id} not found`);
+
+        const advanced = advanceToGenerating(asPlainRecord(existing));
+        if (!_videoFactoryTransport) {
+          const failed = failVideoProject(advanced, 'video factory transport is not configured');
+          await repo.update({
+            filterByTk: id,
+            values: pickVideoProjectPersistedFields(failed),
+          });
+          ctx.body = { ok: false, data: failed, error: failed.error };
+          await next();
+          return;
+        }
+
+        const result = await _videoFactoryTransport.generate({
+          topic: advanced.topic,
+          ...(advanced.angle ? { angle: advanced.angle } : {}),
+          ...(advanced.format ? { format: advanced.format } : {}),
+        });
+
+        if (!result.ok) {
+          const failed = failVideoProject(advanced, result.error ?? 'video factory generation failed');
+          await repo.update({
+            filterByTk: id,
+            values: pickVideoProjectPersistedFields(failed),
+          });
+          ctx.body = { ok: false, data: failed, error: failed.error };
+          await next();
+          return;
+        }
+
+        const jobPath = typeof (result.data as any)?.job_path === 'string'
+          ? (result.data as any).job_path
+          : null;
+        const generating = advanceToGenerating(asPlainRecord(existing), jobPath);
+        await repo.update({
+          filterByTk: id,
+          values: pickVideoProjectPersistedFields(generating),
+        });
+        ctx.body = { ok: true, data: generating, transport: result.data ?? null };
+        await next();
+      },
+
+      complete: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const { id, output_url, output_metadata } = getValues(ctx) as {
+          id?: string;
+          output_url?: string;
+          output_metadata?: unknown;
+        };
+        if (!id) ctx.throw(400, 'id is required');
+
+        const repo = db.getRepository('video_projects');
+        const existing = await repo.findOne({ filter: { id } });
+        if (!existing) ctx.throw(404, `VideoProject ${id} not found`);
+
+        const completed = completeVideoProject(asPlainRecord(existing), output_url ?? '', output_metadata ?? null);
+        await repo.update({
+          filterByTk: id,
+          values: pickVideoProjectPersistedFields(completed),
+        });
+        ctx.body = { ok: true, data: completed };
+        await next();
+      },
+
+      fail: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const { id, error } = getValues(ctx) as { id?: string; error?: string };
+        if (!id) ctx.throw(400, 'id is required');
+
+        const repo = db.getRepository('video_projects');
+        const existing = await repo.findOne({ filter: { id } });
+        if (!existing) ctx.throw(404, `VideoProject ${id} not found`);
+
+        const failed = failVideoProject(asPlainRecord(existing), error ?? '');
+        await repo.update({
+          filterByTk: id,
+          values: pickVideoProjectPersistedFields(failed),
+        });
+        ctx.body = { ok: true, data: failed };
+        await next();
+      },
+    },
+  });
+}
+
+function asPlainRecord(record: any): any {
+  return record?.toJSON?.() ?? record;
+}
+
+function pickVideoProjectPersistedFields(project: any): Record<string, any> {
+  return {
+    business_id: project.business_id ?? null,
+    topic: project.topic,
+    angle: project.angle ?? null,
+    format: project.format ?? null,
+    status: project.status,
+    config_snapshot: project.config_snapshot ?? null,
+    output_url: project.output_url ?? null,
+    output_metadata: project.output_metadata ?? null,
+    error: project.error ?? null,
+    job_path: project.job_path ?? null,
+  };
+}
+
+function createTrackedVideoFactoryTransport(ctx: ActionContext, business_id: string | null): any {
+  return {
+    async configure(preset: any) {
+      return _videoFactoryTransport.configure(preset);
+    },
+
+    async getConfig() {
+      return _videoFactoryTransport.getConfig?.();
+    },
+
+    async generate(brief: { topic: string; angle?: string; format?: string }) {
+      const repo = ctx.db.getRepository('video_projects');
+      const config = _videoFactoryTransport.getConfig
+        ? await _videoFactoryTransport.getConfig().catch(() => null)
+        : null;
+      const draft = createVideoProject({
+        id: randomUUID(),
+        business_id,
+        topic: brief.topic,
+        angle: brief.angle ?? null,
+        format: brief.format ?? null,
+        config_snapshot: config ?? null,
+      });
+      await repo.create({ values: draft });
+
+      const advanced = advanceToGenerating(draft);
+      const result = await _videoFactoryTransport.generate(brief);
+      if (!result.ok) {
+        const failed = failVideoProject(advanced, result.error ?? 'video factory generation failed');
+        await repo.update({ filterByTk: draft.id, values: pickVideoProjectPersistedFields(failed) });
+        return { ...result, data: { ...(result.data as any), video_project_id: draft.id } };
+      }
+
+      const jobPath = typeof (result.data as any)?.job_path === 'string'
+        ? (result.data as any).job_path
+        : null;
+      const generating = advanceToGenerating(draft, jobPath);
+      await repo.update({ filterByTk: draft.id, values: pickVideoProjectPersistedFields(generating) });
+      return { ...result, data: { ...(result.data as any), video_project_id: draft.id } };
+    },
+  };
+}
+
 function getValues(ctx: ActionContext): Record<string, any> {
   return ctx.action?.params?.values ?? ctx.request?.body ?? {};
 }
@@ -1967,7 +2205,7 @@ function buildWorkerTools(ctx: ActionContext): any[] {
   }
   try {
     if (_videoFactoryTransport && typeof createVideoFactoryTools === 'function') {
-      tools.push(...createVideoFactoryTools(_videoFactoryTransport));
+      tools.push(...createVideoFactoryTools(createTrackedVideoFactoryTransport(ctx, null)));
     }
   } catch (err) {
     console.warn('[delegation] video-factory tools build failed:', err);
