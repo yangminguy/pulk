@@ -1,10 +1,20 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (M10 CTO 대화형 기획 패널 완성 — 슬라이스 1·A·B·C·D 전부)
+최종 업데이트: 2026-06-04 (M10 완성 + Phase6 예상토큰 + M9.5 로드맵 번다운)
 
 ---
 
-## 🟢 2026-06-04 (최신) — M10 CTO 대화형 기획 패널 완성(슬라이스 1·A·B·C·D)
+## 🟢 2026-06-04 (최신) — Phase6 예상 토큰 + M9.5 로드맵 번다운
+
+**Phase6 — 예상 토큰(완료, 실제 사용량은 후속)**: l5-core `token-estimate`(classifyTask|CTO size판단 → DEV_WORKFLOW phase수 → tier별 토큰범위 합산). **CTO 기획 시 LLM이 작업별 `size`(tiny/small/feature/big)를 시니어 개발자처럼 판단** → 키워드분류 기본값(전부 FEATURE) 문제 해결(다크모드 데모 350k–910k → 150k–374k). `CtoPlan.token_estimate`로 planMessage 응답 포함. PlanCard "예상 토큰 약 Xk–Yk"(승인 전 판단), 컨트롤룸 dev-task별 예상 토큰. **남은 것 = 실제 누적 토큰/비용**: hermes-agent가 session_*_tokens·estimated_cost_usd를 내부 보유하나 ACR로 전혀 안 흐름(SessionReport.tokensUsed 항상 0). 결선 경로 = hermes→ACR 콜백→`/api/l5/execution` AcrExecTask 확장→controlRoomTree 머지→UI(3레포, 실제 CLI 실행 필요).
+
+**M9.5 — 로드맵 번다운(완료)**: l5-core `roadmap/progress`(deriveRoadmapItemStatus + summarizeRoadmap). plugin `cto:roadmapProgress`(roadmap_items LEFT JOIN agent_tasks 단일 쿼리, **done 포함 카운트** — controlRoomTree는 done 제외라 별도 쿼리 필요했음). 컨트롤룸 `RoadmapProgressPanel`(진행바·상태칩·완료 취소선 + "X% · 작업 a/b · 단계 c/d"). 라이브 E2E 검증.
+
+**남은 것**: M9.6(self-upgrade 결선) · 실제 토큰/비용 캡처(hermes→ACR, 3레포) · 워밍 세션(cold-start). 데모 business 98(TINY, /tmp 샌드박스)·99(vision) 잔존.
+
+---
+
+## 🟢 2026-06-04 — M10 CTO 대화형 기획 패널 완성(슬라이스 1·A·B·C·D)
 
 **배경**: 창업자가 "컨트롤룸에서 CTO와 직접 대화해 PRD→로드맵으로 같이 기획. CEO 경유 task도, CTO와 직접 넣는 task도 있고, 새 프로젝트면 CTO/CEO가 허락 받고 자율 생성". 확정: **CTO 기획 패널 = 컨트롤룸 안**, 승인 = **한 번에 계획 승인**.
 
