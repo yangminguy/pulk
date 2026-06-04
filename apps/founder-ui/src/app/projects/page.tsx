@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
+import Icon from '@/components/Icon'
+import PageHeader from '@/components/PageHeader'
 import { api, ActiveBusiness } from '@/lib/api'
 
 function relativeTime(dateStr: string | null): string {
@@ -84,11 +86,11 @@ export default function ProjectsPage() {
 
   return (
     <div style={{ maxWidth: 900 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 24 }}>
-        <h1 className="j-h2">프로젝트</h1>
-        <span className="j-meta">활성 사업 포트폴리오</span>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <PageHeader
+        title="프로젝트"
+        subtitle="활성 사업 포트폴리오"
+        actions={(
+          <>
           <label style={{
             display: 'flex', alignItems: 'center', gap: 6,
             fontSize: 12, color: 'var(--ink-3)', cursor: 'pointer',
@@ -107,14 +109,12 @@ export default function ProjectsPage() {
             className="j-btn j-btn-ghost j-btn-sm"
             aria-label="새로고침"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M23 4v6h-6" /><path d="M1 20v-6h6" />
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10 M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-            </svg>
+            <Icon name="refresh" size={14} stroke={1.8} />
             새로고침
           </button>
-        </div>
-      </div>
+          </>
+        )}
+      />
 
       {loading && (
         <div className="j-meta" style={{ padding: '32px 0' }}>로딩 중...</div>

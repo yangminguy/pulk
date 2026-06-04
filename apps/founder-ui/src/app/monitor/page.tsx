@@ -1,36 +1,12 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import AuthGate from '@/components/AuthGate'
+import AgentBadge, { EXECUTIVE_AGENTS } from '@/components/AgentBadge'
+import Icon from '@/components/Icon'
+import PageHeader from '@/components/PageHeader'
 import { api, type LiveStatusGroup, type LiveStatusAgent, type TaskItem } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
 import { AgentOutputDetail } from '@/components/AgentOutputDetail'
-
-// ---------------------------------------------------------------------------
-// Local Icon (same pattern as Sidebar.tsx)
-// ---------------------------------------------------------------------------
-const ICONS: Record<string, string> = {
-  arrowR:      'M5 12h14 M12 5l7 7-7 7',
-  chevD:       'M6 9l6 6 6-6',
-  chevU:       'M18 15l-6-6-6 6',
-  refresh:     'M23 4v6h-6 M1 20v-6h6 M3.51 9a9 9 0 0 1 14.85-3.36L23 10 M1 14l4.64 4.36A9 9 0 0 0 20.49 15',
-  alert:       'M12 22a10 10 0 110-20 10 10 0 010 20z M12 8v4 M12 16h.01',
-  check:       'M20 6L9 17l-5-5',
-  activity:    'M22 12h-4l-3 9L9 3l-3 9H2',
-  clock:       'M12 22a10 10 0 110-20 10 10 0 010 20z M12 6v6l4 2',
-  x:           'M18 6L6 18 M6 6l12 12',
-}
-
-function Icon({ name, size = 16, stroke = 1.6 }: { name: string; size?: number; stroke?: number }) {
-  const d = ICONS[name]
-  if (!d) return null
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"
-      aria-hidden="true">
-      {d.split(/(?=M)/).map((seg, i) => <path key={i} d={seg.trim()} />)}
-    </svg>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Interfaces (unchanged from original)
@@ -60,36 +36,6 @@ interface TransitionSummary {
     expected_outcome: string
   }
   message: string
-}
-
-// ---------------------------------------------------------------------------
-// Agent owner badge color map — pastel pairs, not neon
-// ---------------------------------------------------------------------------
-const AGENT_PASTEL: Record<string, { bg: string; fg: string }> = {
-  CMO:          { bg: 'var(--p-lav)',   fg: 'var(--pi-lav)' },
-  CRO:          { bg: 'var(--p-sky)',   fg: 'var(--pi-sky)' },
-  CPO:          { bg: 'var(--p-mint)',  fg: 'var(--pi-mint)' },
-  CTO:          { bg: 'var(--p-butter)', fg: 'var(--pi-butter)' },
-  COO:          { bg: 'var(--p-peach)', fg: 'var(--pi-peach)' },
-  CFO:          { bg: 'var(--p-sand)',  fg: 'var(--pi-sand)' },
-  RiskQA:       { bg: 'var(--p-rose)',  fg: 'var(--pi-rose)' },
-  CEO:          { bg: 'var(--p-lav)',   fg: 'var(--pi-lav)' },
-  ChiefOfStaff: { bg: 'var(--p-peach)', fg: 'var(--pi-peach)' },
-}
-
-function AgentBadge({ agent }: { agent: string }) {
-  const p = AGENT_PASTEL[agent] ?? { bg: 'var(--silver-1)', fg: 'var(--ink-2)' }
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      padding: '2px 8px', borderRadius: 999,
-      fontSize: 11.5, fontWeight: 600, lineHeight: 1.4,
-      background: p.bg, color: p.fg,
-      fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap',
-    }}>
-      {agent}
-    </span>
-  )
 }
 
 // ---------------------------------------------------------------------------
@@ -459,10 +405,8 @@ function PhaseTransitionPanel() {
 // ---------------------------------------------------------------------------
 // Counterpart chip — AgentBadge for executives, plain pill for Founder/CEO
 // ---------------------------------------------------------------------------
-const EXECUTIVES = new Set(Object.keys(AGENT_PASTEL))
-
 function CounterpartChip({ counterpart }: { counterpart: string }) {
-  const isExec = EXECUTIVES.has(counterpart) && counterpart !== 'CEO'
+  const isExec = EXECUTIVE_AGENTS.has(counterpart) && counterpart !== 'CEO'
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
       <span style={{ color: 'var(--ink-4)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>→</span>
@@ -677,28 +621,12 @@ function MonitorContent() {
 
       <PhaseTransitionPanel />
 
-      {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 24, gap: 12, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{
-            fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-3)',
-            letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6,
-          }}>
-            도구
-          </div>
-          <h1 style={{
-            fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 30,
-            color: 'var(--ink-1)', margin: 0, letterSpacing: '-0.015em', lineHeight: 1.15,
-          }}>
-            현황 모니터
-          </h1>
-          <div style={{ marginTop: 4, fontSize: 12, color: 'var(--ink-3)', fontFamily: 'var(--font-mono)' }}>
-            범위 · <span style={{ color: 'var(--green-press)', fontWeight: 600 }}>{scopeLabel}</span>
-          </div>
-        </div>
-
-        {/* Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <PageHeader
+        overline="도구"
+        title="현황 모니터"
+        subtitle={<>범위 · <span style={{ color: 'var(--green-press)', fontWeight: 600 }}>{scopeLabel}</span></>}
+        actions={(
+          <>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
             <input
               type="checkbox"
@@ -714,8 +642,9 @@ function MonitorContent() {
             <Icon name="refresh" size={13} />
             새로고침
           </button>
-        </div>
-      </div>
+          </>
+        )}
+      />
 
       {/* Legend */}
       {!loading && totalAgents > 0 && <StatusLegend />}

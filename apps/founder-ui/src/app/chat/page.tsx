@@ -8,34 +8,10 @@ import ConsultationCard from '@/components/ConsultationCard'
 import SynthesisCard from '@/components/SynthesisCard'
 import RoadmapTimeline from '@/components/RoadmapTimeline'
 import { AgentOutputDetail } from '@/components/AgentOutputDetail'
+import Icon from '@/components/Icon'
 import { api } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
 import { InboxNavContext, useInboxNav, type InboxTaskRef } from '@/lib/inbox-nav'
-
-// ── Icon primitive (matches Sidebar.tsx pattern) ─────────────────────────────
-const ICONS: Record<string, string> = {
-  check:    'M20 6L9 17l-5-5',
-  x:        'M18 6L6 18 M6 6l12 12',
-  send:     'M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z',
-  alert:    'M12 22a10 10 0 110-20 10 10 0 010 20z M12 8v4 M12 16h.01',
-  folder:   'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z',
-  inbox:    'M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z',
-  note:     'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8',
-  arrowR:   'M5 12h14 M12 5l7 7-7 7',
-  wrench:   'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
-}
-
-function Icon({ name, size = 14, stroke = 1.7 }: { name: string; size?: number; stroke?: number }) {
-  const d = ICONS[name]
-  if (!d) return null
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"
-      aria-hidden="true">
-      {d.split(/(?=M)/).map((seg, i) => <path key={i} d={seg.trim()} />)}
-    </svg>
-  )
-}
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const PHASE_LABELS: Record<string, string> = {

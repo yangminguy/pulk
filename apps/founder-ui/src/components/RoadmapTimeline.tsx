@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
+import AgentBadge from '@/components/AgentBadge'
 import { api, ProjectRoadmapEventItem, TaskItem } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
 import { useInboxNav, type InboxTaskRef } from '@/lib/inbox-nav'
@@ -13,18 +14,6 @@ const BPR_PHASES = [
   { id: 'productization_review',  name: '제품화 검토',  label: 'Productize'  },
   { id: 'scale_automation',       name: '스케일/자동화', label: 'Scale'       },
 ]
-
-// ── Agent pastel chips ────────────────────────────────────────────────────────
-const AGENT_CHIP: Record<string, { bg: string; fg: string }> = {
-  CMO:    { bg: 'var(--p-lav)',    fg: 'var(--pi-lav)'    },
-  CRO:    { bg: 'var(--p-sky)',    fg: 'var(--pi-sky)'    },
-  CPO:    { bg: 'var(--p-mint)',   fg: 'var(--pi-mint)'   },
-  CTO:    { bg: 'var(--p-sky)',    fg: 'var(--pi-sky)'    },
-  COO:    { bg: 'var(--p-peach)',  fg: 'var(--pi-peach)'  },
-  CFO:    { bg: 'var(--p-butter)', fg: 'var(--pi-butter)' },
-  RiskQA: { bg: 'var(--p-rose)',   fg: 'var(--pi-rose)'   },
-  CEO:    { bg: 'var(--p-sand)',   fg: 'var(--pi-sand)'   },
-}
 
 // ── Status badge tones ────────────────────────────────────────────────────────
 const STATUS_BADGE: Record<string, { bg: string; fg: string; dot: string; label: string }> = {
@@ -65,22 +54,6 @@ function IconMap({ size = 16 }: { size?: number }) {
       <line x1="8" y1="2" x2="8" y2="18" />
       <line x1="16" y1="6" x2="16" y2="22" />
     </svg>
-  )
-}
-
-// ── Agent chip ────────────────────────────────────────────────────────────────
-function AgentChip({ agent }: { agent: string }) {
-  const style = AGENT_CHIP[agent] ?? { bg: 'var(--silver-1)', fg: 'var(--ink-2)' }
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      padding: '1px 7px', borderRadius: 4,
-      fontSize: 10, fontWeight: 700,
-      fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', textTransform: 'uppercase',
-      background: style.bg, color: style.fg,
-    }}>
-      {agent}
-    </span>
   )
 }
 
@@ -138,7 +111,7 @@ function UpperCard({ title, agent, status, completedAt, summary, onClick }: {
       el.style.boxShadow = 'none'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-        <AgentChip agent={agent} />
+        <AgentBadge agent={agent} variant="chip" />
         <StatusBadge status={status} />
       </div>
       <div style={{
@@ -201,7 +174,7 @@ function LowerCard({ task, onClick }: { task: TaskItem; onClick?: () => void }) 
       el.style.boxShadow = 'none'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-        <AgentChip agent={task.agent} />
+        <AgentBadge agent={task.agent} variant="chip" />
         <StatusBadge status={task.status} />
       </div>
       <div style={{
