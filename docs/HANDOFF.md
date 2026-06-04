@@ -1,6 +1,6 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (Intro 30s Analysis Card 스펙 작성 완료)
+최종 업데이트: 2026-06-04 (State Machine Validation 구현 green)
 
 ---
 
@@ -20,6 +20,27 @@
 
 ---
 
+## 🟢 2026-06-04 — State Machine Validation 구현 green
+
+**완료**: `packages/l5-core/src/functions/state-machine/transitions.ts`와 `packages/l5-core/src/index.ts` re-export가 구현되어 전 단계 red 테스트가 green 전환됨.
+
+- AgentTask 11, FounderInstruction 6, ToolRequest 7, BusinessIdea 5 edges lookup table 확인
+- `createTransitionValidator` 제네릭 팩토리 유효/무효 판정 확인
+- `validateAgentTaskTransition` / `validateFounderInstructionTransition` / `validateToolRequestTransition` / `validateBusinessIdeaTransition` export 확인
+- 같은 core red 묶음의 `ContentApprovalGate`도 green 확인: `routeContentApproval`, `CONTENT_APPROVAL_TRANSITIONS`, `validateContentApprovalTransition`
+- hermes-runtime `approveTask`/`rejectTask`는 호출자가 넘긴 `now`를 사용하도록 순수화, 관련 approval-checker 테스트 통과
+
+**검증**:
+- `corepack pnpm --filter @l5/core test` → 55 suites / 585 tests 통과
+- `corepack pnpm --filter @l5/core typecheck` → 통과
+- `corepack pnpm --filter @l5/hermes-runtime typecheck` → 통과
+- `corepack pnpm --filter @l5/hermes-runtime test -- approval-checker.test.ts approval-checker-telegram.test.ts` → 2 suites / 11 tests 통과
+- 참고: `corepack pnpm --filter @l5/hermes-runtime test` 전체는 기존 Telegram 환경변수/실네트워크 이슈(`src/notifier/__tests__/telegram.test.ts` 2건)로 실패. 이번 변경 관련 approval 테스트는 통과.
+
+**다음**: 플러그인 raw status write를 validator로 교체하는 통합 단계는 별도 스펙/후속 작업으로 진행.
+
+---
+
 ## 🟢 2026-06-04 — State Machine Validation 스펙 작성
 
 **배경**: 15+ 엔티티 상태 전환이 플러그인에서 raw status 쓰기로 실행되며 l5-core에 유효 전환 정의 없음. 오픈소스 조사(XState/Robot/typescript-fsm) 결과 `build` 결정 → `createTransitionValidator` 제네릭 팩토리 + lookup table 패턴.
@@ -31,7 +52,7 @@
 - 영향 파일 3개 식별 (`transitions.ts` 신규, `transitions.test.ts` 이전 phase 작성 완료, `index.ts` re-export)
 - 플러그인 통합은 별도 후속 단계로 분리
 
-**다음**: `transitions.ts` 구현 → 실패 테스트 통과 → re-export → typecheck+test.
+**상태**: 구현 완료 및 core test/typecheck green.
 
 ---
 
@@ -47,7 +68,7 @@
 - 결과: 실패(exit 1)
 - 핵심 오류: `TS2307: Cannot find module '../transitions' or its corresponding type declarations.`
 
-**다음**: 구현 단계에서 `packages/l5-core/src/functions/state-machine/transitions.ts`를 추가하고 `packages/l5-core/src/index.ts` re-export 후 core test/typecheck를 통과시킨다.
+**상태**: 구현 완료 및 core test/typecheck green.
 
 ---
 

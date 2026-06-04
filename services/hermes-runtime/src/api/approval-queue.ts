@@ -89,7 +89,7 @@ export function autoApproveExpiredD3Tasks(
         const { updatedTask } = approveTask(t, {
           task_id: t.id,
           notes: "D3 24h 자동 승인",
-        });
+        }, now);
         approved_count += 1;
         return updatedTask;
       }
@@ -105,11 +105,12 @@ export function autoApproveExpiredD3Tasks(
 export function approveTask(
   task: AgentTask,
   req: ApproveTaskRequest,
+  now: Date,
 ): { updatedTask: AgentTask; response: ApprovalActionResponse } {
   const updatedTask: AgentTask = {
     ...task,
     status: "done",
-    updated_at: new Date().toISOString(),
+    updated_at: now.toISOString(),
   };
 
   return {
@@ -129,11 +130,12 @@ export function approveTask(
 export function rejectTask(
   task: AgentTask,
   req: RejectTaskRequest,
+  now: Date,
 ): { updatedTask: AgentTask; response: ApprovalActionResponse } {
   const updatedTask: AgentTask = {
     ...task,
     status: "killed",
-    updated_at: new Date().toISOString(),
+    updated_at: now.toISOString(),
   };
 
   return {

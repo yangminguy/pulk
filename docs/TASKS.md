@@ -1,7 +1,7 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-06-04 (오픈소스 조사 비교 완료 — Langfuse·Trigger.dev·PostHog). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-06-04 (State Machine Validation green + ContentApprovalGate core 검증 완료). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
 
 ## 🔥🔥 M9: CTO 시니어 개발자 자율 실행 — 컨트롤룸 라이브화 (2026-06-04 최우선, 창업자 지정)
 
@@ -39,16 +39,18 @@
 - [~] **토큰/비용 표시**: **예상 토큰 완료(2026-06-04)** — l5-core `token-estimate`(classifyTask|CTO size판단→DEV_WORKFLOW phase수→tier별 토큰범위, 7테스트). CTO 기획 시 작업별 `size`(tiny/small/feature/big)를 LLM이 판단→정확도↑(다크모드 데모: 전부-FEATURE 350k–910k → small4+feature1 150k–374k). PlanCard에 "예상 토큰 약 Xk–Yk"(승인 전 go/no-go 판단), 컨트롤룸 dev-task 카드에 작업별 예상 토큰. 라이브 E2E 검증. **남은 것**: 실제 누적 토큰/비용 = hermes-agent(session_*_tokens·estimated_cost_usd 내부 보유)→ACR 콜백→`/api/l5/execution` AcrExecTask 확장→controlRoomTree 머지→UI. (3레포 결선, 실제 CLI 실행 필요.) 모델tier 라우팅이 곧 절감(가벼운 phase=T3 haiku, 무거운 추론만 T1 opus).
 - [ ] **비용 상한·장애 모니터**: 추정 대비 N배 초과 시 정지·알림. Langfuse 추적, 위험명령 차단(D4/D5 게이트만).
 
-### State Machine 29개 상태 전환 검증 (2026-06-04, 스펙+실패 테스트 완료)
+### State Machine 29개 상태 전환 검증 (2026-06-04, 구현+검증 완료)
 
 > **배경**: 15+ 엔티티 상태 전환이 플러그인에서 raw status 쓰기로 실행되며 l5-core에 유효 전환 정의 없음. 오픈소스 조사(XState/Robot/typescript-fsm) 결과 `build` 결정. `createTransitionValidator` 제네릭 팩토리 + lookup table 패턴. **스펙: `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md` (AC 7개, 영향 파일 3개).**
 > **Acceptance Criteria**: (1) 팩토리 제네릭 동작 (2) edge 수 11/6/7/5 단언 (3) 유효 전환 valid===true (4) 무효 전환 valid===false+reason (5) pnpm test 통과 (6) tsc 0 (7) index.ts re-export.
 > **Red 검증(2026-06-04)**: `corepack pnpm --filter @l5/core test -- state-machine/__tests__/transitions.test.ts` → 실패(exit 1). 현재 구현 파일 `src/functions/state-machine/transitions.ts`가 없어 `TS2307: Cannot find module '../transitions'`로 red 확인.
+> **Green 검증(2026-06-04)**: `corepack pnpm --filter @l5/core test` → 55 suites / 585 tests 통과. `corepack pnpm --filter @l5/core typecheck` → 통과. 관련 targeted: `state-machine/__tests__/transitions.test.ts` + `approval/__tests__/content-gate.test.ts` → 26 tests 통과.
 
 - [x] `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md` — 요구사항 명세 + 측정 가능 AC 7개 + 영향 파일 목록
 - [x] `state-machine/__tests__/transitions.test.ts` — 실패 테스트 작성 완료 + red 확인 (`TS2307` 구현 모듈 부재)
-- [ ] `state-machine/transitions.ts` — `createTransitionValidator` + 4개 lookup table (AgentTask 11, FounderInstruction 6, ToolRequest 7, BusinessIdea 5 = 29 edges)
-- [ ] `l5-core/src/index.ts` re-export + typecheck + test 통과
+- [x] `state-machine/transitions.ts` — `createTransitionValidator` + 4개 lookup table (AgentTask 11, FounderInstruction 6, ToolRequest 7, BusinessIdea 5 = 29 edges)
+- [x] `l5-core/src/index.ts` re-export + typecheck + test 통과
+- [x] `ContentApprovalGate` core red 테스트도 green 확인 — `CONTENT_APPROVAL_TRANSITIONS` 8 edges + `routeContentApproval` 라우팅 + `validateContentApprovalTransition`
 
 ### Intro 30s Analysis Card (2026-06-04, 스펙 완료)
 
