@@ -1,3 +1,6 @@
+import { writeFileSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { runCTOAgent } from './cto.js';
 import type { LLMClient } from '@l5/core';
 
@@ -260,5 +263,21 @@ describe('runCTOAgent — deterministic phases (default)', () => {
     // SMALL_FIX SOP = repro → fix → regress → commit (4 phases), not the 6-phase
     // FEATURE ceremony — the single-component heuristic at work.
     expect(out.acr_intent.phases).toHaveLength(4);
+  });
+
+  // B5: quota-aware routing — an exhausted tier must not be dispatched to.
+  it('routes off an exhausted tier (no dead-tier dispatch)', async () => {
+    const quotaPath = join(tmpdir(), `quota-${process.pid}-${Date.now()}.json`);
+    // FEATURE test/implement phases are T2→codex; mark T2 exhausted.
+    writeFileSync(quotaPath, JSON.stringify({ tiers: { T2: { available: false } } }));
+    process.env.ACR_QUOTA_TRACKER_PATH = quotaPath;
+    try {
+      const out = await runCTOAgent({ task: TASK }, { llm: null });
+      const runtimes = out.acr_intent.phases.map((p) => p.runtime);
+      expect(runtimes).not.toContain('codex'); // T2 dead → never routed there
+    } finally {
+      delete process.env.ACR_QUOTA_TRACKER_PATH;
+      unlinkSync(quotaPath);
+    }
   });
 });
