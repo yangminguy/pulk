@@ -157,6 +157,32 @@ export type ActiveBusiness = {
   updated_at: string | null
 }
 
+// Business PT Context Snapshot — summary loaded by useBusinessContextSnapshot
+export type BusinessContextSnapshotTask = {
+  task_id: string
+  agent: string
+  task_title: string
+  status: string
+  risk_level: string | null
+  updated_at: string
+}
+
+export type BusinessContextSnapshot = {
+  business_id: string
+  business_name: string
+  one_liner: string | null
+  current_phase: string | null
+  lifecycle_stage: string | null
+  active_tasks: BusinessContextSnapshotTask[]
+  recent_done_tasks: BusinessContextSnapshotTask[]
+  total_tasks: number
+  queued_count: number
+  running_count: number
+  done_count: number
+  needs_review_count: number
+  loaded_at: string
+}
+
 export type AgentTaskSummary = {
   task_id: string
   agent: string
@@ -692,4 +718,58 @@ export const api = {
     )
       .then(r => (Array.isArray(r.data) ? r.data[0] ?? null : null))
       .catch(() => null),
+
+  // Business PT Context Snapshot — aggregates tasks by status for a single business.
+  // Drives BusinessContextSnapshotCard and useBusinessContextSnapshot.
+  getBusinessContextSnapshot: async (businessId: string): Promise<BusinessContextSnapshot | null> => {
+    try {
+      const [bizRes, taskRes] = await Promise.all([
+        request<{ data: ActiveBusiness[] }>(
+          `/api/businesses:list?filter[id]=${encodeURIComponent(businessId)}&pageSize=1`
+        ),
+        request<{ data: TaskItem[] }>(
+          `/api/agent_tasks:list?filter[business_id]=${encodeURIComponent(businessId)}&sort=-updatedAt&pageSize=200`
+        ),
+      ])
+      const biz: ActiveBusiness | undefined = Array.isArray(bizRes.data)
+        ? bizRes.data[0]
+        : (bizRes.data as unknown as ActiveBusiness)
+      if (!biz) return null
+      const tasks: TaskItem[] = Array.isArray(taskRes.data) ? taskRes.data : []
+      const active = tasks.filter(t => t.status === 'running' || t.status === 'queued' || t.status === 'needs_review')
+      const done   = tasks.filter(t => t.status === 'done').slice(0, 5)
+      const snap: BusinessContextSnapshot = {
+        business_id: biz.id,
+        business_name: biz.name,
+        one_liner: biz.one_liner,
+        current_phase: biz.current_phase,
+        lifecycle_stage: biz.lifecycle_stage,
+        active_tasks: active.slice(0, 10).map(t => ({
+          task_id: t.task_id,
+          agent: t.agent,
+          task_title: t.task_title,
+          status: t.status,
+          risk_level: t.risk_level,
+          updated_at: t.updated_at,
+        })),
+        recent_done_tasks: done.map(t => ({
+          task_id: t.task_id,
+          agent: t.agent,
+          task_title: t.task_title,
+          status: t.status,
+          risk_level: t.risk_level,
+          updated_at: t.updated_at,
+        })),
+        total_tasks: tasks.length,
+        queued_count: tasks.filter(t => t.status === 'queued').length,
+        running_count: tasks.filter(t => t.status === 'running').length,
+        done_count: tasks.filter(t => t.status === 'done').length,
+        needs_review_count: tasks.filter(t => t.status === 'needs_review').length,
+        loaded_at: new Date().toISOString(),
+      }
+      return snap
+    } catch {
+      return null
+    }
+  },
 }
