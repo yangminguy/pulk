@@ -34,5 +34,7 @@ export * from './functions/chief-of-staff'; // P1 — founder synthesis delivera
 export * from './functions/monitor'; // P2 — live agent status derivation
 export * from './functions/cto-control-room'; // P3-3 — control room tree builder
 export * from './functions/video-project';
+export * from './functions/video-room'; // CMO Video Room domain (PRD v1.1)
+export * from './functions/cmo-strategy'; // CMO strategy conversation turn engine
 export { createClaudeCLIClient } from './llm/claude-cli-client';
 export type { ClaudeCLIModel, ClaudeCLIClientOptions } from './llm/claude-cli-client';
