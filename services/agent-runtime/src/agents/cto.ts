@@ -355,20 +355,27 @@ export async function runCTOAgent(
 
   const llm = resolveLLMClient(deps);
 
-  // CTO is the sole authority on task classification. Keyword heuristic runs
-  // first; if the LLM is available it may override via task_class in its response.
+  // Phase generation is deterministic by default (ACR_DETERMINISTIC_PHASES≠"0"):
+  // classifyTask + template-driven phases skip the LLM round-trip entirely,
+  // eliminating the 2-attempt retry loop and the LLM clarifying-question
+  // escalation that stalled the pipeline. Set ACR_DETERMINISTIC_PHASES=0 to
+  // restore the LLM phase planner (fallback/experimental).
+  const deterministicPhases = process.env.ACR_DETERMINISTIC_PHASES !== "0";
+
+  // CTO is the sole authority on task classification — the deterministic keyword
+  // heuristic is authoritative and the LLM may NOT override it.
   const inferredClass: TaskClass = classifyTask(taskTitle, taskRationale);
 
   let acrIntent: ACRIntent | null = null;
   let clarifyingQuestions: string[] | undefined;
-  let resolvedTaskClass: TaskClass = inferredClass;
+  const resolvedTaskClass: TaskClass = inferredClass;
 
-  if (llm) {
+  if (llm && !deterministicPhases) {
     const llmResult = await callLLMForDevWorkflow(llm, taskTitle, taskRationale, inferredClass);
     if (llmResult?.clarifying_questions) {
       clarifyingQuestions = llmResult.clarifying_questions;
     } else if (llmResult?.phases) {
-      resolvedTaskClass = llmResult.taskClass ?? inferredClass;
+      // Classification stays deterministic; the LLM only fills phase detail.
       const projectPath = resolveProjectPath(input.task);
       acrIntent = {
         l5_task_id: taskId,
