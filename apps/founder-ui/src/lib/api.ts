@@ -52,6 +52,15 @@ export type IntroAnalysisData = {
   improvement_suggestions?: string[]
 }
 
+export type ProductStrategyData = {
+  product: string
+  target: string
+  problem: string
+  goal: string
+  confidence?: number
+  rationale?: string
+}
+
 export type AgentOutputLite = {
   goal?: string
   current_situation?: string
@@ -62,6 +71,7 @@ export type AgentOutputLite = {
   insight_to_record?: string
   confidence_level?: string
   intro_analysis?: IntroAnalysisData
+  product_strategy?: ProductStrategyData
 }
 
 export type TaskItem = {
@@ -439,6 +449,12 @@ export const api = {
     request<{ data: unknown }>('/api/founder_instructions:update', {
       method: 'POST',
       body: JSON.stringify({ filterByTk: id, values: { status: 'closed' } }),
+    }).then(r => r.data),
+
+  updateTaskOutput: (taskId: string, output: Partial<AgentOutputLite>) =>
+    request<{ data: unknown }>('/api/agent_tasks:update', {
+      method: 'POST',
+      body: JSON.stringify({ filterByTk: taskId, values: { output } }),
     }).then(r => r.data),
 
   generateWorkflow: (idea: string) =>

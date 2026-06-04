@@ -1,24 +1,37 @@
 'use client'
-import { Line, LineChart } from 'recharts'
-import type { AgentOutputLite, IntroAnalysisData } from '@/lib/api'
+import { useState } from 'react'
+import { api, type AgentOutputLite, type IntroAnalysisData, type ProductStrategyData } from '@/lib/api'
 
 // Renders an executive's persisted work product (agent_tasks.output) as a
 // structured, human-readable deliverable. Shared by the chat Inbox detail and
 // the Monitor drill-down so the founder can read the real result everywhere.
-export function AgentOutputDetail({ output, agent = 'CMO' }: { output: AgentOutputLite; agent?: string }) {
+export function AgentOutputDetail({ output, agent = 'CMO', taskId }: { output: AgentOutputLite; agent?: string; taskId?: string }) {
   const introAnalysis = output.intro_analysis
   const hasIntroAnalysis = Boolean(introAnalysis && typeof introAnalysis.hook_score === 'number')
+  const productStrategy = output.product_strategy
+  const hasProductStrategy = Boolean(productStrategy?.product)
   const { goal, recommendation, options, action_items, insight_to_record, current_situation } = output
   const hasStrategyDecision = Boolean(recommendation && options && options.length > 0)
   const strategyOptions = options ?? []
 
   const hasAny =
-    hasIntroAnalysis || goal || recommendation || current_situation ||
+    hasIntroAnalysis || hasProductStrategy || goal || recommendation || current_situation ||
     (options && options.length) || (action_items && action_items.length) || insight_to_record
   if (!hasAny) return null
 
   if (hasIntroAnalysis) {
     return <IntroAnalysisPanel analysis={introAnalysis as IntroAnalysisData} agent={agent} />
+  }
+
+  if (hasProductStrategy) {
+    return (
+      <ProductStrategyPanel
+        agent={agent}
+        output={output}
+        strategy={productStrategy as ProductStrategyData}
+        taskId={taskId}
+      />
+    )
   }
 
   return (
@@ -88,6 +101,113 @@ export function AgentOutputDetail({ output, agent = 'CMO' }: { output: AgentOutp
   )
 }
 
+function ProductStrategyPanel({
+  agent,
+  output,
+  strategy,
+  taskId,
+}: {
+  agent: string
+  output: AgentOutputLite
+  strategy: ProductStrategyData
+  taskId?: string
+}) {
+  const [current, setCurrent] = useState(strategy)
+  const [draft, setDraft] = useState(strategy)
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const confidenceStyle = typeof current.confidence === 'number' ? getHookScoreStyle(current.confidence) : null
+
+  const updateDraft = (field: keyof ProductStrategyData, value: string) => {
+    setDraft(prev => ({ ...prev, [field]: value }))
+  }
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      if (taskId) await api.updateTaskOutput(taskId, { ...output, product_strategy: draft })
+      setCurrent(draft)
+      setEditing(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const cancel = () => {
+    setDraft(current)
+    setEditing(false)
+  }
+
+  const fields: Array<{ key: keyof ProductStrategyData; label: string }> = [
+    { key: 'product', label: '상품' },
+    { key: 'target', label: '타깃' },
+    { key: 'problem', label: '문제' },
+    { key: 'goal', label: '목표' },
+  ]
+
+  return (
+    <div style={{ border: '1px solid var(--silver-2)', borderRadius: 6, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 13px', borderBottom: '1px solid var(--silver-1)', background: 'var(--paper-elevated)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="j-overline">상품 전략</div>
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', fontSize: 10.5, fontWeight: 600, color: 'var(--green-press)', background: 'var(--green-tint)', padding: '2px 7px', borderRadius: 999 }}>
+          {agent}
+        </span>
+        {editing ? (
+          <>
+            <button className="j-btn j-btn-sm" onClick={cancel} disabled={saving} style={{ opacity: saving ? 0.5 : 1 }}>
+              취소
+            </button>
+            <button className="j-btn j-btn-primary j-btn-sm" onClick={save} disabled={saving} style={{ opacity: saving ? 0.5 : 1 }}>
+              저장
+            </button>
+          </>
+        ) : (
+          <button className="j-btn j-btn-sm" onClick={() => setEditing(true)}>
+            수정
+          </button>
+        )}
+      </div>
+
+      <div style={{ padding: 13, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+          {fields.map(field => (
+            <div key={field.key} style={{ border: '1px solid var(--silver-1)', borderRadius: 6, padding: '10px 11px', minWidth: 0 }}>
+              <div className="j-overline" style={{ marginBottom: 6 }}>{field.label}</div>
+              {editing ? (
+                <textarea
+                  className="j-input j-textarea"
+                  value={String(draft[field.key] ?? '')}
+                  onChange={e => updateDraft(field.key, e.target.value)}
+                  disabled={saving}
+                  style={{ minHeight: 60, maxHeight: 120, fontSize: 12.5, resize: 'vertical', width: '100%' }}
+                />
+              ) : (
+                <p style={pStyle}>{String(current[field.key] ?? '')}</p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {confidenceStyle && (
+          <div style={{ background: confidenceStyle.bg, border: `1px solid ${confidenceStyle.border}`, borderRadius: 6, padding: '9px 12px', display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 600, color: confidenceStyle.fg }}>확신도</div>
+            <div className="j-num" style={{ marginLeft: 'auto', fontSize: 20, fontWeight: 700, color: confidenceStyle.fg, lineHeight: 1 }}>
+              {current.confidence}/100
+            </div>
+          </div>
+        )}
+
+        {current.rationale && (
+          <details>
+            <summary className="j-overline" style={{ cursor: 'pointer' }}>도출 근거</summary>
+            <p style={{ ...pStyle, marginTop: 8 }}>{current.rationale}</p>
+          </details>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function IntroAnalysisPanel({ analysis, agent }: { analysis: IntroAnalysisData; agent: string }) {
   const scoreStyle = getHookScoreStyle(analysis.hook_score)
   const retentionData = analysis.retention_curve ?? []
@@ -130,9 +250,7 @@ function IntroAnalysisPanel({ analysis, agent }: { analysis: IntroAnalysisData; 
 
         {retentionData.length > 0 && (
           <div style={{ height: 80, width: '100%', border: '1px solid var(--silver-1)', borderRadius: 6, padding: 4 }}>
-            <LineChart width={360} height={70} data={retentionData} margin={{ top: 5, right: 8, bottom: 5, left: 8 }}>
-              <Line type="monotone" dataKey="pct" stroke="var(--green)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-            </LineChart>
+            <RetentionCurve data={retentionData} />
           </div>
         )}
 
@@ -171,6 +289,27 @@ function IntroAnalysisPanel({ analysis, agent }: { analysis: IntroAnalysisData; 
         )}
       </div>
     </div>
+  )
+}
+
+function RetentionCurve({ data }: { data: Array<{ sec: number; pct: number }> }) {
+  const width = 360
+  const height = 70
+  const padX = 8
+  const padY = 5
+  const minSec = Math.min(...data.map(point => point.sec))
+  const maxSec = Math.max(...data.map(point => point.sec))
+  const spanSec = Math.max(1, maxSec - minSec)
+  const path = data.map((point, i) => {
+    const x = padX + ((point.sec - minSec) / spanSec) * (width - padX * 2)
+    const y = padY + ((100 - point.pct) / 100) * (height - padY * 2)
+    return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
+  }).join(' ')
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="retention curve">
+      <path d={path} fill="none" stroke="var(--green)" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   )
 }
 
