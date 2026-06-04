@@ -61,6 +61,14 @@ export type ProductStrategyData = {
   rationale?: string
 }
 
+export type PullingContentSetData = {
+  hook: string
+  problem: string
+  solution: string
+  benefit: string
+  cta: string
+}
+
 export type AgentOutputLite = {
   goal?: string
   current_situation?: string
@@ -72,6 +80,7 @@ export type AgentOutputLite = {
   confidence_level?: string
   intro_analysis?: IntroAnalysisData
   product_strategy?: ProductStrategyData
+  pulling_content_set?: PullingContentSetData
 }
 
 export type TaskItem = {

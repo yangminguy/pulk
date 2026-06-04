@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { api, type AgentOutputLite, type IntroAnalysisData, type ProductStrategyData } from '@/lib/api'
+import { api, type AgentOutputLite, type IntroAnalysisData, type ProductStrategyData, type PullingContentSetData } from '@/lib/api'
 
 // Renders an executive's persisted work product (agent_tasks.output) as a
 // structured, human-readable deliverable. Shared by the chat Inbox detail and
@@ -10,12 +10,14 @@ export function AgentOutputDetail({ output, agent = 'CMO', taskId }: { output: A
   const hasIntroAnalysis = Boolean(introAnalysis && typeof introAnalysis.hook_score === 'number')
   const productStrategy = output.product_strategy
   const hasProductStrategy = Boolean(productStrategy?.product)
+  const pullingContentSet = output.pulling_content_set
+  const hasPullingContent = Boolean(pullingContentSet && pullingContentSet.hook)
   const { goal, recommendation, options, action_items, insight_to_record, current_situation } = output
   const hasStrategyDecision = Boolean(recommendation && options && options.length > 0)
   const strategyOptions = options ?? []
 
   const hasAny =
-    hasIntroAnalysis || hasProductStrategy || goal || recommendation || current_situation ||
+    hasIntroAnalysis || hasProductStrategy || hasPullingContent || goal || recommendation || current_situation ||
     (options && options.length) || (action_items && action_items.length) || insight_to_record
   if (!hasAny) return null
 
@@ -29,6 +31,17 @@ export function AgentOutputDetail({ output, agent = 'CMO', taskId }: { output: A
         agent={agent}
         output={output}
         strategy={productStrategy as ProductStrategyData}
+        taskId={taskId}
+      />
+    )
+  }
+
+  if (hasPullingContent) {
+    return (
+      <PullingContentSetPanel
+        agent={agent}
+        output={output}
+        data={pullingContentSet as PullingContentSetData}
         taskId={taskId}
       />
     )
@@ -203,6 +216,91 @@ function ProductStrategyPanel({
             <p style={{ ...pStyle, marginTop: 8 }}>{current.rationale}</p>
           </details>
         )}
+      </div>
+    </div>
+  )
+}
+
+const pullingFields: Array<{ key: keyof PullingContentSetData; label: string; icon: string }> = [
+  { key: 'hook', label: 'Hook (후킹)', icon: '\u{1F4A1}' },
+  { key: 'problem', label: 'Problem (문제 제기)', icon: '\u{1F6A8}' },
+  { key: 'solution', label: 'Solution (해결책)', icon: '\u{1F511}' },
+  { key: 'benefit', label: 'Benefit (기대 효과)', icon: '\u2728' },
+  { key: 'cta', label: 'CTA (행동 촉구)', icon: '\u{1F3AF}' },
+]
+
+function PullingContentSetPanel({
+  agent,
+  output,
+  data,
+  taskId,
+}: {
+  agent: string
+  output: AgentOutputLite
+  data: PullingContentSetData
+  taskId?: string
+}) {
+  const [current, setCurrent] = useState(data)
+  const [draft, setDraft] = useState(data)
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      if (taskId) await api.updateTaskOutput(taskId, { ...output, pulling_content_set: draft })
+      setCurrent(draft)
+      setEditing(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const cancel = () => {
+    setDraft(current)
+    setEditing(false)
+  }
+
+  return (
+    <div style={{ border: '1px solid var(--silver-2)', borderRadius: 6, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 13px', borderBottom: '1px solid var(--silver-1)', background: 'var(--paper-elevated)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="j-overline">콘텐츠 구조 (5단계)</div>
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', fontSize: 10.5, fontWeight: 600, color: 'var(--green-press)', background: 'var(--green-tint)', padding: '2px 7px', borderRadius: 999 }}>
+          {agent}
+        </span>
+        {editing ? (
+          <>
+            <button className="j-btn j-btn-sm" onClick={cancel} disabled={saving} style={{ opacity: saving ? 0.5 : 1 }}>
+              취소
+            </button>
+            <button className="j-btn j-btn-primary j-btn-sm" onClick={save} disabled={saving} style={{ opacity: saving ? 0.5 : 1 }}>
+              저장
+            </button>
+          </>
+        ) : (
+          <button className="j-btn j-btn-sm" onClick={() => setEditing(true)}>
+            수정
+          </button>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {pullingFields.map((field, i) => (
+          <div key={field.key} style={{ padding: '10px 13px', ...(i < pullingFields.length - 1 ? { borderBottom: '1px solid var(--silver-1)' } : {}) }}>
+            <div className="j-overline" style={{ marginBottom: 6 }}>{field.icon} {field.label}</div>
+            {editing ? (
+              <textarea
+                className="j-input j-textarea"
+                value={draft[field.key]}
+                onChange={e => setDraft(prev => ({ ...prev, [field.key]: e.target.value }))}
+                disabled={saving}
+                style={{ minHeight: 60, fontSize: 12.5, resize: 'vertical', width: '100%' }}
+              />
+            ) : (
+              <p style={pStyle}>{current[field.key]}</p>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   )
