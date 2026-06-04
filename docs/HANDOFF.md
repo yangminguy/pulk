@@ -1,10 +1,20 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (State Machine Validation 스펙 작성 완료)
+최종 업데이트: 2026-06-04 (Intro 30s Analysis Card 오픈소스 조사 완료)
 
 ---
 
-## 🟢 2026-06-04 (최신) — State Machine Validation 스펙 작성
+## 🟢 2026-06-04 (최신) — Intro 30s Analysis Card 오픈소스 조사
+
+3개 도메인 비교 완료. 상세 비교표는 `docs/TASKS.md` "Intro 30s Analysis Card — 오픈소스 조사" 섹션.
+
+- **차트**: Recharts(MIT, ~50kB) 채택 — JSX 네이티브 컴포지션이 기존 카드 인라인 스타일 패턴과 일치. @nivo/line(verbose), uPlot(저수준), react-chartjs-2(번들 과대) 배제.
+- **YouTube 데이터**: youtubei.js(MIT, v17) 채택 — InnerTube 전체 클라이언트로 자막+메타데이터 단일 세션 추출, 활발히 유지보수. youtube-transcript(비활성), yt-dlp(GPL-3.0 전파 위험) 배제.
+- **프레임 추출**: @remotion/renderer 재활용(이미 설치, 추가 번들 0) — PMF 확인 후 점진 추가. ffmpeg.wasm(31MB 과도), Canvas API(CORS 제약) 배제.
+
+---
+
+## 🟢 2026-06-04 — State Machine Validation 스펙 작성
 
 **배경**: 15+ 엔티티 상태 전환이 플러그인에서 raw status 쓰기로 실행되며 l5-core에 유효 전환 정의 없음. 오픈소스 조사(XState/Robot/typescript-fsm) 결과 `build` 결정 → `createTransitionValidator` 제네릭 팩토리 + lookup table 패턴.
 
