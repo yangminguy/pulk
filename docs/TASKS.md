@@ -31,8 +31,8 @@
 - [x] **슬라이스 1 — 로드맵 생성 두뇌 (l5-core)**: `roadmap/generate-roadmap.ts` `generateRoadmapFromPRD`(LLM + 구조기반 폴백). 10/10 테스트.
 - [x] **슬라이스 A — CTO 기획 대화 두뇌 (l5-core)**: `cto-planning/plan-turn.ts` `runCtoPlanningTurn(history, msg, ctx, {llm})` → `{reply, plan?}`. plan = PRD+roadmap_items+tasks+project_proposal(새 프로젝트 배치 제안). 정규화·클램프·폴백. 7/7 테스트.
 - [x] **창업자 친화 컨트롤룸 카드 (founder-ui)**: 개발자 언어(branch 해시·phase 2/2·exit code·D1)를 "개발 상세"로 접고, **실제 CLI(acr_agent)가 무슨 단계 하는지**를 평이하게("Codex가 작업 중 · 6단계 중 4단계"). `build-control-room-tree.ts`에 `acr_agent`(현재 phase의 ACR CLI) 추가 → 카드가 owner(CTO) 대신 실제 CLI 표시. l5-core 7/7 + 배포.
-- [ ] **슬라이스 B — 데이터 모델**: `cto_planning_messages`(대화), `projects.prd`(text), `roadmap_items`(id/project_id/business_id/title/summary/objective/sequence/status/source), `agent_tasks.roadmap_item_id`. NocoBase 컬렉션 + psql ALTER.
-- [ ] **슬라이스 C — 백엔드 액션**: `cto:planMessage`(founder msg→runCtoPlanningTurn→reply+plan 저장) + `cto:approvePlan`(일괄: PRD 저장·roadmap_items 생성·tasks 생성·project_proposal 승인 시 project 생성·task→roadmap_item 연결). 두 갈래 task 출처 표시(source: 'cto_direct' vs 'ceo').
+- [x] **슬라이스 B — 데이터 모델**: `cto_planning_messages`(대화), `projects.prd`(text), `roadmap_items`(id/project_id/business_id/title/summary/objective/sequence/status/source), `agent_tasks.roadmap_item_id`. NocoBase 컬렉션 + psql ALTER.
+- [x] **슬라이스 C — 백엔드 액션**: `cto:planMessage`(founder msg→runCtoPlanningTurn→reply+plan 저장) + `cto:approvePlan`(트랜잭션 일괄: PRD 저장·roadmap_items 생성·tasks 생성·project_proposal 승인 시 project 생성·task→roadmap_item 연결, 멱등). plugin-orchestration src+dist 패치, 라이브 E2E 검증(다크모드 기획→3 로드맵+4 task 연결, source_ref='cto_planning', D2/queued/CTO). ACL: cto/cto_planning_messages/roadmap_items.
 - [ ] **슬라이스 D — 컨트롤룸 CTO 기획 패널 (founder-ui)**: 채팅 UI + 계획 승인 카드(PRD·로드맵·task·프로젝트 배치 미리보기 + go/no-go) + 로드맵 계층 표시("이 작업은 [로드맵 항목]의 일부").
 
 ### Phase 6 (M9와 함께) — 관측·안전 토큰/비용

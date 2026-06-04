@@ -67,6 +67,11 @@ const {
   synthesizeDeliverable,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/chief-of-staff'));
 
+// M10: CTO conversational planning — founder↔CTO turn that yields a PRD+roadmap+tasks plan.
+const {
+  runCtoPlanningTurn,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cto-planning'));
+
 type ActionContext = {
   app?: any;
   db: any;
@@ -96,6 +101,7 @@ export default class PluginOrchestrationServer extends Plugin {
     registerCrudResources(this.app);
     registerConsultationResource(this.app, this.db);
     registerDelegationResource(this.app, this.db);
+    registerCtoPlanningResource(this.app, this.db);
 
     this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow', 'approvePlan', 'rejectPlan', 'history'], 'loggedIn');
     this.app.acl.allow('agent', ['executeTask'], 'loggedIn');
@@ -114,6 +120,9 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('consultation', ['list', 'respond'], 'loggedIn');
     this.app.acl.allow('delegation', ['list', 'advance'], 'loggedIn');
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
+    this.app.acl.allow('cto', ['planMessage', 'approvePlan'], 'loggedIn');
+    this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
+    this.app.acl.allow('roadmap_items', '*', 'loggedIn');
   }
 
   async install() {}
@@ -319,6 +328,39 @@ function registerCollections(db: any) {
       { name: 'next_action', type: 'text', allowNull: false },
       { name: 'blocker', type: 'text' },
       { name: 'approval_required', type: 'boolean', defaultValue: false },
+    ],
+  }));
+
+  // M10: CTO planning conversation log (founder↔CTO turns, with the proposed plan).
+  db.collection(defineCollection({
+    name: 'cto_planning_messages',
+    title: 'CTO Planning Messages',
+    fields: [
+      { name: 'id', type: 'string', primaryKey: true },
+      { name: 'thread_id', type: 'string', allowNull: false },
+      { name: 'business_id', type: 'string' },
+      { name: 'project_id', type: 'string' },
+      { name: 'role', type: 'string', allowNull: false },
+      { name: 'text', type: 'text', allowNull: false },
+      { name: 'plan', type: 'json' },
+      { name: 'plan_status', type: 'string' },
+    ],
+  }));
+
+  // M10: roadmap items produced by an approved CTO plan (PRD breakdown).
+  db.collection(defineCollection({
+    name: 'roadmap_items',
+    title: 'Roadmap Items',
+    fields: [
+      { name: 'id', type: 'string', primaryKey: true },
+      { name: 'project_id', type: 'string' },
+      { name: 'business_id', type: 'string' },
+      { name: 'title', type: 'text', allowNull: false },
+      { name: 'summary', type: 'text' },
+      { name: 'objective', type: 'text' },
+      { name: 'sequence', type: 'integer', defaultValue: 1 },
+      { name: 'status', type: 'string', defaultValue: 'planned' },
+      { name: 'source', type: 'string', defaultValue: 'cto_planning' },
     ],
   }));
 
@@ -1631,6 +1673,214 @@ function registerConsultationResource(app: any, db: any) {
 
 function getValues(ctx: ActionContext): Record<string, any> {
   return ctx.action?.params?.values ?? ctx.request?.body ?? {};
+}
+
+// M10: CTO conversational planning resource.
+// cto:planMessage — one founder→CTO turn (reply, and a plan once the CTO is ready).
+// cto:approvePlan — founder approves the proposed plan in one go: persist PRD,
+// create roadmap_items + agent_tasks (queued, assigned to CTO), and — if the CTO
+// proposed a new project — create the project first. FK-safe via raw SQL.
+function registerCtoPlanningResource(app: any, db: any) {
+  const SELECT = db.sequelize.QueryTypes.SELECT;
+  const q = (sql: string, bind: any[] = []) =>
+    db.sequelize.query(sql, { bind, type: SELECT });
+
+  app.resourcer.define({
+    name: 'cto',
+    actions: {
+      // POST /api/cto:planMessage  { thread_id, founder_message, business_id?, project_id?, project_title? }
+      planMessage: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const thread_id = String(v.thread_id ?? '').trim();
+        const founder_message = String(v.founder_message ?? '').trim();
+        if (!thread_id) ctx.throw(400, 'thread_id is required');
+        if (!founder_message) ctx.throw(400, 'founder_message is required');
+        const business_id = v.business_id != null ? String(v.business_id) : null;
+        const project_id = v.project_id != null ? String(v.project_id) : null;
+
+        // Conversation history for this thread.
+        const history = (
+          await q(
+            `SELECT role, text FROM cto_planning_messages WHERE thread_id = $1 ORDER BY "createdAt" ASC`,
+            [thread_id],
+          )
+        ).map((r: any) => ({ role: r.role, text: r.text }));
+
+        // Context: businesses + existing projects so the CTO can place new work.
+        const businesses = await q(
+          `SELECT id::text AS id, title FROM businesses ORDER BY "createdAt" ASC`,
+        );
+        const projectRows = await q(
+          `SELECT id::text AS id, title, business_id FROM projects ORDER BY "createdAt" ASC`,
+        );
+        const ctx2 = {
+          project_title: v.project_title ?? null,
+          businesses: businesses.map((b: any) => ({ id: String(b.id), title: b.title ?? '' })),
+          existing_projects: projectRows.map((p: any) => ({
+            id: String(p.id),
+            title: p.title ?? '',
+            business_id: p.business_id != null ? String(p.business_id) : null,
+          })),
+        };
+
+        // Persist the founder message.
+        const founderId = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO cto_planning_messages (id, thread_id, business_id, project_id, role, text, "createdAt", "updatedAt")
+           VALUES ($1,$2,$3,$4,'founder',$5, now(), now())`,
+          { bind: [founderId, thread_id, business_id, project_id, founder_message] },
+        );
+
+        // Run the planning turn.
+        const llm = buildLLMClient(founder_message);
+        const result = await runCtoPlanningTurn(history, founder_message, ctx2, { llm });
+        const reply = String(result?.reply ?? '계속 이야기해 주세요.');
+        const plan = result?.plan ?? null;
+
+        // Persist the CTO reply (+ plan when present).
+        const ctoId = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO cto_planning_messages (id, thread_id, business_id, project_id, role, text, plan, plan_status, "createdAt", "updatedAt")
+           VALUES ($1,$2,$3,$4,'cto',$5,$6,$7, now(), now())`,
+          {
+            bind: [
+              ctoId,
+              thread_id,
+              business_id,
+              project_id,
+              reply,
+              plan ? JSON.stringify(plan) : null,
+              plan ? 'proposed' : null,
+            ],
+          },
+        );
+
+        ctx.body = { ok: true, data: { reply, plan, cto_message_id: ctoId } };
+        await next();
+      },
+
+      // POST /api/cto:approvePlan  { cto_message_id }
+      approvePlan: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const cto_message_id = String(v.cto_message_id ?? '').trim();
+        if (!cto_message_id) ctx.throw(400, 'cto_message_id is required');
+
+        const rows = await q(
+          `SELECT id, thread_id, business_id, project_id, plan, plan_status
+             FROM cto_planning_messages WHERE id = $1`,
+          [cto_message_id],
+        );
+        const msg = rows[0];
+        if (!msg) ctx.throw(404, `planning message ${cto_message_id} not found`);
+        if (!msg.plan) ctx.throw(400, 'this message has no plan to approve');
+        if (msg.plan_status === 'approved') {
+          ctx.body = { ok: true, data: { already_approved: true } };
+          return next();
+        }
+
+        const plan = typeof msg.plan === 'string' ? JSON.parse(msg.plan) : msg.plan;
+        const proposal = plan.project_proposal ?? null;
+        let business_id = msg.business_id != null ? String(msg.business_id) : null;
+        let project_id = msg.project_id != null ? String(msg.project_id) : null;
+        let new_project = false;
+        const seqToItem: Record<number, string> = {};
+        const roadmap_item_ids: string[] = [];
+        const task_ids: string[] = [];
+        const instruction_id = randomUUID();
+
+        // All-or-nothing: PRD + roadmap + instruction + tasks land together, so a
+        // mid-way failure never leaves orphan roadmap_items or a half-approved plan.
+        await db.sequelize.transaction(async (t: any) => {
+          // New-project proposal → create the project first.
+          if (proposal && proposal.is_new_project) {
+            if (proposal.business_id) business_id = String(proposal.business_id);
+            const title = String(proposal.suggested_project_title ?? '새 프로젝트');
+            const created = await db.sequelize.query(
+              `INSERT INTO projects (business_id, title, description, status, prd, "createdAt", "updatedAt")
+               VALUES ($1,$2,$3,'active',$4, now(), now()) RETURNING id`,
+              { bind: [business_id, title, proposal.rationale ?? null, plan.prd ?? null], type: SELECT, transaction: t },
+            );
+            project_id = String(created[0].id);
+            new_project = true;
+          } else if (project_id) {
+            // Existing project → record/refresh the PRD.
+            await db.sequelize.query(
+              `UPDATE projects SET prd = $1, "updatedAt" = now() WHERE id::text = $2`,
+              { bind: [plan.prd ?? null, project_id], transaction: t },
+            );
+          }
+
+          // Roadmap items — keep sequence→id so tasks can link to their item.
+          for (const it of plan.roadmap_items ?? []) {
+            const id = randomUUID();
+            await db.sequelize.query(
+              `INSERT INTO roadmap_items (id, project_id, business_id, title, summary, objective, sequence, status, source, "createdAt", "updatedAt")
+               VALUES ($1,$2,$3,$4,$5,$6,$7,'planned','cto_planning', now(), now())`,
+              {
+                bind: [
+                  id,
+                  project_id,
+                  business_id,
+                  String(it.title ?? ''),
+                  String(it.summary ?? ''),
+                  String(it.objective ?? ''),
+                  Number(it.sequence ?? 1),
+                ],
+                transaction: t,
+              },
+            );
+            seqToItem[Number(it.sequence ?? 1)] = id;
+            roadmap_item_ids.push(id);
+          }
+
+          // Founder instruction (FK parent for the tasks).
+          await db.sequelize.query(
+            `INSERT INTO founder_instructions (id, raw_text, source, status, business_id, project_id, "createdAt", "updatedAt")
+             VALUES ($1,$2,'cto_planning','planned',$3,$4, now(), now())`,
+            { bind: [instruction_id, plan.prd || 'CTO 기획 계획', business_id, project_id], transaction: t },
+          );
+
+          // Tasks — queued, assigned to CTO (it owns dev orchestration), D2 (internal coding).
+          for (const tk of plan.tasks ?? []) {
+            const id = randomUUID();
+            const roadmap_item_id = seqToItem[Number(tk.roadmap_sequence ?? 1)] ?? null;
+            await db.sequelize.query(
+              `INSERT INTO agent_tasks
+                 (id, instruction_id, assigned_agent, title, rationale, expected_output,
+                  status, approval_required, risk_level, source_ref, roadmap_item_id, business_id, project_id, "createdAt", "updatedAt")
+               VALUES ($1,$2,'CTO',$3,$4,$5,'queued',false,'D2','cto_planning',$6,$7,$8, now(), now())`,
+              {
+                bind: [
+                  id,
+                  instruction_id,
+                  String(tk.title ?? ''),
+                  String(tk.rationale ?? ''),
+                  String(tk.expected_output ?? ''),
+                  roadmap_item_id,
+                  business_id,
+                  project_id,
+                ],
+                transaction: t,
+              },
+            );
+            task_ids.push(id);
+          }
+
+          // Mark the plan approved (idempotency guard for re-clicks).
+          await db.sequelize.query(
+            `UPDATE cto_planning_messages SET plan_status = 'approved', "updatedAt" = now() WHERE id = $1`,
+            { bind: [cto_message_id], transaction: t },
+          );
+        });
+
+        ctx.body = {
+          ok: true,
+          data: { new_project, project_id, instruction_id, roadmap_item_ids, task_ids },
+        };
+        await next();
+      },
+    },
+  });
 }
 
 // M6: build the worker (target executive) tool suite — secondbrain + video only.
