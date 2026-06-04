@@ -1,6 +1,55 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (State Machine Validation 구현 green)
+최종 업데이트: 2026-06-04 (코드 리뷰 완료 — LGTM with minor notes)
+
+---
+
+## 🟢 2026-06-04 (최신) — 코드 리뷰: State Machine + ContentApprovalGate + Intro Analysis
+
+**판정: LGTM** — 16파일 952줄 전체 검토. 차단 이슈 없음. 테스트 26건 통과, l5-core tsc 0, hermes-runtime tsc 0.
+
+### 리뷰 상세
+
+#### 1. `packages/l5-core/src/functions/state-machine/transitions.ts` — **LGTM**
+- `createTransitionValidator` 제네릭 팩토리: `<const T extends Record<string, readonly string[]>>` + `as const satisfies` 조합이 타입 안전하고 깔끔함.
+- 4개 lookup table edge 수(11/6/7/5)가 스펙과 일치. Terminal 상태(`done`, `killed`, `closed`, `synthesized`, `deployed`, `converted_to_business`)는 빈 배열 — 정확.
+- [minor] `transitionMap` 중간 변수 캐스트(`transitions as Record<string, readonly string[]>`)는 `const T` 제네릭 추론 한계 우회용으로 이해됨. 현행 유지 가능.
+
+#### 2. `packages/l5-core/src/functions/approval.ts` — **LGTM**
+- `ceo_only` dead variant 제거 완료. D3 주석 "CEO approval" → "CTO autonomous" 수정.
+- `ContentApprovalGate extends ApprovalGate`: 기존 인터페이스 호환 유지하며 확장. `routeContentApproval` 라우팅 로직이 스펙 6행 테이블과 일대일 대응.
+- `CONTENT_APPROVAL_TRANSITIONS` 8 edges — `createTransitionValidator` 재사용으로 패턴 일관성 유지.
+- [minor] `buildContentApprovalGate` 내부 헬퍼가 `requiresFounderApproval` spread 후 `approval_level`을 덮어씀 — 의도적이고 문제 없음.
+
+#### 3. `services/hermes-runtime/src/api/approval-queue.ts` — **LGTM**
+- `approveTask`/`rejectTask` 시그니처에 `now: Date` 추가 → `new Date()` 제거. 순수 함수화 완료.
+- 기존 호출부 3곳(`approval-queue.ts`, `approval-checker.ts`, `dry-run.ts`) 모두 업데이트 확인. hermes-runtime tsc 통과.
+
+#### 4. `packages/l5-core/src/functions/state-machine/__tests__/transitions.test.ts` — **LGTM**
+- `countEdges` 헬퍼로 edge 수 단언 + 팩토리 제네릭 동작 검증 + 엔티티별 유효/무효 전환 커버.
+- 스펙 AC1-AC7 전부 충족.
+
+#### 5. `packages/l5-core/src/functions/approval/__tests__/content-gate.test.ts` — **LGTM**
+- `it.each` 패턴으로 라우팅 7개 조합 + 전환 유효 8개/무효 3개 커버. 스펙 AC5-AC6 충족.
+
+#### 6. `apps/founder-ui/src/components/__tests__/AgentOutputDetail.intro-analysis-panel.test.tsx` — **LGTM**
+- `renderToStaticMarkup` + `node:assert/strict`로 SSR 기반 구조 검증. React 런타임 없이 실행 가능.
+- `intro_analysis` 필드 존재 시 패널 렌더링 + 부재 시 strategy decision 패널 유지 확인.
+- [note] 이 테스트는 아직 red 상태(구현 UI 미작성). 다음 phase에서 green 전환 예정.
+
+#### 7. 문서 (DECISIONS.md, 3 spec 파일) — **LGTM**
+- `docs/DECISIONS.md`: XState/Robot/typescript-fsm 비교표 + build 결정 근거 명확.
+- `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md`: R1-R4 요구사항 + AC 7개 + 영향 파일 — 구현과 일치.
+- `docs/specs/content-approval-gate-spec.md`: R1-R5 + AC 10개. 구현이 스펙을 정확히 충족.
+- `docs/specs/content-approval-gate-oss-research.md`: Trigger.dev 재활용 결정 + XState/Casbin 배제 근거 합리적.
+
+### 발견 사항 (non-blocking)
+
+| # | 파일:위치 | 심각도 | 내용 |
+|---|----------|--------|------|
+| 1 | `transitions.ts:36` | info | `transitionMap` 캐스트는 TS 추론 한계 우회. `const T` 제네릭이 발전하면 제거 가능 |
+| 2 | `approval.ts:128` | info | `routeContentApproval`의 `owned_media` + `email_campaign` → D4 경로가 테이블에는 있으나 주석 설명 없음. 의도는 이해됨(이메일은 고객 도달) |
+| 3 | `intro-analysis-panel.test.tsx` | info | red 상태(UI 미구현). 다음 구현 phase에서 green 전환 필요 |
 
 ---
 

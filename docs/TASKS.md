@@ -45,6 +45,7 @@
 > **Acceptance Criteria**: (1) 팩토리 제네릭 동작 (2) edge 수 11/6/7/5 단언 (3) 유효 전환 valid===true (4) 무효 전환 valid===false+reason (5) pnpm test 통과 (6) tsc 0 (7) index.ts re-export.
 > **Red 검증(2026-06-04)**: `corepack pnpm --filter @l5/core test -- state-machine/__tests__/transitions.test.ts` → 실패(exit 1). 현재 구현 파일 `src/functions/state-machine/transitions.ts`가 없어 `TS2307: Cannot find module '../transitions'`로 red 확인.
 > **Green 검증(2026-06-04)**: `corepack pnpm --filter @l5/core test` → 55 suites / 585 tests 통과. `corepack pnpm --filter @l5/core typecheck` → 통과. 관련 targeted: `state-machine/__tests__/transitions.test.ts` + `approval/__tests__/content-gate.test.ts` → 26 tests 통과.
+> **리뷰(2026-06-04)**: 16파일 952줄 전체 diff 검토 — **LGTM**. 차단 이슈 없음. non-blocking info 3건(transitions.ts 캐스트 우회, routeContentApproval email_campaign 주석 미비, intro-analysis-panel red 상태). 상세 = `docs/HANDOFF.md` 리뷰 섹션.
 
 - [x] `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md` — 요구사항 명세 + 측정 가능 AC 7개 + 영향 파일 목록
 - [x] `state-machine/__tests__/transitions.test.ts` — 실패 테스트 작성 완료 + red 확인 (`TS2307` 구현 모듈 부재)
