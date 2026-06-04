@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import AuthGate from '@/components/AuthGate'
-import { api, ControlRoomBusiness, ControlRoomDevTask } from '@/lib/api'
+import { api, ControlRoomBusiness, ControlRoomDevTask, CtoPlan } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
 
 // ── Joinery status tokens ─────────────────────────────────────────────────────
@@ -423,6 +423,298 @@ function BusinessNode({ business }: { business: ControlRoomBusiness }) {
 }
 
 // ── Main content ──────────────────────────────────────────────────────────────
+// ── M10: CTO conversational planning panel ────────────────────────────────────
+type PlanningMsg = {
+  role: 'founder' | 'cto'
+  text: string
+  plan?: CtoPlan | null
+  cto_message_id?: string
+  approved?: boolean
+}
+
+function PlanCard({
+  plan,
+  onApprove,
+  approving,
+  approved,
+}: {
+  plan: CtoPlan
+  onApprove: () => void
+  approving: boolean
+  approved: boolean
+}) {
+  const newProject = plan.project_proposal?.is_new_project
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        border: '1px solid var(--silver-2)',
+        borderRadius: 8,
+        background: 'var(--paper-surface)',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          padding: '8px 12px',
+          borderBottom: '1px solid var(--silver-2)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10.5,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          color: 'var(--ink-3)',
+        }}
+      >
+        CTO 제안 계획
+      </div>
+      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {newProject && (
+          <div
+            style={{
+              background: 'var(--amber-tint)',
+              border: '1px solid var(--amber)',
+              borderRadius: 6,
+              padding: '8px 12px',
+              fontSize: 12.5,
+              color: '#8A5408',
+              lineHeight: 1.5,
+            }}
+          >
+            <strong>새 프로젝트 제안</strong> — &ldquo;{plan.project_proposal!.suggested_project_title}&rdquo;
+            {plan.project_proposal!.rationale ? <span> · {plan.project_proposal!.rationale}</span> : null}
+          </div>
+        )}
+
+        {/* PRD */}
+        {plan.prd && (
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--ink-3)', marginBottom: 4, fontWeight: 600 }}>제품 요구 (PRD)</div>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-1)', lineHeight: 1.55 }}>{plan.prd}</p>
+          </div>
+        )}
+
+        {/* Roadmap */}
+        {plan.roadmap_items.length > 0 && (
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--ink-3)', marginBottom: 6, fontWeight: 600 }}>
+              로드맵 ({plan.roadmap_items.length}단계)
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {plan.roadmap_items.map(r => (
+                <div key={r.sequence} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 11,
+                      color: 'var(--green)',
+                      minWidth: 18,
+                    }}
+                  >
+                    {r.sequence}
+                  </span>
+                  <div>
+                    <span style={{ fontSize: 12.5, color: 'var(--ink-1)', fontWeight: 500 }}>{r.title}</span>
+                    {r.summary ? (
+                      <span style={{ fontSize: 12, color: 'var(--ink-3)' }}> — {r.summary}</span>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tasks */}
+        {plan.tasks.length > 0 && (
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--ink-3)', marginBottom: 6, fontWeight: 600 }}>
+              실행 작업 ({plan.tasks.length}개) · CTO가 배정
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {plan.tasks.map((t, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 12.5 }}>
+                  <span style={{ color: 'var(--ink-4)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                    #{t.roadmap_sequence}
+                  </span>
+                  <span style={{ color: 'var(--ink-1)' }}>{t.title}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Approve */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2 }}>
+          {approved ? (
+            <span style={{ fontSize: 12.5, color: 'var(--green)', fontWeight: 600 }}>
+              ✓ 승인됨 — 작업이 컨트롤룸에 배정되었습니다
+            </span>
+          ) : (
+            <>
+              <button
+                onClick={onApprove}
+                disabled={approving}
+                className="j-btn j-btn-primary j-btn-sm"
+              >
+                {approving ? '승인 중...' : '이 계획 승인'}
+              </button>
+              <span style={{ fontSize: 11.5, color: 'var(--ink-4)' }}>
+                승인하면 로드맵·작업이 생성되고 CTO가 실행을 시작합니다.
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CtoPlanningPanel({ onApproved }: { onApproved: () => void }) {
+  const { selectedId } = useBusiness()
+  const [open, setOpen] = useState(false)
+  const [threadId] = useState(
+    () => `cto-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now())}`,
+  )
+  const [messages, setMessages] = useState<PlanningMsg[]>([])
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [approvingId, setApprovingId] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  const send = async () => {
+    const text = input.trim()
+    if (!text || sending) return
+    setInput('')
+    setErr(null)
+    setSending(true)
+    setMessages(m => [...m, { role: 'founder', text }])
+    try {
+      const res = await api.ctoPlanMessage(threadId, text, { business_id: selectedId ?? null })
+      setMessages(m => [...m, { role: 'cto', text: res.reply, plan: res.plan, cto_message_id: res.cto_message_id }])
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : '전송 실패')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const approve = async (idx: number, ctoMessageId: string) => {
+    setApprovingId(ctoMessageId)
+    setErr(null)
+    try {
+      await api.ctoApprovePlan(ctoMessageId)
+      setMessages(m => m.map((mm, i) => (i === idx ? { ...mm, approved: true } : mm)))
+      onApproved()
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : '승인 실패')
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
+  return (
+    <div
+      style={{
+        border: '1px solid var(--silver-2)',
+        borderRadius: 8,
+        background: 'var(--paper-surface)',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Panel header */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '12px 16px',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <IconChevron open={open} />
+        <div>
+          <div style={{ fontSize: 14, color: 'var(--ink-1)', fontWeight: 600 }}>CTO와 기획하기</div>
+          <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+            아이디어를 이야기하면 CTO가 PRD·로드맵·작업으로 정리해 제안합니다.
+          </div>
+        </div>
+      </button>
+
+      {open && (
+        <div style={{ borderTop: '1px solid var(--silver-2)', padding: '14px 16px' }}>
+          {/* Conversation */}
+          {messages.length === 0 && (
+            <p style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--ink-4)', lineHeight: 1.5 }}>
+              예: &ldquo;세컨브레인에 검색 기능을 넣고 싶어&rdquo; — CTO가 질문하거나 바로 계획을 제안합니다.
+            </p>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 14 }}>
+            {messages.map((m, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column' }}>
+                <div
+                  style={{
+                    alignSelf: m.role === 'founder' ? 'flex-end' : 'flex-start',
+                    maxWidth: '88%',
+                    padding: '8px 12px',
+                    borderRadius: 10,
+                    fontSize: 13,
+                    lineHeight: 1.55,
+                    background: m.role === 'founder' ? 'var(--ink-1)' : 'var(--silver-1)',
+                    color: m.role === 'founder' ? 'var(--paper-pure)' : 'var(--ink-1)',
+                  }}
+                >
+                  {m.text}
+                </div>
+                {m.role === 'cto' && m.plan && m.cto_message_id && (
+                  <PlanCard
+                    plan={m.plan}
+                    approving={approvingId === m.cto_message_id}
+                    approved={!!m.approved}
+                    onApprove={() => approve(i, m.cto_message_id!)}
+                  />
+                )}
+              </div>
+            ))}
+            {sending && (
+              <div style={{ alignSelf: 'flex-start', fontSize: 12.5, color: 'var(--ink-4)' }}>CTO가 생각 중...</div>
+            )}
+          </div>
+
+          {err && (
+            <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--red)' }}>{err}</p>
+          )}
+
+          {/* Input */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  send()
+                }
+              }}
+              placeholder="CTO에게 만들고 싶은 것을 이야기하세요..."
+              className="j-input"
+              style={{ flex: 1, fontSize: 13, padding: '8px 12px' }}
+              disabled={sending}
+            />
+            <button onClick={send} disabled={sending || !input.trim()} className="j-btn j-btn-primary j-btn-sm">
+              보내기
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ControlRoomContent() {
   const { businesses, selectedId, setSelectedId } = useBusiness()
   const [tree, setTree] = useState<ControlRoomBusiness[]>([])
@@ -551,6 +843,9 @@ function ControlRoomContent() {
 
       {/* Hairline */}
       <div style={{ height: 1, background: 'var(--silver-2)' }} />
+
+      {/* M10: CTO conversational planning */}
+      <CtoPlanningPanel onApproved={load} />
 
       {/* ACR degraded banner */}
       {!loading && acrMissing && (

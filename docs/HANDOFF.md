@@ -1,6 +1,22 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (M9 컨트롤룸 라이브화 착수 — M9.1 코드 완성·배포 대기)
+최종 업데이트: 2026-06-04 (M10 CTO 대화형 기획 패널 완성 — 슬라이스 1·A·B·C·D 전부)
+
+---
+
+## 🟢 2026-06-04 (최신) — M10 CTO 대화형 기획 패널 완성(슬라이스 1·A·B·C·D)
+
+**배경**: 창업자가 "컨트롤룸에서 CTO와 직접 대화해 PRD→로드맵으로 같이 기획. CEO 경유 task도, CTO와 직접 넣는 task도 있고, 새 프로젝트면 CTO/CEO가 허락 받고 자율 생성". 확정: **CTO 기획 패널 = 컨트롤룸 안**, 승인 = **한 번에 계획 승인**.
+
+**완료 (5 슬라이스 전부)**:
+- **1·A (l5-core 두뇌)**: `roadmap/generate-roadmap`(PRD→로드맵, 10테스트) + `cto-planning/plan-turn`(`runCtoPlanningTurn` 창업자↔CTO 한 턴 → reply + plan{prd·roadmap_items·tasks·project_proposal}, 7테스트). l5-core 537/537.
+- **B (데이터 모델)**: `cto_planning_messages`·`roadmap_items` 테이블, `projects.prd`·`agent_tasks.roadmap_item_id` 컬럼.
+- **C (백엔드 액션)**: plugin-orchestration(src+dist)에 `cto:planMessage`(대화→reply+plan 저장) + `cto:approvePlan`(**트랜잭션 일괄**: PRD·roadmap_items·founder_instruction·agent_tasks(CTO/queued/D2)·task→roadmap 연결, project_proposal 시 project 생성, **멱등**). 컬렉션+ACL. 라이브 E2E: 다크모드 기획→3 로드맵+4 task 연결, 재승인 already_approved.
+- **D (UI)**: 컨트롤룸 `CtoPlanningPanel`(접이식 채팅) + `PlanCard`(PRD·로드맵·작업·새 프로젝트 배너·"이 계획 승인"). 승인 시 트리 새로고침. Playwright E2E: 렌더·전송·계획 카드·승인 버튼, 콘솔 에러 0.
+
+**핵심 주의**: dist/plugin.js는 **gitignore**(빌드 스크립트 없음) → src가 추적 소스, 런타임은 dist 직접 패치. 인증=admin@nocobase.com/admin123(+X-Authenticator: basic). 액션 ACL=loggedIn → Bearer 토큰만으로 호출.
+
+**다음**: M9.5(plan-burndown) · M9.6(self-upgrade 결선) · Phase6(토큰/비용 표시) · 워밍된 에이전트 세션(cold-start 단축).
 
 ---
 

@@ -283,6 +283,31 @@ export type ProjectRoadmapEventItem = {
   completed_at: string
 }
 
+// M10: CTO conversational planning.
+export type CtoPlanRoadmapItem = { title: string; summary: string; objective: string; sequence: number }
+export type CtoPlanTask = { title: string; rationale: string; expected_output: string; roadmap_sequence: number }
+export type CtoProjectProposal = {
+  is_new_project: boolean
+  business_id: string | null
+  suggested_project_title: string
+  rationale: string
+}
+export type CtoPlan = {
+  prd: string
+  roadmap_items: CtoPlanRoadmapItem[]
+  tasks: CtoPlanTask[]
+  project_proposal: CtoProjectProposal | null
+}
+export type CtoPlanMessageResult = { reply: string; plan: CtoPlan | null; cto_message_id: string }
+export type CtoApproveResult = {
+  new_project: boolean
+  project_id: string | null
+  instruction_id: string
+  roadmap_item_ids: string[]
+  task_ids: string[]
+  already_approved?: boolean
+}
+
 export const api = {
   signIn: (account: string, password: string) =>
     request<{ data: { token: string } }>('/api/auth:signIn', {
@@ -307,6 +332,24 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ instruction_id }),
     }).then(r => unwrap(r)),
+
+  // M10: one founder→CTO planning turn (reply, and a plan once the CTO is ready).
+  ctoPlanMessage: (
+    thread_id: string,
+    founder_message: string,
+    opts?: { business_id?: string | null; project_id?: string | null; project_title?: string | null },
+  ) =>
+    request<{ data: { ok: boolean; data: CtoPlanMessageResult } }>('/api/cto:planMessage', {
+      method: 'POST',
+      body: JSON.stringify({ thread_id, founder_message, ...(opts ?? {}) }),
+    }).then(r => unwrap(r)) as Promise<CtoPlanMessageResult>,
+
+  // M10: approve a proposed plan in one go (PRD + roadmap + tasks + optional project).
+  ctoApprovePlan: (cto_message_id: string) =>
+    request<{ data: { ok: boolean; data: CtoApproveResult } }>('/api/cto:approvePlan', {
+      method: 'POST',
+      body: JSON.stringify({ cto_message_id }),
+    }).then(r => unwrap(r)) as Promise<CtoApproveResult>,
 
   closeInstruction: (id: string) =>
     request<{ data: unknown }>('/api/founder_instructions:update', {
