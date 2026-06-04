@@ -77,6 +77,12 @@ const PHASE_TIER_DEFAULTS: Record<DevPhaseKind, ModelTier> = {
 const CLASS_PHASE_OVERRIDES: Partial<
   Record<TaskClass, Partial<Record<DevPhaseKind, ModelTier>>>
 > = {
+  TINY: {
+    // Trivial work: run both short phases on the fast, reliable top model
+    // (claude was ~13s/phase in tests) so small tasks finish in seconds.
+    implement: 'T1',
+    commit: 'T1',
+  },
   SMALL_FIX: {
     // A small fix needs no top-tier reasoning; keep it cheap.
     fix: 'T3',

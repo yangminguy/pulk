@@ -1,6 +1,25 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-03 (QA wiring 재정비 + 전체 E2E/smoke 통과 + archive 청소)
+최종 업데이트: 2026-06-04 (M9 컨트롤룸 라이브화 착수 — M9.1 코드 완성·배포 대기)
+
+---
+
+## 🟢 2026-06-04 (최신) — M9 우선순위 재정의 + M9.1 ACR execution 엔드포인트
+
+**배경**: 창업자가 "Phase6만 하면 CTO/ACR 완벽?"을 묻고 비전 제시(CEO기획→CTO로드맵→멀티CLI 배정→실시간 컨트롤룸→토큰 표시). 코드 조사 결과 비전은 구조적 70~80% 존재하나 **컨트롤룸 ACR 데이터가 stub**(`GET /api/l5/execution` 부재가 최대 병목). → 우선순위 재배열: **M9(라이브화) > M8.1 > Phase6**. 상세 = `docs/TASKS.md` M9, `docs/DECISIONS.md` 2026-06-04, 메모리 `l5-cto-acr-vision-m9`.
+
+**확정 결정**: ① 승인 게이트 = D4(외부 고객 메시지)·D5(결제/계약)만. 코딩=D2 내부실행, 브랜치+검증이 안전장치 → per-task 승인 불필요. ② self-mod 게이트 엄격 유지, 단 self-upgrade(CTO가 에이전트용 도구 개발) 경로는 Founder go/no-go 승인으로 살림. ③ ACR repo 2개 구분: 실제 dispatch 대상 = `~/Desktop/양원민 개발자/agent_control_room_docs`(Next.js), CLI 런타임 = `~/Desktop/hermes-agent`(Python, 토큰데이터 보유).
+
+**M9.1 라이브 완료**: ACR에 `app/api/l5/execution/route.ts` 신규. `x-l5-shared-secret` 인증 + l5_task_id당 FeaturePlan(여러 phase)을 L5 `AcrExecTask` 1개로 집계. **검증**: ACR `tsc` 0에러 + `next build` + `launchctl kickstart -k com.l5.acr-web` 재시작 + 라이브 HTTP 4종(무인증/오secret→401, 유효→200/19레코드 claude-code·codex 둘 다, l5-<taskId> 스코핑→1건).
+
+**M9.2 환경 배선 완료(E2E 검증 대기)**: `apps/nocobase-app/.env`에 `ACR_EXECUTION_ENABLED=1` + `com.l5.nocobase` 재시작. 양쪽 L5_SHARED_SECRET 일치(sha e82040de). **단, 2026-06-03 P0 데이터 초기화로 현재 L5 CTO agent_task 0건** → controlRoomTree에 머지할 dev-task가 없어 비어 보임(배선은 정상, 표시할 현재 데이터가 없음). 진짜 시각 증명 = 새 CTO 태스크 dispatch→ACR 실행→컨트롤룸 라이브 E2E.
+
+**Fresh CLI E2E 실증(2026-06-04)**: 샌드박스 /tmp/l5-m9-e2e에 3개 D1 태스크(claude/codex/agy) 직접 dispatch. **결과**: claude ✅13초 완료(파일 생성), codex·agy는 13~15분 행으로 미완. execution-logs 전체 이력 = claude-code 30 done / **codex 0 done(10 running 멈춤) / agy 0 done(1 running)**. → 라우팅·dispatch·브랜치·M9.1 상태추적은 전부 동작하나 **헤드리스 완료 CLI는 claude뿐**. M9.3 선결 = codex/agy 헤드리스 호출 수정(메모리 `l5-acr-cli-completion-status`). 스코프 정정: M9.4는 메인chat 통합 아님 → 컨트롤룸 표시 + 우측상단 NotificationBell 완료 알림(ACR→L5 `taskCallback` 정상, UUID task면 도달).
+
+**M9.3+M9.4 완료 + 비전 라이브 E2E(2026-06-04)**: ① codex/agy stdin 버그 수정(완료). ② **M9.3** cto.ts `tierToRuntime`(T1=claude/T2=codex/T3=antigravity)로 phase 분산 — 빌드 배포. ③ **dispatcher fix** — CTO를 ACR dispatch 후 `running` 유지(즉시 done 막아 컨트롤룸이 실행 중 작업 표시), 테스트 7/7, 배포. ④ **M9.4** NotificationBell에 완료 알림(`getCompletionAlerts`=최근 founder_deliverables) + 컨트롤룸 라이브.
+**라이브 E2E 증명**: throwaway business 99(repo_path=/tmp/l5-vision-demo 샌드박스)+project+instruction+CTO task 시드 → `launchctl kickstart com.l5.hermes.task-dispatcher` → **실제 dispatcher→cto.ts(M9.3)→ACR** 통해 6-phase FeaturePlan 생성, **CLI 분산 claude3/codex2/agy1**(설계대로). L5 task=running, **controlRoomTree(biz 99)가 "phase 1/6 running, branch, agent" 라이브 표시**. = 창업자 비전(CTO 로드맵→모델별 배정→컨트롤룸 실시간) 실제 흐름 확인. (watcher가 6-phase 완료→종 알림까지 추적 중.)
+
+**다음**: M9.5(plan-burndown 시각화) · M9.6(self-upgrade 결선) · Phase6(토큰/비용 표시, ACR 데이터 노출). NocoBase 인증=admin@nocobase.com/admin123(+X-Authenticator: basic). 데모 정리: business/project/task id 99 + founder_instruction + /tmp/l5-vision-demo는 데모용(필요시 제거).
 
 ---
 

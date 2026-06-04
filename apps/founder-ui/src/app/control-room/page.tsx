@@ -87,6 +87,26 @@ const AGENT_PASTEL: Record<string, { bg: string; fg: string }> = {
   antigravity: { bg: 'var(--p-mint)',    fg: 'var(--pi-mint)' },
 }
 
+// Founder-friendly agent label — drops developer suffixes ("-code") so a
+// non-developer reads "Claude가 작업 중", not "claude-code".
+const AGENT_FRIENDLY: Record<string, string> = {
+  'claude-code': 'Claude',
+  codex: 'Codex',
+  antigravity: 'Antigravity',
+  CTO: 'CTO',
+}
+function friendlyAgent(agent: string): string {
+  return AGENT_FRIENDLY[agent] ?? agent
+}
+
+// "2 / 6" → "6단계 중 2단계" (plain progress; developer phase numbers hidden).
+function plainProgress(phaseLabel: string | null | undefined): string | null {
+  if (!phaseLabel) return null
+  const m = phaseLabel.match(/(\d+)\s*\/\s*(\d+)/)
+  if (!m) return null
+  return `${m[2]}단계 중 ${m[1]}단계`
+}
+
 function AgentChip({ agent }: { agent: string }) {
   const p = AGENT_PASTEL[agent] ?? { bg: 'var(--silver-1)', fg: 'var(--ink-2)' }
   return (
@@ -236,45 +256,39 @@ function AcrStrip({ task }: { task: ControlRoomDevTask }) {
   )
 }
 
-// ── Dev-task row ──────────────────────────────────────────────────────────────
+// ── Dev-task row (founder-friendly) ───────────────────────────────────────────
+// Leads with plain language a non-developer reads ("Claude가 작업 중 · 6단계 중
+// 4단계"); the developer data (branch hash, phase numbers, files, log, risk
+// level) is tucked behind a collapsed "개발 상세".
 function DevTaskRow({ task }: { task: ControlRoomDevTask }) {
   const riskStyle = task.risk_level ? (RISK_STYLES[task.risk_level] ?? null) : null
+  const live = hasAcr(task)
+  const execStatus = task.exec_status ?? task.status
+  const progress = plainProgress(task.phase_label)
+  // The CLI actually on the current phase (Claude/Codex/Antigravity); falls back
+  // to the L5 owner (CTO) before ACR data arrives.
+  const displayAgent = task.acr_agent || task.agent
+  const who = friendlyAgent(displayAgent)
+  const doing =
+    execStatus === 'running' ? `${who}가 작업 중`
+    : execStatus === 'done' ? `${who} · 완료`
+    : execStatus === 'needs_review' ? `${who} · 검토 필요`
+    : execStatus === 'blocked' ? `${who} · 막힘`
+    : execStatus === 'queued' ? '시작 대기'
+    : who
 
   return (
     <div
       className="j-card"
-      style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 9 }}
     >
-      {/* Badge row */}
+      {/* Header: who's on it (actual CLI) + plain status */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <AgentChip agent={task.agent} />
-        <StatusBadge status={task.status} />
-        {task.risk_level && riskStyle && (
-          <span
-            className={`j-risk-${task.risk_level.toLowerCase()}`}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              padding: '2px 8px',
-              borderRadius: 4,
-              fontSize: 11.5,
-              fontWeight: 600,
-              fontFamily: 'var(--font-mono)',
-              background: riskStyle.bg,
-              color: riskStyle.fg,
-            }}
-          >
-            {task.risk_level}
-          </span>
-        )}
-        {task.phase && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>
-            {task.phase}
-          </span>
-        )}
+        <AgentChip agent={displayAgent} />
+        <StatusBadge status={execStatus} />
       </div>
 
-      {/* Title */}
+      {/* Title — what this task is */}
       <div
         style={{
           fontFamily: 'var(--font-sans)',
@@ -287,8 +301,54 @@ function DevTaskRow({ task }: { task: ControlRoomDevTask }) {
         {task.title}
       </div>
 
-      {/* ACR execution strip */}
-      <AcrStrip task={task} />
+      {/* Plain progress line — who + where in the work */}
+      {(live || progress) && (
+        <div style={{ fontFamily: 'var(--font-sans)', fontSize: 12.5, color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600 }}>{doing}</span>
+          {progress && (
+            <>
+              <span style={{ color: 'var(--ink-4)' }}>·</span>
+              <span>{progress}</span>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Developer details — collapsed for non-developers */}
+      {(live || (task.risk_level && riskStyle)) && (
+        <details style={{ marginTop: -1 }}>
+          <summary
+            style={{
+              cursor: 'pointer',
+              fontFamily: 'var(--font-sans)',
+              fontSize: 11.5,
+              color: 'var(--ink-4)',
+              userSelect: 'none',
+              outline: 'none',
+            }}
+          >
+            개발 상세
+          </summary>
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
+            {task.risk_level && riskStyle && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>위험도</span>
+                <span
+                  className={`j-risk-${task.risk_level.toLowerCase()}`}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', padding: '2px 8px',
+                    borderRadius: 4, fontSize: 11.5, fontWeight: 600,
+                    fontFamily: 'var(--font-mono)', background: riskStyle.bg, color: riskStyle.fg,
+                  }}
+                >
+                  {task.risk_level}
+                </span>
+              </div>
+            )}
+            <AcrStrip task={task} />
+          </div>
+        </details>
+      )}
     </div>
   )
 }

@@ -8,6 +8,7 @@ import {
 } from '../model-routing';
 
 const ALL_CLASSES: TaskClass[] = [
+  'TINY',
   'SMALL_FIX',
   'FEATURE',
   'BIG_CHANGE',

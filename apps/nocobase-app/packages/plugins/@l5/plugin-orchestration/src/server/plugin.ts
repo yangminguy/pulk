@@ -1021,9 +1021,17 @@ function registerCrudResources(app: any) {
         // Phase 17: CTO result verification gate.
         // Only runs for CTO tasks reporting success. Falls back to deterministic
         // mode (no LLM call) — Phase 17.1 will wire OPENAI_API_KEY-gated LLM.
+        //
+        // M9 (2026-06-04): verify ONLY on all_done. The verifier judges against the
+        // task's FULL expected_output, so running it on intermediate phase_complete
+        // callbacks falsely fails every non-final phase ("only research done, no
+        // implementation yet") and flips the task to needs_review mid-pipeline —
+        // breaking autonomous multi-phase completion (the CTO should finish all
+        // phases, then be judged). Intermediate phases just record progress and let
+        // ACR's auto-dispatcher drain the next phase. all_done still gates quality.
         let verifierVerdict: any = null;
         const shouldVerify =
-          (status === 'all_done' || status === 'phase_complete') &&
+          status === 'all_done' &&
           task.assigned_agent === 'CTO';
         if (shouldVerify) {
           try {

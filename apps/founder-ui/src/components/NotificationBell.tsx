@@ -14,7 +14,12 @@ export default function NotificationBell() {
   const load = async () => {
     setLoading(true)
     try {
-      setItems(await api.getTodayDiscoveries(selectedId))
+      // M9.4 — completion alerts(전체 결과 완료) first, then discoveries(오늘의 발견).
+      const [completions, discoveries] = await Promise.all([
+        api.getCompletionAlerts(selectedId),
+        api.getTodayDiscoveries(selectedId),
+      ])
+      setItems([...completions, ...discoveries])
     } catch {
       setItems([])
     } finally {
@@ -22,7 +27,12 @@ export default function NotificationBell() {
     }
   }
 
-  useEffect(() => { load() }, [selectedId])
+  // Poll every 20s so task-completion alerts surface without manual open.
+  useEffect(() => {
+    load()
+    const t = setInterval(load, 20_000)
+    return () => clearInterval(t)
+  }, [selectedId])
 
   const count = items.length
 
@@ -74,19 +84,19 @@ export default function NotificationBell() {
             }}
           >
             <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--silver-1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-2)' }}>오늘의 발견 · 24H</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-2)' }}>알림 · 완료/발견</span>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>{count}건</span>
             </div>
             <div style={{ padding: '8px 0' }}>
               {loading ? (
                 <div style={{ padding: '16px 14px', fontSize: 12.5, color: 'var(--ink-4)', textAlign: 'center' }}>로딩 중…</div>
               ) : count === 0 ? (
-                <div style={{ padding: '20px 14px', fontSize: 12.5, color: 'var(--ink-4)', textAlign: 'center', fontStyle: 'italic' }}>새로운 발견이 없습니다</div>
+                <div style={{ padding: '20px 14px', fontSize: 12.5, color: 'var(--ink-4)', textAlign: 'center', fontStyle: 'italic' }}>새 알림이 없습니다</div>
               ) : (
                 items.map((d, i) => (
                   <div key={i} style={{ padding: '10px 14px', borderBottom: i < count - 1 ? '1px solid var(--silver-1)' : 'none' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-                      <span className="j-badge j-badge-neutral" style={{ fontSize: 10 }}>{d.source}</span>
+                      <span className="j-badge j-badge-neutral" style={d.source === '완료' ? { fontSize: 10, background: 'var(--green)', color: '#fff' } : { fontSize: 10 }}>{d.source}</span>
                     </div>
                     <p style={{
                       margin: 0, fontSize: 12.5, color: 'var(--ink-1)', lineHeight: 1.5,

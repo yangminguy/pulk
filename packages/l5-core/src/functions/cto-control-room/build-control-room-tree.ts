@@ -61,6 +61,10 @@ export interface ControlRoomDevTask {
   task_id: string;
   title: string;
   agent: string;
+  /** The CLI actually running the CURRENT phase (claude-code/codex/antigravity),
+   * from ACR. `agent` is always the L5 owner ("CTO"); this is who's hands-on now
+   * so the Control Room can say "Claude가 작업 중". Null when ACR data absent. */
+  acr_agent: string | null;
   l5_status: string;
   risk_level: string | null;
   phase: string | null;
@@ -162,6 +166,7 @@ function mergeDevTask(t: ControlRoomTaskInput, acr: AcrExecTask | undefined): Co
     task_id: t.id,
     title: t.title,
     agent: t.assigned_agent,
+    acr_agent: null,
     l5_status: t.status,
     risk_level: t.risk_level,
     phase: t.phase,
@@ -183,6 +188,7 @@ function mergeDevTask(t: ControlRoomTaskInput, acr: AcrExecTask | undefined): Co
 
   return {
     ...base,
+    acr_agent: acr.assigned_agent ?? null,
     branch: acr.branch ?? null,
     phase_label: phaseLabel,
     exec_status: acr.workspace_status ?? acr.plan_status ?? null,

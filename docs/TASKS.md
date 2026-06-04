@@ -1,7 +1,44 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-06-03 (QA wiring 재정비 + 전체 E2E/smoke 통과 + archive 청소). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-06-04 (M9 컨트롤룸 라이브화 최우선 지정). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+
+## 🔥🔥 M9: CTO 시니어 개발자 자율 실행 — 컨트롤룸 라이브화 (2026-06-04 최우선, 창업자 지정)
+
+> **창업자 비전**: CEO와 기획 → CTO가 큰 로드맵을 그림 → (큰 작업만) task 분해 → claude/codex/agy CLI에 모델별 배정 → 결과물이 **실시간(최소 시작/완료)으로 컨트롤룸=CEO채팅 메인 페이지에 표시** → 각 에이전트가 어떤 task 배정받고 완료/진행중인지 전부 보임 → 전체 개발계획이 하나씩 사라짐 → **예상 토큰도 표시**. CTO가 시니어 개발자처럼 토큰·계획·개발 전체를 알아서 관리.
+> **진단**: 구조적으로 70~80% 있음(CEO decomposer·CTO dev-workflow-spec·selectModelTier·dispatchToACR·control-room tree+UI·synthesis). 핵심 병목 = ACR에 `GET /api/l5/execution`이 없어 컨트롤룸 ACR 데이터가 항상 stub. **Phase6 하나로는 비전 실현 불가 → M9가 M8.1·Phase6보다 먼저.** 결정 근거 = `docs/DECISIONS.md` 2026-06-04.
+> **ACR repo 2개**: ① 실제 dispatch 대상 = `~/Desktop/양원민 개발자/agent_control_room_docs`(Next.js, `/api/workbench/dispatch`·`/api/l5-callback` 보유) ② 그 ACR이 spawn하는 CLI 런타임 = `~/Desktop/hermes-agent`(Python, 토큰/비용 데이터 완비 — 새로 만들 필요 없이 노출만).
+> **승인 정책(확정)**: 코딩=D2 내부실행, 브랜치+검증이 안전장치 → per-task 승인 불필요. 승인 게이트는 D4(외부 고객 메시지)·D5(결제/계약/법적)에만. self-upgrade(CTO가 에이전트용 도구 개발)는 차단 아니라 Founder go/no-go 승인으로 진행, self-mod deny-list는 엄격 유지.
+
+- [x] **M9.1 ACR `GET /api/l5/execution` 엔드포인트 (최대 병목, ACR repo `agent_control_room_docs`)** — **라이브 완료(2026-06-04)**. `app/api/l5/execution/route.ts` 신규: `x-l5-shared-secret` 인증 + l5_task_id당 FeaturePlan(여러 phase)을 AcrExecTask 1개로 집계("phase x/N", branch, changed_files 개수, log_tail, assigned_agent). L5 계약(`acr-execution-transport.ts` AcrExecTask)과 정확히 일치. **검증**: ACR 전체 tsc 0에러 + `next build` + `launchctl kickstart -k com.l5.acr-web` 재시작 + 라이브 HTTP 4종(무인증/오secret→401, 유효→200/19레코드 claude-code·codex 둘 다, l5-<taskId> 스코핑→1건). business 스코핑은 ACRIntent에 business_id 부재 → 전체 반환+L5가 task id로 필터(M9.3에서 개선). 토큰/비용 필드는 Phase6에서 추가(ACR이 CLI 토큰 미캡처).
+- [~] **M9.2 L5: transport 활성 + 폴링 (pulk)** — **환경 배선 완료, fresh-task E2E 검증 대기(2026-06-04)**. `apps/nocobase-app/.env`에 `ACR_EXECUTION_ENABLED=1` 추가 + `com.l5.nocobase` 재시작. L5_SHARED_SECRET 양쪽 일치 확인(sha e82040de). transport 코드(`acr-execution-transport.ts`)는 기존에 존재 → 플래그로 활성. **남은 검증**: 2026-06-03 P0 데이터 초기화로 현재 L5에 CTO agent_task 0건 → controlRoomTree에 머지할 dev-task가 없어 비어 보임. **진짜 증명 = 새 CTO 태스크 dispatch→ACR 실행→컨트롤룸 라이브 표시 E2E**(M9.3/M9.4와 함께).
+- [x] **M9.3 모델 tier → CLI 배정 (pulk `cto.ts`)** — **완료·라이브(2026-06-04)**. `toCTOPhase`에 `tierToRuntime`(T1=claude/T2=codex/T3=antigravity) 추가 → 모든 phase가 tier에 따라 claude/codex/agy에 분산. `selectModelTier` 재사용, `ModelTier`/`RuntimeType` import. **검증**: FEATURE=claude3/codex2/agy1, BIG_CHANGE=claude5/agy1, SMALL_FIX=agy4. agent-runtime 빌드 배포. **라이브 E2E**: 실제 dispatcher→cto.ts→ACR 통해 FEATURE 태스크가 정확히 claude3/codex2/agy1로 분산되어 ACR 실행 확인.
+  - ✅ **선결 차단 해소(2026-06-04)**: codex·agy 헤드리스 0-완료 버그 **수정 완료**. 근본원인 = ACR spawn에 stdin 파이프를 열어둔 채 안 닫아 codex/agy가 입력 대기로 무한 블록(claude만 자체 3s stdin 타임아웃으로 작동). **수정 2줄**: `spawn-runner.ts` + `antigravity-runner.ts` 두 spawn에 `stdio:["ignore","pipe","pipe"]`. 재빌드+재시작 후 풀파이프라인 재dispatch → **30초 내 claude/codex/agy 셋 다 done+파일생성**(이력상 codex·agy 첫 완료). 상세 메모리 `l5-acr-cli-completion-status`. 이제 모델별 배정 안전하게 가능 → M9.3 본작업(ACRIntent에 모델/CLI tier 명시) 진행 가능.
+- [x] **M9.4 컨트롤룸 표시 + 종모양 완료 알림 (pulk founder-ui)** — **완료·라이브(2026-06-04)**. 스코프 정정: 메인 chat 통합 아님 → 컨트롤룸(별도 페이지)에서 보이면 됨 + 우측상단 `NotificationBell`에 완료 알림. **구현**: `api.getCompletionAlerts`(최근 `founder_deliverables` = instruction 완료 종합, sort `createdAt` camelCase) + NotificationBell이 완료(초록 배지)+발견 병합, 20s 폴링. **검증**: 종 엔드포인트 라이브(business 4 deliverable 2건 반환), 컨트롤룸이 라이브 CTO 태스크(phase 1/6 running, branch, agent) 실제 표시.
+  - **선결 dispatcher fix(2026-06-04)**: dispatcher가 CTO를 ACR dispatch 직후 즉시 `done` 마킹 → 컨트롤룸(done 제외)이 ACR 실행 중 작업을 못 봄. `task-dispatcher.ts`에서 CTO(non-approval)는 `running` 유지(taskCallback all_done이 done 처리, stalled-detector가 안전망). 테스트 갱신(7/7), hermes-runtime 빌드 배포. 이로써 컨트롤룸이 실행 중 CTO 작업을 실시간 표시.
+  - **선결 verifier fix(2026-06-04, 자율 완주 활성)**: Phase17 CTO 검증기가 `phase_complete`(중간 phase)에서도 **전체 expected_output** 기준으로 판정 → 구현 phase 전에 phase 1(조사)에서 "구현 없음"으로 fail→needs_review로 자율 흐름 중단(라이브 E2E에서 실측). `plugin-orchestration` taskCallback `shouldVerify`를 `all_done`에만 적용(중간 phase는 진행만 기록, ACR auto-dispatcher가 다음 phase 드레인). src+dist 미러 패치 + node --check + nocobase 재시작. 이로써 CTO가 6-phase를 자율 완주 후 최종 결과만 검증.
+  - ✅ **콜백 경로 진단 정정(2026-06-04)**: ACR→L5 콜백은 `POST http://localhost:13000/api/agent:taskCallback`(x-l5-shared-secret) — **실제로 도달·작동함**(직접 probe: 11ms 응답). E2E 로그의 `[pre-dispatch] L5 callback failed: fetch failed`는 ① M9.2에서 nocobase 재시작한 순간(13000 다운) ② 합성 테스트 id가 UUID 아님(`agent_tasks.id`=uuid) → 500 때문. **진짜 UUID task면 콜백 정상 도달.** 종 알림은 기존 `taskCallback`(완료 시 L5 task 상태 갱신) 위에 NotificationBell 이벤트만 얹으면 됨. 단 taskCallback 4s 타임아웃이 무거운 synthesis엔 짧을 수 있음(튜닝 후보).
+- [ ] **M9.5 전체 개발계획 plan-burndown 뷰**: 계획이 하나씩 사라지는 시각화. synthesis 카드 일부 충족 → 라이브 burndown으로 확장.
+- [ ] **M9.6 self-upgrade 경로 결선**: `applySelfMod`가 실제 머지를 안 해 반쪽 → tool-request→sendToCTO→개발→해당 에이전트 인계까지 Founder 승인 게이트로 끝까지 작동. deny-list 엄격 유지.
+
+- [x] **M9.7 트리비얼 작업 효율화 — TINY 클래스 (창업자 지적 2026-06-04, 완료)**: 새 기능이 무조건 FEATURE(6 phase)로 분류돼 함수 하나 추가도 6단계 콜드스타트(20분+)였음. **TINY TaskClass 추가**(구현→커밋 2 phase, 둘 다 claude T1=가장 빠름). `dev-workflow-spec.ts`(타입·DEV_WORKFLOW_TEMPLATES·CLASS_EXPECTED_ORDER·DEPENDS_ON), `model-routing.ts`(CLASS_PHASE_OVERRIDES TINY=T1), `classifyTask`(트리비얼 키워드 "함수 하나/오타/상수 추가/rename"·소규모 hints + escalation=0일 때만 → 과분류 방지), cto.ts VALID_TASK_CLASSES+빌드. **검증**: l5-core 520/520 + 신규 TINY 테스트, 결정론 분류(slugify/오타/상수→TINY, 인증모듈/대시보드→FEATURE 유지), **라이브: TINY 태스크가 실제 파이프라인서 2 phase(claude)로 생성**. 잔여(후속): 에이전트 세션 웜 유지(phase별 콜드스타트 자체 제거)·phase 배칭 = ACR spawn-runner 차원, 별도.
+
+## 🔥 M10: CTO 대화형 기획 + PRD→로드맵 + 자율 프로젝트 제안 (2026-06-04 창업자 지정, 진행 중)
+
+> **창업자 비전**: 컨트롤룸에서 CTO와 직접 대화하며 아이디어를 PRD→로드맵→task로 같이 기획. 두 갈래 task 공존(CEO→CTO 자동 / 창업자↔CTO 직접). 새 프로젝트면 CTO/CEO가 "어떤 사업에 어떤 프로젝트로" 제안→창업자 승인→생성. 컨트롤룸 카드는 창업자 친화(개발자 언어 숨김).
+> **결정(2026-06-04)**: CTO 기획 채팅 = **컨트롤룸 안 패널**. 기획 확정 = **한 번에 계획 승인**(PRD+로드맵+task+프로젝트배치 일괄 go/no-go).
+
+- [x] **슬라이스 1 — 로드맵 생성 두뇌 (l5-core)**: `roadmap/generate-roadmap.ts` `generateRoadmapFromPRD`(LLM + 구조기반 폴백). 10/10 테스트.
+- [x] **슬라이스 A — CTO 기획 대화 두뇌 (l5-core)**: `cto-planning/plan-turn.ts` `runCtoPlanningTurn(history, msg, ctx, {llm})` → `{reply, plan?}`. plan = PRD+roadmap_items+tasks+project_proposal(새 프로젝트 배치 제안). 정규화·클램프·폴백. 7/7 테스트.
+- [x] **창업자 친화 컨트롤룸 카드 (founder-ui)**: 개발자 언어(branch 해시·phase 2/2·exit code·D1)를 "개발 상세"로 접고, **실제 CLI(acr_agent)가 무슨 단계 하는지**를 평이하게("Codex가 작업 중 · 6단계 중 4단계"). `build-control-room-tree.ts`에 `acr_agent`(현재 phase의 ACR CLI) 추가 → 카드가 owner(CTO) 대신 실제 CLI 표시. l5-core 7/7 + 배포.
+- [ ] **슬라이스 B — 데이터 모델**: `cto_planning_messages`(대화), `projects.prd`(text), `roadmap_items`(id/project_id/business_id/title/summary/objective/sequence/status/source), `agent_tasks.roadmap_item_id`. NocoBase 컬렉션 + psql ALTER.
+- [ ] **슬라이스 C — 백엔드 액션**: `cto:planMessage`(founder msg→runCtoPlanningTurn→reply+plan 저장) + `cto:approvePlan`(일괄: PRD 저장·roadmap_items 생성·tasks 생성·project_proposal 승인 시 project 생성·task→roadmap_item 연결). 두 갈래 task 출처 표시(source: 'cto_direct' vs 'ceo').
+- [ ] **슬라이스 D — 컨트롤룸 CTO 기획 패널 (founder-ui)**: 채팅 UI + 계획 승인 카드(PRD·로드맵·task·프로젝트 배치 미리보기 + go/no-go) + 로드맵 계층 표시("이 작업은 [로드맵 항목]의 일부").
+
+### Phase 6 (M9와 함께) — 관측·안전 토큰/비용
+- [ ] **토큰/비용 표시**: M9.1 데이터 재사용 — 컨트롤룸에 예상 토큰(TaskClass별 사전추정) + 실제 누적 토큰/비용. 모델tier 라우팅이 곧 절감(가벼운 phase=T3 haiku, 무거운 추론만 T1 opus).
+- [ ] **비용 상한·장애 모니터**: 추정 대비 N배 초과 시 정지·알림. Langfuse 추적, 위험명령 차단(D4/D5 게이트만).
+
 
 ## QA wiring 재정비 + 정책 수정 (2026-06-03)
 

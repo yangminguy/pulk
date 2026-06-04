@@ -105,6 +105,8 @@ export type ControlRoomDevTask = {
   task_id: string
   title: string
   agent: string
+  /** CLI running the current phase (claude-code/codex/antigravity) from ACR. */
+  acr_agent?: string | null
   status: string
   risk_level: string | null
   phase: string | null
@@ -521,6 +523,24 @@ export const api = {
     )
       .then(r => unwrap(r) as TodayDiscovery[])
       .catch(() => [] as TodayDiscovery[]),
+
+  // M9.4 — completion alerts for the top-right bell: recently synthesized
+  // deliverables (one per completed instruction = "전체 결과 완료"). Sort by
+  // createdAt (camelCase) — created_at silently returns [] (NocoBase ts gotcha).
+  getCompletionAlerts: (businessId: string | null) => {
+    let query = `/api/founder_deliverables:list?sort=-createdAt&pageSize=10`
+    if (businessId && businessId !== 'common') {
+      query += `&filter[business_id]=${encodeURIComponent(businessId)}`
+    }
+    return request<{ data: Array<{ decision_summary?: string; instruction_id?: string; createdAt?: string }> }>(query)
+      .then(r => (r.data ?? []).map(d => ({
+        source: '완료',
+        summary: d.decision_summary ?? '산출물 완료',
+        createdAt: d.createdAt,
+        instructionId: d.instruction_id,
+      })))
+      .catch(() => [] as Array<{ source: string; summary: string; createdAt?: string; instructionId?: string }>)
+  },
 
   listProjects: (businessId?: string | null) =>
     request<{ data: { ok: boolean; data: ProjectItem[] } }>(

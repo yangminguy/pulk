@@ -22,6 +22,8 @@ import type {
   DevPhaseKind,
   DevWorkflowPhaseLike,
   TaskClass,
+  ModelTier,
+  RuntimeType,
 } from "@l5/core";
 import {
   buildDevWorkflowSystemPrompt,
@@ -80,12 +82,30 @@ function resolveProjectPath(task: CTOAgentInput["task"]): string | undefined {
   );
 }
 
+/** M9.3 — 모델 tier → CLI(runtime) 배정. 모든 phase가 claude/codex/agy 셋에 분산된다. */
+function tierToRuntime(tier: ModelTier): RuntimeType {
+  switch (tier) {
+    case "T1":
+      return "claude"; // 최상위 추론(opus급)
+    case "T2":
+      return "codex"; // 균형 구현(gpt-4o급)
+    case "T3":
+      return "antigravity"; // 경량/기계적(agy)
+    default:
+      return "claude";
+  }
+}
+
 /** Map a SOP-validated phase (LLM or template) into a downstream CTOPhase. */
 function toCTOPhase(p: LLMDevPhase, taskTitle: string, taskClass: TaskClass = "FEATURE"): CTOPhase {
   // Default to 'spec' only as a last resort — new phase kinds pass through as-is
   // because DevPhaseKind now covers all class-specific kinds.
   const kind = (p.kind ?? "spec") as DevPhaseKind;
-  const runtime = (p.runtime ?? "claude") as CTOPhase["runtime"];
+  // M9.3 — 모델 tier가 CLI를 결정한다(시스템 정책, LLM이 아님). T1(추론)=claude(opus급),
+  // T2(균형 구현)=codex(gpt-4o급), T3(경량/기계적)=antigravity(agy). 이렇게 해야 창업자가
+  // 지시한 "에이전트별 모델 배정"대로 phase가 claude/codex/agy 셋에 분산된다.
+  const tier = selectModelTier(taskClass, kind);
+  const runtime = tierToRuntime(tier);
   const riskLevel: CTOPhase["risk_level"] = p.risk_level ?? (p.read_only ? "D1" : "D2");
   const promptPacket =
     p.prompt_packet ??
@@ -105,7 +125,7 @@ function toCTOPhase(p: LLMDevPhase, taskTitle: string, taskClass: TaskClass = "F
 
   // T1 (top-tier reasoning, e.g. architecture/spec/research) phases are pinned to
   // their big model: ACR must wait for that agent to recover rather than downgrade.
-  const modelLocked = selectModelTier(taskClass, kind) === "T1";
+  const modelLocked = tier === "T1";
 
   return {
     name: p.name ?? kind,
@@ -152,7 +172,7 @@ function parseLLMResponse(raw: string): LLMDevWorkflowResponse | null {
 }
 
 const VALID_TASK_CLASSES = new Set<string>([
-  "SMALL_FIX", "FEATURE", "BIG_CHANGE", "OPS", "RESEARCH", "REFACTOR",
+  "TINY", "SMALL_FIX", "FEATURE", "BIG_CHANGE", "OPS", "RESEARCH", "REFACTOR",
 ]);
 
 function parseTaskClass(raw: string | undefined): TaskClass | null {

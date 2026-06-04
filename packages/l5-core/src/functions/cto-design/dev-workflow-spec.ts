@@ -19,6 +19,7 @@
 
 /** Six task classes the CTO can assign. */
 export type TaskClass =
+  | 'TINY'
   | 'SMALL_FIX'
   | 'FEATURE'
   | 'BIG_CHANGE'
@@ -61,6 +62,39 @@ export interface DevPhaseTemplate {
  * phase set for that class. Order is load-bearing within each array.
  */
 export const DEV_WORKFLOW_TEMPLATES: Record<TaskClass, DevPhaseTemplate[]> = {
+  // TINY — trivial work (one small function, a typo, a one-liner). No research/
+  // spec/test/review ceremony: implement directly, then commit. Keeps cold-start
+  // count minimal (2 phases vs FEATURE's 6) so small tasks finish in seconds, not
+  // minutes. classifyTask only routes here on explicit trivial signals.
+  TINY: [
+    {
+      kind: 'implement',
+      name: '구현',
+      runtime: 'claude',
+      read_only: false,
+      acceptance_criteria: [
+        '요청한 변경이 실제 코드로 구현되었다',
+        '변경 범위가 요청에 한정되어 있다 (surgical)',
+        '기존 테스트 회귀가 없다',
+      ],
+      verifier_hint:
+        '요청한 변경이 실제로 구현되었는지, 범위가 최소인지 확인한다.',
+    },
+    {
+      kind: 'commit',
+      name: '커밋',
+      runtime: 'claude',
+      read_only: false,
+      dependsOn: ['implement'],
+      acceptance_criteria: [
+        '단일 atomic commit이 변경 내용과 일치한다',
+        'git log 상에 정확히 1개의 신규 commit이 추가되었다',
+      ],
+      verifier_hint:
+        'git log를 확인해 정확히 1개의 신규 commit이 추가되었는지 검증한다.',
+    },
+  ],
+
   SMALL_FIX: [
     {
       kind: 'repro',
@@ -501,6 +535,7 @@ export interface DevWorkflowValidationResult {
  * phases (before and after), so order is stored as a plain tuple array.
  */
 const CLASS_EXPECTED_ORDER: Record<TaskClass, DevPhaseKind[]> = {
+  TINY:       ['implement', 'commit'],
   SMALL_FIX:  ['repro', 'fix', 'regress', 'commit'],
   FEATURE:    ['research', 'spec', 'test', 'implement', 'review', 'commit'],
   BIG_CHANGE: ['rfc', 'spec', 'test', 'implement', 'review', 'commit'],
@@ -510,6 +545,10 @@ const CLASS_EXPECTED_ORDER: Record<TaskClass, DevPhaseKind[]> = {
 };
 
 const CLASS_EXPECTED_DEPENDS_ON: Record<TaskClass, Record<string, DevPhaseKind[]>> = {
+  TINY: {
+    implement: [],
+    commit: ['implement'],
+  },
   SMALL_FIX: {
     repro: [],
     fix: ['repro'],
@@ -776,11 +815,8 @@ export function classifyTask(
     return 'OPS';
   }
 
-  // fix/bug → start at SMALL_FIX, then check escalation.
-  const isBugKeyword = /\bfix\b|bug|버그|hotfix|patch|수정/.test(text);
-  const baseClass: TaskClass = isBugKeyword ? 'SMALL_FIX' : 'FEATURE';
-
-  // 5-indicator escalation scoring.
+  // 5-indicator escalation scoring (also gates TINY: any escalation signal
+  // disqualifies trivial classification).
   const escalationScore = [
     (hints.estimatedLines ?? 0) > 200,
     (hints.impactedModules ?? 0) > 3,
@@ -788,6 +824,29 @@ export function classifyTask(
     hints.schemaChange === true,
     hints.apiBreaking === true,
   ].filter(Boolean).length;
+
+  // TINY (M9.7) — route genuinely trivial work to a minimal 2-phase workflow so
+  // it finishes in seconds instead of running the full 6-phase ceremony. Only on
+  // explicit trivial signals (keyword or small-scope hints) AND no escalation,
+  // to avoid under-serving real features.
+  const trivialKeyword =
+    /오타|typo|한 ?줄|one[- ]?liner|함수 하나|헬퍼 추가|상수 추가|rename|이름\s*변경|간단한? (추가|수정|변경)|단순 (추가|수정|변경)|trivial/.test(
+      text,
+    );
+  const trivialHints =
+    hints.estimatedLines !== undefined &&
+    hints.estimatedLines <= 30 &&
+    (hints.impactedModules ?? 1) <= 1 &&
+    !hints.newDependencies &&
+    !hints.schemaChange &&
+    !hints.apiBreaking;
+  if ((trivialKeyword || trivialHints) && escalationScore === 0) {
+    return 'TINY';
+  }
+
+  // fix/bug → start at SMALL_FIX, then check escalation.
+  const isBugKeyword = /\bfix\b|bug|버그|hotfix|patch|수정/.test(text);
+  const baseClass: TaskClass = isBugKeyword ? 'SMALL_FIX' : 'FEATURE';
 
   if (baseClass === 'SMALL_FIX') {
     // 3+ indicators → escalate to FEATURE.

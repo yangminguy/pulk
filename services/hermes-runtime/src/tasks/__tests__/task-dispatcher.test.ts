@@ -39,7 +39,7 @@ beforeEach(() => {
 });
 
 describe("runTaskDispatcher — happy path", () => {
-  it("queued+approval_required=false CTO task calls runCTOAgent and transitions running→done", async () => {
+  it("queued+approval_required=false CTO task calls runCTOAgent and stays running (ACR owns completion via taskCallback)", async () => {
     (runCTOAgent as jest.Mock).mockResolvedValueOnce({
       decision: "ACR dispatched",
       requires_founder_approval: false,
@@ -64,20 +64,19 @@ describe("runTaskDispatcher — happy path", () => {
       },
     });
 
-    // First updater call: status → running
+    // Only updater call: status → running. The CTO task was dispatched to ACR for
+    // async execution; it stays "running" so the Control Room shows live progress.
+    // taskCallback(all_done) — not the dispatcher — marks it done later.
+    expect(updates).toHaveLength(1);
     expect(updates[0].id).toBe("task-cto-1");
     expect(updates[0].updates.status).toBe("running");
-
-    // Second updater call: status → done
-    expect(updates[1].id).toBe("task-cto-1");
-    expect(updates[1].updates.status).toBe("done");
 
     expect(result.processed).toBe(1);
     expect(result.skipped).toBe(0);
     expect(result.results[0]).toMatchObject({
       task_id: "task-cto-1",
       agent: "CTO",
-      status: "done",
+      status: "running",
       decision: "ACR dispatched",
     });
   });

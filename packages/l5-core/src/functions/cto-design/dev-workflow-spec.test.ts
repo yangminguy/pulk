@@ -407,6 +407,37 @@ describe('classifyTask', () => {
     expect(classifyTask('알림 기능 구현', '')).toBe('FEATURE');
   });
 
+  it('M9.7 — trivial keywords → TINY', () => {
+    expect(classifyTask('slugify 유틸 함수 하나 추가', '문자열 변환')).toBe('TINY');
+    expect(classifyTask('README 오타 수정', '')).toBe('TINY');
+    expect(classifyTask('MAX_RETRY 상수 추가', '')).toBe('TINY');
+    expect(classifyTask('변수 rename', '')).toBe('TINY');
+  });
+
+  it('M9.7 — small-scope hints → TINY', () => {
+    expect(
+      classifyTask('헬퍼 추가', '', {
+        estimatedLines: 15,
+        impactedModules: 1,
+      }),
+    ).toBe('TINY');
+  });
+
+  it('M9.7 — trivial keyword but escalation signal → not TINY', () => {
+    // A "함수 하나" phrasing with real scope must NOT be trivialized.
+    expect(
+      classifyTask('함수 하나 추가', '여러 모듈에 걸친 변경', {
+        estimatedLines: 400, // > 200
+        impactedModules: 5, // > 3
+      }),
+    ).not.toBe('TINY');
+  });
+
+  it('M9.7 — real feature is NOT trivialized', () => {
+    expect(classifyTask('사용자 인증 모듈 신규 구현', 'JWT 로그인 전체')).toBe('FEATURE');
+    expect(classifyTask('새 대시보드 추가', '매출 시각화')).toBe('FEATURE');
+  });
+
   it('escalation: SMALL_FIX + 3 indicators → FEATURE', () => {
     expect(
       classifyTask('fix minor crash', '버그', {

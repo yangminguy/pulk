@@ -22,7 +22,7 @@ export interface TaskDispatcherResult {
   results: Array<{
     task_id: string;
     agent: string;
-    status: "done" | "needs_review" | "blocked";
+    status: "running" | "done" | "needs_review" | "blocked";
     decision?: string;
   }>;
 }
@@ -89,9 +89,18 @@ export async function runTaskDispatcher(
         },
       });
 
-      const finalStatus = output.requires_founder_approval ? "needs_review" : "done";
-      await updater(task.id, { status: finalStatus });
-      results.push({ task_id: task.id, agent: task.assigned_agent, status: finalStatus, decision: output.decision });
+      // CTO tasks are dispatched to ACR for ASYNC execution (the runner only fires the
+      // intent; ACR runs the phases over minutes). Leave them "running" (set above) so
+      // the Control Room — which filters out done/killed — shows live ACR progress while
+      // each phase runs. taskCallback(all_done) finishes them; the stalled-task-detector
+      // catches any that never call back. Marking them "done" here hid all in-flight work.
+      if (task.assigned_agent === "CTO" && !output.requires_founder_approval) {
+        results.push({ task_id: task.id, agent: task.assigned_agent, status: "running", decision: output.decision });
+      } else {
+        const finalStatus = output.requires_founder_approval ? "needs_review" : "done";
+        await updater(task.id, { status: finalStatus });
+        results.push({ task_id: task.id, agent: task.assigned_agent, status: finalStatus, decision: output.decision });
+      }
     } catch (err) {
       const msg = (err as Error).message;
       console.error(`[Dispatcher] Task ${task.id} (${task.assigned_agent}) failed:`, msg);
