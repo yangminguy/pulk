@@ -53,6 +53,18 @@
 - [x] `l5-core/src/index.ts` re-export + typecheck + test 통과
 - [x] `ContentApprovalGate` core red 테스트도 green 확인 — `CONTENT_APPROVAL_TRANSITIONS` 8 edges + `routeContentApproval` 라우팅 + `validateContentApprovalTransition`
 
+### 공통 Header & Mini Roadmap UI (2026-06-04, 구현+리뷰 완료)
+
+> **배경**: founder-ui 각 페이지(monitor, projects, chat)가 자체 헤더를 inline으로 중복 구현. Icon 컴포넌트 4곳, Agent 배지 컬러맵 2곳 중복. 오픈소스 조사 결과 외부 라이브러리 없이 기존 inline style + CSS 변수 패턴 유지 결정(Radix/shadcn 배제 — 기존 패턴 충돌·번들 과다). **스펙: `docs/specs/common-header-mini-roadmap.md` (AC 6개, 영향 파일 9개).**
+> **리뷰(2026-06-04)**: 12파일 +396/-195줄 전체 검토 — **LGTM**. 차단 이슈 없음. non-blocking info 2건(스펙 범위 밖 잔여 중복: approval/ApprovalQueueCard/ConsultationCard/SynthesisCard에 ICONS, control-room/approval에 AGENT_PASTEL — 후속 PR 권장). 상세 = `docs/HANDOFF.md` 리뷰 섹션.
+
+- [x] `docs/specs/common-header-mini-roadmap.md` — 요구사항 명세 + 측정 가능 AC 6개 + 영향 파일 목록
+- [x] `src/components/Icon.tsx` — 4곳 중복 ICONS Record 통합 (24개 아이콘)
+- [x] `src/components/AgentBadge.tsx` — 2곳 중복 컬러맵(AGENT_PASTEL/AGENT_CHIP) 통합 + variant prop
+- [x] `src/components/PageHeader.tsx` — 공통 헤더 (overline/title/subtitle/actions/children)
+- [x] 기존 파일 로컬 정의 제거 + import 교체 (monitor, projects, chat, Sidebar, RoadmapMiniCard, RoadmapTimeline)
+- [x] typecheck 통과 + build 통과 + 시각적 regression 없음 확인
+
 ### Intro 30s Analysis Card (2026-06-04, 스펙 완료)
 
 > **배경**: CMO가 YouTube 영상 인트로 첫 30초의 시청자 리텐션/훅 효과를 분석한 결과를 `agent_tasks.output`에 기록한다. `AgentOutputDetail`이 인트로 분석형 산출물(`intro_analysis` 필드 존재)을 감지하면, 리텐션 커브 미니차트 + 훅 스코어 + 구간별 피드백을 전용 패널로 렌더링한다. Strategy Decision Panel과 동일한 분기 추가 패턴.

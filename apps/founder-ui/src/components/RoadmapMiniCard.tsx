@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { api, RoadmapItem } from '@/lib/api'
+import Icon from '@/components/Icon'
 import { useInboxNav, type InboxTaskRef } from '@/lib/inbox-nav'
 
 function taskToRef(t: RoadmapItem): InboxTaskRef {
@@ -13,25 +14,6 @@ function taskToRef(t: RoadmapItem): InboxTaskRef {
     status: t.status,
     rationale: t.objective ?? undefined,
   }
-}
-
-const ICONS: Record<string, string> = {
-  check:    'M20 6L9 17l-5-5',
-  activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
-  clock:    'M12 22a10 10 0 110-20 10 10 0 010 20z M12 6v6l4 2',
-  dot:      'M12 13a1 1 0 100-2 1 1 0 000 2z',
-}
-
-function Icon({ name, size = 13, stroke = 1.7 }: { name: string; size?: number; stroke?: number }) {
-  const d = ICONS[name]
-  if (!d) return null
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"
-      aria-hidden="true">
-      {d.split(/(?=M)/).map((seg, i) => <path key={i} d={seg.trim()} />)}
-    </svg>
-  )
 }
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; fg: string; icon: string }> = {

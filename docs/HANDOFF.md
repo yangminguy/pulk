@@ -1,10 +1,80 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (Intro 30s Analysis Card 리뷰 — 수정 1건)
+최종 업데이트: 2026-06-04 (공통 Header & Mini Roadmap UI 리뷰 — LGTM)
 
 ---
 
-## 🟢 2026-06-04 (최신) — Intro 30s Analysis Card 리뷰
+## 🟢 2026-06-04 (최신) — 공통 Header & Mini Roadmap UI 리뷰
+
+**판정: LGTM.** 12파일 +396/-195줄. 차단 이슈 없음. non-blocking info 2건(스펙 범위 밖 잔여 중복).
+
+### AC 검증 결과
+
+| AC | 기준 | 결과 |
+|---|---|---|
+| AC-1 | PageHeader가 monitor + projects에서 사용 | PASS — 2곳 import + render 확인 |
+| AC-2 | `const ICONS` 가 Icon.tsx 1곳만 | **PARTIAL** — 스펙 대상 4곳 모두 제거됨. 스펙 범위 밖 4곳(approval, ApprovalQueueCard, ConsultationCard, SynthesisCard) 잔존. 아래 R-1 참조 |
+| AC-3 | AGENT_PASTEL/AGENT_CHIP이 AgentBadge.tsx 1곳만 | **PARTIAL** — 스펙 대상 2곳 모두 제거됨. 스펙 범위 밖 2곳(control-room, approval) 잔존. 아래 R-2 참조 |
+| AC-4 | 시각적 regression 없음 | PASS — 구현 phase에서 `/monitor`, `/projects`, `/chat` HTTP 200 확인 |
+| AC-5 | typecheck 통과 | PASS — 구현 phase에서 `pnpm --filter @l5/founder-ui typecheck` exit 0 |
+| AC-6 | package.json 변경 없음 | PASS — `git diff main...HEAD -- apps/founder-ui/package.json` 빈 출력 |
+
+### 파일별 리뷰
+
+#### 1. `Icon.tsx` (신규, 47줄) — LGTM
+- 4곳의 ICONS 합집합 24개, 알파벳 정렬. `color` prop 포함으로 Sidebar의 `color="var(--green-press)"` 호출 호환.
+- `'use client'` 올바름 (SVG 렌더링 전용, 서버 컴포넌트 불필요).
+
+#### 2. `AgentBadge.tsx` (신규, 77줄) — LGTM
+- `AGENT_PASTEL` (9 에이전트, badge용) + `AGENT_CHIP` (8 에이전트, chip용) 분리 유지. CTO 색상 차이 보존(pastel=butter, chip=sky).
+- `EXECUTIVE_AGENTS` Set export로 monitor CounterpartChip의 `EXECUTIVES` 대체.
+- `variant` prop 기본값 `'badge'` — 기존 monitor 호출부 (`<AgentBadge agent={...} />`)와 호환.
+
+#### 3. `PageHeader.tsx` (신규, 56줄) — LGTM
+- `subtitle`를 `ReactNode`로 선언하여 monitor의 JSX subtitle(`<>범위 · <span>...</span></>`) 대응.
+- `children` slot으로 확장 가능 (스펙 4.4 Mini Roadmap 컨텍스트 대비).
+- 스타일 값이 monitor 원본과 픽셀 단위 일치 (font-serif 500 30px, mono 10.5px 0.12em, etc).
+
+#### 4. `monitor/page.tsx` (-97줄) — LGTM
+- ICONS 9개 + Icon 함수 + AGENT_PASTEL 9개 + AgentBadge 함수 + EXECUTIVES Set 모두 제거.
+- `EXECUTIVES` → `EXECUTIVE_AGENTS` import 교체 (`CounterpartChip` L405-407).
+- 인라인 헤더 16줄 → `<PageHeader>` 6줄.
+
+#### 5. `projects/page.tsx` (-22줄) — LGTM
+- 인라인 SVG refresh 아이콘 → `<Icon name="refresh" size={14} stroke={1.8} />`.
+- 원본 `alignItems: 'baseline'` → PageHeader `alignItems: 'flex-end'` 변경 — title/subtitle 구조가 다르므로 시각적 차이 미미.
+
+#### 6. `chat/page.tsx` (-26줄) — LGTM
+- ICONS 9개 + Icon 함수 제거, `import Icon from '@/components/Icon'` 1줄 추가.
+
+#### 7. `Sidebar.tsx` (-27줄) — LGTM
+- ICONS 12개 + Icon 함수 제거. `color` prop 사용하는 NavLink/IconButton 호출부 그대로 동작.
+
+#### 8. `RoadmapMiniCard.tsx` (-20줄) — LGTM
+- ICONS 4개 + Icon 함수 제거. 호출부에서 `size`/`stroke` 명시적 전달하므로 기본값 변경(13→16, 1.7→1.6) 영향 없음.
+
+#### 9. `RoadmapTimeline.tsx` (-33줄) — LGTM
+- AGENT_CHIP 맵 + AgentChip 함수 제거. `<AgentChip agent={...} />` → `<AgentBadge agent={...} variant="chip" />` 2곳(UpperCard L111, LowerCard L174) 교체.
+
+#### 10. `__tests__/common-header-mini-roadmap.test.ts` (66줄) — LGTM
+- `node:assert` 기반 정적 파일 분석. 스펙 대상 파일만 검사하므로 범위 적절.
+
+#### 11. `docs/specs/common-header-mini-roadmap.md` (109줄) — LGTM
+- 배경/목표/오픈소스 조사/요구사항/영향 파일/AC 6개/제외 범위 모두 명확.
+
+#### 12. `docs/TASKS.md` (+11줄) — LGTM
+- 체크리스트 6항목. `[x]` 스펙만, 나머지 `[ ]`는 구현 phase에서 체크 대상.
+
+### Non-blocking 참고사항 (후속 PR 권장)
+
+| # | 파일 | 내용 |
+|---|---|---|
+| R-1 | `approval/page.tsx:39`, `ApprovalQueueCard.tsx:21`, `ConsultationCard.tsx:46`, `SynthesisCard.tsx:5` | 로컬 `const ICONS` 잔존. 스펙 영향 파일 목록에 미포함이었으므로 구현 결함 아님. 후속 PR에서 `import Icon from '@/components/Icon'`으로 교체 권장. |
+| R-2 | `control-room/page.tsx:83`, `approval/page.tsx:77` | 로컬 `AGENT_PASTEL` 잔존. 스펙에서 control-room은 "별도 판단 필요"로 명시적 제외. 후속 PR에서 `import AgentBadge` 교체 권장. |
+
+---
+
+## 🟢 2026-06-04 — Intro 30s Analysis Card 리뷰
 
 **판정: 수정 1건 해결 후 LGTM.**
 

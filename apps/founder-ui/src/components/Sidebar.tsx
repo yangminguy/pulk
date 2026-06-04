@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useBusiness } from '@/lib/business-context'
 import { api } from '@/lib/api'
+import Icon from '@/components/Icon'
 
 const PHASE_SHORT: Record<string, string> = {
   direction_alignment: '방향정렬',
@@ -13,32 +14,6 @@ const PHASE_SHORT: Record<string, string> = {
   sales_distribution_test: '세일즈',
   productization_review: '제품화',
   scale_automation: '스케일',
-}
-
-const ICONS: Record<string, string> = {
-  message: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
-  check: 'M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3',
-  folder: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z',
-  activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
-  factory: 'M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z M17 18h.01 M12 18h.01 M7 18h.01',
-  database: 'M12 8c4.97 0 9-1.34 9-3s-4.03-3-9-3-9 1.34-9 3 4.03 3 9 3z M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5 M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3',
-  sliders: 'M4 21v-7 M4 10V3 M12 21v-9 M12 8V3 M20 21v-5 M20 12V3 M1 14h6 M9 8h6 M17 16h6',
-  wrench: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
-  building: 'M3 21h18 M5 21V7l8-4v18 M19 21V11l-6-3',
-  plus: 'M12 5v14 M5 12h14',
-  refresh: 'M23 4v6h-6 M1 20v-6h6 M3.51 9a9 9 0 0 1 14.85-3.36L23 10 M1 14l4.64 4.36A9 9 0 0 0 20.49 15',
-  logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9',
-  dot: 'M12 13a1 1 0 100-2 1 1 0 000 2z',
-}
-
-function Icon({ name, size = 16, stroke = 1.6, color = 'currentColor' }: { name: string; size?: number; stroke?: number; color?: string }) {
-  const d = ICONS[name]
-  if (!d) return null
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {d.split(/(?=M)/).map((seg, i) => <path key={i} d={seg.trim()} />)}
-    </svg>
-  )
 }
 
 const NAV_TOOLS = [
