@@ -1,6 +1,21 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (M10 완성 + Phase6 예상토큰 + M9.5 로드맵 번다운)
+최종 업데이트: 2026-06-04 (실제 토큰 캡처 라이브 + M9.6 deny-list 강화 — 안정화 완료)
+
+---
+
+## 🟢 2026-06-04 (최신) — 실제 토큰/비용 캡처 + M9.6 self-upgrade 안전강화 + 안정화
+
+**실제 토큰/비용 캡처 (3레포, 라이브 골드검증)**: 예상 토큰에 더해 **측정 실제값**을 컨트롤룸까지 결선.
+- **ACR**(`agent_control_room_docs`, 커밋 ac4942f): `ACR_CAPTURE_TOKENS=1` 시 claude를 `--output-format stream-json --verbose`로 실행 → 라이브 로그(텍스트 이벤트)와 최종 result usage(토큰/비용)를 둘 다 캡처. `claude-token-parser`(6테스트), spawn-runner onTokens, ExecutionLog 토큰 필드, `/api/l5/execution`이 phase별 합산해 `total_tokens`+`estimated_cost_usd` 반환. **ACR_CAPTURE_TOKENS=1을 .env.local에 활성화함.**
+- **L5**(커밋 f5a1cd6): acr-execution-transport + build-control-room-tree가 actual_total_tokens·actual_cost_usd 머지. founder-ui dev-task 카드 = 실제값 있으면 "사용 토큰 Xk · $Y", 없으면 "예상 토큰 약 Xk–Yk".
+- **골드 E2E**: 실제 TINY claude 디스패치 → claude stream-json 파싱 → ExecutionLog → /api/l5/execution → controlRoomTree → UI까지 **total_tokens=423914·$0.34** 흐름 + "사용 토큰 424k · $0.34" 화면 확인. (검증 데이터 정리함.)
+
+**M9.6 self-upgrade deny-list 강화 (커밋 1744e5f)**: 루프(Hermes→tool-request→sendToCTO→CTO→approval→apply/rollback)는 기존 결선, 초기화는 M10 CTO 기획 패널로도 가능. 안전 강화 = deny-list를 l5-core 공유·테스트 함수로 승격(`checkSelfModDiffForbidden` 경로 + `checkSelfModIntentForbidden` NL 한/영, 6테스트). sendToCTO **생성 시점 조기 차단**(CLI 실행 전) + applySelfMod 적용 시점 diff 검사 리팩터. 라이브: '승인 게이트 우회' intent 차단 확인.
+
+**안정화**: l5-core 559/559, hermes-runtime 86/86, agent-runtime 5/5(M9.3 commit→antigravity stale 테스트 수정), ACR claude-token-parser 6/6. founder-ui tsc+E2E(기획/번다운/실제토큰) 콘솔에러 0. 서비스 4종(nocobase·founder-ui·acr-web·dispatcher) 정상.
+
+**주의**: ACR 레포엔 내 세션 이전의 미커밋 변경 다수 존재(AGENTS.md/CLAUDE.md/workbench routes 등) — 내 커밋 ac4942f는 토큰 캡처 8파일만. dist/plugin.js는 두 플러그인 모두 gitignore(src가 추적 소스). executive-monitor RISK_RANK는 기존 dead code.
 
 ---
 
