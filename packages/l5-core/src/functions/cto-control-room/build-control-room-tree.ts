@@ -23,6 +23,10 @@ export interface AcrExecTask {
   changed_files?: number | null;
   log_tail?: string | null;
   updated_at?: string | null;
+  // Phase 6 — measured token usage + cost from the CLI runtime (null until the
+  // ACR runner captures it; estimate is shown meanwhile).
+  total_tokens?: number | null;
+  estimated_cost_usd?: number | null;
 }
 
 export interface ControlRoomBusinessInput {
@@ -79,10 +83,13 @@ export interface ControlRoomDevTask {
   exec_status: string | null; // workspace_status ?? plan_status
   changed_files: number | null;
   log_tail: string | null;
-  /** Forecast token range for this task (추정, from classification). Not measured
-   * usage — real per-run tokens are not yet plumbed from the CLI runtime. */
+  /** Forecast token range for this task (추정, from classification). */
   est_tokens_low: number | null;
   est_tokens_high: number | null;
+  /** Measured token usage + cost from the CLI runtime (via ACR). Null until the
+   * task has actually run; the UI then shows actuals instead of the estimate. */
+  actual_total_tokens: number | null;
+  actual_cost_usd: number | null;
 }
 
 export interface ControlRoomProjectNode {
@@ -187,6 +194,8 @@ function mergeDevTask(t: ControlRoomTaskInput, acr: AcrExecTask | undefined): Co
     log_tail: null,
     est_tokens_low: est.low,
     est_tokens_high: est.high,
+    actual_total_tokens: null,
+    actual_cost_usd: null,
   };
   if (!acr) return base;
 
@@ -203,5 +212,7 @@ function mergeDevTask(t: ControlRoomTaskInput, acr: AcrExecTask | undefined): Co
     exec_status: acr.workspace_status ?? acr.plan_status ?? null,
     changed_files: acr.changed_files ?? null,
     log_tail: acr.log_tail ?? null,
+    actual_total_tokens: typeof acr.total_tokens === 'number' ? acr.total_tokens : null,
+    actual_cost_usd: typeof acr.estimated_cost_usd === 'number' ? acr.estimated_cost_usd : null,
   };
 }

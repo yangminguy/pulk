@@ -118,6 +118,9 @@ export type ControlRoomDevTask = {
   /** Forecast token range (추정, from classification — not measured usage). */
   est_tokens_low?: number | null
   est_tokens_high?: number | null
+  /** Measured token usage + cost from the CLI runtime (via ACR), when available. */
+  actual_total_tokens?: number | null
+  actual_cost_usd?: number | null
 }
 export type ControlRoomProject = {
   project_id: string | null

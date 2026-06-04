@@ -314,12 +314,17 @@ function DevTaskRow({ task }: { task: ControlRoomDevTask }) {
         </div>
       )}
 
-      {/* Forecast token budget (추정) — shown until the task is done */}
-      {execStatus !== 'done' && task.est_tokens_low != null && task.est_tokens_high != null && (
+      {/* Token usage: measured actuals once the CLI has run, else the forecast */}
+      {task.actual_total_tokens != null ? (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--ink-3)' }}>
+          사용 토큰 {Math.round(task.actual_total_tokens / 1000)}k
+          {task.actual_cost_usd != null ? ` · $${task.actual_cost_usd.toFixed(2)}` : ''}
+        </div>
+      ) : execStatus !== 'done' && task.est_tokens_low != null && task.est_tokens_high != null ? (
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--ink-4)' }}>
           예상 토큰 약 {Math.round(task.est_tokens_low / 1000)}k–{Math.round(task.est_tokens_high / 1000)}k
         </div>
-      )}
+      ) : null}
 
       {/* Developer details — collapsed for non-developers */}
       {(live || (task.risk_level && riskStyle)) && (

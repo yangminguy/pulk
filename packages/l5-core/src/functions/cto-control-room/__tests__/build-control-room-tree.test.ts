@@ -79,6 +79,28 @@ describe('buildControlRoomTree', () => {
     expect(dt.log_tail).toBe('last lines');
   });
 
+  it('merges measured token usage + cost when ACR reports it', () => {
+    const args = baseArgs();
+    args.ctoTasks = [task({ id: 't1' })];
+    args.acrByTaskId = {
+      t1: { acr_task_id: 't1', total_tokens: 42000, estimated_cost_usd: 0.31 },
+    };
+    const dt = buildControlRoomTree(args)[0].projects[0].dev_tasks[0];
+    expect(dt.actual_total_tokens).toBe(42000);
+    expect(dt.actual_cost_usd).toBe(0.31);
+    // estimate is still present alongside the actual
+    expect(dt.est_tokens_low).toBeGreaterThan(0);
+  });
+
+  it('leaves actual tokens null when ACR omits them', () => {
+    const args = baseArgs();
+    args.ctoTasks = [task({ id: 't1' })];
+    args.acrByTaskId = { t1: { acr_task_id: 't1', branch: 'b' } };
+    const dt = buildControlRoomTree(args)[0].projects[0].dev_tasks[0];
+    expect(dt.actual_total_tokens).toBeNull();
+    expect(dt.actual_cost_usd).toBeNull();
+  });
+
   it('leaves ACR fields null and keeps task when ACR absent (degraded)', () => {
     const args = baseArgs();
     args.ctoTasks = [task({ id: 't1', status: 'blocked', blocker: 'merge_conflict' })];

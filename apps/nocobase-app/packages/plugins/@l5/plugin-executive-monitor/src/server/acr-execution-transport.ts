@@ -21,6 +21,9 @@ export interface AcrExecTask {
   changed_files: number | null;
   log_tail: string | null;
   updated_at: string | null;
+  // Phase 6 — measured token usage + cost from the CLI runtime (null until ACR captures it).
+  total_tokens: number | null;
+  estimated_cost_usd: number | null;
 }
 
 export interface AcrExecutionTransport {
@@ -60,6 +63,9 @@ export function makeAcrExecutionTransport(): AcrExecutionTransport | null {
           changed_files: typeof t.changed_files === 'number' ? t.changed_files : null,
           log_tail: t.log_tail ?? null,
           updated_at: t.updated_at ?? null,
+          total_tokens: typeof t.total_tokens === 'number' ? t.total_tokens : null,
+          estimated_cost_usd:
+            typeof t.estimated_cost_usd === 'number' ? t.estimated_cost_usd : null,
         }));
       } catch {
         // ACR down / 401 / timeout / parse error → degraded mode.
