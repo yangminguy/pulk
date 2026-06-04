@@ -165,13 +165,16 @@ describe('runCTOAgent — dev workflow SOP enforcement', () => {
 
     // TASK title "Add login validation" → FEATURE (6 phases)
     expect(out.acr_intent.phases).toHaveLength(6);
+    // M9.3 tier→runtime: T1→claude, T2→codex, T3→antigravity. FEATURE phases map
+    // research/spec/review (T1)→claude, test/implement (T2)→codex, commit (T3)→
+    // antigravity — the verified-live claude3/codex2/agy1 distribution.
     expect(out.acr_intent.phases.map((p) => p.runtime)).toEqual([
-      'claude', // research
-      'claude', // spec
-      'codex',  // test
-      'codex',  // implement
-      'claude', // review
-      'claude', // commit
+      'claude',      // research (T1)
+      'claude',      // spec (T1)
+      'codex',       // test (T2)
+      'codex',       // implement (T2)
+      'claude',      // review (T1)
+      'antigravity', // commit (T3)
     ]);
   });
 
