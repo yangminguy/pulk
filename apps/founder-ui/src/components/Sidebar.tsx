@@ -17,6 +17,7 @@ const PHASE_SHORT: Record<string, string> = {
 }
 
 const NAV_TOOLS = [
+  { href: '/cmo', label: 'CMO 마케팅', icon: 'megaphone' },
   { href: '/monitor', label: '현황 모니터', icon: 'activity' },
   { href: '/memory', label: '지식', icon: 'database' },
   { href: '/control-room', label: 'Control Room', icon: 'sliders' },
