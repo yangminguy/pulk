@@ -16,6 +16,7 @@ import type {
   ProjectProposal,
 } from './types';
 import type { RoadmapItemDraft } from '../roadmap/types';
+import { estimatePlanTokens } from '../token-estimate';
 
 const DEFAULT_MAX_ROADMAP = 6;
 
@@ -37,7 +38,8 @@ const SYSTEM = [
   '  "plan": {                  // ready=true일 때만',
   '    "prd": string,           // 평이한 제품 요구 문서',
   '    "roadmap_items": [ { "title": string, "summary": string, "objective": string, "sequence": number } ],',
-  '    "tasks": [ { "title": string, "rationale": string, "expected_output": string, "roadmap_sequence": number } ],',
+  '    "tasks": [ { "title": string, "rationale": string, "expected_output": string, "roadmap_sequence": number, "size": "tiny"|"small"|"feature"|"big" } ],',
+  '    // size = 시니어 개발자로서 판단한 작업 규모. tiny=한 줄/사소, small=작은 수정, feature=일반 기능, big=대형/구조 변경. 토큰 비용 추정에 쓰인다.',
   '    "project_proposal": { "is_new_project": boolean, "business_id": string|null, "suggested_project_title": string, "rationale": string } | null',
   '  } | null',
   '}',
@@ -106,6 +108,10 @@ function normalizeTasks(
     .filter((it) => typeof it.title === 'string' && (it.title as string).trim())
     .map((it) => {
       const seq = typeof it.roadmap_sequence === 'number' ? it.roadmap_sequence : 1;
+      const size =
+        it.size === 'tiny' || it.size === 'small' || it.size === 'feature' || it.size === 'big'
+          ? it.size
+          : undefined;
       return {
         title: String(it.title).trim(),
         rationale: String(it.rationale ?? '').trim(),
@@ -113,6 +119,7 @@ function normalizeTasks(
         // Clamp to a valid roadmap index (1..roadmapLen), default 1.
         roadmap_sequence:
           roadmapLen > 0 ? Math.min(Math.max(1, seq), roadmapLen) : 1,
+        ...(size ? { size } : {}),
       };
     });
 }
@@ -144,6 +151,10 @@ function normalizePlan(raw: unknown, max: number): CtoPlan | null {
     roadmap_items,
     tasks,
     project_proposal: normalizeProposal(p.project_proposal),
+    // Forecast budget so the founder sees the rough token cost before approving.
+    token_estimate: estimatePlanTokens(
+      tasks.map((t) => ({ title: t.title, rationale: t.rationale, size: t.size })),
+    ),
   };
 }
 

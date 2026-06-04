@@ -314,6 +314,13 @@ function DevTaskRow({ task }: { task: ControlRoomDevTask }) {
         </div>
       )}
 
+      {/* Forecast token budget (추정) — shown until the task is done */}
+      {execStatus !== 'done' && task.est_tokens_low != null && task.est_tokens_high != null && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--ink-4)' }}>
+          예상 토큰 약 {Math.round(task.est_tokens_low / 1000)}k–{Math.round(task.est_tokens_high / 1000)}k
+        </div>
+      )}
+
       {/* Developer details — collapsed for non-developers */}
       {(live || (task.risk_level && riskStyle)) && (
         <details style={{ marginTop: -1 }}>
@@ -540,6 +547,28 @@ function PlanCard({
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Token budget forecast (추정) */}
+        {plan.token_estimate && plan.token_estimate.task_count > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: 8,
+              padding: '8px 12px',
+              background: 'var(--silver-1)',
+              borderRadius: 6,
+            }}
+          >
+            <span style={{ fontSize: 11, color: 'var(--ink-3)', fontWeight: 600 }}>예상 토큰</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--ink-1)' }}>
+              약 {Math.round(plan.token_estimate.low / 1000)}k–{Math.round(plan.token_estimate.high / 1000)}k
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>
+              · 작업 {plan.token_estimate.task_count}개 추정치 (실제 사용량은 실행 후 집계)
+            </span>
           </div>
         )}
 

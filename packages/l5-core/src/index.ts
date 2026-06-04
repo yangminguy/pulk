@@ -22,6 +22,7 @@ export * from './functions/cto-verification';
 export * from './functions/cto-clarification';
 export * from './functions/cto-decision';
 export * from './functions/cto-design';
+export * from './functions/token-estimate';
 export * from './functions/roadmap';
 export * from './functions/cto-planning';
 export * from './functions/project-status/builder';

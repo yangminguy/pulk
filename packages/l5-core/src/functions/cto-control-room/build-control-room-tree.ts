@@ -9,6 +9,8 @@
 // Implemented per docs/specs/P3-3-control-room-acr.md §3.3. Keeping mapping logic
 // here (not in the UI) satisfies CLAUDE.md rule 3 and "no domain logic in UI".
 
+import { estimateTaskTokens } from '../token-estimate';
+
 /** One ACR execution record, keyed by L5 task id (== acr_task_id). */
 export interface AcrExecTask {
   acr_task_id: string;
@@ -77,6 +79,10 @@ export interface ControlRoomDevTask {
   exec_status: string | null; // workspace_status ?? plan_status
   changed_files: number | null;
   log_tail: string | null;
+  /** Forecast token range for this task (추정, from classification). Not measured
+   * usage — real per-run tokens are not yet plumbed from the CLI runtime. */
+  est_tokens_low: number | null;
+  est_tokens_high: number | null;
 }
 
 export interface ControlRoomProjectNode {
@@ -162,6 +168,7 @@ export function buildControlRoomTree(args: BuildControlRoomArgs): ControlRoomBus
 }
 
 function mergeDevTask(t: ControlRoomTaskInput, acr: AcrExecTask | undefined): ControlRoomDevTask {
+  const est = estimateTaskTokens(t.title);
   const base: ControlRoomDevTask = {
     task_id: t.id,
     title: t.title,
@@ -178,6 +185,8 @@ function mergeDevTask(t: ControlRoomTaskInput, acr: AcrExecTask | undefined): Co
     exec_status: null,
     changed_files: null,
     log_tail: null,
+    est_tokens_low: est.low,
+    est_tokens_high: est.high,
   };
   if (!acr) return base;
 

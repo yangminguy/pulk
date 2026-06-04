@@ -36,7 +36,7 @@
 - [x] **슬라이스 D — 컨트롤룸 CTO 기획 패널 (founder-ui)**: `control-room/page.tsx` `CtoPlanningPanel`(접이식 채팅 + founder/CTO 말풍선) + `PlanCard`(PRD·로드맵 단계·작업·새 프로젝트 제안 배너 + "이 계획 승인" 버튼). api.ts `ctoPlanMessage`/`ctoApprovePlan` + 타입. 승인 시 onApproved→트리 새로고침. 라이브 E2E(Playwright): 패널 열림·전송·계획 카드·로드맵·승인 버튼 렌더, 콘솔 에러 0.
 
 ### Phase 6 (M9와 함께) — 관측·안전 토큰/비용
-- [ ] **토큰/비용 표시**: M9.1 데이터 재사용 — 컨트롤룸에 예상 토큰(TaskClass별 사전추정) + 실제 누적 토큰/비용. 모델tier 라우팅이 곧 절감(가벼운 phase=T3 haiku, 무거운 추론만 T1 opus).
+- [~] **토큰/비용 표시**: **예상 토큰 완료(2026-06-04)** — l5-core `token-estimate`(classifyTask|CTO size판단→DEV_WORKFLOW phase수→tier별 토큰범위, 7테스트). CTO 기획 시 작업별 `size`(tiny/small/feature/big)를 LLM이 판단→정확도↑(다크모드 데모: 전부-FEATURE 350k–910k → small4+feature1 150k–374k). PlanCard에 "예상 토큰 약 Xk–Yk"(승인 전 go/no-go 판단), 컨트롤룸 dev-task 카드에 작업별 예상 토큰. 라이브 E2E 검증. **남은 것**: 실제 누적 토큰/비용 = hermes-agent(session_*_tokens·estimated_cost_usd 내부 보유)→ACR 콜백→`/api/l5/execution` AcrExecTask 확장→controlRoomTree 머지→UI. (3레포 결선, 실제 CLI 실행 필요.) 모델tier 라우팅이 곧 절감(가벼운 phase=T3 haiku, 무거운 추론만 T1 opus).
 - [ ] **비용 상한·장애 모니터**: 추정 대비 N배 초과 시 정지·알림. Langfuse 추적, 위험명령 차단(D4/D5 게이트만).
 
 

@@ -7,6 +7,7 @@
 // in one go (go/no-go), which then creates the roadmap + tasks (+ project).
 
 import type { RoadmapItemDraft } from '../roadmap/types';
+import type { PlanTokenEstimate, TaskSizeHint } from '../token-estimate/types';
 
 export interface CtoPlanningMessage {
   role: 'founder' | 'cto';
@@ -54,6 +55,9 @@ export interface CtoPlanTaskDraft {
   expected_output: string;
   /** 1-based index of the roadmap item this task serves. */
   roadmap_sequence: number;
+  /** CTO's size judgment, used for the token forecast. Defaults to keyword
+   * classification when the model omits it. */
+  size?: TaskSizeHint;
 }
 
 /** The full plan the CTO proposes at the end of planning — approved as one unit. */
@@ -63,6 +67,9 @@ export interface CtoPlan {
   tasks: CtoPlanTaskDraft[];
   /** Present only when the CTO thinks this should be a new project. */
   project_proposal?: ProjectProposal | null;
+  /** Forecast token budget for the whole plan (추정). Computed from the tasks'
+   * classification, not measured usage. Lets the founder weigh cost at approval. */
+  token_estimate?: PlanTokenEstimate | null;
 }
 
 export interface CtoPlanningTurnResult {

@@ -115,6 +115,9 @@ export type ControlRoomDevTask = {
   exec_status?: string | null
   changed_files?: number | null
   log_tail?: string | null
+  /** Forecast token range (추정, from classification — not measured usage). */
+  est_tokens_low?: number | null
+  est_tokens_high?: number | null
 }
 export type ControlRoomProject = {
   project_id: string | null
@@ -292,11 +295,18 @@ export type CtoProjectProposal = {
   suggested_project_title: string
   rationale: string
 }
+export type PlanTokenEstimate = {
+  task_count: number
+  low: number
+  high: number
+  mid: number
+}
 export type CtoPlan = {
   prd: string
   roadmap_items: CtoPlanRoadmapItem[]
   tasks: CtoPlanTask[]
   project_proposal: CtoProjectProposal | null
+  token_estimate?: PlanTokenEstimate | null
 }
 export type CtoPlanMessageResult = { reply: string; plan: CtoPlan | null; cto_message_id: string }
 export type CtoApproveResult = {
