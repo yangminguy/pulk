@@ -1,4 +1,4 @@
-import { judgeD3Task } from './d3-judge';
+import { judgeD3Task, judgeD3Deterministic } from './d3-judge';
 import type { D3JudgeInput } from './d3-judge';
 import type { LLMClient } from '../ceo-orchestration/types';
 
@@ -53,8 +53,9 @@ describe('judgeD3Task', () => {
     expect(result.raw).toBeDefined();
   });
 
-  it('returns escalate when LLM mock returns escalate verdict', async () => {
-    const input = makeInput({ title: '고객 이메일 발송' });
+  it('returns escalate when LLM mock returns escalate verdict (gray-zone input)', async () => {
+    // Gray-zone title (no deterministic signal) so the LLM path is exercised.
+    const input = makeInput({ title: '대시보드 임계값 조정', rationale: '운영 지표 튜닝', expected_output: '임계값 반영' });
     const llm = makeLLM(JSON.stringify({ verdict: 'escalate', rationale: '외부 고객에게 영향', conditions: [] }));
     const result = await judgeD3Task(input, llm);
     expect(result.verdict).toBe('escalate');
@@ -119,5 +120,35 @@ describe('judgeD3Task', () => {
     await judgeD3Task(input, llm);
     expect(capturedUser).toContain('biz-123');
     expect(capturedUser).toContain('recent_decisions');
+  });
+});
+
+// B4: deterministic pre-judge — clear cases skip the LLM entirely.
+describe('judgeD3Deterministic', () => {
+  it('escalates on outward/irreversible signals', () => {
+    for (const title of ['결제 연동 추가', '고객 이메일 발송', 'production 배포', 'DB 마이그레이션', '환불 정책 변경']) {
+      const r = judgeD3Deterministic(makeInput({ title }));
+      expect(r?.verdict).toBe('escalate');
+      expect(r?.used_llm).toBe(false);
+    }
+  });
+
+  it('passes on clearly-internal/read-only signals', () => {
+    for (const title of ['auth 모듈 리팩터', '오픈소스 조사', '코드 리뷰 반영', '내부 유틸 추가']) {
+      const r = judgeD3Deterministic(makeInput({ title, rationale: '', expected_output: '' }));
+      expect(r?.verdict).toBe('pass');
+      expect(r?.used_llm).toBe(false);
+    }
+  });
+
+  it('returns null for the gray zone (defers to LLM)', () => {
+    const r = judgeD3Deterministic(makeInput({ title: '대시보드 임계값 조정', rationale: '운영 지표 튜닝', expected_output: '임계값 반영' }));
+    expect(r).toBeNull();
+  });
+
+  it('escalate signal wins even without an LLM (no 24h hold)', async () => {
+    const result = await judgeD3Task(makeInput({ title: '결제 모듈 변경' }), null);
+    expect(result.verdict).toBe('escalate');
+    expect(result.used_llm).toBe(false);
   });
 });

@@ -39,12 +39,53 @@ const SYSTEM_PROMPT =
   '**반드시 JSON으로만 응답**: `{ "verdict": "pass|hold|escalate", "rationale": "...", "conditions": ["..."] }`. ' +
   '판단 기준: 작업 범위가 단일 모듈 내부이고 외부 의존성이 없으면 pass, 모호하거나 충돌 가능성이 있으면 hold, 회사/매출/외부 사용자에게 영향이 있으면 escalate.';
 
+// Outward-facing / irreversible signals → escalate to Founder regardless of LLM.
+const ESCALATE_SIGNAL =
+  /매출|revenue|결제|payment|billing|구독|환불|refund|계약|contract|법적|legal|외부\s*(고객|사용자)|external\s+(customer|user)|고객\s*(메시지|이메일|발송)|production|prod\s*deploy|배포|마이그레이션|migration|드롭|drop\s+table|삭제\s*정책|rollback/i;
+// Clearly-internal, low-blast-radius signals → safe to auto-pass. Deliberately
+// strong/read-only terms only — generic words (test/type/spec) are excluded to
+// avoid auto-passing on incidental mentions.
+const INTERNAL_SAFE_SIGNAL =
+  /조사|분석|비교|리뷰|\breview\b|\bdocs?\b|문서화|리팩터|\brefactor\b|내부\s*유틸|\bhelper\b/i;
+
+/**
+ * Deterministic D3 pre-judge. Returns a verdict for clear-cut cases (escalate on
+ * outward-facing/irreversible signals, pass on clearly-internal work) so the LLM
+ * is only consulted for the genuine gray zone. Returns null when undecided.
+ */
+export function judgeD3Deterministic(input: D3JudgeInput): D3JudgeResult | null {
+  const t = input.task;
+  const text = `${t.title} ${t.description ?? ''} ${t.rationale ?? ''} ${t.expected_output ?? ''}`;
+
+  if (ESCALATE_SIGNAL.test(text)) {
+    return {
+      verdict: 'escalate',
+      rationale: '외부/매출/비가역 신호 감지 — Founder 승인 필요',
+      used_llm: false,
+    };
+  }
+  if (INTERNAL_SAFE_SIGNAL.test(text)) {
+    return {
+      verdict: 'pass',
+      rationale: '내부 범위·낮은 영향 신호 — 자동 통과',
+      used_llm: false,
+    };
+  }
+  return null;
+}
+
 export async function judgeD3Task(
   input: D3JudgeInput,
   llm: LLMClient | null,
 ): Promise<D3JudgeResult> {
   if (input.task.risk_level !== 'D3') {
     throw new Error('judgeD3Task: not a D3 task');
+  }
+
+  // Deterministic pre-judge first — escalate/pass clear cases without the LLM.
+  const deterministic = judgeD3Deterministic(input);
+  if (deterministic) {
+    return deterministic;
   }
 
   if (llm === null) {
