@@ -1,6 +1,75 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (Product Strategy Card 리뷰 — LGTM)
+최종 업데이트: 2026-06-04 (CMO Chat UI 리뷰 — LGTM)
+
+---
+
+## 🟢 2026-06-04 — CMO Chat UI (오픈소스 조사 + 스펙 + Product Strategy Card 구현) 리뷰
+
+**판정: LGTM.** 8파일 +864/-8줄. 차단 이슈 없음. non-blocking info 3건.
+
+### 산출물 요약
+
+이 diff는 두 가지 독립적 산출물로 구성된다:
+
+**A. Product Strategy Card (코드 변경 — 3파일)**
+- `api.ts`: `ProductStrategyData` 타입 + `AgentOutputLite` 확장 + `updateTaskOutput` API
+- `AgentOutputDetail.tsx`: `ProductStrategyPanel` (읽기/편집) + `RetentionCurve` SVG 교체
+- 테스트: SSR 기반 양성/음성 16개 assert
+
+**B. CMO Chat UI 문서 산출물 (5파일, 코드 변경 없음)**
+- `docs/research/cmo-chat-ui-comparison.md`: 3개 후보(Vercel AI SDK / @assistant-ui / 기존 패턴 확장) 비교 → 기존 패턴 확장 채택
+- `docs/specs/cmo-chat-ui-spec.md`: `/cmo` 라우트, 2탭(대화/과제), `cmoChatMessage`/`cmoApprovePlan` API, AC 10개
+- `docs/specs/product-strategy-card-oss-research.md`: 3도메인×2-3후보 비교
+- `docs/specs/product-strategy-card-spec.md`: AC 8개, 영향 파일 2개
+
+### 검증 결과
+
+- `tsc --noEmit` exit 0
+- product-strategy-panel 테스트 exit 0 (16개 assert 통과)
+
+### 파일별 리뷰
+
+#### 1. `apps/founder-ui/src/lib/api.ts` (+16줄) — LGTM
+
+- `ProductStrategyData` (L55-62): 스펙 일치. 4 필수 + 2 optional. OK.
+- `AgentOutputLite.product_strategy` (L74): optional 추가. 기존 호환성 유지. OK.
+- `api.updateTaskOutput` (L454-458): NocoBase `filterByTk` + `values` 패턴. OK.
+
+#### 2. `apps/founder-ui/src/components/AgentOutputDetail.tsx` (+153/-7줄) — LGTM
+
+- 시그니처 (L8): `taskId?: string` optional 추가. 기존 호출부 regression 없음. OK.
+- 분기 로직 (L12-13, L23-33): intro_analysis → product_strategy → 범용 순서. 스펙 4.3 일치. OK.
+- `ProductStrategyPanel` (L101-213): 읽기/편집 모드, draft/current 분리, 4필드 그리드, confidence 배지, rationale details. OK.
+- `RetentionCurve` (L295-318): recharts → 순수 SVG. SSR 안정화 + 번들 축소. OK.
+
+#### 3. `__tests__/AgentOutputDetail.product-strategy-panel.test.tsx` (+54줄) — LGTM
+
+- SSR `renderToStaticMarkup` 패턴. 양성 14 assert + 음성 2 assert. OK.
+
+#### 4. `docs/research/cmo-chat-ui-comparison.md` (+142줄) — LGTM
+
+- 3개 후보 비교표 + 채택/배제 근거 명확. 백엔드 호환성·의존성·재사용 기준으로 기존 패턴 확장 채택. OK.
+
+#### 5. `docs/specs/cmo-chat-ui-spec.md` (+196줄) — LGTM
+
+- 라우트(/cmo), UI 구조(2탭), API(cmoChatMessage/cmoApprovePlan), AC 10개 측정 가능, 범위 밖 명시. OK.
+
+#### 6. `docs/specs/product-strategy-card-*` (+254줄) — LGTM
+
+- OSS 조사: 3도메인 모두 자체 구현 채택 (일관). 스펙: AC 8개, 구현과 정합. OK.
+
+#### 7. `docs/HANDOFF.md` (+57/-1줄) — LGTM
+
+- 이전 리뷰 기록 정확. OK.
+
+### Non-blocking info (수정 불필요, 참고용)
+
+| # | 파일:줄 | 내용 | 심각도 |
+|---|---------|------|--------|
+| I-1 | `AgentOutputDetail.tsx:128` | `save()` catch 없음 — 저장 실패 시 사용자 피드백 무. ConsultationCard도 동일 패턴이므로 일관성 있음. 후속 toast 일괄 추가 시 해결 권장 | info |
+| I-2 | `AgentOutputDetail.tsx:295-318` | `RetentionCurve` SVG가 linear 보간 — 기존 recharts cardinal spline과 차이. SSR 안정성 우선 트레이드오프로 수용 | info |
+| I-3 | `cmo-chat-ui-spec.md:§3.1` | 사이드바 아이콘 `megaphone` — `Icon.tsx`에 해당 아이콘 존재 여부 구현 시 확인 필요 | info |
 
 ---
 
