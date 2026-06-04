@@ -39,6 +39,14 @@
 - [~] **토큰/비용 표시**: **예상 토큰 완료(2026-06-04)** — l5-core `token-estimate`(classifyTask|CTO size판단→DEV_WORKFLOW phase수→tier별 토큰범위, 7테스트). CTO 기획 시 작업별 `size`(tiny/small/feature/big)를 LLM이 판단→정확도↑(다크모드 데모: 전부-FEATURE 350k–910k → small4+feature1 150k–374k). PlanCard에 "예상 토큰 약 Xk–Yk"(승인 전 go/no-go 판단), 컨트롤룸 dev-task 카드에 작업별 예상 토큰. 라이브 E2E 검증. **남은 것**: 실제 누적 토큰/비용 = hermes-agent(session_*_tokens·estimated_cost_usd 내부 보유)→ACR 콜백→`/api/l5/execution` AcrExecTask 확장→controlRoomTree 머지→UI. (3레포 결선, 실제 CLI 실행 필요.) 모델tier 라우팅이 곧 절감(가벼운 phase=T3 haiku, 무거운 추론만 T1 opus).
 - [ ] **비용 상한·장애 모니터**: 추정 대비 N배 초과 시 정지·알림. Langfuse 추적, 위험명령 차단(D4/D5 게이트만).
 
+### State Machine 25개 상태 전환 검증 (2026-06-04, 스펙 완료)
+
+> **배경**: 15+ 엔티티 상태 전환이 플러그인에서 raw status 쓰기로 실행되며 l5-core에 유효 전환 정의 없음. 오픈소스 조사(XState/Robot/typescript-fsm) 결과 `build` 결정. `createTransitionValidator` 제네릭 팩토리 + lookup table 패턴. 스펙: `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md`.
+
+- [ ] `state-machine/transitions.ts` — `createTransitionValidator` + 4개 lookup table (AgentTask 11, FounderInstruction 6, ToolRequest 7, BusinessIdea 5 = 29 edges)
+- [ ] `state-machine/__tests__/transitions.test.ts` — 유효 전환 `valid===true` + 무효 전환 `valid===false` 전수 검증
+- [ ] `l5-core/src/index.ts` re-export + typecheck + test 통과
+
 ### Thumbnail Pattern Card — Strategy Decision Panel (2026-06-04, 스펙 완료)
 
 > **배경**: 임원 산출물(`agent_tasks.output`)을 창업자에게 보여주는 `AgentOutputDetail` 컴포넌트가 존재하지만, (1) 에이전트 컨텍스트(누구의 권고인지)가 없고, (2) 카드 외곽 구조(헤더·구분선·패널 제목)가 다른 카드들과 불일치하며, (3) 전략 결정형 산출물(goal+recommendation+options+action_items)에 대한 전용 패널 뷰가 없다. 실패 테스트(`AgentOutputDetail.strategy-decision-panel.test.tsx`)가 이 갭을 명시한다.
