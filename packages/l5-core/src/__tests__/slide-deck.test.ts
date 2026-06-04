@@ -107,6 +107,7 @@ describe('SlideDeck Generation Logic', () => {
       const result = await generateSlideDeckPipeline(mockLlmResponse);
 
       expect(result.status).toBe('success');
+      if (result.status !== 'success') throw new Error(result.message);
       expect(result.buffer).toBeDefined();
       expect(result.buffer.length).toBeGreaterThan(0);
     });

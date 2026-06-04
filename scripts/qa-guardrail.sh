@@ -45,7 +45,7 @@ node -e "
 " || FAIL=1
 
 # G2: No paid automation dependency
-BANNED_PATTERNS=("activepieces-enterprise" "trigger.dev-pro")
+BANNED_PATTERNS=("nocobase-commercial" "activepieces-enterprise" "trigger.dev-pro")
 for pattern in "${BANNED_PATTERNS[@]}"; do
   if grep -rq "$pattern" "$REPO_ROOT"/apps/*/package.json "$REPO_ROOT"/packages/*/package.json "$REPO_ROOT"/services/*/package.json 2>/dev/null; then
     echo "FAIL: G2 — banned dependency '$pattern' detected"
