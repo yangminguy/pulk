@@ -386,6 +386,17 @@ export type RoadmapProgressSummary = {
 export type RoadmapProgressResult = { items: RoadmapProgressItem[]; summary: RoadmapProgressSummary }
 
 export type CtoPlanMessageResult = { reply: string; plan: CtoPlan | null; cto_message_id: string }
+
+// CMO conversational marketing planning.
+export type CmoMarketingPlan = {
+  decision: string
+  reasoning: string
+  next_action: string
+  risk_level: string
+  requires_founder_approval: boolean
+}
+export type CmoChatMessageResult = { reply: string; plan: CmoMarketingPlan | null; cmo_message_id: string }
+export type CmoApproveResult = { approved: boolean; task_ids: string[] }
 export type CtoApproveResult = {
   new_project: boolean
   project_id: string | null
@@ -444,6 +455,23 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ business_id: businessId ?? null }),
     }).then(r => unwrap(r)) as Promise<RoadmapProgressResult>,
+
+  // CMO conversational marketing planning (mirrors CTO pattern).
+  cmoChatMessage: (
+    thread_id: string,
+    founder_message: string,
+    opts?: { business_id?: string | null; project_id?: string | null },
+  ) =>
+    request<{ data: { ok: boolean; data: CmoChatMessageResult } }>('/api/cmo:chatMessage', {
+      method: 'POST',
+      body: JSON.stringify({ thread_id, founder_message, ...(opts ?? {}) }),
+    }).then(r => unwrap(r)) as Promise<CmoChatMessageResult>,
+
+  cmoApprovePlan: (cmo_message_id: string) =>
+    request<{ data: { ok: boolean; data: CmoApproveResult } }>('/api/cmo:approvePlan', {
+      method: 'POST',
+      body: JSON.stringify({ cmo_message_id }),
+    }).then(r => unwrap(r)) as Promise<CmoApproveResult>,
 
   closeInstruction: (id: string) =>
     request<{ data: unknown }>('/api/founder_instructions:update', {
