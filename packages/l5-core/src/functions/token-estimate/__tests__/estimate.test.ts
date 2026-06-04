@@ -18,9 +18,10 @@ describe('estimateTaskTokens', () => {
   });
 
   it("uses the CTO's size judgment over keyword classification", () => {
-    // Title would keyword-classify as FEATURE, but the CTO judged it tiny.
-    const guessed = estimateTaskTokens('다크모드 토글 버튼 추가', '설정 페이지');
-    const judged = estimateTaskTokens('다크모드 토글 버튼 추가', '설정 페이지', 'tiny');
+    // Title keyword-classifies as a multi-component FEATURE (no single-component
+    // keyword), but the CTO judged it tiny — the hint must win.
+    const guessed = estimateTaskTokens('실시간 채팅 시스템 구축', '전체 메시징 흐름');
+    const judged = estimateTaskTokens('실시간 채팅 시스템 구축', '전체 메시징 흐름', 'tiny');
     expect(guessed.task_class).toBe('FEATURE');
     expect(judged.task_class).toBe('TINY');
     expect(judged.high).toBeLessThan(guessed.high);
