@@ -28,16 +28,54 @@ describe('verifyCTOPhaseDeterministic', () => {
     expect(r.retry_recommended).toBe(true);
   });
 
-  it('returns inconclusive when no diff and not read-only', () => {
+  it('fails a code phase that changed nothing (no diff)', () => {
     const r = verifyCTOPhaseDeterministic({
       task_title: 'add tests',
-      expected_output: 'new tests added for auth flow',
+      expected_output: 'implement new tests for auth flow',
+      exit_code: 0,
+      log_tail: 'OK',
+      diff_summary: '',
+    });
+    expect(r.verdict).toBe('fail');
+    expect(r.retry_recommended).toBe(true);
+    expect(r.confidence).toBe('high');
+  });
+
+  it('fails a code phase when changed_files=0 even if diff_summary has noise', () => {
+    const r = verifyCTOPhaseDeterministic({
+      task_title: 'implement login',
+      expected_output: '구현: login endpoint',
+      exit_code: 0,
+      log_tail: 'done',
+      diff_summary: 'Already up to date.', // noise, no real change
+      changed_files: 0,
+    });
+    expect(r.verdict).toBe('fail');
+    expect(r.retry_recommended).toBe(true);
+  });
+
+  it('returns inconclusive when a NON-code phase has no diff', () => {
+    const r = verifyCTOPhaseDeterministic({
+      task_title: 'compare options',
+      expected_output: 'comparison table of state libraries',
       exit_code: 0,
       log_tail: 'OK',
       diff_summary: '',
     });
     expect(r.verdict).toBe('inconclusive');
     expect(r.retry_recommended).toBe(false);
+  });
+
+  it('passes a code phase that actually changed files', () => {
+    const r = verifyCTOPhaseDeterministic({
+      task_title: 'implement login',
+      expected_output: 'implement login endpoint',
+      exit_code: 0,
+      log_tail: 'done',
+      diff_summary: 'src/login.ts | 30 +++\n1 file changed',
+      changed_files: 1,
+    });
+    expect(r.verdict).toBe('pass');
   });
 
   it('returns pass when diff present and exit 0', () => {
