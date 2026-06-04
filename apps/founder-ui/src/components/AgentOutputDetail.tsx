@@ -129,10 +129,7 @@ function IntroAnalysisPanel({ analysis, agent }: { analysis: IntroAnalysisData; 
         </div>
 
         {retentionData.length > 0 && (
-          <div style={{ position: 'relative', height: 80, width: '100%', border: '1px solid var(--silver-1)', borderRadius: 6, padding: 4 }}>
-            <svg viewBox="0 0 360 70" style={{ position: 'absolute', inset: 4, width: 'calc(100% - 8px)', height: 70, overflow: 'visible' }}>
-              <path d={buildRetentionPath(retentionData, 360, 70)} fill="none" stroke="var(--green)" strokeWidth={1.5} />
-            </svg>
+          <div style={{ height: 80, width: '100%', border: '1px solid var(--silver-1)', borderRadius: 6, padding: 4 }}>
             <LineChart width={360} height={70} data={retentionData} margin={{ top: 5, right: 8, bottom: 5, left: 8 }}>
               <Line type="monotone" dataKey="pct" stroke="var(--green)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
             </LineChart>
@@ -189,22 +186,6 @@ function getVerdictStyle(verdict: string) {
   return { bg: 'var(--silver-1)', border: 'var(--silver-2)', fg: 'var(--ink-2)' }
 }
 
-function buildRetentionPath(points: Array<{ sec: number; pct: number }>, width: number, height: number) {
-  const minSec = Math.min(...points.map((p) => p.sec))
-  const maxSec = Math.max(...points.map((p) => p.sec))
-  const minPct = Math.min(...points.map((p) => p.pct))
-  const maxPct = Math.max(...points.map((p) => p.pct))
-  const secRange = maxSec - minSec || 1
-  const pctRange = maxPct - minPct || 1
-
-  return points
-    .map((point, i) => {
-      const x = ((point.sec - minSec) / secRange) * width
-      const y = height - ((point.pct - minPct) / pctRange) * height
-      return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
-    })
-    .join(' ')
-}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
