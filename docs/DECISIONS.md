@@ -34,6 +34,19 @@
 **후속**: 전환 누락이 실제 버그로 이어지면, 엔티티별 `VALID_TRANSITIONS` lookup table을 l5-core에 추가하고 TS 타입 시스템으로 exhaustiveness를 보장한다.
 
 ---
+## 2026-06-05 — CMO Video Room 병렬 실행 · 내부 코딩 게이트 완화 · phase 분해 적정화
+
+**컨텍스트**: CTO에 "Pulk CMO Video Room" PRD(28기능/158phase) 지시 → 전부 멈춤. ACR 실행엔진의 다층 고장을 고치며 자율 완주시키고, 속도 병목을 근본수정했다.
+
+1. **병렬 실행은 격리 git worktree마다 1 plan**. 같은 worktree 병렬은 `commitAll`(git add -A)이 동시 편집을 교차오염시켜 위험 → 펄크 worktree 4개에 미시작 plan 분배(진행중 plan은 phase 누적 보존 위해 고정), worktree당 직렬·간 병렬. 단 **공유 통합 파일(Sidebar/AgentOutputDetail/페이지/package.json)은 worktree 간 분기**하여 마지막에 병합 충돌 → 다음엔 통합지점 선셋업(직렬) 후 기능 병렬.
+
+2. **내부 D2 코딩에는 ACR 안전게이트를 적용하지 않는다**. dangerous-command-detector(단어매칭)·risk D2→D4 격상·commit/review 빈출력 차단은 "외부 위험 작업"용인데 격리 worktree 내부 코딩까지 오탐·차단하고, 차단 시 task를 'running' 고아로 남겨 데드락시켰다. → 게이트 기본 off(`ACR_DANGER_GATE`), L5승인(auto_execute) 작업은 risk 격상 통과, 비코드 phase는 `expectsChanges=false`. self-mod 보호(gate/.env)는 l5-core deny로 별도 유지. (위험도≠게이트 원칙과 정합.)
+
+3. **phase 분해는 작업 규모에 맞춘다**. 단일 컴포넌트/카드/모델/유틸을 6단계 FEATURE로 분해하면 조사/스펙/리뷰 등 no-op phase가 토큰·시간을 2~3배 낭비. → `classifyTask`가 단일 컴포넌트류를 SMALL_FIX(4단계)로 라우팅. SOP 자체(TINY 2/SMALL_FIX 4/FEATURE 6)는 유지.
+
+4. **오케스트레이션 락은 stale-release로 자가복구**. `planDrainLock`(인메모리)이 hung 드레인에 영구 점유돼 큐 전체가 정체하고 acr-web 재시작으로만 풀렸다 → 20분 경과 락 자동해제. **완전한 해결(inline-HTTP spawn → 파일/DB 잡 큐)은 v2**(리스크 큰 대공사, `docs/CMO_DEV_SPEED_STRATEGY.md`에 설계).
+
+5. **JSON 스토어는 원자적 쓰기(temp+rename)**. 병렬 드레인 동시 쓰기가 `execution-logs.json`을 손상시켜 ACR 라우트 연쇄 실패 → 핫 스토어 원자적 쓰기로 손상 차단.
 
 ## 2026-06-04 — 승인 게이트 = D4/D5만 · self-upgrade는 승인 게이트로 살림 · M9(컨트롤룸 라이브화) 최우선
 

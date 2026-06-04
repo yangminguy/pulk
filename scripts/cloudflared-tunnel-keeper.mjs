@@ -6,7 +6,7 @@
 //   (production) and redeploys --prod
 // - Exits when cloudflared dies so launchd respawns
 
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn, spawnSync, execSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs'
 import { dirname } from 'node:path'
 
@@ -64,10 +64,52 @@ async function main() {
   const prev = readState()
   log(`==== keeper start (prev=${prev || '<none>'}) ====`)
 
-  const cf = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${NOCO_PORT}`, '--no-autoupdate'], {
+  // --protocol http2: the default QUIC (UDP/7844) is blocked on this network, so
+  // the quick tunnel never registers at the edge (URL prints but stays NXDOMAIN).
+  // http2 uses TCP/443 and registers reliably.
+  const cf = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${NOCO_PORT}`, '--protocol', 'http2', '--no-autoupdate'], {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   log(`cloudflared spawned pid=${cf.pid}`)
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+  // Check liveness as an EXTERNAL client (e.g. the founder's phone) would: resolve
+  // the host via public DNS (8.8.8.8) — the local router resolver NXDOMAINs fresh
+  // trycloudflare subdomains — then curl via that IP. HTTP <500 = tunnel forwarding
+  // (530/000 = dead). Avoids both the local-DNS false-negative and dead-tunnel sync.
+  function tunnelLive(u) {
+    try {
+      const host = u.replace(/^https?:\/\//, '')
+      const ip = execSync(`nslookup ${host} 8.8.8.8 2>/dev/null | awk '/^Address: /{print $2}' | head -1`, { encoding: 'utf8' }).trim()
+      if (!ip) return false
+      const code = execSync(`curl -s -m 8 -o /dev/null -w '%{http_code}' --resolve ${host}:443:${ip} https://${host}`, { encoding: 'utf8' }).trim()
+      const n = Number(code)
+      return n > 0 && n < 500
+    } catch { return false }
+  }
+  // trycloudflare prints the URL BEFORE the edge connection registers, and some
+  // sessions never register. Verify external reachability before syncing; if it
+  // never comes up, kill cloudflared so launchd respawns a fresh session.
+  async function verifyAndSync(u) {
+    for (let i = 0; i < 20; i++) {
+      await sleep(3000)
+      try {
+        if (tunnelLive(u)) {
+          log(`tunnel reachable (public DNS) after ~${(i + 1) * 3}s`)
+          if (u !== prev) {
+            log(`URL changed: ${prev || '<none>'} -> ${u} — syncing Vercel`)
+            writeState(u)
+            try { vercelEnvSync(u) } catch (e) { log(`vercel sync threw: ${e?.message}`) }
+          } else {
+            log(`URL unchanged — no Vercel action`)
+          }
+          return
+        }
+      } catch { /* not up yet */ }
+    }
+    log('tunnel URL never became reachable (~60s) — killing cloudflared for respawn')
+    try { cf.kill('SIGTERM') } catch {}
+  }
 
   let buf = ''
   let url = null
@@ -78,14 +120,8 @@ async function main() {
       const m = URL_RE.exec(buf)
       if (m) {
         url = m[0]
-        log(`tunnel URL = ${url}`)
-        if (url !== prev) {
-          log(`URL changed: ${prev || '<none>'} -> ${url} — syncing Vercel`)
-          writeState(url)
-          try { vercelEnvSync(url) } catch (e) { log(`vercel sync threw: ${e?.message}`) }
-        } else {
-          log(`URL unchanged — no Vercel action`)
-        }
+        log(`tunnel URL = ${url} — verifying reachability before sync`)
+        verifyAndSync(url)
       }
     }
   }

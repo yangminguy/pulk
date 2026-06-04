@@ -848,6 +848,19 @@ export function classifyTask(
   const isBugKeyword = /\bfix\b|bug|버그|hotfix|patch|수정/.test(text);
   const baseClass: TaskClass = isBugKeyword ? 'SMALL_FIX' : 'FEATURE';
 
+  // Single bounded UI component / model / util / endpoint → SMALL_FIX (4 phases:
+  // repro→fix→regress→commit), NOT the full 6-phase FEATURE ceremony. Decomposing
+  // a single card/panel/model into research→spec→test→implement→review→commit wasted
+  // ~2-3x tokens/time on no-op research/spec/review phases (observed: CMO Video Room
+  // had 28 such "FEATURE"s = 158 phases; most were single components). Genuinely
+  // multi-component features still escalate via the indicator score.
+  const singleComponentKeyword =
+    /\b(card|panel|badge|loader|cell|chip|modal|tooltip|icon|util|helper|schema|model|hook|endpoint|route|router|menu|snapshot|spinner|toggle|dropdown)\b/.test(text) ||
+    /카드|패널|뱃지|로더|버튼|모달|툴팁|유틸|헬퍼|스키마|모델|훅|엔드포인트|라우터|메뉴|스냅샷|단일\s*컴포넌트|컴포넌트\s*(추가|구현)|토글|드롭다운/.test(text);
+  if (baseClass === 'FEATURE' && singleComponentKeyword && escalationScore < 2) {
+    return 'SMALL_FIX';
+  }
+
   if (baseClass === 'SMALL_FIX') {
     // 3+ indicators → escalate to FEATURE.
     if (escalationScore >= 3) return 'FEATURE';

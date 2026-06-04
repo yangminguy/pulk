@@ -1,7 +1,16 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-06-04 (State Machine Validation green + ContentApprovalGate core 검증 완료). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-06-05 (CMO Video Room 158/158 완주 + 통합/검증 + 속도 근본수정). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+
+## ✅ CMO Video Room — CTO 자율 개발 완료 (2026-06-05)
+
+- [x] CTO가 PRD(28기능/158phase) 자율 실행 → **158/158 done**, Hermes 텔레그램 완료알림 발송
+- [x] 펄크 격리 worktree 4개 병렬(claude 구현·테스트 / agy=Gemini 비코드 / codex 보조), 단일 plan 직렬·worktree 병렬
+- [x] 통합 브랜치 `cmo/video-room-integrated`(123파일) — next build 그린·tsc 0·구조 e2e 24+·브라우저 렌더 검증
+- [x] 속도 병목 근본수정: phase 분해 적정화·게이트 완화·no-op phase done·락 stale-release·원자적 쓰기 (DECISIONS 2026-06-05)
+- [x] **PR 전 정리(2026-06-05)**: union 머지가 main을 회귀시킴을 발견 → fresh main에서 재파생한 `cmo/video-room-clean`(origin push) 생성. Founder 리뷰 후 PR 예정. 남은 cmo 미완 3건은 메모리 `cmo-video-room-clean-branch` 참조.
+- [ ] **v2 근본수정**(`docs/CMO_DEV_SPEED_STRATEGY.md`): 잡큐 오케스트레이션·per-phase 모델선택·agy 쿼터 자동감지 → CTO 최적화 Track B로 진행
 
 ## 🔥🔥 M9: CTO 시니어 개발자 자율 실행 — 컨트롤룸 라이브화 (2026-06-04 최우선, 창업자 지정)
 
