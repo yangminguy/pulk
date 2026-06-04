@@ -1,10 +1,19 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (코드 리뷰 완료 — LGTM with minor notes)
+최종 업데이트: 2026-06-04 (Intro 30s Analysis Card 리뷰 — 수정 1건)
 
 ---
 
-## 🟢 2026-06-04 (최신) — 코드 리뷰: State Machine + ContentApprovalGate + Intro Analysis
+## 🟢 2026-06-04 (최신) — Intro 30s Analysis Card 리뷰
+
+**판정: 수정 1건 해결 후 LGTM.**
+
+- **[P1] `AgentOutputDetail.tsx:132-139` — 수동 SVG path + Recharts LineChart 중복 렌더링.** 동일 `retentionData`로 수동 `<svg><path>` (L132-135)와 Recharts `<LineChart>` (L136-138) 두 개가 동시에 그려짐. Recharts `<LineChart>`만 남기고 수동 SVG + `buildRetentionPath` 함수(L192-207) 제거 필요. 테스트(L51 `<path` assertion)는 Recharts 내부 `<path>` 생성으로 통과.
+- 나머지 LGTM: 타입(`IntroAnalysisData`), 감지(`typeof hook_score === 'number'`), 분기 우선순위(intro > strategy), 색상 분기(≥70 green/≥40 amber/<40 red), 조건부 섹션, 테스트 11 assertion + 회귀 검증, recharts devDep, 기존 사용처 변경 없음.
+
+---
+
+## 🟢 2026-06-04 — 코드 리뷰: State Machine + ContentApprovalGate + Intro Analysis
 
 **판정: LGTM** — 16파일 952줄 전체 검토. 차단 이슈 없음. 테스트 26건 통과, l5-core tsc 0, hermes-runtime tsc 0.
 
