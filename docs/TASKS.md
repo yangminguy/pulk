@@ -39,13 +39,63 @@
 - [~] **토큰/비용 표시**: **예상 토큰 완료(2026-06-04)** — l5-core `token-estimate`(classifyTask|CTO size판단→DEV_WORKFLOW phase수→tier별 토큰범위, 7테스트). CTO 기획 시 작업별 `size`(tiny/small/feature/big)를 LLM이 판단→정확도↑(다크모드 데모: 전부-FEATURE 350k–910k → small4+feature1 150k–374k). PlanCard에 "예상 토큰 약 Xk–Yk"(승인 전 go/no-go 판단), 컨트롤룸 dev-task 카드에 작업별 예상 토큰. 라이브 E2E 검증. **남은 것**: 실제 누적 토큰/비용 = hermes-agent(session_*_tokens·estimated_cost_usd 내부 보유)→ACR 콜백→`/api/l5/execution` AcrExecTask 확장→controlRoomTree 머지→UI. (3레포 결선, 실제 CLI 실행 필요.) 모델tier 라우팅이 곧 절감(가벼운 phase=T3 haiku, 무거운 추론만 T1 opus).
 - [ ] **비용 상한·장애 모니터**: 추정 대비 N배 초과 시 정지·알림. Langfuse 추적, 위험명령 차단(D4/D5 게이트만).
 
-### State Machine 25개 상태 전환 검증 (2026-06-04, 스펙 완료)
+### State Machine 29개 상태 전환 검증 (2026-06-04, 스펙+실패 테스트 완료)
 
-> **배경**: 15+ 엔티티 상태 전환이 플러그인에서 raw status 쓰기로 실행되며 l5-core에 유효 전환 정의 없음. 오픈소스 조사(XState/Robot/typescript-fsm) 결과 `build` 결정. `createTransitionValidator` 제네릭 팩토리 + lookup table 패턴. 스펙: `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md`.
+> **배경**: 15+ 엔티티 상태 전환이 플러그인에서 raw status 쓰기로 실행되며 l5-core에 유효 전환 정의 없음. 오픈소스 조사(XState/Robot/typescript-fsm) 결과 `build` 결정. `createTransitionValidator` 제네릭 팩토리 + lookup table 패턴. **스펙: `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md` (AC 7개, 영향 파일 3개).**
+> **Acceptance Criteria**: (1) 팩토리 제네릭 동작 (2) edge 수 11/6/7/5 단언 (3) 유효 전환 valid===true (4) 무효 전환 valid===false+reason (5) pnpm test 통과 (6) tsc 0 (7) index.ts re-export.
 
+- [x] `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md` — 요구사항 명세 + 측정 가능 AC 7개 + 영향 파일 목록
+- [~] `state-machine/__tests__/transitions.test.ts` — 실패 테스트 작성 완료 (이전 phase), 구현 대기
 - [ ] `state-machine/transitions.ts` — `createTransitionValidator` + 4개 lookup table (AgentTask 11, FounderInstruction 6, ToolRequest 7, BusinessIdea 5 = 29 edges)
-- [ ] `state-machine/__tests__/transitions.test.ts` — 유효 전환 `valid===true` + 무효 전환 `valid===false` 전수 검증
 - [ ] `l5-core/src/index.ts` re-export + typecheck + test 통과
+
+### Intro 30s Analysis Card — 오픈소스 조사 (2026-06-04, 비교 완료)
+
+> **배경**: CMO가 YouTube 영상 인트로 첫 30초의 시청자 리텐션/훅 효과를 분석한 결과를 보여주는 카드. 3개 도메인(차트 시각화, YouTube 데이터 추출, 프레임 추출)에 대해 후보를 비교하고 채택/배제 근거를 정리한다.
+
+#### Domain 1: 리텐션 커브 차트 (카드 내 미니 차트)
+
+| 항목 | Recharts | @nivo/line | uPlot | react-chartjs-2 |
+|------|----------|------------|-------|-----------------|
+| npm 주간 DL | ~2.4M | ~380K | ~573K | ~4M (Chart.js 포함) |
+| 번들 (min+gz) | ~50kB | ~40kB (@nivo/line 단독) | ~48kB | ~106kB (Chart.js+래퍼) |
+| React 네이티브 통합 | ✅ JSX 컴포지션 | ✅ props 기반 | ⚠️ 래퍼 필요 | ✅ 공식 래퍼 |
+| 미니차트/sparkline | ✅ 즉시 소형화 | ✅ 가능 | ⚠️ 저수준 API | ✅ 가능 |
+| 라이선스 | MIT | MIT | MIT | MIT |
+
+**채택: Recharts** — JSX 네이티브 컴포지션이 기존 카드 패턴(인라인 스타일 + `<ResponsiveContainer>`)과 동일. 30포인트 미만 데이터에서 SVG 성능 문제 없음. @nivo/line은 설정 verbose+D3 의존 추가. uPlot은 저수준 API로 카드 내 인라인 사용 시 복잡도 증가. react-chartjs-2는 번들 ~106kB로 과대.
+
+#### Domain 2: YouTube 자막/메타데이터 추출 (첫 30초)
+
+| 항목 | youtubei.js | youtube-transcript | yt-dlp (CLI) |
+|------|-------------|-------------------|--------------|
+| npm 주간 DL | ~44K | ~58K | CLI (yt-dlp-wrap 경유) |
+| 유지보수 | ✅ 활성 (v17, 5K+ stars) | ❌ 12개월 무릴리스 | ✅ 매우 활성 |
+| API 키 불필요 | ✅ InnerTube 역설계 | ✅ 비공식 스크레이핑 | ✅ |
+| 메타데이터+자막 동시 | ✅ 단일 세션 | ❌ 자막만 | ✅ 완전 |
+| 브라우저 지원 | ✅ Node+브라우저 | ❌ Node 전용 | ❌ 서버 전용 |
+| 라이선스 | MIT | MIT | GPL-3.0 |
+
+**채택: youtubei.js** — InnerTube 전체 클라이언트로 자막+메타데이터(제목, 썸네일, 길이, 설명)를 단일 호출로 획득. 활발히 유지보수. 30초 슬라이싱은 `transcript.filter(t => t.offset < 30000)`. youtube-transcript는 비활성+파손 이력으로 프로덕션 신뢰 불가. yt-dlp는 GPL-3.0 라이선스 전파 위험 — 서버사이드 폴백으로만 검토.
+
+#### Domain 3: 비디오 프레임 추출 (선택적, 훅 비주얼 스코어링)
+
+| 항목 | @remotion/renderer (기존) | ffmpeg.wasm | Canvas API |
+|------|--------------------------|-------------|------------|
+| 번들 추가 비용 | 0 (이미 설치) | ~31MB WASM | 0 (내장) |
+| 실행 환경 | 서버 전용 | 브라우저+Node | 클라이언트 전용 |
+| 프레임 추출 정확도 | ✅ 네이티브 ffmpeg | ✅ | ⚠️ seek 편차 |
+| 라이선스 | MIT | LGPL-2.1 | N/A |
+
+**채택: @remotion/renderer 재활용 (PMF 확인 후)** — 이미 `services/video-factory`에 설치됨, 추가 번들 0. ffmpeg.wasm은 31MB로 카드 한 장에 과도. Canvas API는 YouTube cross-origin 제약으로 실질 불가. CLAUDE.md "Do not build tools before PMF signal exists" 원칙에 따라 텍스트 기반 분석 검증 후 점진 추가.
+
+#### 최종 채택 요약
+
+| 도메인 | 채택 | 번들 추가 | 통합 시점 |
+|--------|------|-----------|-----------|
+| 리텐션 커브 차트 | **recharts** (MIT) | ~50kB | 카드 구현 시 |
+| YouTube 데이터 | **youtubei.js** (MIT) | ~패키지 크기 | 카드 구현 시 |
+| 프레임 추출 | **@remotion/renderer** (기존) | 0 | PMF 확인 후 |
 
 ### Thumbnail Pattern Card — Strategy Decision Panel (2026-06-04, 스펙 완료)
 
