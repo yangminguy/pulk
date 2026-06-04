@@ -1,6 +1,103 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (실제 토큰 캡처 라이브 + M9.6 deny-list 강화 — 안정화 완료)
+최종 업데이트: 2026-06-04 (Thumbnail Pattern Card — Strategy Decision Panel 구현+리뷰 완료)
+
+---
+
+## 🟢 2026-06-04 (최신) — Thumbnail Pattern Card: Strategy Decision Panel 리뷰 완료
+
+**판정: LGTM — 수정 요청 없음.**
+
+### 리뷰 대상 diff (6 files, +223 −7)
+
+| 파일 | 변경 | 판정 | 리뷰 코멘트 |
+|------|------|------|-------------|
+| `apps/founder-ui/src/components/AgentOutputDetail.tsx` L7,9-10,25-42,44,59 | `agent` prop 추가, 전략 결정 패널 분기 | LGTM | L9 `hasStrategyDecision` 감지 정확. L44 `!hasStrategyDecision` 가드로 기존 "핵심 권고" 뷰 회귀 방지 확인. L26 외곽 스타일이 기존 카드 패턴(border+radius+j-overline)과 일관. |
+| `apps/founder-ui/src/components/__tests__/AgentOutputDetail.strategy-decision-panel.test.tsx` L1-37 | 테스트 확장 (기본값+명시적 agent 2경로) | LGTM | 기본값("CMO 추천") + 명시적 agent("CTO 추천") 두 경로 모두 검증. `renderToStaticMarkup` SSR 방식으로 `'use client'` 컴포넌트를 테스트 — React 18 호환 정상. |
+| `apps/founder-ui/src/app/chat/page.tsx` L1182 | `agent={selectedTask.agent}` 전달 | LGTM | `selectedTask`는 `TaskItem` 타입, `.agent`는 `string` — prop 타입 일치. 기존 `output` prop만 전달하던 곳에 `agent` 추가, 하위 호환(기본값 'CMO'). |
+| `apps/founder-ui/src/app/monitor/page.tsx` L817 | `agent={task.agent}` 전달 | LGTM | chat과 동일 패턴. `task`는 `TaskItem`, `.agent`는 `string`. |
+| `docs/TASKS.md` | 스펙+패턴 추출+acceptance_criteria 문서화 | LGTM | 측정 가능한 기준 6개 명시. |
+| `docs/HANDOFF.md` | 현재 상태 요약 | LGTM | 이 리뷰로 갱신. |
+
+### 검증 결과
+
+- `node --import tsx ...strategy-decision-panel.test.tsx` → **exit 0** (통과)
+- `corepack pnpm --dir apps/founder-ui typecheck` → 통과 (구현 phase에서 확인)
+- 미통과 테스트 2건은 **기존 환경 이슈**(nocobase `.env.e2e.example` 미존재, telegram 환경변수 불일치)로 본 변경과 무관
+
+### acceptance_criteria 충족 확인
+
+| # | 기준 | 결과 |
+|---|------|------|
+| 1 | 실패 테스트 통과 | ✅ exit 0 |
+| 2 | recommendation+options → "전략 결정 패널" 렌더 | ✅ L27 `j-overline` |
+| 3 | agent="CMO" → "CMO 추천" | ✅ L31 기본값 |
+| 4 | agent 미전달 → 기본값 "CMO 추천" | ✅ 테스트 L24-25 |
+| 5 | recommendation 없는 output → 기존 뷰 유지 | ✅ L44 가드 |
+| 6 | 기존 사용처 동작 유지 | ✅ chat L1182, monitor L817 |
+
+---
+
+## 🟢 2026-06-04 — 오픈소스 조사: 미결정/미통합 영역 3개 비교 분석
+
+**배경**: 프로젝트 CLAUDE.md에 기술 스택이 선언되어 있으나, 3개 영역이 미결정이거나 실제 통합이 안 된 상태. (1) LLM Observability — Langfuse 채택했으나 Phase 6 통합 미완, (2) Job Scheduling — Trigger.dev 선택했으나 실제론 launchd cron 사용 중, (3) Analytics — PostHog vs OpenPanel 미결정. 각 영역별 오픈소스 후보 2-3개를 비교하고 채택/배제 근거를 정리한다.
+
+### 1. LLM Observability — Langfuse vs Helicone vs LangSmith
+
+| 항목 | Langfuse | Helicone | LangSmith |
+|------|----------|----------|-----------|
+| 라이선스 | MIT | Apache-2.0 | 상용(무료 tier) |
+| 셀프호스팅 | ✅ Docker Compose | ✅ Docker | ❌ SaaS only |
+| 트레이싱 | span 기반, 중첩 지원 | 프록시 기반 로깅 | span 기반 |
+| 비용 추적 | ✅ 모델별 비용 자동 계산 | ✅ 비용 대시보드 | ✅ |
+| 프롬프트 관리 | ✅ 버전 관리 | ❌ | ✅ |
+| SDK | JS/Python/OpenAI 호환 | 프록시(SDK 불필요) | Python/JS |
+| GitHub Stars | ~10k | ~3k | 비공개 |
+| 커뮤니티 | 활발, 주간 릴리즈 | 성장 중 | Langchain 종속 |
+
+**채택: Langfuse (기존 결정 유지)**
+- 근거: MIT 라이선스 + 셀프호스팅 가능(상업 플러그인 금지 정책 준수). span 기반 트레이싱이 L5의 multi-agent 체인(CEO→임원→위임)에 적합. 프롬프트 버전 관리로 executive-llm 프롬프트 관리 가능. 비용 추적이 Phase 6 요구사항(토큰/비용 모니터)과 직접 부합.
+- 배제 — Helicone: 프록시 방식이라 claude CLI spawn 기반 L5 아키텍처에 맞지 않음(SDK 래핑이 불가). 배제 — LangSmith: SaaS 전용, 셀프호스팅 불가, 상용 의존 금지 정책 위반.
+
+### 2. Job Scheduling — Trigger.dev vs BullMQ vs launchd(현행)
+
+| 항목 | Trigger.dev | BullMQ | launchd(현행) |
+|------|-------------|--------|---------------|
+| 라이선스 | Apache-2.0 | MIT | macOS 내장 |
+| 셀프호스팅 | ✅ Docker | ✅ Redis 필요 | ✅ (macOS only) |
+| cron 스케줄 | ✅ | ✅ (bull-board) | ✅ plist |
+| 재시도/백오프 | ✅ 내장 | ✅ 내장 | ❌ 수동 구현 |
+| 장시간 실행 | ✅ (설계 목적) | ⚠️ 워커 타임아웃 관리 필요 | ✅ (데몬) |
+| 일시 중지/재개 | ✅ (approval pause) | ❌ 수동 | ❌ 수동 |
+| 대시보드 | ✅ 웹 UI | ✅ bull-board | ❌ 로그 직접 확인 |
+| 이식성 | Linux/Docker | Linux/Docker | macOS only |
+| 추가 인프라 | PostgreSQL(이미 보유) | Redis(신규) | 없음 |
+
+**채택: Trigger.dev (기존 결정 유지, 통합 시점 = 프로덕션 배포 시)**
+- 근거: Apache-2.0 + 셀프호스팅. approval-pause(승인 대기 일시 중지)가 L5의 D4/D5 승인 게이트와 직접 부합. 장시간 에이전트 실행(CTO 6-phase 파이프라인 등)에 적합. PostgreSQL 백엔드라 추가 인프라(Redis) 불필요.
+- **현실적 판단**: 현재 launchd cron이 안정 작동 중(dispatcher·approval-checker·daily-brief 등 5+ 서비스). 로컬 개발 단계에서 Trigger.dev 마이그레이션은 순이익 없음. **프로덕션/Docker 배포 시점에 전환** — launchd는 macOS 전용이라 Linux 서버 배포 불가.
+- 배제 — BullMQ: Redis 추가 인프라 필요, approval-pause 미지원, L5의 기존 PostgreSQL 스택과 불일치.
+
+### 3. Analytics — PostHog vs OpenPanel vs Umami
+
+| 항목 | PostHog | OpenPanel | Umami |
+|------|---------|-----------|-------|
+| 라이선스 | MIT | AGPL-3.0 | MIT |
+| 셀프호스팅 | ✅ Docker (무거움, ~2GB+) | ✅ Docker (경량) | ✅ Docker (경량) |
+| 이벤트 추적 | ✅ 풀스택 | ✅ 웹+앱 | ✅ 웹 중심 |
+| 세션 리플레이 | ✅ | ❌ | ❌ |
+| 퍼널 분석 | ✅ | ✅ | ❌ |
+| A/B 테스트 | ✅ | ❌ | ❌ |
+| 리소스 요구 | 높음 (ClickHouse) | 낮음 | 매우 낮음 |
+| API | ✅ REST/JS SDK | ✅ REST/JS SDK | ✅ REST |
+| PMF 실험 연계 | ✅ (퍼널+피처플래그) | ⚠️ 제한적 | ❌ |
+
+**채택: PostHog (조건부, PMF 실험 활성화 시점에 도입)**
+- 근거: MIT 라이선스 + 셀프호스팅. PMF Experiment Board(PRD Feature 8)에 필요한 퍼널 분석·A/B 테스트·피처 플래그를 단일 도구로 제공. Formbricks(설문)와 PostHog(행동 분석) 조합이 PMF 측정에 가장 풍부한 신호.
+- **현실적 판단**: MVP 단계에서 Analytics는 범위 밖(CLAUDE.md "Optional Analytics, later only"). 리소스가 무거워(ClickHouse) 로컬 개발에 부담. **PMF 실험이 활성화되는 시점에 도입**.
+- 대안 — OpenPanel: 경량이나 AGPL-3.0(L5 플러그인 배포 시 라이선스 전파 위험) + A/B 테스트 미지원. 대안 — Umami: 가장 경량이나 퍼널/A/B 없어 PMF 실험 연계 불가. 단순 페이지뷰 추적만 필요하면 재검토 후보.
+
+**주의**: 세 영역 모두 즉시 통합 대상이 아님. Langfuse = Phase 6에서 통합, Trigger.dev = 프로덕션 배포 시 전환, PostHog = PMF 실험 활성화 시 도입.
 
 ---
 

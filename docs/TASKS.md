@@ -1,7 +1,7 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-06-04 (M9 컨트롤룸 라이브화 최우선 지정). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-06-04 (오픈소스 조사 비교 완료 — Langfuse·Trigger.dev·PostHog). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
 
 ## 🔥🔥 M9: CTO 시니어 개발자 자율 실행 — 컨트롤룸 라이브화 (2026-06-04 최우선, 창업자 지정)
 
@@ -38,6 +38,81 @@
 ### Phase 6 (M9와 함께) — 관측·안전 토큰/비용
 - [~] **토큰/비용 표시**: **예상 토큰 완료(2026-06-04)** — l5-core `token-estimate`(classifyTask|CTO size판단→DEV_WORKFLOW phase수→tier별 토큰범위, 7테스트). CTO 기획 시 작업별 `size`(tiny/small/feature/big)를 LLM이 판단→정확도↑(다크모드 데모: 전부-FEATURE 350k–910k → small4+feature1 150k–374k). PlanCard에 "예상 토큰 약 Xk–Yk"(승인 전 go/no-go 판단), 컨트롤룸 dev-task 카드에 작업별 예상 토큰. 라이브 E2E 검증. **남은 것**: 실제 누적 토큰/비용 = hermes-agent(session_*_tokens·estimated_cost_usd 내부 보유)→ACR 콜백→`/api/l5/execution` AcrExecTask 확장→controlRoomTree 머지→UI. (3레포 결선, 실제 CLI 실행 필요.) 모델tier 라우팅이 곧 절감(가벼운 phase=T3 haiku, 무거운 추론만 T1 opus).
 - [ ] **비용 상한·장애 모니터**: 추정 대비 N배 초과 시 정지·알림. Langfuse 추적, 위험명령 차단(D4/D5 게이트만).
+
+### Thumbnail Pattern Card — Strategy Decision Panel (2026-06-04, 스펙 완료)
+
+> **배경**: 임원 산출물(`agent_tasks.output`)을 창업자에게 보여주는 `AgentOutputDetail` 컴포넌트가 존재하지만, (1) 에이전트 컨텍스트(누구의 권고인지)가 없고, (2) 카드 외곽 구조(헤더·구분선·패널 제목)가 다른 카드들과 불일치하며, (3) 전략 결정형 산출물(goal+recommendation+options+action_items)에 대한 전용 패널 뷰가 없다. 실패 테스트(`AgentOutputDetail.strategy-decision-panel.test.tsx`)가 이 갭을 명시한다.
+
+#### 구조 패턴 추출 (기존 카드 5개 공통)
+
+기존 카드 컴포넌트(`SynthesisCard`, `ApprovalQueueCard`, `ConsultationCard`, `BusinessContextSnapshotCard`, `RoadmapMiniCard`)에서 추출한 공통 구조:
+
+```
+┌─ 외곽: border 1px solid var(--silver-2), borderRadius 6–12, overflow hidden
+│  ┌─ 헤더: padding 9px 14px, borderBottom silver-1, j-overline 라벨
+│  ├─ 본문 섹션들: padding 11–14px, borderTop silver-1로 구분
+│  │  ├─ AgentMonogram: 20×20 borderRadius 4, AGENT_COLOR 배경, 흰색 2글자
+│  │  ├─ 텍스트: fontSize 12.5–13, color var(--ink-1), lineHeight 1.5–1.6
+│  │  └─ 강조 블록: background var(--green-tint), border green-tint-2
+│  └─ 액션 영역: padding 11px 14px, borderTop silver-1, j-btn 계열 버튼
+└─ 빈 상태 / 스켈레톤 로더
+```
+
+공통 프리미티브: `AGENT_COLOR` 팔레트(8색), `Icon` SVG 유틸, `j-overline`/`j-btn`/`j-badge` CSS 클래스.
+
+#### 스펙: Strategy Decision Panel
+
+**목적**: `AgentOutputDetail`이 전략 결정형 산출물(recommendation+options 존재)을 감지하면, 공통 카드 패턴에 맞는 "전략 결정 패널" 뷰로 렌더링한다.
+
+**props 변경**:
+```typescript
+// 기존
+{ output: AgentOutputLite }
+// 변경
+{ output: AgentOutputLite; agent?: string }
+```
+
+**렌더링 규칙**:
+- `recommendation`과 `options`가 모두 존재하면 → 전략 결정 패널 모드
+- 그 외 → 현재 일반 필드 나열 유지
+
+**전략 결정 패널 구조**:
+1. **패널 헤더**: `j-overline` "전략 결정 패널" (테스트 assertion 충족)
+2. **목표 섹션**: `goal` 필드 표시
+3. **추천 블록**: green-tint 배경, 라벨 = `"{agent} 추천"` (agent 미전달 시 "CMO 추천" 기본값) (테스트: "CMO 추천")
+4. **선택지 목록**: `options[]` ul/li
+5. **실행 항목**: `action_items[]` ul/li (있을 때만)
+
+**acceptance_criteria** (측정 가능):
+1. `AgentOutputDetail.strategy-decision-panel.test.tsx`가 통과한다 (현재 실패 → 통과).
+2. `recommendation`+`options` 모두 있는 output → HTML에 "전략 결정 패널" 텍스트 포함.
+3. `agent="CMO"` 전달 시 "CMO 추천" 라벨 렌더.
+4. `agent` 미전달 시에도 기본값으로 "CMO 추천" 렌더 (하위 호환).
+5. `recommendation` 없는 output → 기존 일반 필드 뷰 유지 (회귀 없음).
+6. 기존 `AgentOutputDetail` 사용처(chat `page.tsx`, monitor `page.tsx`)에서 기존 동작 유지.
+
+**영향 파일**:
+| 파일 | 변경 유형 |
+|------|-----------|
+| `apps/founder-ui/src/components/AgentOutputDetail.tsx` | 수정 — 전략 결정 패널 분기 추가, `agent` prop 추가 |
+| `apps/founder-ui/src/components/__tests__/AgentOutputDetail.strategy-decision-panel.test.tsx` | 기존 — 이미 작성된 실패 테스트, 수정 불필요 |
+| `apps/founder-ui/src/app/chat/page.tsx` | 확인 — `AgentOutputDetail` 호출부에 `agent` prop 전달 여부 점검 |
+| `apps/founder-ui/src/app/monitor/page.tsx` | 확인 — 동일 |
+| `apps/founder-ui/src/lib/api.ts` | 변경 없음 — `AgentOutputLite` 타입 그대로 |
+
+**채택 라이브러리**: 없음 (순수 React + 기존 CSS 변수). 오픈소스 조사에서 shadcn/ui Card를 채택 후보로 선정했으나, 현 컴포넌트는 NocoBase 플러그인 밖(founder-ui)이고 기존 인라인 스타일 패턴과 일관성 유지가 우선이므로 라이브러리 도입 없이 구현한다.
+
+- [x] `AgentOutputDetail.tsx`에 전략 결정 패널 분기 구현 — `agent` prop 추가, `hasStrategyDecision` 감지, 패널 모드 분기. 리뷰 LGTM.
+- [x] 실패 테스트 통과 검증 — `node --import tsx ...test.tsx` exit 0. 기본값("CMO 추천") + 명시적 agent("CTO 추천") 두 경로 검증.
+- [x] 기존 사용처 회귀 확인 — `chat/page.tsx` L1182, `monitor/page.tsx` L817에 `agent` prop 전달 완료. typecheck 통과.
+
+### 오픈소스 조사 (2026-06-04, 비교 완료)
+
+> 미결정/미통합 영역 3개에 대해 후보 비교 및 채택 근거를 정리. 상세 비교표는 `docs/HANDOFF.md` 2026-06-04 오픈소스 조사 섹션 참조.
+
+- [x] **LLM Observability**: Langfuse(MIT) vs Helicone(Apache-2.0) vs LangSmith(상용). **채택: Langfuse 유지** — 셀프호스팅+span 트레이싱+비용 추적이 L5 multi-agent 체인에 적합. Helicone은 프록시 방식이라 CLI spawn 아키텍처 불일치, LangSmith는 SaaS 전용으로 상용 의존 금지 정책 위반. **통합 시점: Phase 6.**
+- [x] **Job Scheduling**: Trigger.dev(Apache-2.0) vs BullMQ(MIT) vs launchd(현행). **채택: Trigger.dev 유지(프로덕션 배포 시 전환)** — approval-pause가 D4/D5 승인 게이트에 부합, PostgreSQL 백엔드(추가 인프라 불필요). 현재 launchd가 안정 작동 중이라 로컬 개발 단계에선 유지, Linux 배포 시 전환. BullMQ는 Redis 추가 필요+approval-pause 미지원으로 배제.
+- [x] **Analytics**: PostHog(MIT) vs OpenPanel(AGPL-3.0) vs Umami(MIT). **채택: PostHog(조건부, PMF 실험 활성화 시 도입)** — 퍼널+A/B+피처플래그가 PMF Experiment Board에 필수. OpenPanel은 AGPL 라이선스 전파 위험+A/B 미지원, Umami는 퍼널/A/B 없어 PMF 연계 불가. **도입 시점: PMF 실험 활성화 시.**
 
 
 ## QA wiring 재정비 + 정책 수정 (2026-06-03)

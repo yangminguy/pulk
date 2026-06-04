@@ -814,7 +814,7 @@ function TaskDrillDownModal({ taskId, onClose }: { taskId: string; onClose: () =
 
               {/* The real work product */}
               {task?.output ? (
-                <AgentOutputDetail output={task.output} />
+                <AgentOutputDetail agent={task.agent} output={task.output} />
               ) : (
                 <div style={{ fontSize: 12.5, color: 'var(--ink-4)' }}>아직 산출물이 기록되지 않았습니다.</div>
               )}

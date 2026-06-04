@@ -1179,7 +1179,7 @@ function InboxTab({ businessId, pendingTask, onPendingConsumed }: { businessId: 
 
                   <div style={{ padding: '14px 13px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                     {/* Real work product (agent_tasks.output) — the concrete deliverable */}
-                    {selectedTask.output && <AgentOutputDetail output={selectedTask.output} />}
+                    {selectedTask.output && <AgentOutputDetail agent={selectedTask.agent} output={selectedTask.output} />}
                     {handoffs.length === 0 && !selectedTask.output ? (
                       <div>
                         <div className="j-overline" style={{ marginBottom: 6 }}>상세 결과 내용</div>

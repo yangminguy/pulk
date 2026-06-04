@@ -4,8 +4,10 @@ import type { AgentOutputLite } from '@/lib/api'
 // Renders an executive's persisted work product (agent_tasks.output) as a
 // structured, human-readable deliverable. Shared by the chat Inbox detail and
 // the Monitor drill-down so the founder can read the real result everywhere.
-export function AgentOutputDetail({ output }: { output: AgentOutputLite }) {
+export function AgentOutputDetail({ output, agent = 'CMO' }: { output: AgentOutputLite; agent?: string }) {
   const { goal, recommendation, options, action_items, insight_to_record, current_situation } = output
+  const hasStrategyDecision = Boolean(recommendation && options && options.length > 0)
+  const strategyOptions = options ?? []
 
   const hasAny =
     goal || recommendation || current_situation ||
@@ -20,7 +22,26 @@ export function AgentOutputDetail({ output }: { output: AgentOutputLite }) {
         </Field>
       )}
 
-      {recommendation && (
+      {hasStrategyDecision && (
+        <div style={{ border: '1px solid var(--line)', borderRadius: 6, padding: 13, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="j-overline">전략 결정 패널</div>
+
+          <div style={{ background: 'var(--green-tint)', border: '1px solid var(--green-tint-2)', borderRadius: 6, padding: '11px 13px' }}>
+            <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--green-press)', marginBottom: 5 }}>
+              {agent} 추천
+            </div>
+            <p style={{ ...pStyle, color: 'var(--ink-1)' }}>{recommendation}</p>
+          </div>
+
+          <Field label="검토한 선택지 (Options)">
+            <ul style={ulStyle}>
+              {strategyOptions.map((o, i) => <li key={i} style={liStyle}>{o}</li>)}
+            </ul>
+          </Field>
+        </div>
+      )}
+
+      {recommendation && !hasStrategyDecision && (
         <div style={{ background: 'var(--green-tint)', border: '1px solid var(--green-tint-2)', borderRadius: 6, padding: '11px 13px' }}>
           <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--green-press)', marginBottom: 5 }}>
             핵심 권고 (Recommendation)
@@ -35,7 +56,7 @@ export function AgentOutputDetail({ output }: { output: AgentOutputLite }) {
         </Field>
       )}
 
-      {options && options.length > 0 && (
+      {!hasStrategyDecision && options && options.length > 0 && (
         <Field label="검토한 선택지 (Options)">
           <ul style={ulStyle}>
             {options.map((o, i) => <li key={i} style={liStyle}>{o}</li>)}
