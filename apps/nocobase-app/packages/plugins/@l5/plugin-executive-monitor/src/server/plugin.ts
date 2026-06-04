@@ -26,7 +26,7 @@ const { buildControlRoomTree } =
   require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cto-control-room'));
 
 // P3-4 — self-mod acceptance-criteria builder (pure l5-core).
-const { buildSelfModAcceptanceCriteria } =
+const { buildSelfModAcceptanceCriteria, checkSelfModDiffForbidden, checkSelfModIntentForbidden } =
   require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/tool-request'));
 
 type MonitorContext = {
@@ -536,8 +536,8 @@ async function rejectTask(ctx: MonitorContext) {
 
 // P3-4 — risk ranking for the self-mod auto-apply floor gate.
 const RISK_RANK: Record<string, number> = { D1: 1, D2: 2, D3: 3, D4: 4, D5: 5 };
-// Files a self-mod diff must never touch without hard founder review (blast-radius guard).
-const SELFMOD_DENY = [/plugin-orchestration\/.*plugin/i, /\.env/i, /launchd/i, /SECURITY_/i, /approval/i];
+// Blast-radius guard now lives in l5-core (checkSelfModDiffForbidden /
+// checkSelfModIntentForbidden) — shared + tested. See tool-request.ts.
 
 // P3-4: founder presses [CTO에게 전송] on a Tool Request → create a CTO self-mod task.
 // objective = the proposal (rationale), auto acceptance_criteria, risk floor D3,
@@ -555,6 +555,28 @@ async function sendToCTO(ctx: MonitorContext) {
   if (!origin) {
     ctx.status = 404;
     ctx.body = { ok: false, error: `Tool request ${task_id} not found` };
+    return;
+  }
+
+  // Early blast-radius gate: block obviously-forbidden self-brain requests at
+  // creation — before any CLI runs — based on the proposal's title/rationale.
+  // (The diff-level hard gate still runs at apply.) Founder's #1 safety rule.
+  const intent = checkSelfModIntentForbidden(`${origin.title ?? ''} ${origin.rationale ?? ''}`);
+  if (intent.forbidden) {
+    await repo.update({
+      filter: { id: task_id },
+      values: {
+        self_mod_status: 'blocked',
+        blocker: `selfmod:intent-denied ${intent.reason} (${intent.pattern})`,
+        updated_at: new Date(),
+      },
+    });
+    ctx.body = {
+      ok: false,
+      error: '요청이 보호 영역(승인/게이트/시크릿/프로세스 제어) 수정을 시사하여 차단되었습니다.',
+      denied_by: intent.pattern,
+      stage: 'intent',
+    };
     return;
   }
 
@@ -619,15 +641,16 @@ async function applySelfMod(ctx: MonitorContext) {
     return;
   }
 
-  // Blast-radius guard: hard refuse if the diff touches forbidden paths.
+  // Blast-radius guard: hard refuse if the diff touches forbidden paths
+  // (shared, tested l5-core gate — same patterns used at diff-arrival too).
   const diff = String(task.acr_diff ?? '');
-  const forbidden = SELFMOD_DENY.find((re) => re.test(diff));
-  if (forbidden) {
+  const denied = checkSelfModDiffForbidden(diff);
+  if (denied.forbidden) {
     await repo.update({
       filter: { id: task_id },
-      values: { status: 'needs_review', blocker: `selfmod:denied 변경이 보호 영역(${forbidden})을 건드립니다 — 자동 적용 거부`, updated_at: new Date() },
+      values: { status: 'needs_review', blocker: `selfmod:denied ${denied.reason} — 자동 적용 거부`, updated_at: new Date() },
     });
-    ctx.body = { ok: false, error: 'diff touches a protected area; rejected', denied_by: String(forbidden) };
+    ctx.body = { ok: false, error: 'diff touches a protected area; rejected', denied_by: denied.pattern };
     return;
   }
 

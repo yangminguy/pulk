@@ -142,3 +142,62 @@ export function buildSelfModAcceptanceCriteria(origin: SelfModOrigin): string[] 
     'self-modifying 변경이므로 founder 승인 전에는 적용되지 않는다.',
   ];
 }
+
+// ── Self-modification blast-radius guard ──────────────────────────────────────
+// The OS must never let an agent edit its own "brain": the gate logic, secrets,
+// approval code, or process control. This is enforced at TWO points:
+//  - diff level (checkSelfModDiffForbidden): hard gate on the actual changed
+//    files, at apply time AND when the diff first arrives (before founder review).
+//  - intent level (checkSelfModIntentForbidden): an early NL check on a self-mod
+//    task's title/rationale, so an obviously-forbidden request is blocked at
+//    creation — before any CLI runs — not only after a branch is built.
+
+/** Path/file patterns a self-mod diff must never touch (blast-radius guard). */
+export const SELFMOD_DENY_PATHS: RegExp[] = [
+  /plugin-orchestration\/.*plugin/i, // core orchestration plugin (the brain)
+  /\.env/i, // secrets
+  /launchd/i, // system process control
+  /SECURITY_/i, // security constants
+  /approval/i, // approval-gate code
+  /selfmod|self-mod/i, // the self-mod guard itself
+];
+
+/** Intent keywords (Korean + English) signalling a request to modify the brain. */
+export const SELFMOD_DENY_INTENT: RegExp[] = [
+  /승인\s*게이트|approval\s*gate|게이트\s*로직/i,
+  /\.env|환경\s*변수|시크릿|secret|api[\s_-]?key/i,
+  /deny[\s_-]?list|차단\s*목록|허용\s*목록|allow[\s_-]?list/i,
+  /launchd|시스템\s*프로세스|서비스\s*제어/i,
+  /보안\s*상수|security\s*constant|권한\s*우회|bypass\s*(auth|approval|gate)/i,
+  /자기\s*두뇌|자신의\s*두뇌|self[\s_-]?mod|자가\s*수정\s*가드|승인\s*우회/i,
+];
+
+export interface SelfModGuardResult {
+  forbidden: boolean;
+  pattern: string | null;
+  reason: string | null;
+}
+
+function firstMatch(patterns: RegExp[], text: string): RegExp | null {
+  return patterns.find((re) => re.test(text)) ?? null;
+}
+
+/** Hard gate on a diff/changed-file string. Used before apply and on diff arrival. */
+export function checkSelfModDiffForbidden(diff: string): SelfModGuardResult {
+  const hit = firstMatch(SELFMOD_DENY_PATHS, String(diff ?? ''));
+  return hit
+    ? { forbidden: true, pattern: String(hit), reason: `변경이 보호 영역(${hit})을 건드립니다` }
+    : { forbidden: false, pattern: null, reason: null };
+}
+
+/** Early NL gate on a self-mod task's title/rationale, before any CLI runs. */
+export function checkSelfModIntentForbidden(text: string): SelfModGuardResult {
+  const hit = firstMatch(SELFMOD_DENY_INTENT, String(text ?? ''));
+  return hit
+    ? {
+        forbidden: true,
+        pattern: String(hit),
+        reason: `요청이 보호 영역(승인·게이트·시크릿·프로세스 제어) 수정을 시사합니다`,
+      }
+    : { forbidden: false, pattern: null, reason: null };
+}
