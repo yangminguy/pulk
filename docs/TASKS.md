@@ -1,7 +1,7 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-06-04 (오픈소스 조사 비교 완료 — Langfuse·Trigger.dev·PostHog). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-06-04 (State Machine Validation green + ContentApprovalGate core 검증 완료). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
 
 ## 🔥🔥 M9: CTO 시니어 개발자 자율 실행 — 컨트롤룸 라이브화 (2026-06-04 최우선, 창업자 지정)
 
@@ -38,6 +38,124 @@
 ### Phase 6 (M9와 함께) — 관측·안전 토큰/비용
 - [~] **토큰/비용 표시**: **예상 토큰 완료(2026-06-04)** — l5-core `token-estimate`(classifyTask|CTO size판단→DEV_WORKFLOW phase수→tier별 토큰범위, 7테스트). CTO 기획 시 작업별 `size`(tiny/small/feature/big)를 LLM이 판단→정확도↑(다크모드 데모: 전부-FEATURE 350k–910k → small4+feature1 150k–374k). PlanCard에 "예상 토큰 약 Xk–Yk"(승인 전 go/no-go 판단), 컨트롤룸 dev-task 카드에 작업별 예상 토큰. 라이브 E2E 검증. **남은 것**: 실제 누적 토큰/비용 = hermes-agent(session_*_tokens·estimated_cost_usd 내부 보유)→ACR 콜백→`/api/l5/execution` AcrExecTask 확장→controlRoomTree 머지→UI. (3레포 결선, 실제 CLI 실행 필요.) 모델tier 라우팅이 곧 절감(가벼운 phase=T3 haiku, 무거운 추론만 T1 opus).
 - [ ] **비용 상한·장애 모니터**: 추정 대비 N배 초과 시 정지·알림. Langfuse 추적, 위험명령 차단(D4/D5 게이트만).
+
+### State Machine 29개 상태 전환 검증 (2026-06-04, 구현+검증 완료)
+
+> **배경**: 15+ 엔티티 상태 전환이 플러그인에서 raw status 쓰기로 실행되며 l5-core에 유효 전환 정의 없음. 오픈소스 조사(XState/Robot/typescript-fsm) 결과 `build` 결정. `createTransitionValidator` 제네릭 팩토리 + lookup table 패턴. **스펙: `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md` (AC 7개, 영향 파일 3개).**
+> **Acceptance Criteria**: (1) 팩토리 제네릭 동작 (2) edge 수 11/6/7/5 단언 (3) 유효 전환 valid===true (4) 무효 전환 valid===false+reason (5) pnpm test 통과 (6) tsc 0 (7) index.ts re-export.
+> **Red 검증(2026-06-04)**: `corepack pnpm --filter @l5/core test -- state-machine/__tests__/transitions.test.ts` → 실패(exit 1). 현재 구현 파일 `src/functions/state-machine/transitions.ts`가 없어 `TS2307: Cannot find module '../transitions'`로 red 확인.
+> **Green 검증(2026-06-04)**: `corepack pnpm --filter @l5/core test` → 55 suites / 585 tests 통과. `corepack pnpm --filter @l5/core typecheck` → 통과. 관련 targeted: `state-machine/__tests__/transitions.test.ts` + `approval/__tests__/content-gate.test.ts` → 26 tests 통과.
+> **리뷰(2026-06-04)**: 16파일 952줄 전체 diff 검토 — **LGTM**. 차단 이슈 없음. non-blocking info 3건(transitions.ts 캐스트 우회, routeContentApproval email_campaign 주석 미비, intro-analysis-panel red 상태). 상세 = `docs/HANDOFF.md` 리뷰 섹션.
+
+- [x] `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md` — 요구사항 명세 + 측정 가능 AC 7개 + 영향 파일 목록
+- [x] `state-machine/__tests__/transitions.test.ts` — 실패 테스트 작성 완료 + red 확인 (`TS2307` 구현 모듈 부재)
+- [x] `state-machine/transitions.ts` — `createTransitionValidator` + 4개 lookup table (AgentTask 11, FounderInstruction 6, ToolRequest 7, BusinessIdea 5 = 29 edges)
+- [x] `l5-core/src/index.ts` re-export + typecheck + test 통과
+- [x] `ContentApprovalGate` core red 테스트도 green 확인 — `CONTENT_APPROVAL_TRANSITIONS` 8 edges + `routeContentApproval` 라우팅 + `validateContentApprovalTransition`
+
+### Intro 30s Analysis Card (2026-06-04, 스펙 완료)
+
+> **배경**: CMO가 YouTube 영상 인트로 첫 30초의 시청자 리텐션/훅 효과를 분석한 결과를 `agent_tasks.output`에 기록한다. `AgentOutputDetail`이 인트로 분석형 산출물(`intro_analysis` 필드 존재)을 감지하면, 리텐션 커브 미니차트 + 훅 스코어 + 구간별 피드백을 전용 패널로 렌더링한다. Strategy Decision Panel과 동일한 분기 추가 패턴.
+
+#### 오픈소스 조사 (비교 완료)
+
+| 도메인 | 채택 | 배제 (이유) | 번들 추가 | 통합 시점 |
+|--------|------|-------------|-----------|-----------|
+| 리텐션 커브 차트 | **recharts** (MIT, ~50kB) | @nivo/line(verbose+D3), uPlot(저수준), react-chartjs-2(106kB 과대) | ~50kB | 카드 구현 시 |
+| YouTube 데이터 | **youtubei.js** (MIT, v17) | youtube-transcript(비활성+파손), yt-dlp(GPL-3.0 전파) | ~패키지 크기 | 카드 구현 시 |
+| 프레임 추출 | **@remotion/renderer** (기존) | ffmpeg.wasm(31MB 과도), Canvas API(CORS 차단) | 0 | PMF 확인 후 |
+
+#### 데이터 모델: `intro_analysis` (AgentOutputLite 확장)
+
+CMO가 `agent_tasks.output`에 기록하는 인트로 분석 결과 구조. 기존 `AgentOutputLite` 타입에 optional 필드로 추가한다.
+
+```typescript
+// apps/founder-ui/src/lib/api.ts — AgentOutputLite에 추가
+export type IntroAnalysisData = {
+  video_title: string
+  video_url: string                    // YouTube URL
+  thumbnail_url?: string               // 썸네일 이미지 URL
+  duration_sec: number                 // 분석 대상 구간 (최대 30)
+  hook_score: number                   // 0–100, 훅 효과 종합 점수
+  retention_curve: { sec: number; pct: number }[]  // 초별 예상 리텐션 (0–30초, 최대 30포인트)
+  segments: {
+    label: string                      // 구간 이름 ("오프닝 훅", "문제 제기", "가치 제안" 등)
+    start_sec: number
+    end_sec: number
+    verdict: 'strong' | 'weak' | 'neutral'
+    feedback: string                   // CMO의 구간별 피드백
+  }[]
+  overall_feedback: string             // 종합 피드백
+  improvement_suggestions?: string[]   // 개선 제안 (있을 때만)
+}
+
+// AgentOutputLite에 추가
+export type AgentOutputLite = {
+  // ... 기존 필드 유지
+  intro_analysis?: IntroAnalysisData   // 인트로 30초 분석 결과
+}
+```
+
+#### 스펙: Intro 30s Analysis Panel
+
+**목적**: `AgentOutputDetail`이 인트로 분석형 산출물(`intro_analysis` 존재)을 감지하면, 공통 카드 패턴에 맞는 "인트로 분석 패널" 뷰로 렌더링한다.
+
+**감지 규칙**:
+- `output.intro_analysis`가 존재하고 `hook_score`가 number이면 → 인트로 분석 패널 모드
+- 그 외 → 기존 렌더링 유지 (Strategy Decision 분기 포함)
+
+**패널 구조**:
+```
+┌─ 외곽: border 1px solid var(--silver-2), borderRadius 6, overflow hidden
+│  ┌─ 헤더: j-overline "인트로 30초 분석" + AgentChip(CMO)
+│  ├─ 영상 정보: 썸네일(옵션) + video_title + duration_sec + video_url 링크
+│  ├─ 훅 스코어: hook_score/100 대형 숫자 + 색상 인디케이터 (≥70 green, ≥40 amber, <40 red)
+│  ├─ 리텐션 커브: Recharts <LineChart> 미니차트 (높이 80px, x=sec, y=pct%)
+│  ├─ 구간별 분석: segments[] 각각 label + 시간 범위 + verdict 칩 + feedback
+│  ├─ 종합 피드백: overall_feedback 텍스트
+│  └─ 개선 제안: improvement_suggestions[] ul/li (있을 때만)
+└─
+```
+
+**verdict 칩 색상**: `strong` → green-tint 배경, `weak` → red/amber-tint, `neutral` → silver-1.
+
+**Recharts 사용**: `recharts`를 `apps/founder-ui`에 devDependency로 설치. `<ResponsiveContainer width="100%" height={80}>` + `<LineChart>` + `<Line type="monotone" dataKey="pct" stroke="var(--green)" strokeWidth={1.5} dot={false} />`. X축/Y축 라벨 최소화 (sparkline 스타일).
+
+**props 변경**: 없음 — `AgentOutputDetail`의 기존 `{ output: AgentOutputLite; agent?: string }` 그대로 사용. `intro_analysis`는 `AgentOutputLite`에 optional 필드로 추가되므로 기존 호출부 변경 없음.
+
+#### acceptance_criteria (측정 가능)
+
+1. `AgentOutputDetail.intro-analysis-panel.test.tsx`가 통과한다 (실패 테스트 선작성 → 구현 후 통과).
+2. `intro_analysis` 필드가 있는 output → HTML에 "인트로 30초 분석" 텍스트 포함.
+3. `hook_score` 값에 따라 색상 분기: `≥70` → green 계열, `≥40` → amber 계열, `<40` → red 계열.
+4. `retention_curve` 데이터가 Recharts `<LineChart>`로 렌더링됨 (SVG `<path>` 존재 확인).
+5. `segments[]` 각 항목이 `label`, 시간 범위(`start_sec–end_sec`), `verdict` 칩, `feedback` 텍스트를 표시.
+6. `improvement_suggestions`가 없으면 해당 섹션 미렌더링 (조건부).
+7. `intro_analysis` 필드가 없는 output → 기존 일반 필드 뷰 / Strategy Decision Panel 유지 (회귀 없음).
+8. 기존 `AgentOutputDetail` 사용처(`chat/page.tsx` L1182, `monitor/page.tsx` L817)에서 기존 동작 유지.
+9. `apps/founder-ui` typecheck (`tsc --noEmit`) 통과.
+
+#### 영향 파일
+
+| 파일 | 변경 유형 |
+|------|-----------|
+| `apps/founder-ui/src/lib/api.ts` | 수정 — `IntroAnalysisData` 타입 추가, `AgentOutputLite`에 `intro_analysis?` 필드 추가 |
+| `apps/founder-ui/src/components/AgentOutputDetail.tsx` | 수정 — 인트로 분석 패널 분기 추가 (`hasIntroAnalysis` 감지) |
+| `apps/founder-ui/src/components/__tests__/AgentOutputDetail.intro-analysis-panel.test.tsx` | 신규 — 실패 테스트 |
+| `apps/founder-ui/package.json` | 수정 — `recharts` devDependency 추가 |
+| `apps/founder-ui/src/app/chat/page.tsx` | 확인 — 변경 불필요 (기존 `output` prop 전달로 자동 동작) |
+| `apps/founder-ui/src/app/monitor/page.tsx` | 확인 — 변경 불필요 |
+
+#### 채택 라이브러리
+
+- **recharts** (MIT, ~50kB min+gz): `<LineChart>` + `<Line>` + `<ResponsiveContainer>`. 카드 내 미니 리텐션 커브 전용. JSX 컴포지션 패턴이 기존 인라인 스타일과 일치.
+- **youtubei.js** (MIT): 이 카드 자체에서는 사용 안 함 — CMO 에이전트 런타임(l5-core)에서 자막/메타데이터 추출 시 사용. 카드는 이미 추출된 결과(`intro_analysis`)만 렌더링.
+
+#### 스코프 외 (명시적 배제)
+
+- YouTube 데이터 추출 로직 (l5-core CMO 도구): 별도 태스크.
+- 프레임 추출/비주얼 스코어링: PMF 확인 후.
+- 실시간 YouTube Analytics API 연동: API 키 + OAuth 필요, MVP 범위 외.
 
 ### Thumbnail Pattern Card — Strategy Decision Panel (2026-06-04, 스펙 완료)
 

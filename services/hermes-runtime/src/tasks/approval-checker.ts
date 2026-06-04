@@ -99,7 +99,7 @@ export async function judgeNeedsReviewD3Tasks(
         const { updatedTask } = approveTask(task, {
           task_id: task.id,
           notes: `CTO LLM 자율 승인: ${result.rationale}`,
-        });
+        }, now);
         return {
           ...updatedTask,
           source_ref: JSON.stringify({ judge: judgeMetaEntry, previous_source_ref: task.source_ref }),

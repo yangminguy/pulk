@@ -58,12 +58,16 @@ console.assert(queue.items[0].risk_level === "D4", "risk_level should be D4");
 console.log("✓ getApprovalQueue:", queue.total, "item(s)");
 
 // 2. Approve
-const { response: approveResp } = approveTask(tasks[0], { task_id: "t1", notes: "승인" });
+const { response: approveResp } = approveTask(tasks[0], { task_id: "t1", notes: "승인" }, new Date(now));
 console.assert(approveResp.new_status === "done");
 console.log("✓ approveTask:", approveResp.message);
 
 // 3. Reject
-const { response: rejectResp } = rejectTask(tasks[0], { task_id: "t1", explanation: "내용 불충분" });
+const { response: rejectResp } = rejectTask(
+  tasks[0],
+  { task_id: "t1", explanation: "내용 불충분" },
+  new Date(now),
+);
 console.assert(rejectResp.new_status === "killed");
 console.log("✓ rejectTask:", rejectResp.message);
 

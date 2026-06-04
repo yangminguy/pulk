@@ -1,6 +1,123 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (Thumbnail Pattern Card — Strategy Decision Panel 구현+리뷰 완료)
+최종 업데이트: 2026-06-04 (코드 리뷰 완료 — LGTM with minor notes)
+
+---
+
+## 🟢 2026-06-04 (최신) — 코드 리뷰: State Machine + ContentApprovalGate + Intro Analysis
+
+**판정: LGTM** — 16파일 952줄 전체 검토. 차단 이슈 없음. 테스트 26건 통과, l5-core tsc 0, hermes-runtime tsc 0.
+
+### 리뷰 상세
+
+#### 1. `packages/l5-core/src/functions/state-machine/transitions.ts` — **LGTM**
+- `createTransitionValidator` 제네릭 팩토리: `<const T extends Record<string, readonly string[]>>` + `as const satisfies` 조합이 타입 안전하고 깔끔함.
+- 4개 lookup table edge 수(11/6/7/5)가 스펙과 일치. Terminal 상태(`done`, `killed`, `closed`, `synthesized`, `deployed`, `converted_to_business`)는 빈 배열 — 정확.
+- [minor] `transitionMap` 중간 변수 캐스트(`transitions as Record<string, readonly string[]>`)는 `const T` 제네릭 추론 한계 우회용으로 이해됨. 현행 유지 가능.
+
+#### 2. `packages/l5-core/src/functions/approval.ts` — **LGTM**
+- `ceo_only` dead variant 제거 완료. D3 주석 "CEO approval" → "CTO autonomous" 수정.
+- `ContentApprovalGate extends ApprovalGate`: 기존 인터페이스 호환 유지하며 확장. `routeContentApproval` 라우팅 로직이 스펙 6행 테이블과 일대일 대응.
+- `CONTENT_APPROVAL_TRANSITIONS` 8 edges — `createTransitionValidator` 재사용으로 패턴 일관성 유지.
+- [minor] `buildContentApprovalGate` 내부 헬퍼가 `requiresFounderApproval` spread 후 `approval_level`을 덮어씀 — 의도적이고 문제 없음.
+
+#### 3. `services/hermes-runtime/src/api/approval-queue.ts` — **LGTM**
+- `approveTask`/`rejectTask` 시그니처에 `now: Date` 추가 → `new Date()` 제거. 순수 함수화 완료.
+- 기존 호출부 3곳(`approval-queue.ts`, `approval-checker.ts`, `dry-run.ts`) 모두 업데이트 확인. hermes-runtime tsc 통과.
+
+#### 4. `packages/l5-core/src/functions/state-machine/__tests__/transitions.test.ts` — **LGTM**
+- `countEdges` 헬퍼로 edge 수 단언 + 팩토리 제네릭 동작 검증 + 엔티티별 유효/무효 전환 커버.
+- 스펙 AC1-AC7 전부 충족.
+
+#### 5. `packages/l5-core/src/functions/approval/__tests__/content-gate.test.ts` — **LGTM**
+- `it.each` 패턴으로 라우팅 7개 조합 + 전환 유효 8개/무효 3개 커버. 스펙 AC5-AC6 충족.
+
+#### 6. `apps/founder-ui/src/components/__tests__/AgentOutputDetail.intro-analysis-panel.test.tsx` — **LGTM**
+- `renderToStaticMarkup` + `node:assert/strict`로 SSR 기반 구조 검증. React 런타임 없이 실행 가능.
+- `intro_analysis` 필드 존재 시 패널 렌더링 + 부재 시 strategy decision 패널 유지 확인.
+- [note] 이 테스트는 아직 red 상태(구현 UI 미작성). 다음 phase에서 green 전환 예정.
+
+#### 7. 문서 (DECISIONS.md, 3 spec 파일) — **LGTM**
+- `docs/DECISIONS.md`: XState/Robot/typescript-fsm 비교표 + build 결정 근거 명확.
+- `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md`: R1-R4 요구사항 + AC 7개 + 영향 파일 — 구현과 일치.
+- `docs/specs/content-approval-gate-spec.md`: R1-R5 + AC 10개. 구현이 스펙을 정확히 충족.
+- `docs/specs/content-approval-gate-oss-research.md`: Trigger.dev 재활용 결정 + XState/Casbin 배제 근거 합리적.
+
+### 발견 사항 (non-blocking)
+
+| # | 파일:위치 | 심각도 | 내용 |
+|---|----------|--------|------|
+| 1 | `transitions.ts:36` | info | `transitionMap` 캐스트는 TS 추론 한계 우회. `const T` 제네릭이 발전하면 제거 가능 |
+| 2 | `approval.ts:128` | info | `routeContentApproval`의 `owned_media` + `email_campaign` → D4 경로가 테이블에는 있으나 주석 설명 없음. 의도는 이해됨(이메일은 고객 도달) |
+| 3 | `intro-analysis-panel.test.tsx` | info | red 상태(UI 미구현). 다음 구현 phase에서 green 전환 필요 |
+
+---
+
+## 🟢 2026-06-04 (최신) — Intro 30s Analysis Card 스펙 작성
+
+**오픈소스 조사 + 스펙 완료.** 상세는 `docs/TASKS.md` "Intro 30s Analysis Card" 섹션.
+
+**설계 결정**: 독립 카드 컴포넌트가 아니라 기존 `AgentOutputDetail.tsx`에 분기 추가 (Strategy Decision Panel과 동일 패턴). `output.intro_analysis` 필드 감지 → 전용 패널 렌더링.
+
+**데이터 모델**: `AgentOutputLite`에 `intro_analysis?: IntroAnalysisData` optional 필드 추가. 핵심 = `hook_score`(0–100), `retention_curve`(초별 pct[]), `segments`(구간별 verdict+feedback).
+
+**라이브러리**: recharts(MIT, ~50kB) — 카드 내 미니 리텐션 커브. youtubei.js는 CMO 에이전트 런타임(l5-core) 쪽이라 이 카드 스코프 외.
+
+**영향 파일 4개**: `api.ts`(타입), `AgentOutputDetail.tsx`(분기), `package.json`(recharts), 신규 테스트 1개. 기존 사용처(`chat/page.tsx`, `monitor/page.tsx`) 변경 불필요.
+
+**다음 단계**: 실패 테스트 작성 → 구현 → acceptance_criteria 9개 검증.
+
+---
+
+## 🟢 2026-06-04 — State Machine Validation 구현 green
+
+**완료**: `packages/l5-core/src/functions/state-machine/transitions.ts`와 `packages/l5-core/src/index.ts` re-export가 구현되어 전 단계 red 테스트가 green 전환됨.
+
+- AgentTask 11, FounderInstruction 6, ToolRequest 7, BusinessIdea 5 edges lookup table 확인
+- `createTransitionValidator` 제네릭 팩토리 유효/무효 판정 확인
+- `validateAgentTaskTransition` / `validateFounderInstructionTransition` / `validateToolRequestTransition` / `validateBusinessIdeaTransition` export 확인
+- 같은 core red 묶음의 `ContentApprovalGate`도 green 확인: `routeContentApproval`, `CONTENT_APPROVAL_TRANSITIONS`, `validateContentApprovalTransition`
+- hermes-runtime `approveTask`/`rejectTask`는 호출자가 넘긴 `now`를 사용하도록 순수화, 관련 approval-checker 테스트 통과
+
+**검증**:
+- `corepack pnpm --filter @l5/core test` → 55 suites / 585 tests 통과
+- `corepack pnpm --filter @l5/core typecheck` → 통과
+- `corepack pnpm --filter @l5/hermes-runtime typecheck` → 통과
+- `corepack pnpm --filter @l5/hermes-runtime test -- approval-checker.test.ts approval-checker-telegram.test.ts` → 2 suites / 11 tests 통과
+- 참고: `corepack pnpm --filter @l5/hermes-runtime test` 전체는 기존 Telegram 환경변수/실네트워크 이슈(`src/notifier/__tests__/telegram.test.ts` 2건)로 실패. 이번 변경 관련 approval 테스트는 통과.
+
+**다음**: 플러그인 raw status write를 validator로 교체하는 통합 단계는 별도 스펙/후속 작업으로 진행.
+
+---
+
+## 🟢 2026-06-04 — State Machine Validation 스펙 작성
+
+**배경**: 15+ 엔티티 상태 전환이 플러그인에서 raw status 쓰기로 실행되며 l5-core에 유효 전환 정의 없음. 오픈소스 조사(XState/Robot/typescript-fsm) 결과 `build` 결정 → `createTransitionValidator` 제네릭 팩토리 + lookup table 패턴.
+
+**완료**: `docs/specs/STATE_MACHINE_VALIDATION_SPEC.md` 작성.
+- 4개 엔티티 전환 룩업 테이블 정의 (AgentTask 11, FounderInstruction 6, ToolRequest 7, BusinessIdea 5 = 29 edges)
+- `createTransitionValidator<S>` 제네릭 팩토리 + 4개 편의 함수 API 설계
+- 측정 가능한 acceptance criteria 7개 (edge 수 단언, 유효/무효 판정, tsc 0, 테스트 통과)
+- 영향 파일 3개 식별 (`transitions.ts` 신규, `transitions.test.ts` 이전 phase 작성 완료, `index.ts` re-export)
+- 플러그인 통합은 별도 후속 단계로 분리
+
+**상태**: 구현 완료 및 core test/typecheck green.
+
+---
+
+## 🟢 2026-06-04 — State Machine Validation 실패 테스트 작성
+
+**완료**: `packages/l5-core/src/functions/state-machine/__tests__/transitions.test.ts`가 스펙 AC를 red 테스트로 고정한다.
+- edge count: AgentTask 11, FounderInstruction 6, ToolRequest 7, BusinessIdea 5
+- `createTransitionValidator` 제네릭 팩토리 유효/무효 판정
+- 엔티티별 validator 4개 유효 전환 2개 이상 + terminal→non-terminal 무효 전환
+
+**Red 검증**:
+- 명령: `corepack pnpm --filter @l5/core test -- state-machine/__tests__/transitions.test.ts`
+- 결과: 실패(exit 1)
+- 핵심 오류: `TS2307: Cannot find module '../transitions' or its corresponding type declarations.`
+
+**상태**: 구현 완료 및 core test/typecheck green.
 
 ---
 

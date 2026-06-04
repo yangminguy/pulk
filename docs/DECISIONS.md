@@ -1,5 +1,40 @@
 # DECISIONS — L5 Business OS
 
+## 2026-06-04 — State Machine 25개 상태 전환 검증: 라이브러리 도입 안 함 (build)
+
+**컨텍스트**: 프로젝트 전체에 15+ 엔티티 타입, 약 25개 이상의 상태 전환이 분산(AgentTask 6상태, Business 10상태, Workflow 6상태, BPR 6단계, ToolRequest 6상태 등). 현재는 순수 함수(`validateTransition`, `openConsultation`→`resolveConsultation`, `runDelegationLoop` 등)로 전환을 관리하며 Jest 단위 테스트로 검증. 외부 라이브러리 도입 여부를 조사했다.
+
+### 비교표
+
+| 항목 | XState v5 | Robot (robot3) | typescript-fsm 류 | 현행 (hand-rolled) |
+|------|-----------|---------------|-------------------|-------------------|
+| npm 주간 다운로드 | ~1.2–4.3M | ~150–180K | 수백 | — |
+| 번들 크기 (min+gz) | ~16.7 kB | ~1.2 kB | ~1–2 kB | 0 (자체 코드만) |
+| TypeScript 네이티브 | ✅ TS 5.0+ 필수 | ❌ d.ts 래퍼 | ✅ (일부) | ✅ 완전 제어 |
+| 라이센스 | MIT | MIT | MIT | — |
+| 런타임 필요 | ✅ actor 인터프리터 | ✅ 인터프리터 | ✅ | ❌ 순수 함수 |
+| 선형+분기 FSM | ✅ + 계층/병렬 | ✅ | ✅ | ✅ |
+| 테스트 편의 | @xstate/test v5 미완성 | 없음 | 없음 | Jest 직접 |
+| 학습 곡선 | 높음 (actor model) | 중간 | 낮음 | 없음 |
+| 유지보수 리스크 | 낮음 (Stately AI 상업) | 높음 (7개월 무활동) | 높음 (커뮤니티 미미) | 없음 |
+
+### 결정: `build` — 라이브러리 도입 안 함
+
+**채택 근거**:
+1. 현행 순수 함수 패턴(`validateTransition(from, to) → {valid, reason}`)이 l5-core 설계 원칙(No I/O, 프레임워크 미결합)과 완전히 정합.
+2. 25개 전환은 라이브러리가 정당화되는 규모(계층 상태, 병렬 상태, actor 부작용 오케스트레이션)에 미달.
+3. XState는 번들 오버헤드(~17 kB) + actor 런타임 의존 + v5 테스트 도구 미완성. Robot/typescript-fsm은 커뮤니티·유지보수 리스크.
+4. 전환 커버리지 보강이 필요하면 **타입 기반 lookup table**(`Record<From, To[]>` 선언 → TS exhaustiveness 검사)로 런타임 비용 0으로 해결 가능.
+
+**배제 이유**:
+- **XState v5**: 이 규모에 과잉. actor model + ~17 kB 번들 + 학습 곡선이 순수 함수 대비 순손실.
+- **Robot**: TypeScript 비네이티브, 7개월 무활동, npm 의존 패키지 32개(생태계 미미).
+- **typescript-fsm 류**: 주간 다운로드 수백, 단일 관리자 리스크, 문서 부실.
+
+**후속**: 전환 누락이 실제 버그로 이어지면, 엔티티별 `VALID_TRANSITIONS` lookup table을 l5-core에 추가하고 TS 타입 시스템으로 exhaustiveness를 보장한다.
+
+---
+
 ## 2026-06-04 — 승인 게이트 = D4/D5만 · self-upgrade는 승인 게이트로 살림 · M9(컨트롤룸 라이브화) 최우선
 
 **컨텍스트**: 창업자가 "Phase 6만 하면 CTO/ACR이 완벽하게 도나?"를 물으며 비전(CEO기획→CTO로드맵→멀티CLI 배정→실시간 컨트롤룸→토큰 표시)을 제시. 코드 조사 결과 비전은 구조적으로 70~80% 있으나 컨트롤룸 ACR 데이터가 stub. 세 가지 결정을 기록한다.

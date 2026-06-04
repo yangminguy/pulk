@@ -34,6 +34,24 @@ function unwrap<T>(r: { data: { ok?: boolean; data?: T } | T }): T {
 }
 
 // The executive's full work product, persisted on agent_tasks.output.
+export type IntroAnalysisData = {
+  video_title?: string
+  video_url?: string
+  thumbnail_url?: string
+  duration_sec?: number
+  hook_score: number
+  retention_curve?: Array<{ sec: number; pct: number }>
+  segments?: Array<{
+    label: string
+    start_sec: number
+    end_sec: number
+    verdict: 'strong' | 'neutral' | 'weak' | string
+    feedback: string
+  }>
+  overall_feedback?: string
+  improvement_suggestions?: string[]
+}
+
 export type AgentOutputLite = {
   goal?: string
   current_situation?: string
@@ -43,6 +61,7 @@ export type AgentOutputLite = {
   action_items?: string[]
   insight_to_record?: string
   confidence_level?: string
+  intro_analysis?: IntroAnalysisData
 }
 
 export type TaskItem = {
