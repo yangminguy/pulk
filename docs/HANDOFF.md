@@ -1,6 +1,30 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (CMO Chat UI 리뷰 — LGTM)
+최종 업데이트: 2026-06-05 (GitHub 정리 + CTO 파이프라인 결정적화 B1~B5 배포)
+
+---
+
+## 🟢 2026-06-05 — GitHub 정리(Track A) + CTO 최적화 pulk-side(Track B B1~B5)
+
+### Track A — GitHub 정리 (완료·배포)
+- 자동생성 ACR 브랜치 **로컬 291·원격 25 → 0**, `.git` **196M→64M**
+- origin/main 5/26 방치 → 로컬 main(97커밋) push로 최신화. 메인 워크트리 낡은 acr 브랜치 → `main`
+- `.gitignore` 보강(`.claude/`, `ai-slide-video-factory/` 보호), 가치 문서/리포트 추적
+- 재발방지: `scripts/git-acr-cleanup.sh`(머지+N일 경과 acr 브랜치 정리, dry-run 기본)
+
+### Track B — CTO 파이프라인 결정적화 (B1~B5, pulk-side, 배포 완료)
+- **B1** `cto.ts`: `ACR_DETERMINISTIC_PHASES`(기본 on) — 정상 task LLM 호출/재시도 **0회**
+- **B2** `dev-workflow-spec`: single-component→SMALL_FIX 휴리스틱 단위테스트
+- **B3** `verifier`: 코드 산출 기대 phase가 변경 0이면 **fail+retry**(false-positive 차단)
+- **B4** `d3-judge`: 외부/매출/비가역=escalate, 내부/read-only=pass 결정적 사전판단 → LLM 호출↓
+- **B5** `cto.ts/model-routing`: 쿼터 소진 tier 우회(`resolveModel`) → 죽은 라우팅 0
+- 검증: l5-core **596/596**, agent-runtime **8/8**, tsc 0. 배포: l5-core/agent-runtime/hermes 재빌드 + nocobase 재시작(B3), hermes 스케줄 태스크는 다음 실행 자동 반영
+- 브랜치 `cto/dev-optimization` → main FF 머지(origin push)
+
+### 남음 (B6/B7 — 라이브 ACR repo, 보류)
+- **B6** per-phase 모델 배선(`antigravity-runner`에 `--model` 등 死코드 활성화)
+- **B7** 잡큐 오케스트레이션(`auto-dispatcher` inline SSE→enqueue+worker, 인메모리 락 제거)
+- 라이브 시스템 + CMO 병렬 디스패치와 겹쳐 별도 세션/조율 후. 라이브 ACR = `~/Desktop/양원민 개발자/agent_control_room_docs`
 
 ---
 

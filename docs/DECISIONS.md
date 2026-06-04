@@ -1,5 +1,19 @@
 # DECISIONS — L5 Business OS
 
+## 2026-06-05 — CTO 파이프라인 결정적화 우선 + ACR 브랜치 생명주기 정리
+
+**컨텍스트**: CTO 자율개발 파이프라인이 느린 진짜 원인은 코딩이 아니라 ① 과한 LLM 의존(이미 결정적인 분류/템플릿이 있음에도 phase 생성마다 LLM 2회 시도 + LLM이 분류를 덮어씀), ② verifier가 변경 0인 코드 phase를 통과시키는 false-positive, ③ 죽은 모델 tier로 계속 라우팅, ④ D3마다 LLM 호출이었다. 또한 ACR이 phase마다 `acr/l5-*` 브랜치를 만들고 정리하지 않아 로컬 291·원격 25개가 쌓였다.
+
+**결정**:
+1. **결정적 우선(determinism-first)**: phase 생성은 `classifyTask`+템플릿이 기본(`ACR_DETERMINISTIC_PHASES`), LLM은 opt-in 안전망. 분류는 결정적 함수가 권위이며 LLM이 덮어쓰지 못한다. D3 판정도 명백 케이스(외부/매출=escalate, 내부/read-only=pass)는 결정적, 회색지대만 LLM. 모든 scoring 규칙은 단위테스트 동반(규칙3).
+2. **verifier 신뢰성**: 코드 산출 기대 phase가 `changed_files=0`이면 exit 0이어도 fail+retry. 코드 신호가 read-only 힌트보다 우선.
+3. **쿼터 인지 라우팅**: `resolveModel`이 소진 tier를 우회(quota-tracker.json 주입, 없으면 전 tier 가용).
+4. **ACR 브랜치 생명주기**: 근본은 ACR이 머지 후 phase 브랜치를 삭제하는 것(B6/B7과 함께). 그 전까지 `scripts/git-acr-cleanup.sh`가 머지+N일 경과분을 정리하는 안전망.
+
+**배제/보류**: 라이브 ACR repo의 per-phase 모델 배선(B6)·잡큐 오케스트레이션(B7)은 라이브 시스템 + CMO 병렬 디스패치와 겹쳐 별도 세션에서. nested repo(`ai-slide-video-factory`)는 .gitignore 보호만, 구조 전환은 보류.
+
+---
+
 ## 2026-06-04 — State Machine 25개 상태 전환 검증: 라이브러리 도입 안 함 (build)
 
 **컨텍스트**: 프로젝트 전체에 15+ 엔티티 타입, 약 25개 이상의 상태 전환이 분산(AgentTask 6상태, Business 10상태, Workflow 6상태, BPR 6단계, ToolRequest 6상태 등). 현재는 순수 함수(`validateTransition`, `openConsultation`→`resolveConsultation`, `runDelegationLoop` 등)로 전환을 관리하며 Jest 단위 테스트로 검증. 외부 라이브러리 도입 여부를 조사했다.
