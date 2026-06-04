@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L5 — 자율 협업 + 채팅 회의 로드맵</title>
+<style>
+  :root{
+    --bg:#0c0f17; --card:#151a26; --card2:#1b2230; --line:#2a3343;
+    --tx:#e7ecf3; --mut:#9aa7bd; --acc:#5b8cff; --good:#39d98a; --warn:#ffb454; --bad:#ff6b6b;
+    --chip:#222c3d; --cmo:#ff8fab; --cto:#7bd1ff; --cfo:#ffd479; --ceo:#39d98a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(180deg,#0a0d14,#0c0f17);color:var(--tx);
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI",Roboto,sans-serif;
+    line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:40px 22px 90px}
+  header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:30px}
+  h1{font-size:27px;margin:0 0 8px;letter-spacing:-.4px}
+  .sub{color:var(--mut);font-size:14px}
+  h2{font-size:20px;margin:48px 0 14px;display:flex;align-items:center;gap:10px;letter-spacing:-.3px}
+  h2 .n{display:inline-flex;min-width:30px;height:30px;padding:0 7px;border-radius:8px;background:var(--acc);
+    color:#fff;font-size:13px;align-items:center;justify-content:center;font-weight:700}
+  h3{font-size:16px;margin:24px 0 10px;color:#cdd7e8}
+  p{margin:8px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin:14px 0}
+  .muted{color:var(--mut)}
+  .small{font-size:13.5px}
+  code{background:#0e131d;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12.5px;color:#aee0ff}
+  .chip{display:inline-block;background:var(--chip);border:1px solid var(--line);border-radius:999px;
+    padding:3px 11px;font-size:12.5px;color:#cdd7e8;margin:2px 4px 2px 0}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:12.5px;padding:3px 10px;border-radius:8px}
+  .b-good{background:rgba(57,217,138,.13);color:var(--good);border:1px solid rgba(57,217,138,.3)}
+  .b-warn{background:rgba(255,180,84,.13);color:var(--warn);border:1px solid rgba(255,180,84,.3)}
+  .b-bad{background:rgba(255,107,107,.13);color:var(--bad);border:1px solid rgba(255,107,107,.3)}
+  .b-acc{background:rgba(91,140,255,.13);color:var(--acc);border:1px solid rgba(91,140,255,.3)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+  td.step{white-space:nowrap;color:#cdd7e8;font-weight:600}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0}
+  .flow .box{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13px}
+  .flow .ar{color:var(--mut);font-size:18px}
+  .kpi{display:flex;gap:14px;flex-wrap:wrap;margin:6px 0}
+  .kpi .k{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 16px;flex:1;min-width:120px}
+  .kpi .k b{display:block;font-size:21px;color:#fff;letter-spacing:-.5px}
+  .kpi .k span{font-size:12px;color:var(--mut)}
+  ul{margin:8px 0;padding-left:20px} li{margin:5px 0}
+  .note{border-left:3px solid var(--acc);padding:6px 0 6px 14px;color:#cdd7e8;margin:14px 0}
+  .ok{color:var(--good)} .wn{color:var(--warn)} .bd{color:var(--bad)}
+  .eff{font-weight:700;font-size:12px;padding:2px 8px;border-radius:6px}
+  .eS{background:rgba(57,217,138,.13);color:var(--good)}
+  .eM{background:rgba(255,180,84,.13);color:var(--warn)}
+  .eL{background:rgba(255,107,107,.13);color:var(--bad)}
+  /* chat mock */
+  .chat{background:#0e131d;border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0;font-size:13px}
+  .msg{display:flex;gap:9px;margin:9px 0;align-items:flex-start}
+  .av{flex:0 0 auto;width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:800;color:#0c0f17}
+  .msg .bub{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px 11px;max-width:88%}
+  .msg .who{font-size:11px;font-weight:700;margin-bottom:3px;letter-spacing:.2px}
+  .a-ceo{background:var(--ceo)} .a-cmo{background:var(--cmo)} .a-cto{background:var(--cto)} .a-cfo{background:var(--cfo)}
+  .a-f{background:#e7ecf3}
+  .msg.f{flex-direction:row-reverse} .msg.f .bub{background:#1d2740;border-color:#2f3e63}
+  .turnbar{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 12px}
+  .turnbar .p{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line)}
+  footer{margin-top:50px;border-top:1px solid var(--line);padding-top:18px;color:var(--mut);font-size:12.5px}
+  .leg{font-size:12px;color:var(--mut);margin:2px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>L5 — 자율 협업 + 채팅 회의 로드맵</h1>
+  <div class="sub">작성 2026-06-02 · 기준점: <b class="ok">M6 임원 위임 + 검증 반복 루프 라이브 통과</b>(advance 122s → resolved/round1) · 본 문서는 <b>다음에 만들 것</b>의 계획서</div>
+</header>
+
+<!-- ===== 0 ===== -->
+<h2><span class="n">0</span> 한눈에 — 지금 어디고, 어디로 가나</h2>
+<div class="card">
+  <p>지금까지는 <b>"백그라운드에서" 임원들이 일하고 위임</b>하는 엔진을 만들었다(M1~M6). 다음 목표는 두 방향이다:</p>
+  <div class="kpi">
+    <div class="k"><b class="ok">DONE</b><span>M6 — CEO 경유 임원↔임원 위임 + 검증 반복 루프(결정론 컨트롤러). 라이브 1회 통과.</span></div>
+    <div class="k"><b class="wn">A. 자율화</b><span>그 위임 루프를 <b>도구를 쥔 채</b>, <b>스스로 시작</b>하고, <b>무인으로</b> 돌게(=후속 1·2·3)</span></div>
+    <div class="k"><b class="wn">B. 가시화</b><span>임원들이 <b>창업자 채팅에 직접 들어와 회의</b>하고, 합의가 곧 실행으로(=M7 라운드테이블)</span></div>
+  </div>
+  <div class="flow">
+    <div class="box">오늘: 위임 엔진(보이지 않음)</div><span class="ar">→</span>
+    <div class="box"><b>A</b> 자율 위임(도구·자동발화·무인)</div><span class="ar">→</span>
+    <div class="box"><b>B</b> 채팅 회의(임원이 대화 참여)</div><span class="ar">→</span>
+    <div class="box" style="border-color:#39d98a55">회사가 스스로 회의→합의→분담→실행</div>
+  </div>
+  <div class="note">핵심 한 줄: <b>"창업자가 채팅에 주제를 던지면 → 관련 임원들이 그 채팅에 들어와 토론하고 → CEO가 합의를 정리해 승인을 받고 → 합의가 그대로 위임·실행으로 떨어진다."</b> A는 실행 엔진, B는 그 입구(대화)다.</div>
+</div>
+
+<!-- ===== A ===== -->
+<h2><span class="n">A</span> 위임 루프 라이브 자율화 (후속 1·2·3) — <span class="badge b-acc">신규 마일스톤 M8</span></h2>
+<p class="muted small">M6 엔진은 이미 돈다. 여기서는 "수동·도구없음·1회"였던 3가지 제약을 푼다. 대부분 <b>기존 코드 배선</b>이라 난이도는 중간.</p>
+<table>
+  <thead><tr><th>슬라이스</th><th>지금</th><th>만들 것</th><th>재사용</th><th>공수</th></tr></thead>
+  <tbody>
+    <tr>
+      <td class="step">M8.1<br>worker 도구 활성<br><span class="muted">(후속 1)</span></td>
+      <td>위임받은 임원(CTO)이 <code>L5_EXECUTIVE_TOOLS</code> off라 <b>도구 없이 글만</b> 산출</td>
+      <td>플래그 on + secondbrain/video transport env 주입 → CTO가 실제 <code>secondbrain.read</code> 등으로 자료 보고 제작. 동기 HTTP가 길어지므로 <b>라운드 타임아웃·도구 수 가드</b> 동반</td>
+      <td>buildWorkerTools(), M3/M5 transport, MCP-off claude CLI</td>
+      <td><span class="eff eS">S</span></td>
+    </tr>
+    <tr>
+      <td class="step">M8.2<br>ask_executive 자동발화<br><span class="muted">(후속 2)</span></td>
+      <td>위임은 <b>시드(수동)</b>로만 생성. 채팅으로 CMO를 돌려도 스스로 위임 안 함</td>
+      <td>임원 tool-loop가 "다른 역할 산출물이 필요하면 <code>ask_executive</code>를 부르라"고 유도(프롬프트+도구 노출). CMO가 막히면 자율적으로 CTO에 위임 → <code>awaiting_delegation</code> → advance</td>
+      <td>M6 ask_executive 도구(이미 executeTask에 배선됨), 첫라운드 도구강제 패턴</td>
+      <td><span class="eff eM">M</span></td>
+    </tr>
+    <tr>
+      <td class="step">M8.3<br>무인 트리거(dispatcher)<br><span class="muted">(후속 3)</span></td>
+      <td><code>delegation:advance</code>를 <b>사람이 1회 호출</b>해야 루프가 돈다</td>
+      <td>Hermes cron이 <code>status=open</code> 위임을 폴링해 자동 <code>advance</code>. 장시간 루프는 동기 HTTP에서 분리(비동기 잡 큐). 완료/에스컬레이션 시 채팅·승인큐로 알림</td>
+      <td>기존 Hermes launchd cron(1분 주기), task dispatcher 패턴</td>
+      <td><span class="eff eM">M</span></td>
+    </tr>
+  </tbody>
+</table>
+<div class="note"><b>의존:</b> M8.1 → M8.2 → M8.3 순. 8.1만 해도 "도구 쥔 위임"이 되고, 8.2까지면 "스스로 위임", 8.3까지면 "완전 무인". <b>안전:</b> 무인화할수록 <span class="wn">예산(max_rounds)·승인 게이트·비용 상한</span>을 반드시 함께. 외부발신/결제 유발 위임은 기존 창업자 승인 모델 유지.</div>
+
+<!-- ===== B ===== -->
+<h2><span class="n">B</span> 채팅 멀티에이전트 라운드테이블 — 임원이 회의에 들어온다 <span class="badge b-acc">M7</span></h2>
+<p class="muted small">창업자 요청의 본체. 지금 채팅 role은 <code>founder | ceo</code> 1:1 — 임원은 백그라운드 실행자라 <b>대화에 못 들어온다</b>. 이걸 "회의 참여자"로 승격한다.</p>
+
+<h3>이렇게 보이게 만든다 (목표 UI)</h3>
+<div class="chat">
+  <div class="leg">예시: 창업자가 주제를 던지면 CEO가 관련 임원을 소집해 같은 스레드에서 발언</div>
+  <div class="turnbar">
+    <span class="p" style="border-color:#39d98a55;color:#39d98a">CEO 진행</span>
+    <span class="p" style="border-color:#ff8fab55;color:#ff8fab">CMO</span>
+    <span class="p" style="border-color:#7bd1ff55;color:#7bd1ff">CTO</span>
+    <span class="p" style="border-color:#ffd47955;color:#ffd479">CFO</span>
+    <span class="p muted">발언 예산 6턴</span>
+  </div>
+  <div class="msg f"><div class="av a-f">나</div><div class="bub"><div class="who">창업자</div>영상 공장 PMF를 어떻게 끌어올릴까? 다 같이 의견 줘.</div></div>
+  <div class="msg"><div class="av a-ceo">CEO</div><div class="bub"><div class="who" style="color:#39d98a">CEO · 진행</div>CMO·CTO·CFO 소집했습니다. CMO부터 시장 관점 의견 주세요.</div></div>
+  <div class="msg"><div class="av a-cmo">M</div><div class="bub"><div class="who" style="color:#ff8fab">CMO</div>세컨브레인 강의 데이터 보면 9:16 숏폼 전환율이 3배. 영상 공장 프리셋을 숏폼 기본으로 바꾸는 실험 제안.</div></div>
+  <div class="msg"><div class="av a-cto">T</div><div class="bub"><div class="who" style="color:#7bd1ff">CTO</div>프리셋 변경은 <code>video_factory.configure</code>로 1일. 다만 렌더 큐 부하가 2배 — 비동기 큐 먼저 손봐야.</div></div>
+  <div class="msg"><div class="av a-cfo">F</div><div class="bub"><div class="who" style="color:#ffd479">CFO</div>렌더 비용 월 한도 안. D3 이하면 승인 없이 진행 가능.</div></div>
+  <div class="msg"><div class="av a-ceo">CEO</div><div class="bub"><div class="who" style="color:#39d98a">CEO · 합의안</div>결정: ①CMO 숏폼 실험 기획 ②CTO 프리셋+큐 작업(CMO 검증). 승인하시겠어요?</div></div>
+  <div class="msg f"><div class="av a-f">나</div><div class="bub"><div class="who">창업자</div>승인. 진행해.</div></div>
+</div>
+<p class="muted small">↑ 승인 순간, 합의가 <b>그대로 M6 위임·태스크로</b> 떨어진다 (CMO→CTO ask_executive 자동 생성 = A와 결합).</p>
+
+<h3>아키텍처 — "회의 컨트롤러"는 M6 루프의 사촌</h3>
+<div class="flow">
+  <div class="box">창업자 주제</div><span class="ar">→</span>
+  <div class="box">CEO: 회의/태스크 판별 + 참여자 선정</div><span class="ar">→</span>
+  <div class="box"><b>발언 라운드 컨트롤러</b><br><span class="muted small">(결정론 · 턴 예산)</span></div><span class="ar">→</span>
+  <div class="box">CEO 합의 정리</div><span class="ar">→</span>
+  <div class="box">창업자 승인</div><span class="ar">→</span>
+  <div class="box">위임/태스크(M6·A)</div>
+</div>
+<table>
+  <thead><tr><th>슬라이스</th><th>내용</th><th>재사용 / 신규</th><th>공수</th></tr></thead>
+  <tbody>
+    <tr><td class="step">M7.1<br>스키마</td><td><code>chat_messages</code>에 <code>speaker</code>(역할)·<code>meeting_id</code>·<code>turn</code> 추가. role을 <code>founder|ceo|cmo|cto|…</code>로 확장. <code>meetings</code> 테이블(참여자·턴예산·상태·합의)</td><td>기존 chat_messages, executive_delegations DDL 패턴</td><td><span class="eff eS">S</span></td></tr>
+    <tr><td class="step">M7.2<br>회의 컨트롤러</td><td>참여자 턴 오케스트레이션(라운드로빈 또는 CEO 지명형). 각 턴 = 임원 LLM이 <b>스레드 전체를 보고</b> 발언 1개 생성 → chat_messages 적재. <b>턴 예산</b>으로 종료. CEO가 합의 요약</td><td>runDelegationLoop의 결정론 루프 골격, executive-runtime(발언용 "토론 모드" 프롬프트 신규)</td><td><span class="eff eL">L</span></td></tr>
+    <tr><td class="step">M7.3<br>UI</td><td>참여자 칩, 에이전트별 색상/아바타, 발언 스트림(폴링 or SSE), 창업자 중간 개입 입력</td><td>chat/page.tsx, Joinery 토큰, 기존 dispatch 카드 패턴</td><td><span class="eff eM">M</span></td></tr>
+    <tr><td class="step">M7.4<br>합의→실행 결선</td><td>승인된 합의안 → CEO decomposer로 태스크 생성 + 필요한 임원간 위임(ask_executive) 자동 개시. 회의 중 발생한 위임 진행을 스레드에 인라인 표시</td><td>ceo-orchestration decomposer/assigner, M6 위임, M8.2</td><td><span class="eff eM">M</span></td></tr>
+  </tbody>
+</table>
+<div class="note"><b>왜 M6 다음에 자연스러운가:</b> "여러 LLM 참가자가 같은 맥락을 보고 번갈아 기여하다 종료조건에 멈추는 결정론 루프"는 M6의 <code>runDelegationLoop</code>과 <b>같은 모양</b>이다. 위임=2인(제작·검증), 회의=N인(발언). 컨트롤러를 일반화하면 재사용된다. <b>비용 주의:</b> 회의 1회 = 참여자×턴 만큼 LLM 호출 → 동기 HTTP엔 무겁다. <span class="wn">SSE/비동기 스트리밍 + 턴 예산</span>이 사실상 필수(M8.3의 비동기 잡 인프라와 공유).</div>
+
+<!-- ===== C ===== -->
+<h2><span class="n">C</span> 통합 시나리오 — A+B가 합쳐지면</h2>
+<div class="card">
+  <div class="flow" style="gap:6px">
+    <div class="box">① 채팅 주제(B)</div><span class="ar">→</span>
+    <div class="box">② 임원 회의·합의(M7)</div><span class="ar">→</span>
+    <div class="box">③ 승인</div><span class="ar">→</span>
+    <div class="box">④ CMO가 CTO에 자동 위임(M8.2)</div><span class="ar">→</span>
+    <div class="box">⑤ CTO 도구 쥐고 제작(M8.1)</div><span class="ar">→</span>
+    <div class="box">⑥ CMO 검증 루프(M6)</div><span class="ar">→</span>
+    <div class="box">⑦ 무인 진행·완료 알림(M8.3)</div>
+  </div>
+  <p class="small muted">이 전체가 창업자 개입 <b>최소 2번(주제 던지기 + 합의 승인)</b>으로 굴러간다. 나머지는 회사가 스스로. ← 이것이 PRD가 말하는 "반자동 L5 운영 콘솔"의 완성형에 가장 가깝다.</p>
+</div>
+
+<!-- ===== D ===== -->
+<h2><span class="n">D</span> 그 밖에 개발 예정 — 개발 문서에서 수집</h2>
+<p class="muted small"><code>docs/TASKS.md</code>·<code>projects_roadmap_implementation_plan.md</code>·CTO 로드맵에서 아직 안 한 항목. A/B와 별개로 줄 서 있는 것들.</p>
+<table>
+  <thead><tr><th>영역</th><th>항목</th><th>상태/메모</th><th>공수</th></tr></thead>
+  <tbody>
+    <tr><td class="step">🔥 1순위<br>사업/로드맵 다중화</td>
+      <td>1.1 projects/chat_messages/roadmap_events 스키마 확장 · 1.2 <b>멀티턴 대화형 기획</b>(확정 전까지 대화로 기획 정교화) · 1.3 완료 태스크 1주 후 아카이브 데몬 · 1.4 가로 줄기형 로드맵 타임라인 UI</td>
+      <td><span class="wn">미착수</span> · <b>1.2는 M7과 강하게 겹침</b>(대화 맥락 누적) → 함께 설계 권장. 상세 <code>projects_roadmap_implementation_plan.md</code></td><td><span class="eff eL">L</span></td></tr>
+    <tr><td class="step">관측·안전<br>(CTO Phase 6)</td>
+      <td>Langfuse LLM 추적, 위험 명령 차단, 비용/장애 모니터</td>
+      <td><span class="wn">미착수</span> · A(무인화)·B(다발 LLM) 가면 <b>비용·추적이 선결 안전장치</b>가 됨 → A/B와 병행 권장</td><td><span class="eff eM">M</span></td></tr>
+    <tr><td class="step">배포</td>
+      <td>UI.9 Vercel 배포 (NocoBase 백엔드 노출 방식 결정 필요)</td>
+      <td><span class="b-warn badge">창업자 결정 대기</span> 터널/리버스프록시 vs 직노출</td><td><span class="eff eS">S</span></td></tr>
+    <tr><td class="step">학습 루프<br>잔여</td>
+      <td>Memory retrieval 통합(P2), CEO 컨텍스트 메모리 주입 강화, 반복 신호 후 Tool Request 워크플로우(P3), 실 PMF 지표 수집 경로(P2)</td>
+      <td><span class="muted">백로그</span> · 일부는 M2/M3에서 부분 구현됨 — 중복 점검 필요</td><td><span class="eff eM">M</span></td></tr>
+    <tr><td class="step">영상 공장<br>구조 변경</td>
+      <td>실제 렌더링 연결(현재 의도적 미연결: 원고 검토 후 제작) — 추후 CTO·CMO와 구조 재설계</td>
+      <td><span class="muted">의도된 보류</span> · A/B로 CMO·CTO 협업이 되면 <b>이 회의에서 다룰 첫 안건</b>으로 적합</td><td><span class="eff eM">M</span></td></tr>
+  </tbody>
+</table>
+
+<!-- ===== E ===== -->
+<h2><span class="n">E</span> 추천 실행 순서</h2>
+<div class="card">
+  <table>
+    <thead><tr><th>순서</th><th>무엇</th><th>왜 이 순서</th></tr></thead>
+    <tbody>
+      <tr><td class="step">1</td><td><b>M8.1</b> worker 도구 활성 + <b>관측·안전 최소셋</b>(비용/타임아웃 가드, Langfuse 추적)</td><td>가장 작고, 무인화 전에 안전장치부터. "도구 쥔 위임"이 즉시 체감됨</td></tr>
+      <tr><td class="step">2</td><td><b>M8.2</b> ask_executive 자동발화 → <b>M8.3</b> dispatcher 무인 트리거</td><td>위임이 스스로 시작·진행. A 완성. 여기까지면 "백그라운드 자율 회사"</td></tr>
+      <tr><td class="step">3</td><td><b>M7.1→7.2→7.3</b> 채팅 회의(+ 1.2 멀티턴 기획 통합 설계)</td><td>가장 크고 UI 포함. A의 실행 엔진이 받쳐줘야 회의 합의가 곧 실행으로 이어짐</td></tr>
+      <tr><td class="step">4</td><td><b>M7.4</b> 합의→실행 결선 · 로드맵 타임라인(1.4) · 배포(UI.9)</td><td>전체 통합 + 가시화 마무리</td></tr>
+    </tbody>
+  </table>
+  <div class="note"><b>병렬 가능:</b> 관측·안전(D)과 아카이브 데몬(1.3)은 A/B와 독립이라 언제든 끼워넣을 수 있음. <b>창업자 결정 필요 2건:</b> ① 회의 턴 정책(라운드로빈 vs CEO 지명형) ② 배포 방식(NocoBase 노출).</div>
+</div>
+
+<h2><span class="n">F</span> 리스크 · 안전 원칙</h2>
+<div class="card">
+  <ul>
+    <li><b class="bd">비용 폭주</b> — 무인 위임(A)·다발 회의(B)는 LLM 호출이 곱셈으로 늘어남. → <b>예산(max_rounds·턴 예산) + 월 비용 상한 + Langfuse 추적</b>을 기능보다 먼저.</li>
+    <li><b class="wn">동기 HTTP 한계</b> — 현재 advance·executeTask는 동기(수 분). 회의·무인 루프는 <b>비동기 잡 큐/SSE</b>로 옮겨야 UX·안정성 확보. M8.3과 M7.2가 이 인프라를 공유.</li>
+    <li><b class="wn">승인 게이트 유지</b> — 자율화해도 외부발신·결제·고위험(D3+)은 <b>창업자 승인 모델</b> 그대로. 위임·회의 합의가 이걸 우회하지 않게.</li>
+    <li><b class="ok">결정론 우선</b> — 루프 제어·종료는 코드, LLM은 "제작/발언/채점"에만. M6에서 검증된 원칙을 M7·M8에 그대로 적용 → 무한루프·CEO 비용폭주 차단.</li>
+    <li><b class="ok">PII 분리</b> — 회의·위임 맥락에 고객 PII 섞이지 않게(기존 governance). 임원 발언에 PII 유입 차단 검사 추가.</li>
+  </ul>
+</div>
+
+<footer>
+  L5 Business OS · 자율 협업 + 채팅 회의 로드맵 · 2026-06-02 · 기준점 M6 라이브 통과<br>
+  관련 문서: <code>docs/EXECUTIVE_DELEGATION_SPEC.md</code> · <code>docs/TASKS.md</code>(M7/M8 반영 예정) · <code>docs/projects_roadmap_implementation_plan.md</code> · <code>docs/HANDOFF.md</code>
+</footer>
+</div>
+</body>
+</html>

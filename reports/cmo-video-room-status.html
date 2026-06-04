@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMO Video Room — 실제 구현 점검 리포트</title>
+<style>
+  :root{
+    --ink:#1a1a1a; --ink2:#444; --ink3:#777; --line:#e6e6e6; --line2:#f0f0f0;
+    --bg:#fafafa; --card:#fff;
+    --ok:#1f9d55; --ok-bg:#e9f7ef;
+    --part:#c98a00; --part-bg:#fdf6e3;
+    --no:#d23f3f; --no-bg:#fcebeb;
+    --pink:#e0457b; --pink-bg:#fdeef4;
+    --blue:#2f6fed; --blue-bg:#eaf1fe;
+  }
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+       margin:0;background:var(--bg);color:var(--ink);line-height:1.6;font-size:15px}
+  .wrap{max-width:980px;margin:0 auto;padding:32px 22px 80px}
+  h1{font-size:27px;margin:0 0 6px;letter-spacing:-.02em}
+  h2{font-size:20px;margin:42px 0 14px;padding-top:18px;border-top:2px solid var(--line);letter-spacing:-.01em}
+  h3{font-size:16px;margin:24px 0 10px}
+  .sub{color:var(--ink3);font-size:13.5px;margin:0 0 24px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:14px 0}
+  .verdict{border-left:5px solid var(--no);background:var(--no-bg)}
+  .verdict.warn{border-left-color:var(--part);background:var(--part-bg)}
+  .big{font-size:18px;font-weight:700;margin:0 0 8px}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13.5px;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line2);vertical-align:top}
+  th{background:#f6f6f6;font-weight:700;font-size:12.5px;color:var(--ink2)}
+  tr:last-child td{border-bottom:none}
+  td.s{white-space:nowrap;font-weight:700;width:1%}
+  .b{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap}
+  .b-ok{background:var(--ok-bg);color:var(--ok)}
+  .b-part{background:var(--part-bg);color:var(--part)}
+  .b-no{background:var(--no-bg);color:var(--no)}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;margin:8px 0 0}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .pct{display:flex;align-items:center;gap:14px;margin:18px 0}
+  .bar{flex:1;height:22px;border-radius:11px;background:#eee;overflow:hidden;display:flex}
+  .bar i{height:100%;display:block}
+  .num{font-size:15px;font-weight:700}
+  code{background:#f0f0f0;padding:1px 6px;border-radius:5px;font-size:12.5px;font-family:'SF Mono',Menlo,monospace}
+  .quote{background:#f6f8fc;border-left:4px solid var(--blue);padding:12px 16px;border-radius:0 8px 8px 0;margin:10px 0;font-size:13.5px;color:var(--ink2)}
+  .step{display:flex;gap:12px;margin:10px 0;align-items:flex-start}
+  .step .n{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .step .x{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:var(--no);color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center}
+  ul{margin:8px 0;padding-left:20px}
+  li{margin:4px 0}
+  .foot{color:var(--ink3);font-size:12px;margin-top:40px;text-align:center}
+  .tag{font-size:11.5px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .kbox{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:8px 0}
+  .kbox.bad{border-color:#f3c0c0;background:var(--no-bg)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="tag">PULK · CMO VIDEO ROOM</p>
+  <h1>CMO Video Room 실제 구현 점검</h1>
+  <p class="sub">PRD v1.1 기준 · 코드 읽기가 아니라 <b>실제 서버 호출·테스트 실행</b>으로 검증 · 2026-06-05</p>
+
+  <div class="legend">
+    <span><span class="b b-ok">작동</span> 실제로 동작 확인</span>
+    <span><span class="b b-part">껍데기/부분</span> 코드 조각만 있고 연결 안 됨</span>
+    <span><span class="b b-no">없음</span> 구현 자체가 없음</span>
+  </div>
+
+  <!-- ───────────── 한 줄 결론 ───────────── -->
+  <h2>한 줄 결론</h2>
+  <div class="card verdict">
+    <p class="big">지금 화면에 보이는 Video Room은 “겉모습 일부 조각”만 있고, PRD가 말한 제품으로는 거의 작동하지 않습니다.</p>
+    <p style="margin:6px 0 0;color:var(--ink2);font-size:14px">
+      부품(카드 디자인·스키마·평가 로직)은 여기저기 만들어졌지만, <b>서로 연결되어 있지 않고</b>,
+      가장 중요한 <b>CMO와의 대화 기능은 백엔드가 통째로 빠져 있어 작동하지 않습니다.</b>
+      PRD 성공 기준 20개 중 <b>완전히 충족된 항목은 0개</b>입니다.
+    </p>
+  </div>
+
+  <div class="pct">
+    <span class="num" style="color:var(--ok)">작동 0~1</span>
+    <div class="bar">
+      <i style="width:4%;background:var(--ok)"></i>
+      <i style="width:26%;background:var(--part)"></i>
+      <i style="width:70%;background:var(--no)"></i>
+    </div>
+    <span class="num" style="color:var(--no)">없음 70%</span>
+  </div>
+  <p style="font-size:13px;color:var(--ink3);margin-top:-6px">
+    초록(작동) ≈ 4% · 노랑(껍데기/부분) ≈ 26% · 빨강(없음) ≈ 70% — PRD 성공기준 20개 + 데이터모델 15개를 종합한 체감 비율
+  </p>
+
+  <!-- ───────────── 지금 CMO 대화 안 되는 이유 ───────────── -->
+  <h2>① 지금 “CMO랑 대화가 안 돼” — 왜 그런가</h2>
+  <p class="sub" style="margin-bottom:14px">실제로 서버에 직접 요청을 보내 확인했습니다. 결과는 명확합니다.</p>
+
+  <div class="kbox bad">
+    <p style="margin:0 0 6px"><b>테스트한 것:</b> 화면이 CMO에게 메시지 보낼 때 부르는 주소 <code>POST /api/cmo:chatMessage</code></p>
+    <p style="margin:0"><b>서버 응답:</b> <span class="b b-no">HTTP 404 Not Found</span> — “그런 기능은 서버에 없습니다”</p>
+  </div>
+  <p style="font-size:13.5px;color:var(--ink3)">비교용: CEO 채팅(<code>/api/chat:submitInstruction</code>)과 CTO(<code>/api/cto:planMessage</code>)는 정상(401=로그인 필요)으로 응답합니다. 즉 다른 대화는 살아있고 <b>CMO만 죽어 있습니다.</b></p>
+
+  <h3>근본 원인 (둘 다 사실)</h3>
+  <div class="step"><div class="x">1</div><div>
+    <b>CMO 대화의 백엔드(서버 쪽 두뇌)가 아예 안 쓰여졌습니다.</b><br>
+    화면(프론트엔드)에는 “CMO에게 마케팅 전략을 이야기하세요…” 입력창과 전송 코드가 있습니다. 그런데 그 요청을 받아 처리할 서버 기능(<code>cmo</code> 리소스)이 <b>지금 코드(메인 브랜치)에도, 이번에 통합한 브랜치에도 둘 다 존재하지 않습니다.</b> 화면만 만들고 서버는 안 만든 상태입니다.
+  </div></div>
+  <div class="step"><div class="x">2</div><div>
+    <b>지금 켜져 있는 서버는 이번 작업물도 아닙니다.</b><br>
+    현재 돌아가는 백엔드(:13000)는 이번 CMO 작업이 들어있지 않은 <b>예전 메인 브랜치</b>입니다. 설령 화면을 새 빌드로 띄워도, 받아줄 서버가 옛날 것이라 어차피 연결되지 않습니다.
+  </div></div>
+
+  <div class="quote">
+    쉽게 말하면 — <b>전화기(화면)는 만들었는데, 전화를 받을 교환국(서버)을 안 만들었습니다.</b>
+    그래서 “여보세요”를 해도 신호가 끊깁니다. 교환국을 새로 만들어 연결해야 대화가 됩니다.
+  </div>
+
+  <!-- ───────────── 화면 자체 ───────────── -->
+  <h2>② 지금 보이는 Video Room 화면의 실체</h2>
+  <table>
+    <tr><th>PRD가 요구한 것</th><th>실제 구현</th><th>상태</th></tr>
+    <tr><td>Video Room 안 3개 탭<br>(Strategy / Production / Review&amp;Publish)</td><td>탭 없음. 페이지 1개에 “여기에 표시됩니다” 안내문구만 3칸.</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>공통 헤더(프로젝트 제목·상태·단계·담당 Agent)</td><td>“Video Room” 제목만. 상태/단계/담당 정보 없음.</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>Mini Roadmap(전체 진행 흐름 표시)</td><td>없음.</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>좌측 CMO Chat</td><td>Video Room 안에는 없음. (별도 <code>/cmo</code>에 있으나 위 ①번 이유로 작동 안 함)</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>가운데 Strategy Board(13종 카드)</td><td>빈 ReadingScript 카드 1개 + 안내문구.</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>우측 Decision Panel(승인/수정/보류)</td><td>안내문구만.</td><td class="s"><span class="b b-no">없음</span></td></tr>
+  </table>
+  <p style="font-size:13.5px;color:var(--ink3)">→ <code>/video-room</code> 페이지는 디자인 뼈대(빈 3단 레이아웃)만 있는 <b>껍데기</b>입니다. PRD 6장의 Strategy Page 구성요소가 들어있지 않습니다.</p>
+
+  <!-- ───────────── 실제로 만들어진 부품 ───────────── -->
+  <h2>③ 그래도 “만들어진 부품”은 무엇인가</h2>
+  <p class="sub" style="margin-bottom:12px">버려진 건 아닙니다. 다만 대부분 <b>서로 연결 안 된 독립 조각</b>이라 제품으로는 안 굴러갑니다.</p>
+  <table>
+    <tr><th>부품</th><th>실체</th><th>상태</th></tr>
+    <tr><td>출력 표시 카드 4종<br>(상품전략·풀링콘텐츠·도입부분석·썸네일)</td><td>CMO가 만든 결과 JSON을 <b>보여주기만</b> 하는 읽기 전용 카드. 저장·승인·다음단계 연결 없음.</td><td class="s"><span class="b b-part">표시만</span></td></tr>
+    <tr><td>원고 카드(ScriptDraft / ReadingScript)</td><td>카드 컴포넌트 존재. 현재 빈 상태로만 렌더.</td><td class="s"><span class="b b-part">빈 껍데기</span></td></tr>
+    <tr><td>슬라이드 스펙(SlideDeckSpec) + 생성 파이프라인</td><td>스키마와 생성 함수 존재. 녹음 업로드→생성 흐름과는 미연결.</td><td class="s"><span class="b b-part">조각</span></td></tr>
+    <tr><td>영상 QA 평가기(evaluateVideoQA)</td><td>QA 판정 로직 존재. 단, 리포트 생성 함수는 미구현(④ 참고).</td><td class="s"><span class="b b-part">부분</span></td></tr>
+    <tr><td>Video Factory 연결 어댑터</td><td>인터페이스 + <b>인메모리(가짜) 어댑터</b>만. 실제 외부 렌더 연결 아님.</td><td class="s"><span class="b b-part">가짜연결</span></td></tr>
+    <tr><td>VideoProject 상태 추적</td><td>존재하나 <code>draft→generating→completed→failed</code> <b>4단계뿐</b>. PRD의 25단계 콘텐츠 전략 워크플로우가 아님(⑤ 참고).</td><td class="s"><span class="b b-part">다른 물건</span></td></tr>
+    <tr><td>로그인 · 사업 선택 · CEO 대화 · CMO 과제 목록</td><td>정상 작동(기존 시스템).</td><td class="s"><span class="b b-ok">작동</span></td></tr>
+  </table>
+
+  <!-- ───────────── 테스트 ───────────── -->
+  <h2>④ 자동 테스트 결과 (직접 실행)</h2>
+  <p class="sub" style="margin-bottom:12px">l5-core의 영상 관련 테스트를 실제로 돌렸습니다 → <b>35개 통과 / 3개 실패</b>. 실패 3개는 사장님이 짚어준 항목과 정확히 일치합니다.</p>
+  <table>
+    <tr><th>테스트</th><th>결과</th><th>의미</th></tr>
+    <tr><td><code>videoqa-evaluator</code> — 리포트 생성</td><td class="s"><span class="b b-no">실패</span></td><td><code>generateVideoQAReports</code> 함수가 “존재하지 않음”. QA 리포트(JSON/MD) 자동 생성 미구현.</td></tr>
+    <tr><td><code>videoqa-evaluator</code> — test:videoqa 스크립트</td><td class="s"><span class="b b-no">실패</span></td><td>루트 <code>package.json</code>에 <code>test:videoqa</code> 명령이 없음.</td></tr>
+    <tr><td><code>qa-automation-contract</code></td><td class="s"><span class="b b-no">실패</span></td><td>QA 가드레일 계약 테스트 미충족.</td></tr>
+    <tr><td><code>slide-deck</code></td><td class="s"><span class="b b-ok">통과</span></td><td>실행 테스트는 통과. (<code>.buffer</code> 타입 내로잉은 타입검사 단계 이슈로 별도)</td></tr>
+    <tr><td><code>video-project</code></td><td class="s"><span class="b b-ok">통과</span></td><td>단, 위 ③의 “4단계 추적기”에 대한 테스트일 뿐 PRD 워크플로우 아님.</td></tr>
+  </table>
+
+  <!-- ───────────── PRD 대비 차이 ───────────── -->
+  <h2>⑤ PRD와 다른 점 — 가감 없이</h2>
+
+  <h3>데이터 모델: 15개 중 13개가 코드에 아예 없음</h3>
+  <p style="font-size:13.5px;color:var(--ink2)">PRD 12장이 정의한 핵심 데이터 타입을 코드에서 검색한 결과입니다. 이게 없으면 “저장·승인·연결”이 원천적으로 불가능합니다.</p>
+  <table>
+    <tr><th>PRD 데이터 타입</th><th>코드에 존재?</th></tr>
+    <tr><td>BusinessPTContextSnapshot (기획 컨텍스트)</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>KeyContentCandidate / SelectedKeyContent (키 콘텐츠)</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>ViewtrapResearchSession (뷰트랩 리서치)</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>ReferenceCandidate (레퍼런스 영상)</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>PullingContentSet (풀링 5개 세트)</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>ThumbnailPattern (썸네일 구조)</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>Intro30sAnalysis (도입부 30초)</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>SecondBrainInsightMerge (인사이트 결합)</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>ContentApprovalGate (승인 게이트)</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>RenderJob · VideoQAResult · UploadDraft</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>SlideDeckSpec</td><td class="s"><span class="b b-part">유사품 존재</span></td></tr>
+  </table>
+
+  <h3>상태 흐름이 통째로 다름</h3>
+  <div class="quote" style="border-left-color:var(--no);background:var(--no-bg)">
+    <b>PRD:</b> 상품정의 → 키콘텐츠 → 뷰트랩 리서치 → 승인 → 풀링 5개 → 썸네일/도입부 → 원고 → 녹음 → 렌더 → QA → 업로드 <b>(25단계 콘텐츠 전략 흐름)</b><br><br>
+    <b>실제 코드:</b> 초안 → 생성중 → 완료/실패 <b>(4단계 영상 렌더 작업 추적기)</b><br><br>
+    → 이건 “CMO 콘텐츠 전략 운영실”이 아니라 그냥 “영상 1개 렌더 상태판”입니다. PRD의 핵심 철학(컨텍스트 로딩 → 리서치 → 승인 게이트)이 빠졌습니다.
+  </div>
+
+  <h3>PRD 성공 기준 20개 체크</h3>
+  <table>
+    <tr><th>#</th><th>성공 기준(요약)</th><th>상태</th></tr>
+    <tr><td>1</td><td>Video Room에서 새 영상 프로젝트 생성</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>2</td><td>Strategy/Production/Review 3개 페이지</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>3</td><td>Strategy Page에서 CMO와 대화</td><td class="s"><span class="b b-no">작동안함</span></td></tr>
+    <tr><td>4–12</td><td>키콘텐츠·뷰트랩·풀링5개·썸네일·도입부·인사이트 저장/승인</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>13–14</td><td>승인된 것만 Production 이동, 원고→녹음</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>15–17</td><td>SlideDeckSpec 생성 → VideoJob → Factory 렌더</td><td class="s"><span class="b b-part">조각만</span></td></tr>
+    <tr><td>18–19</td><td>QA 결과 표시, UploadDraft 생성</td><td class="s"><span class="b b-no">없음</span></td></tr>
+    <tr><td>20</td><td>공개 업로드 최종 승인 전 실행 금지</td><td class="s"><span class="b b-part">해당없음</span></td></tr>
+  </table>
+  <p style="font-size:14px;color:var(--ink);font-weight:600;margin-top:10px">→ 20개 중 완전 충족 0개, 부분 충족 약 4개(15·16·17·20), 나머지 미구현.</p>
+
+  <!-- ───────────── 비개발자 요약 ───────────── -->
+  <h2>⑥ 비개발자용 한 장 요약</h2>
+  <div class="card">
+    <ul style="font-size:14.5px;line-height:1.85">
+      <li><b>대화가 안 되는 건 버그가 아니라 “안 만들어진 것”입니다.</b> CMO 대화의 서버 쪽이 통째로 빠져 있어요. 고치려면 새로 만들어야 합니다(수리가 아니라 신축).</li>
+      <li><b>지금 브라우저에 뜬 Video Room은 빈 디자인 뼈대입니다.</b> 탭·로드맵·카드·승인 패널 등 PRD 핵심이 들어있지 않습니다.</li>
+      <li><b>“158개 작업 완료”의 결과물은 흩어진 부품들</b>입니다. 카드 디자인 몇 개, 스키마 몇 개, 평가 로직, 가짜 연결 어댑터 — 하지만 <b>하나의 작동하는 제품으로 조립되지 않았습니다.</b></li>
+      <li><b>PRD의 심장인 “리서치 → 승인 게이트 → 콘텐츠 세트” 흐름은 데이터 구조부터 없습니다.</b> 15개 핵심 데이터 중 13개가 코드에 존재하지 않습니다.</li>
+      <li><b>좋은 소식:</b> 로그인·사업선택·CEO 대화 같은 기반은 멀쩡합니다. 디자인 토큰과 레이아웃 뼈대도 있어, 다시 제대로 조립하면 속도는 붙습니다.</li>
+    </ul>
+  </div>
+
+  <div class="card verdict warn">
+    <p class="big" style="color:var(--part)">다음에 해야 할 일 (이번엔 코드 수정 안 함)</p>
+    <p style="margin:0;color:var(--ink2);font-size:14px">
+      ① CMO 대화 백엔드(<code>/api/cmo:chatMessage</code>) 신규 구현 + 실제 서버 배포 →
+      ② Video Room 3페이지·헤더·로드맵 실제 구성 →
+      ③ PRD 데이터모델 13종 추가 →
+      ④ 리서치·승인 게이트 흐름 연결 →
+      ⑤ 테스트 3종(videoqa 리포트·test:videoqa·가드레일) 마저 통과.
+      <br><br>지시 주시면 이 순서대로 진행하겠습니다.
+    </p>
+  </div>
+
+  <p class="foot">검증 방법: 실행 중 서버 직접 호출(curl) · l5-core Jest 38개 실행 · 소스 전수 검색 · 페이지 코드 정독 — 추정 아님, 실측.</p>
+</div>
+</body>
+</html>

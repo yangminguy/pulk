@@ -49,3 +49,10 @@ storage/
 
 # Hermes runtime cron/state artifacts (contain tokens/PII — never commit)
 apps/nocobase-app/cron_*
+
+# Claude Code agent working dirs (ephemeral locks/state)
+.claude/
+**/.claude/
+
+# 별도 GitHub repo를 pulk 폴더에 붙여넣은 것 — pulk 추적/정리 대상 아님 (보호)
+ai-slide-video-factory/
