@@ -25,6 +25,7 @@ export * from './functions/cto-design';
 export * from './functions/token-estimate';
 export * from './functions/roadmap';
 export * from './functions/cto-planning';
+export * from './functions/state-machine/transitions';
 export * from './functions/project-status/builder';
 export * from './functions/consultation';
 export { createAskFounderTool } from './functions/consultation/tool';

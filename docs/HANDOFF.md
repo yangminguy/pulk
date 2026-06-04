@@ -1,16 +1,22 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (Intro 30s Analysis Card 오픈소스 조사 완료)
+최종 업데이트: 2026-06-04 (Intro 30s Analysis Card 스펙 작성 완료)
 
 ---
 
-## 🟢 2026-06-04 (최신) — Intro 30s Analysis Card 오픈소스 조사
+## 🟢 2026-06-04 (최신) — Intro 30s Analysis Card 스펙 작성
 
-3개 도메인 비교 완료. 상세 비교표는 `docs/TASKS.md` "Intro 30s Analysis Card — 오픈소스 조사" 섹션.
+**오픈소스 조사 + 스펙 완료.** 상세는 `docs/TASKS.md` "Intro 30s Analysis Card" 섹션.
 
-- **차트**: Recharts(MIT, ~50kB) 채택 — JSX 네이티브 컴포지션이 기존 카드 인라인 스타일 패턴과 일치. @nivo/line(verbose), uPlot(저수준), react-chartjs-2(번들 과대) 배제.
-- **YouTube 데이터**: youtubei.js(MIT, v17) 채택 — InnerTube 전체 클라이언트로 자막+메타데이터 단일 세션 추출, 활발히 유지보수. youtube-transcript(비활성), yt-dlp(GPL-3.0 전파 위험) 배제.
-- **프레임 추출**: @remotion/renderer 재활용(이미 설치, 추가 번들 0) — PMF 확인 후 점진 추가. ffmpeg.wasm(31MB 과도), Canvas API(CORS 제약) 배제.
+**설계 결정**: 독립 카드 컴포넌트가 아니라 기존 `AgentOutputDetail.tsx`에 분기 추가 (Strategy Decision Panel과 동일 패턴). `output.intro_analysis` 필드 감지 → 전용 패널 렌더링.
+
+**데이터 모델**: `AgentOutputLite`에 `intro_analysis?: IntroAnalysisData` optional 필드 추가. 핵심 = `hook_score`(0–100), `retention_curve`(초별 pct[]), `segments`(구간별 verdict+feedback).
+
+**라이브러리**: recharts(MIT, ~50kB) — 카드 내 미니 리텐션 커브. youtubei.js는 CMO 에이전트 런타임(l5-core) 쪽이라 이 카드 스코프 외.
+
+**영향 파일 4개**: `api.ts`(타입), `AgentOutputDetail.tsx`(분기), `package.json`(recharts), 신규 테스트 1개. 기존 사용처(`chat/page.tsx`, `monitor/page.tsx`) 변경 불필요.
+
+**다음 단계**: 실패 테스트 작성 → 구현 → acceptance_criteria 9개 검증.
 
 ---
 

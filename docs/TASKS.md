@@ -50,53 +50,109 @@
 - [ ] `state-machine/transitions.ts` — `createTransitionValidator` + 4개 lookup table (AgentTask 11, FounderInstruction 6, ToolRequest 7, BusinessIdea 5 = 29 edges)
 - [ ] `l5-core/src/index.ts` re-export + typecheck + test 통과
 
-### Intro 30s Analysis Card — 오픈소스 조사 (2026-06-04, 비교 완료)
+### Intro 30s Analysis Card (2026-06-04, 스펙 완료)
 
-> **배경**: CMO가 YouTube 영상 인트로 첫 30초의 시청자 리텐션/훅 효과를 분석한 결과를 보여주는 카드. 3개 도메인(차트 시각화, YouTube 데이터 추출, 프레임 추출)에 대해 후보를 비교하고 채택/배제 근거를 정리한다.
+> **배경**: CMO가 YouTube 영상 인트로 첫 30초의 시청자 리텐션/훅 효과를 분석한 결과를 `agent_tasks.output`에 기록한다. `AgentOutputDetail`이 인트로 분석형 산출물(`intro_analysis` 필드 존재)을 감지하면, 리텐션 커브 미니차트 + 훅 스코어 + 구간별 피드백을 전용 패널로 렌더링한다. Strategy Decision Panel과 동일한 분기 추가 패턴.
 
-#### Domain 1: 리텐션 커브 차트 (카드 내 미니 차트)
+#### 오픈소스 조사 (비교 완료)
 
-| 항목 | Recharts | @nivo/line | uPlot | react-chartjs-2 |
-|------|----------|------------|-------|-----------------|
-| npm 주간 DL | ~2.4M | ~380K | ~573K | ~4M (Chart.js 포함) |
-| 번들 (min+gz) | ~50kB | ~40kB (@nivo/line 단독) | ~48kB | ~106kB (Chart.js+래퍼) |
-| React 네이티브 통합 | ✅ JSX 컴포지션 | ✅ props 기반 | ⚠️ 래퍼 필요 | ✅ 공식 래퍼 |
-| 미니차트/sparkline | ✅ 즉시 소형화 | ✅ 가능 | ⚠️ 저수준 API | ✅ 가능 |
-| 라이선스 | MIT | MIT | MIT | MIT |
+| 도메인 | 채택 | 배제 (이유) | 번들 추가 | 통합 시점 |
+|--------|------|-------------|-----------|-----------|
+| 리텐션 커브 차트 | **recharts** (MIT, ~50kB) | @nivo/line(verbose+D3), uPlot(저수준), react-chartjs-2(106kB 과대) | ~50kB | 카드 구현 시 |
+| YouTube 데이터 | **youtubei.js** (MIT, v17) | youtube-transcript(비활성+파손), yt-dlp(GPL-3.0 전파) | ~패키지 크기 | 카드 구현 시 |
+| 프레임 추출 | **@remotion/renderer** (기존) | ffmpeg.wasm(31MB 과도), Canvas API(CORS 차단) | 0 | PMF 확인 후 |
 
-**채택: Recharts** — JSX 네이티브 컴포지션이 기존 카드 패턴(인라인 스타일 + `<ResponsiveContainer>`)과 동일. 30포인트 미만 데이터에서 SVG 성능 문제 없음. @nivo/line은 설정 verbose+D3 의존 추가. uPlot은 저수준 API로 카드 내 인라인 사용 시 복잡도 증가. react-chartjs-2는 번들 ~106kB로 과대.
+#### 데이터 모델: `intro_analysis` (AgentOutputLite 확장)
 
-#### Domain 2: YouTube 자막/메타데이터 추출 (첫 30초)
+CMO가 `agent_tasks.output`에 기록하는 인트로 분석 결과 구조. 기존 `AgentOutputLite` 타입에 optional 필드로 추가한다.
 
-| 항목 | youtubei.js | youtube-transcript | yt-dlp (CLI) |
-|------|-------------|-------------------|--------------|
-| npm 주간 DL | ~44K | ~58K | CLI (yt-dlp-wrap 경유) |
-| 유지보수 | ✅ 활성 (v17, 5K+ stars) | ❌ 12개월 무릴리스 | ✅ 매우 활성 |
-| API 키 불필요 | ✅ InnerTube 역설계 | ✅ 비공식 스크레이핑 | ✅ |
-| 메타데이터+자막 동시 | ✅ 단일 세션 | ❌ 자막만 | ✅ 완전 |
-| 브라우저 지원 | ✅ Node+브라우저 | ❌ Node 전용 | ❌ 서버 전용 |
-| 라이선스 | MIT | MIT | GPL-3.0 |
+```typescript
+// apps/founder-ui/src/lib/api.ts — AgentOutputLite에 추가
+export type IntroAnalysisData = {
+  video_title: string
+  video_url: string                    // YouTube URL
+  thumbnail_url?: string               // 썸네일 이미지 URL
+  duration_sec: number                 // 분석 대상 구간 (최대 30)
+  hook_score: number                   // 0–100, 훅 효과 종합 점수
+  retention_curve: { sec: number; pct: number }[]  // 초별 예상 리텐션 (0–30초, 최대 30포인트)
+  segments: {
+    label: string                      // 구간 이름 ("오프닝 훅", "문제 제기", "가치 제안" 등)
+    start_sec: number
+    end_sec: number
+    verdict: 'strong' | 'weak' | 'neutral'
+    feedback: string                   // CMO의 구간별 피드백
+  }[]
+  overall_feedback: string             // 종합 피드백
+  improvement_suggestions?: string[]   // 개선 제안 (있을 때만)
+}
 
-**채택: youtubei.js** — InnerTube 전체 클라이언트로 자막+메타데이터(제목, 썸네일, 길이, 설명)를 단일 호출로 획득. 활발히 유지보수. 30초 슬라이싱은 `transcript.filter(t => t.offset < 30000)`. youtube-transcript는 비활성+파손 이력으로 프로덕션 신뢰 불가. yt-dlp는 GPL-3.0 라이선스 전파 위험 — 서버사이드 폴백으로만 검토.
+// AgentOutputLite에 추가
+export type AgentOutputLite = {
+  // ... 기존 필드 유지
+  intro_analysis?: IntroAnalysisData   // 인트로 30초 분석 결과
+}
+```
 
-#### Domain 3: 비디오 프레임 추출 (선택적, 훅 비주얼 스코어링)
+#### 스펙: Intro 30s Analysis Panel
 
-| 항목 | @remotion/renderer (기존) | ffmpeg.wasm | Canvas API |
-|------|--------------------------|-------------|------------|
-| 번들 추가 비용 | 0 (이미 설치) | ~31MB WASM | 0 (내장) |
-| 실행 환경 | 서버 전용 | 브라우저+Node | 클라이언트 전용 |
-| 프레임 추출 정확도 | ✅ 네이티브 ffmpeg | ✅ | ⚠️ seek 편차 |
-| 라이선스 | MIT | LGPL-2.1 | N/A |
+**목적**: `AgentOutputDetail`이 인트로 분석형 산출물(`intro_analysis` 존재)을 감지하면, 공통 카드 패턴에 맞는 "인트로 분석 패널" 뷰로 렌더링한다.
 
-**채택: @remotion/renderer 재활용 (PMF 확인 후)** — 이미 `services/video-factory`에 설치됨, 추가 번들 0. ffmpeg.wasm은 31MB로 카드 한 장에 과도. Canvas API는 YouTube cross-origin 제약으로 실질 불가. CLAUDE.md "Do not build tools before PMF signal exists" 원칙에 따라 텍스트 기반 분석 검증 후 점진 추가.
+**감지 규칙**:
+- `output.intro_analysis`가 존재하고 `hook_score`가 number이면 → 인트로 분석 패널 모드
+- 그 외 → 기존 렌더링 유지 (Strategy Decision 분기 포함)
 
-#### 최종 채택 요약
+**패널 구조**:
+```
+┌─ 외곽: border 1px solid var(--silver-2), borderRadius 6, overflow hidden
+│  ┌─ 헤더: j-overline "인트로 30초 분석" + AgentChip(CMO)
+│  ├─ 영상 정보: 썸네일(옵션) + video_title + duration_sec + video_url 링크
+│  ├─ 훅 스코어: hook_score/100 대형 숫자 + 색상 인디케이터 (≥70 green, ≥40 amber, <40 red)
+│  ├─ 리텐션 커브: Recharts <LineChart> 미니차트 (높이 80px, x=sec, y=pct%)
+│  ├─ 구간별 분석: segments[] 각각 label + 시간 범위 + verdict 칩 + feedback
+│  ├─ 종합 피드백: overall_feedback 텍스트
+│  └─ 개선 제안: improvement_suggestions[] ul/li (있을 때만)
+└─
+```
 
-| 도메인 | 채택 | 번들 추가 | 통합 시점 |
-|--------|------|-----------|-----------|
-| 리텐션 커브 차트 | **recharts** (MIT) | ~50kB | 카드 구현 시 |
-| YouTube 데이터 | **youtubei.js** (MIT) | ~패키지 크기 | 카드 구현 시 |
-| 프레임 추출 | **@remotion/renderer** (기존) | 0 | PMF 확인 후 |
+**verdict 칩 색상**: `strong` → green-tint 배경, `weak` → red/amber-tint, `neutral` → silver-1.
+
+**Recharts 사용**: `recharts`를 `apps/founder-ui`에 devDependency로 설치. `<ResponsiveContainer width="100%" height={80}>` + `<LineChart>` + `<Line type="monotone" dataKey="pct" stroke="var(--green)" strokeWidth={1.5} dot={false} />`. X축/Y축 라벨 최소화 (sparkline 스타일).
+
+**props 변경**: 없음 — `AgentOutputDetail`의 기존 `{ output: AgentOutputLite; agent?: string }` 그대로 사용. `intro_analysis`는 `AgentOutputLite`에 optional 필드로 추가되므로 기존 호출부 변경 없음.
+
+#### acceptance_criteria (측정 가능)
+
+1. `AgentOutputDetail.intro-analysis-panel.test.tsx`가 통과한다 (실패 테스트 선작성 → 구현 후 통과).
+2. `intro_analysis` 필드가 있는 output → HTML에 "인트로 30초 분석" 텍스트 포함.
+3. `hook_score` 값에 따라 색상 분기: `≥70` → green 계열, `≥40` → amber 계열, `<40` → red 계열.
+4. `retention_curve` 데이터가 Recharts `<LineChart>`로 렌더링됨 (SVG `<path>` 존재 확인).
+5. `segments[]` 각 항목이 `label`, 시간 범위(`start_sec–end_sec`), `verdict` 칩, `feedback` 텍스트를 표시.
+6. `improvement_suggestions`가 없으면 해당 섹션 미렌더링 (조건부).
+7. `intro_analysis` 필드가 없는 output → 기존 일반 필드 뷰 / Strategy Decision Panel 유지 (회귀 없음).
+8. 기존 `AgentOutputDetail` 사용처(`chat/page.tsx` L1182, `monitor/page.tsx` L817)에서 기존 동작 유지.
+9. `apps/founder-ui` typecheck (`tsc --noEmit`) 통과.
+
+#### 영향 파일
+
+| 파일 | 변경 유형 |
+|------|-----------|
+| `apps/founder-ui/src/lib/api.ts` | 수정 — `IntroAnalysisData` 타입 추가, `AgentOutputLite`에 `intro_analysis?` 필드 추가 |
+| `apps/founder-ui/src/components/AgentOutputDetail.tsx` | 수정 — 인트로 분석 패널 분기 추가 (`hasIntroAnalysis` 감지) |
+| `apps/founder-ui/src/components/__tests__/AgentOutputDetail.intro-analysis-panel.test.tsx` | 신규 — 실패 테스트 |
+| `apps/founder-ui/package.json` | 수정 — `recharts` devDependency 추가 |
+| `apps/founder-ui/src/app/chat/page.tsx` | 확인 — 변경 불필요 (기존 `output` prop 전달로 자동 동작) |
+| `apps/founder-ui/src/app/monitor/page.tsx` | 확인 — 변경 불필요 |
+
+#### 채택 라이브러리
+
+- **recharts** (MIT, ~50kB min+gz): `<LineChart>` + `<Line>` + `<ResponsiveContainer>`. 카드 내 미니 리텐션 커브 전용. JSX 컴포지션 패턴이 기존 인라인 스타일과 일치.
+- **youtubei.js** (MIT): 이 카드 자체에서는 사용 안 함 — CMO 에이전트 런타임(l5-core)에서 자막/메타데이터 추출 시 사용. 카드는 이미 추출된 결과(`intro_analysis`)만 렌더링.
+
+#### 스코프 외 (명시적 배제)
+
+- YouTube 데이터 추출 로직 (l5-core CMO 도구): 별도 태스크.
+- 프레임 추출/비주얼 스코어링: PMF 확인 후.
+- 실시간 YouTube Analytics API 연동: API 키 + OAuth 필요, MVP 범위 외.
 
 ### Thumbnail Pattern Card — Strategy Decision Panel (2026-06-04, 스펙 완료)
 
