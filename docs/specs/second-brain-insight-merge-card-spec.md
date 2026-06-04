@@ -72,3 +72,16 @@ export type InsightMergeData = {
    - `SecondBrainInsightMergeCard` 컴포넌트에 '병합하여 저장', '신규 건 폐기', '각각 분리 저장'의 3가지 액션 버튼이 정의되어 있는지 확인할 수 있다.
    - `InsightMergeData` 타입에 신규 데이터(`incoming`)와 기존 데이터(`existing`)를 담는 필드가 명시적으로 선언되어 있는지 타입 체커(TypeScript)를 통해 검증 가능하다.
    - UI 상에 `similarity_score`가 숫자로 노출되도록 컴포넌트 설계에 명시되어 있는지 확인할 수 있다.
+
+## 7. 오픈소스/라이브러리 조사 (React Diff/Merge UI)
+
+SecondBrainInsightMergeCard의 핵심인 '나란히 비교하고 편집 및 병합' 기능을 구현하기 위한 라이브러리 후보군 비교표입니다.
+
+| 라이브러리 / 솔루션 | 장점 | 단점 | 채택 여부 및 근거 |
+|---|---|---|---|
+| **@monaco-editor/react**<br/>(Monaco Editor Diff) | - VS Code와 동일한 강력한 Diff 및 에디팅 경험 제공<br/>- 양방향 비교 및 실시간 편집, 코드/텍스트 하이라이팅 완벽 지원<br/>- 유지보수가 매우 활발함 | - 번들 사이즈가 상대적으로 크고 무거움<br/>- 단순 텍스트 비교용으로는 오버엔지니어링일 수 있음 | **채택 (1순위)**<br/>Founder가 직접 텍스트를 수정하고 병합(Merge)하는 '에디팅' 기능이 필수적이므로, 단순 뷰어를 넘어 강력한 편집 환경을 제공하는 Monaco의 Diff Editor가 가장 적합함. |
+| **react-diff-viewer-continued** | - React 생태계에서 널리 쓰이며 설정이 매우 간단함<br/>- 인라인(Inline) 및 스플릿(Split) 뷰 등 직관적인 UI 제공<br/>- 가벼움 | - 읽기 전용(Read-only) 뷰어 역할에 국한됨<br/>- 화면 내에서 직접 수정하거나 병합하는 에디터 기능 부재 | **배제**<br/>'비교 대조'에는 좋으나, 스펙 상의 "Founder가 두 내용을 편집 및 병합"하는 인터랙션을 한 컴포넌트 안에서 소화하기 어려움. 하단에 별도 Textarea를 두어야 하는 UX적 한계가 있음. |
+| **mergely-react** | - 텍스트의 양방향 비교 및 부분 클릭 병합(Merge) 기능 특화<br/>- 브라우저 단에서 무거운 diff 연산 처리 | - 오래된 jQuery 기반 의존성이 있거나 React 최신 환경과의 매끄러운 통합이 어려울 수 있음<br/>- UI 커스터마이징이 모던(Tailwind/Shadcn) 환경과 이질적임 | **배제**<br/>모던 React 스택(Next.js 등)과의 호환성 및 유지보수성 측면에서 리스크가 있으며, UI 일관성을 맞추기 까다로움. |
+
+**최종 결론**: 
+단순 텍스트 차이를 보여주는 것을 넘어 '병합(Merge) 및 수정'이 필요하므로 **@monaco-editor/react**의 Diff Editor 기능을 채택하는 것을 권장합니다. 만약 번들 크기가 크리티컬한 이슈라면, `diff-match-patch` 코어 라이브러리를 사용해 커스텀 UI(Headless)를 직접 구현하는 것을 대안으로 고려할 수 있습니다.
