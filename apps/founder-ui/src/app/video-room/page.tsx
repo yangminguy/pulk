@@ -1008,6 +1008,9 @@ function ReviewPublishBoard({
   const [creatingDraft, setCreatingDraft] = useState(false)
   const [publishErr, setPublishErr] = useState<string | null>(null)
   const [publishOk, setPublishOk] = useState<string | null>(null)
+  const [draftTitle, setDraftTitle] = useState('')
+  const [draftDesc, setDraftDesc] = useState('')
+  const [draftTags, setDraftTags] = useState('')
 
   // P0-2 fix: use backend stage key 'qa' (not 'video_qa')
   const reviewCards = cards.filter(c => ['qa', 'upload_draft'].includes(c.stage))
@@ -1126,35 +1129,69 @@ function ReviewPublishBoard({
             >
               {runningQA ? '실행 중...' : 'QA 실행'}
             </button>
-            <button
-              className="j-btn j-btn-secondary j-btn-sm"
-              disabled={creatingDraft}
-              onClick={async () => {
-                setCreatingDraft(true)
-                setPublishErr(null)
-                setPublishOk(null)
-                try {
-                  const renderCard = cards.find(c => c.stage === 'rendering')
-                  const renderJobId = renderCard
-                    ? ((renderCard.data as Record<string, unknown> | null)?.render_job_id as string | undefined) ?? renderCard.id
-                    : ''
-                  await api.cmoCreateUploadDraft({
-                    project_id: projectId,
-                    render_job_id: renderJobId,
-                    title: '',
-                  })
-                  setPublishOk('업로드 초안 생성 완료 (비공개)')
-                  onRefresh()
-                } catch (e: unknown) {
-                  setPublishErr(e instanceof Error ? e.message : '업로드 초안 생성 실패')
-                } finally {
-                  setCreatingDraft(false)
-                }
-              }}
-            >
-              {creatingDraft ? '생성 중...' : '업로드 초안 생성'}
-            </button>
           </div>
+
+          {/* Upload draft inputs */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-3)', display: 'block', marginBottom: 3 }}>
+                제목 <span style={{ color: 'var(--red)' }}>*</span>
+              </label>
+              <input
+                className="j-input"
+                placeholder="업로드 제목을 입력하세요"
+                value={draftTitle}
+                onChange={e => setDraftTitle(e.target.value)}
+              />
+            </div>
+            <input
+              className="j-input"
+              placeholder="설명 (선택)"
+              value={draftDesc}
+              onChange={e => setDraftDesc(e.target.value)}
+            />
+            <input
+              className="j-input"
+              placeholder="태그 (쉼표 구분, 선택)"
+              value={draftTags}
+              onChange={e => setDraftTags(e.target.value)}
+            />
+          </div>
+
+          <button
+            className="j-btn j-btn-secondary j-btn-sm"
+            disabled={creatingDraft || !draftTitle.trim()}
+            title={!draftTitle.trim() ? '제목을 입력하세요' : undefined}
+            style={{ alignSelf: 'flex-start' }}
+            onClick={async () => {
+              setCreatingDraft(true)
+              setPublishErr(null)
+              setPublishOk(null)
+              try {
+                const renderCard = cards.find(c => c.stage === 'rendering')
+                const renderJobId = renderCard
+                  ? ((renderCard.data as Record<string, unknown> | null)?.render_job_id as string | undefined) ?? renderCard.id
+                  : ''
+                await api.cmoCreateUploadDraft({
+                  project_id: projectId,
+                  render_job_id: renderJobId,
+                  title: draftTitle.trim(),
+                  description: draftDesc.trim() || undefined,
+                  tags: draftTags.trim()
+                    ? draftTags.split(',').map(t => t.trim()).filter(Boolean)
+                    : undefined,
+                })
+                setPublishOk('업로드 초안 생성 완료 (비공개)')
+                onRefresh()
+              } catch (e: unknown) {
+                setPublishErr(e instanceof Error ? e.message : '업로드 초안 생성 실패')
+              } finally {
+                setCreatingDraft(false)
+              }
+            }}
+          >
+            {creatingDraft ? '생성 중...' : '업로드 초안 생성'}
+          </button>
         </div>
       </div>
     </div>
@@ -1408,12 +1445,14 @@ function VideoRoomContent() {
   const [advancing, setAdvancing] = useState(false)
   const [readyToAdvance, setReadyToAdvance] = useState(false)
 
-  const loadDetail = useCallback(async (id: string) => {
+  const loadDetail = useCallback(async (id: string, initPage?: boolean) => {
     setLoadingDetail(true)
     try {
       const res = await api.cmoGetProject(id) as ProjectDetail
       setDetail(res)
-      setActivePage(res.project?.current_page ?? 'strategy')
+      if (initPage) {
+        setActivePage(res.project?.current_page ?? 'strategy')
+      }
       // check if last message has ready_to_advance
       const msgs = res.messages ?? []
       const lastCmo = [...msgs].reverse().find(m => m.role === 'cmo')
@@ -1427,7 +1466,7 @@ function VideoRoomContent() {
 
   useEffect(() => {
     if (projectId) {
-      loadDetail(projectId)
+      loadDetail(projectId, true)
     }
   }, [projectId, loadDetail])
 
