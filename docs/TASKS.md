@@ -27,6 +27,18 @@
 - [ ] **배포**: launchd :13000이 clean 코드 서빙하도록 빌드+kickstart (Founder 결정) + PR.
 - [ ] **P2 후속**: 성과 Memory completed 연결, KeyContentSet/funnel 전용 카드, Production 버튼 Playwright 클릭 검증.
 
+## ✅ CMO Video Room — CTO 자율 개발 완료 (2026-06-05)
+
+- [x] CTO가 PRD(28기능/158phase) 자율 실행 → **158/158 done**, Hermes 텔레그램 완료알림 발송
+- [x] 펄크 격리 worktree 4개 병렬(claude 구현·테스트 / agy=Gemini 비코드 / codex 보조), 단일 plan 직렬·worktree 병렬
+- [x] 통합 브랜치 `cmo/video-room-integrated`(123파일) — next build 그린·tsc 0·구조 e2e 24+·브라우저 렌더 검증
+- [x] 속도 병목 근본수정: phase 분해 적정화·게이트 완화·no-op phase done·락 stale-release·원자적 쓰기 (DECISIONS 2026-06-05)
+- [x] **PR 전 정리(2026-06-05)**: union 머지가 main을 회귀시킴을 발견 → fresh main에서 재파생한 `cmo/video-room-clean`(origin push) 생성. Founder 리뷰 후 PR 예정. 남은 cmo 미완 3건은 메모리 `cmo-video-room-clean-branch` 참조.
+- [~] **v2 근본수정**(`docs/CMO_DEV_SPEED_STRATEGY.md`) — CTO 최적화 Track B
+  - [x] **B1~B5 (pulk-side, 배포 완료 2026-06-05)**: phase 결정적화(LLM 0회)·single-component 휴리스틱 테스트·verifier diff검증·D3 결정적 판정·쿼터 인지 라우팅. l5-core 596/596, agent-runtime 8/8. HANDOFF 2026-06-05 참조.
+  - [ ] **B6 per-phase 모델 배선** (라이브 ACR repo): `antigravity-runner --model` 등 死코드 활성화
+  - [ ] **B7 잡큐 오케스트레이션** (라이브 ACR repo): `auto-dispatcher` inline SSE→enqueue+worker, 인메모리 락 제거
+
 ## 🔥🔥 M9: CTO 시니어 개발자 자율 실행 — 컨트롤룸 라이브화 (2026-06-04 최우선, 창업자 지정)
 
 > **창업자 비전**: CEO와 기획 → CTO가 큰 로드맵을 그림 → (큰 작업만) task 분해 → claude/codex/agy CLI에 모델별 배정 → 결과물이 **실시간(최소 시작/완료)으로 컨트롤룸=CEO채팅 메인 페이지에 표시** → 각 에이전트가 어떤 task 배정받고 완료/진행중인지 전부 보임 → 전체 개발계획이 하나씩 사라짐 → **예상 토큰도 표시**. CTO가 시니어 개발자처럼 토큰·계획·개발 전체를 알아서 관리.

@@ -19,6 +19,22 @@ export interface VerifyCTOPhaseInput {
   diff_summary?: string;
   log_tail?: string;
   exit_code?: number;
+  /**
+   * Number of files changed (from `git diff --stat`). When the ACR runner reports
+   * this, the verifier can fail a code phase that landed zero changes even though
+   * the process exited 0. Falls back to parsing diff_summary when omitted.
+   */
+  changed_files?: number;
+}
+
+// expected_output phrasing that implies the phase must produce code/file changes.
+const CODE_SIGNAL = /\b(implement|fix|refactor|test)\b|구현|수정|리팩터|작성|코드|함수/i;
+
+/** Files changed: explicit count if given, else parsed from a `git diff --stat` summary. */
+function countChangedFiles(input: VerifyCTOPhaseInput): number | undefined {
+  if (typeof input.changed_files === 'number') return input.changed_files;
+  const m = (input.diff_summary ?? '').match(/(\d+)\s+files?\s+changed/);
+  return m ? parseInt(m[1]!, 10) : undefined;
 }
 
 export interface VerifyCTOPhaseResult {
@@ -64,9 +80,25 @@ export function verifyCTOPhaseDeterministic(
     };
   }
 
+  const diff = (input.diff_summary ?? '').trim();
+
+  // False-positive guard: a code-producing phase that changed zero files is a
+  // real failure even on exit 0 (e.g. an "implement" phase whose diff_summary is
+  // noise but changed_files=0). Code intent overrides the read-only hint below.
+  const expectsCode = CODE_SIGNAL.test(input.expected_output ?? '');
+  const changedFiles = countChangedFiles(input);
+  const noChange = changedFiles === 0 || (changedFiles === undefined && !diff);
+  if (expectsCode && noChange) {
+    return {
+      verdict: 'fail',
+      reason: 'expected_output requires code changes but no files were changed',
+      retry_recommended: true,
+      confidence: 'high',
+    };
+  }
+
   // No diff at all may indicate the agent did nothing (unless expected_output
   // says read-only verification, which we can't detect deterministically).
-  const diff = (input.diff_summary ?? '').trim();
   const readOnlyHint = /\b(read|review|inspect|verify|audit)\b/i.test(
     input.expected_output ?? '',
   );

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L5 Business OS — 개발 현황 한눈에 보기</title>
+<style>
+  :root {
+    --canvas: #F4F0E6; --surface: #FAF7F0; --elevated: #FDFBF6;
+    --ink: #1c2521; --ink-soft: #51605a; --silver: #d9d3c4; --silver-2: #ece7da;
+    --green: #1FA64D; --green-hover: #178A3F; --green-tint: #E4F4E8;
+    --amber: #C77B1E; --amber-tint: #FBEFD9; --blue: #2D6CB5; --blue-tint: #E2ECF7;
+    --red: #C0392B; --red-tint: #F8E4E1; --lav: #ECE6F7; --mint: #E0F2EA;
+    --sky: #E2EEF7; --butter: #FBF3D6; --peach: #FBEADF;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--canvas); color: var(--ink);
+    font-family: "IBM Plex Sans", -apple-system, "SUIT", "Pretendard", sans-serif;
+    line-height: 1.65; word-break: keep-all; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 24px 96px; }
+  header.hero {
+    background: var(--elevated); border: 1px solid var(--silver);
+    border-radius: 20px; padding: 40px; margin-bottom: 32px;
+    border-left: 5px solid var(--green);
+  }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--green-hover); font-weight: 600; margin: 0 0 12px;
+  }
+  h1 { font-family: "Source Serif 4", Georgia, serif; font-size: 34px; margin: 0 0 12px; line-height: 1.25; }
+  h2 {
+    font-family: "Source Serif 4", Georgia, serif; font-size: 25px;
+    margin: 56px 0 18px; padding-bottom: 8px; border-bottom: 2px solid var(--silver-2);
+  }
+  h3 { font-size: 18px; margin: 24px 0 10px; }
+  p { margin: 0 0 14px; color: var(--ink-soft); }
+  .lead { font-size: 17px; color: var(--ink); }
+  .card {
+    background: var(--surface); border: 1px solid var(--silver);
+    border-radius: 16px; padding: 24px 26px; margin-bottom: 18px;
+  }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } .wrap { padding: 28px 16px 64px; } h1 { font-size: 27px; } }
+  .pill {
+    display: inline-block; font-family: "IBM Plex Mono", monospace; font-size: 11px;
+    font-weight: 600; padding: 3px 10px; border-radius: 999px; letter-spacing: 0.04em;
+  }
+  .pill-live { background: var(--green-tint); color: var(--green-hover); }
+  .pill-soon { background: var(--amber-tint); color: var(--amber); }
+  .pill-plan { background: var(--blue-tint); color: var(--blue); }
+  .tag-ceo { background: var(--mint); color: var(--green-hover); }
+  .tag-cto { background: var(--sky); color: var(--blue); }
+  .step {
+    display: flex; gap: 16px; align-items: flex-start; padding: 14px 0;
+    border-bottom: 1px dashed var(--silver-2);
+  }
+  .step:last-child { border-bottom: none; }
+  .step .num {
+    flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--green); color: #fff; font-weight: 700; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .step.cto .num { background: var(--blue); }
+  .step .body { flex: 1; }
+  .step .body strong { color: var(--ink); display: block; margin-bottom: 2px; }
+  .step .body span { font-size: 14px; color: var(--ink-soft); }
+  .flow {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    font-family: "IBM Plex Mono", monospace; font-size: 13px; margin: 12px 0;
+  }
+  .flow .node {
+    background: var(--elevated); border: 1px solid var(--silver);
+    padding: 7px 12px; border-radius: 10px; white-space: nowrap;
+  }
+  .flow .arr { color: var(--green); font-weight: 700; }
+  .analogy {
+    background: var(--butter); border-radius: 12px; padding: 14px 18px;
+    font-size: 14px; color: #6b5320; margin: 10px 0 4px; border-left: 4px solid var(--amber);
+  }
+  .analogy b { color: #5a4317; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--silver-2); }
+  th { font-family: "IBM Plex Mono", monospace; font-size: 12px; text-transform: uppercase; color: var(--ink-soft); letter-spacing: 0.05em; }
+  td { color: var(--ink-soft); }
+  td strong { color: var(--ink); }
+  .check { color: var(--green); font-weight: 700; }
+  .todo { color: var(--amber); font-weight: 700; }
+  ul.clean { margin: 8px 0; padding-left: 20px; }
+  ul.clean li { margin-bottom: 7px; color: var(--ink-soft); }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; margin: 8px 0 20px; color: var(--ink-soft); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .footer { margin-top: 56px; font-size: 13px; color: var(--ink-soft); text-align: center; font-family: "IBM Plex Mono", monospace; }
+  .updated { font-size: 13px; color: var(--ink-soft); font-family: "IBM Plex Mono", monospace; }
+  .big-vs { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 760px) { .big-vs { grid-template-columns: 1fr; } }
+  .vs-ceo { border-left: 5px solid var(--green); }
+  .vs-cto { border-left: 5px solid var(--blue); }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <p class="eyebrow">L5 Business OS · 개발 현황 브리핑</p>
+    <h1>AI가 운영하는 회사를 만드는 중입니다</h1>
+    <p class="lead">L5는 창업자(Founder) 한 명이 <b>AI 임원진</b>과 대화하며 새 사업을 기획하고, 일을 시키고, 실제 코드/문서까지 만들어내는 <b>AI 회사 운영체계</b>입니다. 이 문서는 지금 어디까지 만들었고, 두 가지 작업 방식이 어떻게 돌아가며, 앞으로 어떻게 발전하는지를 비개발자 눈높이로 정리한 것입니다.</p>
+    <p class="updated">기준일: 2026-06-02 · 라이브 운영 중 (NocoBase·ACR·Founder UI·Hermes 상시 가동)</p>
+  </header>
+
+  <!-- ============ 핵심 비유 ============ -->
+  <div class="analogy" style="font-size:15px;">
+    <b>한 문장 비유 —</b> 창업자는 <b>CEO 비서(AI)</b> 한 명에게만 말을 겁니다. 그러면 CEO가 회의를 소집해 마케팅·재무·기술 등 <b>담당 임원(AI)</b>에게 일을 나눠주고, 결과를 직접 검수합니다. 그중 <b>실제 코드를 짜야 하는 일</b>만 별도의 "개발 작업실(ACR)"로 보내 진짜 프로그램을 만들어 옵니다.
+  </div>
+
+  <!-- ============ 두 가지 작업 방식 ============ -->
+  <h2>이 제품의 두 가지 작업 방식</h2>
+  <p>지금 시스템은 일을 <b>두 갈래</b>로 처리합니다. 들어온 지시가 "생각/기획"이냐 "실제 코드 제작"이냐에 따라 길이 갈립니다.</p>
+
+  <div class="big-vs">
+    <div class="card vs-ceo">
+      <span class="pill tag-ceo">방식 ① · CEO 기반</span>
+      <h3>생각하고 기획하는 일</h3>
+      <p>마케팅 전략, 가격 분석, 운영 절차, 제품 방향처럼 <b>판단과 문서 산출물</b>이 필요한 일.</p>
+      <ul class="clean">
+        <li><b>담당 임원 AI</b>(CMO·CRO·CFO·COO·CPO 등)가 실제로 분석/기획해서 결과물을 만듭니다.</li>
+        <li>그 결과물을 <b>CEO AI가 직접 검토</b>해서 통과/수정/창업자에스컬레이션을 결정합니다.</li>
+        <li>전부 시스템 안에서 끝납니다 (외부로 나가는 게 없음).</li>
+      </ul>
+    </div>
+    <div class="card vs-cto">
+      <span class="pill tag-cto">방식 ② · CTO / ACR 기반</span>
+      <h3>실제 코드를 만드는 일</h3>
+      <p>"이 기능 만들어줘", "배포 자동화해줘"처럼 <b>진짜 프로그램 코드</b>가 나와야 하는 일.</p>
+      <ul class="clean">
+        <li>CTO AI가 일을 단계(phase)로 쪼개 <b>ACR(개발 작업실)</b>로 보냅니다.</li>
+        <li>ACR이 실제 코딩 AI를 띄워 <b>코드를 작성·커밋·병합</b>합니다.</li>
+        <li>위험한 작업은 별도 격리 공간(브랜치)에서만 진행됩니다.</li>
+      </ul>
+    </div>
+  </div>
+  <p style="font-size:13.5px; margin-top:6px;"><b>ACR</b> = Agent Control Room. 코딩 AI가 안전하게 코드를 만들고 검증하는 별도 시스템(레포지토리)으로, L5와 약속된 통신(콜백)으로 연결돼 있습니다.</p>
+
+  <!-- ============ 현재 워크플로우 ============ -->
+  <h2>지금 실제로 돌아가는 워크플로우 <span class="pill pill-live">LIVE · 구현됨</span></h2>
+
+  <h3>방식 ① — CEO 기반 (생각/기획 작업)</h3>
+  <div class="flow">
+    <span class="node">창업자 채팅 지시</span><span class="arr">→</span>
+    <span class="node">CEO가 해석·사업 추론</span><span class="arr">→</span>
+    <span class="node">여러 임원에게 작업 분배</span><span class="arr">→</span>
+    <span class="node">임원 AI가 산출물 작성</span><span class="arr">→</span>
+    <span class="node">CEO가 검토</span><span class="arr">→</span>
+    <span class="node">완료 / 재검토 / 창업자 승인</span>
+  </div>
+  <div class="card">
+    <div class="step"><span class="num">1</span><div class="body"><strong>창업자가 채팅으로 지시</strong><span>"○○ 사업의 마케팅 메시지를 만들어줘" 같은 자연어 한 줄을 입력합니다.</span></div></div>
+    <div class="step"><span class="num">2</span><div class="body"><strong>CEO AI가 해석</strong><span>어떤 사업에 대한 일인지 추론하고, 목표·가정·성공 기준을 정리합니다. 애매하면 되묻습니다.</span></div></div>
+    <div class="step"><span class="num">3</span><div class="body"><strong>작업 분배(decompose)</strong><span>일을 여러 워크스트림으로 쪼개 적합한 임원(CMO/CRO/CFO…)에게 배정합니다.</span></div></div>
+    <div class="step"><span class="num">4</span><div class="body"><strong>임원 AI가 실제 산출물 생성</strong><span>각 임원(Haiku 모델)이 "나중에 하겠다"가 아니라 실제 분석·기획·초안을 만들어 제출합니다.</span></div></div>
+    <div class="step"><span class="num">5</span><div class="body"><strong>CEO가 검토(review loop)</strong><span>CEO AI가 결과물을 읽고 <b>통과(approve)</b> / <b>방향 수정(revise)</b> / <b>창업자 승인 요청(escalate)</b> 중 하나를 판정합니다.</span></div></div>
+    <div class="step"><span class="num">6</span><div class="body"><strong>상태 확정 + 과정 기록</strong><span>완료(done)·검토필요(needs_review)·차단(blocked)으로 상태가 정해지고, 임원↔CEO 대화가 인박스에 남아 과정이 보입니다.</span></div></div>
+  </div>
+  <div class="analogy">창업자에게 올라오는 건 <b>"외부로 메시지를 보내야 할 때"</b>와 <b>"돈을 써야 할 때"</b> 딱 두 경우뿐입니다. 나머지 내부 판단은 CEO가 알아서 처리합니다. (위험도 D1~D5는 내부 신호일 뿐, 승인 게이트가 아닙니다.)</div>
+
+  <h3 style="margin-top:32px;">방식 ② — CTO / ACR 기반 (실제 코드 작업)</h3>
+  <div class="flow">
+    <span class="node">CTO 작업 생성(queued)</span><span class="arr">→</span>
+    <span class="node">Hermes가 60초마다 감지</span><span class="arr">→</span>
+    <span class="node">CTO가 단계로 분해</span><span class="arr">→</span>
+    <span class="node">ACR로 전달(dispatch)</span><span class="arr">→</span>
+    <span class="node">코딩 AI가 코드 작성·커밋</span><span class="arr">→</span>
+    <span class="node">검증 후 병합</span><span class="arr">→</span>
+    <span class="node">L5로 결과 콜백</span>
+  </div>
+  <div class="card">
+    <div class="step cto"><span class="num">1</span><div class="body"><strong>기술 작업이 대기열에 쌓임</strong><span>CEO가 만든 기술 과제(또는 자가치유 재시도)가 "대기(queued)" 상태로 등록됩니다.</span></div></div>
+    <div class="step cto"><span class="num">2</span><div class="body"><strong>Hermes 디스패처가 자동 감지</strong><span>60초마다 도는 무인 작업기가 대기 작업을 집어옵니다. (위험도 D1·D2는 자동, D3 이상은 창업자 승인 후에만 픽업)</span></div></div>
+    <div class="step cto"><span class="num">3</span><div class="body"><strong>CTO가 단계(phase)로 분해 + 모델 선택</strong><span>조사→설계→구현→검증 식으로 쪼개고, 각 단계에 맞는 AI 모델 등급(T1/T2/T3)을 고릅니다.</span></div></div>
+    <div class="step cto"><span class="num">4</span><div class="body"><strong>ACR로 전달 → 실제 코딩 AI 실행</strong><span>ACR이 사업 전용 작업 폴더(repo)에서 코딩 AI(claude)를 띄워 실제 코드를 씁니다. 시간 제한·재시도·산출물 검증이 걸려 있습니다.</span></div></div>
+    <div class="step cto"><span class="num">5</span><div class="body"><strong>격리 브랜치에 커밋 후 병합</strong><span>안전한 별도 가지에서 작업하고, 검증을 통과하면 본선(main)에 병합하거나 PR을 만듭니다. 충돌·빈 결과는 검토필요로 보냅니다.</span></div></div>
+    <div class="step cto"><span class="num">6</span><div class="body"><strong>L5로 결과 보고(콜백)</strong><span>만료 없는 공유 비밀키로 인증된 콜백이 결과(완료/검토필요/충돌)를 L5에 되돌려주고 화면에 반영됩니다.</span></div></div>
+  </div>
+
+  <h3 style="margin-top:32px;">실패해도 멈추지 않는 자가치유(self-heal)</h3>
+  <p>작업이 실패하면 원인을 분류해서 — <b>기술 문제는 CTO가</b>, <b>기획/권한 문제는 CEO가</b> 복구 지침을 만들어 원래 담당에게 한 번 더 시도시킵니다. 단, 결제·외부발송·인원·브랜드 관련이면 자동 복구하지 않고 창업자에게 올립니다.</p>
+
+  <!-- ============ 승인 모델 ============ -->
+  <h2>창업자 승인은 언제 필요한가</h2>
+  <div class="card">
+    <table>
+      <tr><th>상황</th><th>누가 결정</th></tr>
+      <tr><td><strong>전체 계획 시작 시</strong> (CEO 제안 → go/no-go)</td><td>창업자 1회 승인</td></tr>
+      <tr><td><strong>고객/외부로 메시지·문서 발송</strong></td><td class="todo">창업자 승인 필수</td></tr>
+      <tr><td><strong>돈을 쓰거나 계약·결제</strong></td><td class="todo">창업자 승인 필수</td></tr>
+      <tr><td>내부 분석·기획·코드 작업 (위험도 무관)</td><td class="check">CEO 자율</td></tr>
+      <tr><td>검증 실패 · 추가 설명 필요</td><td>CEO 검토(needs_review)</td></tr>
+      <tr><td>기술 에러</td><td>CTO 자가치유</td></tr>
+    </table>
+    <p style="margin:6px 0 0; font-size:13.5px;">핵심 원칙: <b>"외부 발송 + 결제"만 창업자 게이트</b>. 그 외 위험도 D1~D5는 내부 신호일 뿐 절대 승인 게이트로 쓰지 않습니다.</p>
+  </div>
+
+  <!-- ============ 현재 개발 상태 ============ -->
+  <h2>현재 개발 상태 요약</h2>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--green)"></span> 완성·라이브</span>
+    <span><span class="dot" style="background:var(--amber)"></span> 부분 완성·개선 예정</span>
+    <span><span class="dot" style="background:var(--blue)"></span> 계획됨</span>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3><span class="check">✓</span> 작동 중인 것</h3>
+      <ul class="clean">
+        <li>창업자 채팅 → CEO 해석 → 임원 실행 → CEO 검토 <b>전 과정 라이브</b></li>
+        <li>CTO → ACR 연결로 실제 코드 작성·커밋·main 병합 <b>E2E 실증</b></li>
+        <li>5개 서비스 상시 무인 가동(부팅 자동시작·크래시 자동재시작)</li>
+        <li>사업별 작업 폴더(repo) 자동 생성·격리</li>
+        <li>실패 시 자가치유(CTO/CEO 복구 1회 재시도)</li>
+        <li>배움 루프: 작업 인사이트 자동 수집 → 검토 → 저장 → 다음 기획에 참고</li>
+        <li>Founder UI(Joinery 라이트 디자인) Vercel 배포 + 모바일 대응</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><span class="todo">◐</span> 다듬는 중 / 남은 과제</h3>
+      <ul class="clean">
+        <li>임원↔CEO 검토가 <b>1회 왕복만</b> — 다회 협의/팀 협업으로 확장</li>
+        <li>NocoBase 플러그인을 <b>수동 패치</b> 중 — 정식 빌드 파이프라인 필요</li>
+        <li>임원 실행이 AI 2회 호출이라 <b>응답 지연</b> 여유 확인 필요</li>
+        <li>자가치유 <b>다회 시도 + 복구 이력 테이블</b> 미구현</li>
+        <li>로드맵 화면 줌·노드 상세 패널 등 UI 디테일</li>
+        <li>레거시 데이터 백필(사업 미지정 과거 작업)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 미래 워크플로우 ============ -->
+  <h2>개발이 더 되면 워크플로우는 이렇게 바뀝니다 <span class="pill pill-plan">계획</span></h2>
+  <div class="card">
+    <table>
+      <tr><th>구분</th><th>지금</th><th>발전 후</th></tr>
+      <tr><td><strong>임원 ↔ CEO</strong></td><td>1회 검토 후 확정</td><td>여러 번 주고받는 <b>실제 협의 루프</b> + 임원끼리 협업</td></tr>
+      <tr><td><strong>자가치유</strong></td><td>실패 시 1회 재시도</td><td><b>여러 번 시도</b> + 복구 이력 추적 + 패턴 학습</td></tr>
+      <tr><td><strong>PMF·도구</strong></td><td>판단 로직만 존재</td><td>PMF 신호 수집(설문) → 신호 확인 후 <b>도구 자동 후보 등록</b></td></tr>
+      <tr><td><strong>외부 자동화</strong></td><td>승인 게이트만 정의</td><td>승인된 건을 Slack·이메일 등으로 <b>실제 자동 발송</b></td></tr>
+      <tr><td><strong>배포 신뢰성</strong></td><td>플러그인 수동 패치</td><td>정식 빌드·배포 <b>파이프라인 자동화</b></td></tr>
+    </table>
+  </div>
+  <p>큰 그림은 <b>L5 (감지→판단→실행→측정→학습) 완전 자율 루프</b>를 점점 더 사람 개입 없이 돌리는 방향입니다. 단, "외부 발송 + 결제" 게이트는 끝까지 사람(창업자)이 지킵니다.</p>
+
+  <div class="footer">
+    L5 Business OS · 내부 개발 현황 브리핑 · 출처: docs/HANDOFF.md · docs/AGENT_PROTOCOL.md · docs/ARCHITECTURE.md
+  </div>
+</div>
+</body>
+</html>

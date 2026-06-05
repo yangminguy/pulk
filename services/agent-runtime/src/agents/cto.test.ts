@@ -1,3 +1,6 @@
+import { writeFileSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { runCTOAgent } from './cto.js';
 import type { LLMClient } from '@l5/core';
 
@@ -12,6 +15,19 @@ function makeLLM(responses: Array<string | Error | null>): LLMClient {
     return r;
   };
   return { complete };
+}
+
+// LLM that records how many times complete() is invoked — used to prove the
+// deterministic path never calls the model.
+function makeCountingLLM(): LLMClient & { calls: () => number } {
+  let n = 0;
+  return {
+    complete: (async () => {
+      n++;
+      return JSON.stringify(VALID_LLM_PHASES);
+    }) as Complete,
+    calls: () => n,
+  };
 }
 
 const TASK = {
@@ -109,7 +125,15 @@ afterAll(() => {
   global.fetch = ORIG_FETCH;
 });
 
-describe('runCTOAgent — dev workflow SOP enforcement', () => {
+// These exercise the opt-in LLM phase planner (ACR_DETERMINISTIC_PHASES=0).
+describe('runCTOAgent — dev workflow SOP enforcement (LLM planner)', () => {
+  beforeEach(() => {
+    process.env.ACR_DETERMINISTIC_PHASES = '0';
+  });
+  afterEach(() => {
+    delete process.env.ACR_DETERMINISTIC_PHASES;
+  });
+
   it('uses the LLM phases when the response is a valid FEATURE SOP (6 stages)', async () => {
     const llm = makeLLM([JSON.stringify(VALID_LLM_PHASES)]);
 
@@ -196,5 +220,64 @@ describe('runCTOAgent — dev workflow SOP enforcement', () => {
     ]);
     expect(out.requires_founder_approval).toBe(true);
     expect(out.decision).toMatch(/clarification/);
+  });
+});
+
+// B1: deterministic phase generation is the DEFAULT — no LLM round-trip, no
+// retry loop, no LLM clarifying-question escalation.
+describe('runCTOAgent — deterministic phases (default)', () => {
+  it('never calls the LLM and returns the deterministic FEATURE SOP', async () => {
+    const llm = makeCountingLLM();
+
+    const out = await runCTOAgent({ task: TASK }, { llm });
+
+    expect(llm.calls()).toBe(0); // model never invoked
+    expect(out.clarifying_questions).toBeUndefined();
+    expect(out.acr_intent.phases).toHaveLength(6);
+    expect(out.acr_intent.phases.map((p) => p.name)).toEqual([
+      '오픈소스 조사',
+      '스펙 작성',
+      '실패 테스트 작성',
+      '구현',
+      '리뷰',
+      '커밋',
+    ]);
+  });
+
+  it('classifies a single-component task as SMALL_FIX (4 phases) without the LLM', async () => {
+    const llm = makeCountingLLM();
+
+    const out = await runCTOAgent(
+      {
+        task: {
+          id: 't-2',
+          title: 'Add RoadmapMiniCard 카드 컴포넌트',
+          rationale: '로드맵 요약 카드 하나 추가',
+          expected_output: 'RoadmapMiniCard 렌더',
+        },
+      },
+      { llm },
+    );
+
+    expect(llm.calls()).toBe(0);
+    // SMALL_FIX SOP = repro → fix → regress → commit (4 phases), not the 6-phase
+    // FEATURE ceremony — the single-component heuristic at work.
+    expect(out.acr_intent.phases).toHaveLength(4);
+  });
+
+  // B5: quota-aware routing — an exhausted tier must not be dispatched to.
+  it('routes off an exhausted tier (no dead-tier dispatch)', async () => {
+    const quotaPath = join(tmpdir(), `quota-${process.pid}-${Date.now()}.json`);
+    // FEATURE test/implement phases are T2→codex; mark T2 exhausted.
+    writeFileSync(quotaPath, JSON.stringify({ tiers: { T2: { available: false } } }));
+    process.env.ACR_QUOTA_TRACKER_PATH = quotaPath;
+    try {
+      const out = await runCTOAgent({ task: TASK }, { llm: null });
+      const runtimes = out.acr_intent.phases.map((p) => p.runtime);
+      expect(runtimes).not.toContain('codex'); // T2 dead → never routed there
+    } finally {
+      delete process.env.ACR_QUOTA_TRACKER_PATH;
+      unlinkSync(quotaPath);
+    }
   });
 });

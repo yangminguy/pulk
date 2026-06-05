@@ -484,3 +484,36 @@ describe('classifyTask', () => {
     ).toBe('FEATURE');
   });
 });
+
+// Single-component heuristic — a bounded card/panel/util/hook/endpoint is a
+// SMALL_FIX (4 phases), not the full 6-phase FEATURE ceremony. This avoided the
+// CMO Video Room "28 FEATUREs = 158 phases" blow-up where most were one component.
+describe('classifyTask — single-component → SMALL_FIX', () => {
+  it('English single-component keywords classify as SMALL_FIX', () => {
+    expect(classifyTask('Add RoadmapMiniCard card', '')).toBe('SMALL_FIX');
+    expect(classifyTask('Build a settings panel', '')).toBe('SMALL_FIX');
+    expect(classifyTask('Add a date util helper', '')).toBe('SMALL_FIX');
+    expect(classifyTask('Create useDebounce hook', '')).toBe('SMALL_FIX');
+    expect(classifyTask('Add a /health endpoint', '')).toBe('SMALL_FIX');
+  });
+
+  it('Korean single-component keywords classify as SMALL_FIX', () => {
+    expect(classifyTask('스냅샷 카드 추가', '')).toBe('SMALL_FIX');
+    expect(classifyTask('설정 패널 구현', '')).toBe('SMALL_FIX');
+    expect(classifyTask('단일 컴포넌트 추가', '')).toBe('SMALL_FIX');
+  });
+
+  it('a single component with ≥2 escalation indicators stays FEATURE (boundary)', () => {
+    expect(
+      classifyTask('Add dashboard panel', '여러 모듈 연동', {
+        impactedModules: 5, // >3
+        schemaChange: true,
+      }),
+    ).toBe('FEATURE');
+  });
+
+  it('genuine multi-component features are NOT trivialized to SMALL_FIX', () => {
+    expect(classifyTask('사용자 인증 모듈 신규 구현', 'JWT 로그인 전체')).toBe('FEATURE');
+    expect(classifyTask('결제 시스템 전체 구축', '')).toBe('FEATURE');
+  });
+});

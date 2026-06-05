@@ -1,5 +1,19 @@
 # DECISIONS — L5 Business OS
 
+## 2026-06-05 — CTO 파이프라인 결정적화 우선 + ACR 브랜치 생명주기 정리
+
+**컨텍스트**: CTO 자율개발 파이프라인이 느린 진짜 원인은 코딩이 아니라 ① 과한 LLM 의존(이미 결정적인 분류/템플릿이 있음에도 phase 생성마다 LLM 2회 시도 + LLM이 분류를 덮어씀), ② verifier가 변경 0인 코드 phase를 통과시키는 false-positive, ③ 죽은 모델 tier로 계속 라우팅, ④ D3마다 LLM 호출이었다. 또한 ACR이 phase마다 `acr/l5-*` 브랜치를 만들고 정리하지 않아 로컬 291·원격 25개가 쌓였다.
+
+**결정**:
+1. **결정적 우선(determinism-first)**: phase 생성은 `classifyTask`+템플릿이 기본(`ACR_DETERMINISTIC_PHASES`), LLM은 opt-in 안전망. 분류는 결정적 함수가 권위이며 LLM이 덮어쓰지 못한다. D3 판정도 명백 케이스(외부/매출=escalate, 내부/read-only=pass)는 결정적, 회색지대만 LLM. 모든 scoring 규칙은 단위테스트 동반(규칙3).
+2. **verifier 신뢰성**: 코드 산출 기대 phase가 `changed_files=0`이면 exit 0이어도 fail+retry. 코드 신호가 read-only 힌트보다 우선.
+3. **쿼터 인지 라우팅**: `resolveModel`이 소진 tier를 우회(quota-tracker.json 주입, 없으면 전 tier 가용).
+4. **ACR 브랜치 생명주기**: 근본은 ACR이 머지 후 phase 브랜치를 삭제하는 것(B6/B7과 함께). 그 전까지 `scripts/git-acr-cleanup.sh`가 머지+N일 경과분을 정리하는 안전망.
+
+**배제/보류**: 라이브 ACR repo의 per-phase 모델 배선(B6)·잡큐 오케스트레이션(B7)은 라이브 시스템 + CMO 병렬 디스패치와 겹쳐 별도 세션에서. nested repo(`ai-slide-video-factory`)는 .gitignore 보호만, 구조 전환은 보류.
+
+---
+
 ## 2026-06-04 — State Machine 25개 상태 전환 검증: 라이브러리 도입 안 함 (build)
 
 **컨텍스트**: 프로젝트 전체에 15+ 엔티티 타입, 약 25개 이상의 상태 전환이 분산(AgentTask 6상태, Business 10상태, Workflow 6상태, BPR 6단계, ToolRequest 6상태 등). 현재는 순수 함수(`validateTransition`, `openConsultation`→`resolveConsultation`, `runDelegationLoop` 등)로 전환을 관리하며 Jest 단위 테스트로 검증. 외부 라이브러리 도입 여부를 조사했다.
@@ -34,6 +48,19 @@
 **후속**: 전환 누락이 실제 버그로 이어지면, 엔티티별 `VALID_TRANSITIONS` lookup table을 l5-core에 추가하고 TS 타입 시스템으로 exhaustiveness를 보장한다.
 
 ---
+## 2026-06-05 — CMO Video Room 병렬 실행 · 내부 코딩 게이트 완화 · phase 분해 적정화
+
+**컨텍스트**: CTO에 "Pulk CMO Video Room" PRD(28기능/158phase) 지시 → 전부 멈춤. ACR 실행엔진의 다층 고장을 고치며 자율 완주시키고, 속도 병목을 근본수정했다.
+
+1. **병렬 실행은 격리 git worktree마다 1 plan**. 같은 worktree 병렬은 `commitAll`(git add -A)이 동시 편집을 교차오염시켜 위험 → 펄크 worktree 4개에 미시작 plan 분배(진행중 plan은 phase 누적 보존 위해 고정), worktree당 직렬·간 병렬. 단 **공유 통합 파일(Sidebar/AgentOutputDetail/페이지/package.json)은 worktree 간 분기**하여 마지막에 병합 충돌 → 다음엔 통합지점 선셋업(직렬) 후 기능 병렬.
+
+2. **내부 D2 코딩에는 ACR 안전게이트를 적용하지 않는다**. dangerous-command-detector(단어매칭)·risk D2→D4 격상·commit/review 빈출력 차단은 "외부 위험 작업"용인데 격리 worktree 내부 코딩까지 오탐·차단하고, 차단 시 task를 'running' 고아로 남겨 데드락시켰다. → 게이트 기본 off(`ACR_DANGER_GATE`), L5승인(auto_execute) 작업은 risk 격상 통과, 비코드 phase는 `expectsChanges=false`. self-mod 보호(gate/.env)는 l5-core deny로 별도 유지. (위험도≠게이트 원칙과 정합.)
+
+3. **phase 분해는 작업 규모에 맞춘다**. 단일 컴포넌트/카드/모델/유틸을 6단계 FEATURE로 분해하면 조사/스펙/리뷰 등 no-op phase가 토큰·시간을 2~3배 낭비. → `classifyTask`가 단일 컴포넌트류를 SMALL_FIX(4단계)로 라우팅. SOP 자체(TINY 2/SMALL_FIX 4/FEATURE 6)는 유지.
+
+4. **오케스트레이션 락은 stale-release로 자가복구**. `planDrainLock`(인메모리)이 hung 드레인에 영구 점유돼 큐 전체가 정체하고 acr-web 재시작으로만 풀렸다 → 20분 경과 락 자동해제. **완전한 해결(inline-HTTP spawn → 파일/DB 잡 큐)은 v2**(리스크 큰 대공사, `docs/CMO_DEV_SPEED_STRATEGY.md`에 설계).
+
+5. **JSON 스토어는 원자적 쓰기(temp+rename)**. 병렬 드레인 동시 쓰기가 `execution-logs.json`을 손상시켜 ACR 라우트 연쇄 실패 → 핫 스토어 원자적 쓰기로 손상 차단.
 
 ## 2026-06-04 — 승인 게이트 = D4/D5만 · self-upgrade는 승인 게이트로 살림 · M9(컨트롤룸 라이브화) 최우선
 

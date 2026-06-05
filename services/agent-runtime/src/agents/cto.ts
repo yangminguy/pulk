@@ -24,6 +24,7 @@ import type {
   TaskClass,
   ModelTier,
   RuntimeType,
+  QuotaState,
 } from "@l5/core";
 import {
   buildDevWorkflowSystemPrompt,
@@ -31,8 +32,9 @@ import {
   buildDeterministicDevPhases,
   classifyTask,
   createDefaultLLMClient,
-  selectModelTier,
+  resolveModel,
 } from "@l5/core";
+import { readFileSync } from "node:fs";
 
 export type CTOAgentInput = AgentInput;
 
@@ -97,15 +99,22 @@ function tierToRuntime(tier: ModelTier): RuntimeType {
 }
 
 /** Map a SOP-validated phase (LLM or template) into a downstream CTOPhase. */
-function toCTOPhase(p: LLMDevPhase, taskTitle: string, taskClass: TaskClass = "FEATURE"): CTOPhase {
+function toCTOPhase(
+  p: LLMDevPhase,
+  taskTitle: string,
+  taskClass: TaskClass = "FEATURE",
+  quotaState?: QuotaState,
+): CTOPhase {
   // Default to 'spec' only as a last resort — new phase kinds pass through as-is
   // because DevPhaseKind now covers all class-specific kinds.
   const kind = (p.kind ?? "spec") as DevPhaseKind;
   // M9.3 — 모델 tier가 CLI를 결정한다(시스템 정책, LLM이 아님). T1(추론)=claude(opus급),
   // T2(균형 구현)=codex(gpt-4o급), T3(경량/기계적)=antigravity(agy). 이렇게 해야 창업자가
   // 지시한 "에이전트별 모델 배정"대로 phase가 claude/codex/agy 셋에 분산된다.
-  const tier = selectModelTier(taskClass, kind);
-  const runtime = tierToRuntime(tier);
+  // B5 — 쿼터 인지: resolveModel이 소진된 tier를 건너뛰어 죽은 에이전트로의
+  // 디스패치를 막는다(quotaState 미주입 시 전 tier 가용 = 기존 동작과 동일).
+  const resolved = resolveModel(taskClass, kind, quotaState);
+  const runtime = tierToRuntime(resolved.tier);
   const riskLevel: CTOPhase["risk_level"] = p.risk_level ?? (p.read_only ? "D1" : "D2");
   const promptPacket =
     p.prompt_packet ??
@@ -125,7 +134,9 @@ function toCTOPhase(p: LLMDevPhase, taskTitle: string, taskClass: TaskClass = "F
 
   // T1 (top-tier reasoning, e.g. architecture/spec/research) phases are pinned to
   // their big model: ACR must wait for that agent to recover rather than downgrade.
-  const modelLocked = tier === "T1";
+  // Based on the RESOLVED tier — if quota already forced a fallback off T1, we
+  // accept the lower tier rather than telling ACR to wait.
+  const modelLocked = resolved.tier === "T1";
 
   return {
     name: p.name ?? kind,
@@ -138,11 +149,30 @@ function toCTOPhase(p: LLMDevPhase, taskTitle: string, taskClass: TaskClass = "F
   };
 }
 
-function buildDeterministicIntent(task: CTOAgentInput["task"], taskClass: TaskClass = "FEATURE"): ACRIntent {
+/**
+ * Load ACR's quota-tracker.json (path from ACR_QUOTA_TRACKER_PATH) so model
+ * routing can skip exhausted tiers. Returns undefined when unset/missing/invalid
+ * — that means "all tiers available", i.e. identical to the pre-B5 behavior.
+ */
+function loadQuotaState(): QuotaState | undefined {
+  const path = process.env.ACR_QUOTA_TRACKER_PATH;
+  if (!path) return undefined;
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as QuotaState;
+  } catch {
+    return undefined;
+  }
+}
+
+function buildDeterministicIntent(
+  task: CTOAgentInput["task"],
+  taskClass: TaskClass = "FEATURE",
+  quotaState?: QuotaState,
+): ACRIntent {
   const taskId = task?.id ?? "unknown";
   const taskTitle = task?.title ?? "Unknown Task";
   const devPhases = buildDeterministicDevPhases(taskTitle, taskClass);
-  const phases: CTOPhase[] = devPhases.map((p) => toCTOPhase(p as LLMDevPhase, taskTitle, taskClass));
+  const phases: CTOPhase[] = devPhases.map((p) => toCTOPhase(p as LLMDevPhase, taskTitle, taskClass, quotaState));
   const intent: ACRIntent = {
     l5_task_id: taskId,
     task_title: taskTitle,
@@ -355,25 +385,36 @@ export async function runCTOAgent(
 
   const llm = resolveLLMClient(deps);
 
-  // CTO is the sole authority on task classification. Keyword heuristic runs
-  // first; if the LLM is available it may override via task_class in its response.
+  // Quota-aware routing: load once and thread into every phase mapping so model
+  // resolution skips exhausted tiers (undefined = all available = legacy behavior).
+  const quotaState = loadQuotaState();
+
+  // Phase generation is deterministic by default (ACR_DETERMINISTIC_PHASES≠"0"):
+  // classifyTask + template-driven phases skip the LLM round-trip entirely,
+  // eliminating the 2-attempt retry loop and the LLM clarifying-question
+  // escalation that stalled the pipeline. Set ACR_DETERMINISTIC_PHASES=0 to
+  // restore the LLM phase planner (fallback/experimental).
+  const deterministicPhases = process.env.ACR_DETERMINISTIC_PHASES !== "0";
+
+  // CTO is the sole authority on task classification — the deterministic keyword
+  // heuristic is authoritative and the LLM may NOT override it.
   const inferredClass: TaskClass = classifyTask(taskTitle, taskRationale);
 
   let acrIntent: ACRIntent | null = null;
   let clarifyingQuestions: string[] | undefined;
-  let resolvedTaskClass: TaskClass = inferredClass;
+  const resolvedTaskClass: TaskClass = inferredClass;
 
-  if (llm) {
+  if (llm && !deterministicPhases) {
     const llmResult = await callLLMForDevWorkflow(llm, taskTitle, taskRationale, inferredClass);
     if (llmResult?.clarifying_questions) {
       clarifyingQuestions = llmResult.clarifying_questions;
     } else if (llmResult?.phases) {
-      resolvedTaskClass = llmResult.taskClass ?? inferredClass;
+      // Classification stays deterministic; the LLM only fills phase detail.
       const projectPath = resolveProjectPath(input.task);
       acrIntent = {
         l5_task_id: taskId,
         task_title: taskTitle,
-        phases: llmResult.phases.map((p) => toCTOPhase(p, taskTitle, resolvedTaskClass)),
+        phases: llmResult.phases.map((p) => toCTOPhase(p, taskTitle, resolvedTaskClass, quotaState)),
         created_at: new Date().toISOString(),
         // See buildDeterministicIntent: dispatcher only forwards approved tasks.
         l5_approved: true,
@@ -384,7 +425,7 @@ export async function runCTOAgent(
 
   // Clarification short-circuit: do NOT dispatch to ACR, surface questions to Founder.
   if (clarifyingQuestions) {
-    const deterministicIntent = buildDeterministicIntent(input.task, resolvedTaskClass);
+    const deterministicIntent = buildDeterministicIntent(input.task, resolvedTaskClass, quotaState);
     return {
       decision: `CTO requires clarification before planning: ${clarifyingQuestions.length} question(s)`,
       reasoning: clarifyingQuestions.map((q, i) => `Q${i + 1}: ${q}`).join("; "),
@@ -397,7 +438,7 @@ export async function runCTOAgent(
   }
 
   if (!acrIntent) {
-    acrIntent = buildDeterministicIntent(input.task, resolvedTaskClass);
+    acrIntent = buildDeterministicIntent(input.task, resolvedTaskClass, quotaState);
   }
 
   await registerWithACR(input.task);
