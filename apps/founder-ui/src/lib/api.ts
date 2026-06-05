@@ -595,6 +595,18 @@ export const api = {
       body: JSON.stringify({ project_id, stage, payload }),
     }).then(r => unwrap(r)),
 
+  cmoSaveScript: (project_id: string, beats: unknown[]) =>
+    request<{ data: { ok: boolean; data: { beats: unknown[] } } }>('/api/cmo:saveScript', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, beats }),
+    }).then(r => unwrap(r)),
+
+  cmoSendToFactory: (project_id: string) =>
+    request<{ data: { ok: boolean; data: { job_path: string; validated: boolean } } }>('/api/cmo:sendToFactory', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)),
+
   closeInstruction: (id: string) =>
     request<{ data: unknown }>('/api/founder_instructions:update', {
       method: 'POST',

@@ -110,6 +110,7 @@ const {
   createPullingContentSet,
   createSecondBrainInsightMerge,
   composeIntro30s,
+  buildFactoryVideoJob,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/video-room'));
 
 const {
@@ -168,7 +169,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -3064,6 +3065,93 @@ function registerCmoResource(app: any, db: any) {
         } catch (err: any) {
           ctx.throw(400, err?.message ?? String(err));
         }
+        await next();
+      },
+
+      // POST /api/cmo:saveScript  { project_id, beats: ScriptBeat[] }
+      saveScript: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const beats = v.beats;
+        if (!Array.isArray(beats) || beats.length === 0) ctx.throw(400, 'beats must be a non-empty array');
+
+        const now = new Date().toISOString();
+        // Upsert: replace the latest existing 'script' stage card if any, then insert fresh.
+        await db.sequelize.query(
+          `DELETE FROM video_room_cards WHERE video_project_id = $1 AND stage = 'script'`,
+          { bind: [project_id] },
+        );
+        const card_id = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+           VALUES ($1,$2,'script',$3,$4, now(), now())`,
+          { bind: [card_id, project_id, `beats (${beats.length})`, JSON.stringify({ beats })] },
+        );
+        ctx.body = { ok: true, data: { beats } };
+        await next();
+      },
+
+      // POST /api/cmo:sendToFactory  { project_id }
+      sendToFactory: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        // Load project for title.
+        const projRows = await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const proj = projRows[0];
+
+        // Load latest 'script' stage card.
+        const scriptRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'script' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!scriptRows[0]) ctx.throw(400, 'script 카드가 없습니다. saveScript를 먼저 호출하세요.');
+        const cardData = scriptRows[0].data;
+        const parsed = typeof cardData === 'string' ? JSON.parse(cardData) : cardData;
+        const beats = parsed?.beats;
+        if (!Array.isArray(beats) || beats.length === 0) ctx.throw(400, 'script 카드에 beats가 없습니다.');
+
+        const slug = String(proj.title ?? project_id);
+
+        // Build and validate via l5-core (throws on validation failure).
+        let videoJob: any;
+        try {
+          videoJob = buildFactoryVideoJob({ slug, title: String(proj.title ?? slug), beats });
+        } catch (err: any) {
+          ctx.throw(400, `buildFactoryVideoJob 검증 실패: ${err?.message ?? String(err)}`);
+        }
+
+        // Submit to factory transport.
+        if (!_videoFactoryTransport || typeof (_videoFactoryTransport as any).submitJob !== 'function') {
+          ctx.body = { ok: false, data: { error: '팩토리 디렉토리가 없어 전달할 수 없습니다 (VIDEO_FACTORY_DIR 미설정).' } };
+          await next();
+          return;
+        }
+
+        const result = await (_videoFactoryTransport as any).submitJob(videoJob);
+        if (!result.ok) {
+          ctx.throw(400, `factory submitJob 실패: ${result.error ?? 'unknown'}`);
+        }
+
+        // Persist factory_job card.
+        const card_id = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+           VALUES ($1,$2,'factory_job',$3,$4, now(), now())`,
+          {
+            bind: [
+              card_id,
+              project_id,
+              `factory job: ${result.job_path ?? ''}`,
+              JSON.stringify({ job_path: result.job_path, validated: result.validated }),
+            ],
+          },
+        );
+
+        ctx.body = { ok: true, data: { job_path: result.job_path, validated: result.validated } };
         await next();
       },
     },

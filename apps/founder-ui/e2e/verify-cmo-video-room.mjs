@@ -204,6 +204,18 @@ async function main() {
   const introNeg = await call('commitStrategyArtifact', { project_id: projectId, stage: 'intro_30s', payload: { intro_script_30s: 'x', applied_insights: [{ insight: 'a', how_applied: 'b' }] } });
   ok('commitStrategyArtifact intro_30s rejects missing key content', introNeg.status >= 400, `status=${introNeg.status}`);
 
+  // Phase 3 잔여: 원고(beat) 저장 + 팩토리 Scene JSON 전달 (multi-type)
+  const beats = [
+    { scene_id: 'hero_01', scene_type: 'hero', rhythm_role: 'hook', headline: '마케팅팀 없이 고객 만드는 법', speaker_text: '작은 브랜드가 콘텐츠로 고객을 만드는 3단계', duration: 6 },
+    { scene_id: 'problem_01', scene_type: 'problem', rhythm_role: 'tension', headline: '왜 상품 설명부터 하면 안 되나', speaker_text: '고객은 상품이 아니라 자기 문제 상황에 먼저 반응한다', duration: 8 },
+    { scene_id: 'cta_01', scene_type: 'cta', rhythm_role: 'cta', headline: '지금 콘텐츠 구조부터', speaker_text: '상담을 신청하세요', duration: 6 },
+  ];
+  const saveScript = await call('saveScript', { project_id: projectId, beats });
+  ok('saveScript persists editable script beats', saveScript.status === 200, `status=${saveScript.status}`);
+
+  const sendFactory = await call('sendToFactory', { project_id: projectId });
+  ok('sendToFactory builds + validates factory Scene JSON (multi scene types)', sendFactory.status === 200 && data(sendFactory)?.validated === true, `status=${sendFactory.status} ${JSON.stringify(data(sendFactory))?.slice(0, 160)}`);
+
   console.log(`\n${pass} passed, ${fails.length} failed`);
   if (fails.length) {
     console.log('FAILED:', fails.join(', '));

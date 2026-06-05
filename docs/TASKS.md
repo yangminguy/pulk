@@ -11,7 +11,8 @@
 - [x] **Phase 2 라이브 세컨브레인 결선**: `CmoStrategyContext.second_brain_insights` + plan-turn 렌더. 백엔드 `cmo:chatMessage`가 단계별 쿼리로 `makeSecondBrainTransport` 라이브 조회 주입, `loadPTContext` 빈 source_refs 자동충전.
 - [x] **검증**: l5-core tsc 0 / jest 797·격리 NocoBase 라이브 **E2E 22/22**(로드맵 14노드·reference_analysis 제거·라이브 SB 자동충전 입증).
 - [x] **Phase 3 — 세컨브레인 기반 도입부 30초**: `composeIntro30s`(applied_insights 인사이트→적용방식 매핑, 레퍼런스 의존 제거) + 백엔드 `commitStrategyArtifact` stage `intro_30s`(빈 applied_insights는 라이브 SB 자동시드) + UI `Intro30sCard`(적용 인사이트 표). 사장님이 적용 인사이트 보고 hook 게이트서 승인. l5-core jest 806, 라이브 **E2E 25/25**. 브라우저 확인.
-- [ ] **Phase 3 잔여**: 원고(script) 단계를 팩토리 Scene JSON 포맷 산출 + 실제 MP4 렌더 자동화.
+- [x] **Phase 3 잔여 — 원고 beat 편집 + 팩토리 전달**: `script-factory.ts`(`ScriptBeat`+`buildFactoryVideoJob`, 팩토리 16타입 valid 매핑·insight 폴백) + 백엔드 `cmo:saveScript`/`cmo:sendToFactory`(transport `submitJob`: jobs/ 작성+validate) + UI `ScriptBeatEditor`(장면별 편집·저장)+`FactoryJobCard`. 사장님이 원고 수정→저장→팩토리 전달→검증통과. 라이브 **E2E 27/27**(멀티타입 validate). 팩토리에 실제 Scene JSON 작성 확인.
+- [ ] **실제 MP4 렌더 자동화(후속)**: render-final.ts(수 분) 자동 발동 — 현재는 사장님 발동(버튼/CLI).
 
 ## 🎬 CMO Video Room — PRD 갭 배선 (2026-06-05, branch `cmo/video-room-clean`)
 

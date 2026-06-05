@@ -1,6 +1,20 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-05 (CMO Video Room Phase 3 — 세컨브레인 기반 도입부 30초, E2E 25/25)
+최종 업데이트: 2026-06-05 (CMO Video Room Phase 3 잔여 — 원고 beat 편집 + 팩토리 Scene JSON 전달, E2E 27/27)
+
+---
+
+## 🟢 2026-06-05 — CMO Video Room Phase 3 잔여: 원고(장면 beat) 편집 + 팩토리 전달 (branch `cmo/video-room-clean`)
+
+**배경**: 사장님 — 원고 작성 구조는 AI Slide Factory에 이미 존재(format). 사장님이 **원고를 장면(beat) 단위로 수정·확인 → 확정본을 팩토리 Scene JSON으로 전달**(실제 MP4 렌더는 사장님이 별도 발동). sub agent 3개(l5-core/백엔드/UI).
+
+- **l5-core** `video-room/script-factory.ts`: `ScriptBeat`(scene_id/scene_type/rhythm_role/headline/speaker_text/duration + 타입별 optional 필드) + `buildFactoryVideoJob` — 팩토리 16개 scene 타입 전부 valid 매핑(필수 sub-field 파생, 불가 타입은 insight 폴백, scene_type 때문에 throw 안 함). 팩토리 `src/lib/schema.ts` 준수. 55 테스트.
+- **백엔드** `plugin.ts` + `video-factory-transport.ts`: `cmo:saveScript`(beats upsert→stage 'script' 카드), `cmo:sendToFactory`(script 카드 beats→buildFactoryVideoJob→`transport.submitJob`: `~/ai-slide-video-factory/jobs/l5-<slug>.json` 작성+validate-job.ts spawn→stage 'factory_job' 카드). require는 video-room 배럴(cmo-strategy 아님 — 수정).
+- **UI** `video-room/page.tsx`+`api.ts`: `ScriptBeatEditor`(장면별 유형/헤드라인/대사/길이 편집·행 추가삭제·원고 저장) + 팩토리 전달 버튼 + `FactoryJobCard`(job_path·검증통과 배지). `cmoSaveScript`/`cmoSendToFactory`.
+
+**검증**: l5-core tsc 0, jest **806→(script-factory +)**·founder-ui tsc 0·plugin tsc 0. 격리 NocoBase 라이브 **E2E 27/27 ALL GREEN**(+2: saveScript·sendToFactory 멀티타입 validate). 팩토리에 실제 job 파일(scenes [hero,problem,cta]) 작성·validate 통과 확인. 브라우저 스크린샷으로 원고 편집기+전달 완료 확인.
+
+**남은 것**: 실제 MP4 렌더(render-final.ts, 수 분)는 사장님 발동(버튼/CLI) — 미자동화. 배포(launchd→clean), PR #3 머지.
 
 ---
 
