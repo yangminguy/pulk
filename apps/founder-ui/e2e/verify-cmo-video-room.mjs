@@ -194,6 +194,16 @@ async function main() {
   const pullNeg = await call('commitStrategyArtifact', { project_id: projectId, stage: 'pulling_content', payload: { key_content_id: 'k1', pulling_contents: [{ order: 1 }], set_logic: 'x' } });
   ok('commitStrategyArtifact rejects pulling set != 5 items', pullNeg.status >= 400, `status=${pullNeg.status}`);
 
+  // Phase 3: Second Brain-based intro 30s composition with applied-insight mapping
+  const introPos = await call('commitStrategyArtifact', { project_id: projectId, stage: 'intro_30s', payload: { key_content_title: '마케팅팀 없이 고객 만드는 법', intro_script_30s: '혹시 마케팅팀 없이 콘텐츠로 고객을 만들고 싶으신가요?', applied_insights: [{ insight: '키 콘텐츠는 고객 문제 상황에서 시작', how_applied: '도입부를 상품 설명이 아닌 고객 문제 상황으로 연다' }] } });
+  ok('commitStrategyArtifact intro_30s composes with applied insights', introPos.status === 200 && !!data(introPos)?.artifact?.applied_insights, JSON.stringify(data(introPos)?.artifact)?.slice(0, 160));
+
+  const introSeed = await call('commitStrategyArtifact', { project_id: projectId, stage: 'intro_30s', payload: { key_content_title: '마케팅팀 없이 고객 만드는 법', intro_script_30s: '도입부 빌드업 문장', applied_insights: [] } });
+  ok('commitStrategyArtifact intro_30s auto-seeds applied insights from live Second Brain', introSeed.status === 200 && (data(introSeed)?.artifact?.applied_insights?.length ?? 0) > 0, `status=${introSeed.status}`);
+
+  const introNeg = await call('commitStrategyArtifact', { project_id: projectId, stage: 'intro_30s', payload: { intro_script_30s: 'x', applied_insights: [{ insight: 'a', how_applied: 'b' }] } });
+  ok('commitStrategyArtifact intro_30s rejects missing key content', introNeg.status >= 400, `status=${introNeg.status}`);
+
   console.log(`\n${pass} passed, ${fails.length} failed`);
   if (fails.length) {
     console.log('FAILED:', fails.join(', '));

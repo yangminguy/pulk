@@ -240,6 +240,22 @@ export interface ThumbnailPattern {
 
 // ── 12.7 Intro30sAnalysis ───────────────────────────────────────────────────
 
+export interface AppliedInsight {
+  insight: string;
+  how_applied: string;
+}
+
+export interface Intro30sComposition {
+  id: string;
+  key_content_title: string;
+  intro_script_30s: string;
+  first_sentence: string;
+  hook_structure: string;
+  promise: string;
+  curiosity_gap: string;
+  applied_insights: AppliedInsight[];
+}
+
 export interface Intro30sAnalysis {
   id: string;
   reference_video_id: string;

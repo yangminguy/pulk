@@ -109,6 +109,7 @@ const {
   selectKeyContent,
   createPullingContentSet,
   createSecondBrainInsightMerge,
+  composeIntro30s,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/video-room'));
 
 const {
@@ -2965,14 +2966,59 @@ function registerCmoResource(app: any, db: any) {
         const stage = String(v.stage ?? '').trim();
         const payload = (v.payload && typeof v.payload === 'object') ? v.payload as Record<string, any> : {};
         if (!project_id) ctx.throw(400, 'project_id is required');
-        if (!['key_content', 'pulling_content', 'second_brain'].includes(stage)) {
-          ctx.throw(400, 'stage must be key_content, pulling_content, or second_brain');
+        if (!['key_content', 'pulling_content', 'second_brain', 'intro_30s'].includes(stage)) {
+          ctx.throw(400, 'stage must be key_content, pulling_content, second_brain, or intro_30s');
         }
 
         try {
           let artifact: any;
 
-          if (stage === 'key_content') {
+          if (stage === 'intro_30s') {
+            let appliedInsights: { insight: string; how_applied: string }[] = Array.isArray(payload.applied_insights)
+              ? payload.applied_insights
+              : [];
+
+            // SB auto-seed: if caller sent no applied_insights, query second brain for defaults.
+            if (appliedInsights.length === 0 && _secondBrainTransport) {
+              try {
+                const sbHits = await _secondBrainTransport.query({
+                  role: '썸네일 도입부 후킹 빌드업' as any,
+                  limit: 5,
+                });
+                appliedInsights = (sbHits ?? [])
+                  .map((h: any) => ({
+                    insight: String(h.content ?? h.text ?? h.insight ?? '').trim(),
+                    how_applied: '도입부 빌드업/후킹에 반영',
+                  }))
+                  .filter((x: { insight: string; how_applied: string }) => x.insight.length > 0);
+              } catch {
+                // graceful: leave empty → composeIntro30s will throw → 400
+              }
+            }
+
+            artifact = composeIntro30s({
+              id: randomUUID(),
+              key_content_title: payload.key_content_title,
+              intro_script_30s: payload.intro_script_30s,
+              first_sentence: payload.first_sentence,
+              hook_structure: payload.hook_structure,
+              promise: payload.promise,
+              curiosity_gap: payload.curiosity_gap,
+              applied_insights: appliedInsights,
+            });
+
+            const card_id = randomUUID();
+            const summary = `도입부 30초 (적용 인사이트 ${appliedInsights.length}개)`;
+            await db.sequelize.query(
+              `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+               VALUES ($1,$2,$3,$4,$5, now(), now())`,
+              { bind: [card_id, project_id, 'intro_30s', summary, JSON.stringify(artifact)] },
+            );
+
+            ctx.body = { ok: true, data: { artifact } };
+            await next();
+            return;
+          } else if (stage === 'key_content') {
             const candidate = {
               id: payload.candidate_id ?? randomUUID(),
               title: payload.title ?? '',

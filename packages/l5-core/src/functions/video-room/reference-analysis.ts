@@ -1,4 +1,4 @@
-import { ThumbnailPattern, ThumbnailHookType, Intro30sAnalysis } from './types';
+import { ThumbnailPattern, ThumbnailHookType, Intro30sAnalysis, AppliedInsight, Intro30sComposition } from './types';
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -68,5 +68,49 @@ export function analyzeIntro30s(input: AnalyzeIntro30sInput): Intro30sAnalysis {
     curiosity_gap: input.curiosity_gap,
     reusable_intro_formula: input.reusable_intro_formula,
     adapted_intro_candidates: input.adapted_intro_candidates,
+  };
+}
+
+// ── Intro30sComposition (세컨브레인 기반 도입부 30초 구성) ────────────────────
+
+export interface ComposeIntro30sInput {
+  id: string;
+  key_content_title: string;
+  intro_script_30s: string;
+  first_sentence?: string;
+  hook_structure?: string;
+  promise?: string;
+  curiosity_gap?: string;
+  applied_insights: AppliedInsight[];
+}
+
+export function composeIntro30s(input: ComposeIntro30sInput): Intro30sComposition {
+  requireNonEmpty(input.key_content_title, '키 콘텐츠 없이 도입부 작성 금지');
+  requireNonEmpty(input.intro_script_30s, '도입부 원고가 비어 있음');
+
+  if (!input.applied_insights || input.applied_insights.length === 0) {
+    throw new Error('세컨브레인 인사이트 적용 없이 도입부 작성 금지');
+  }
+  for (const item of input.applied_insights) {
+    if (!item.insight || item.insight.trim() === '') {
+      throw new Error('세컨브레인 인사이트 적용 없이 도입부 작성 금지');
+    }
+    if (!item.how_applied || item.how_applied.trim() === '') {
+      throw new Error('세컨브레인 인사이트 적용 없이 도입부 작성 금지');
+    }
+  }
+
+  return {
+    id: input.id,
+    key_content_title: input.key_content_title.trim(),
+    intro_script_30s: input.intro_script_30s.trim(),
+    first_sentence: input.first_sentence ?? '',
+    hook_structure: input.hook_structure ?? '',
+    promise: input.promise ?? '',
+    curiosity_gap: input.curiosity_gap ?? '',
+    applied_insights: input.applied_insights.map((item) => ({
+      insight: item.insight.trim(),
+      how_applied: item.how_applied.trim(),
+    })),
   };
 }

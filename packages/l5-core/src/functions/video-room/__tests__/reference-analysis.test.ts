@@ -1,4 +1,4 @@
-import { extractThumbnailPattern, analyzeIntro30s } from '../reference-analysis';
+import { extractThumbnailPattern, analyzeIntro30s, composeIntro30s } from '../reference-analysis';
 
 describe('extractThumbnailPattern', () => {
   const base = {
@@ -94,5 +94,89 @@ describe('analyzeIntro30s', () => {
     expect(analysis.promise_made).toBe(base.promise_made);
     expect(analysis.curiosity_gap).toBe(base.curiosity_gap);
     expect(analysis.reusable_intro_formula).toBe(base.reusable_intro_formula);
+  });
+});
+
+describe('composeIntro30s', () => {
+  const baseInsights = [
+    { insight: '신뢰는 전문성이 아니라 솔직함에서 온다', how_applied: '도입부 첫 문장에 약점 고백으로 배치' },
+  ];
+  const base = {
+    id: 'comp-1',
+    key_content_title: 'AI 마케팅팀 없이 월매출 1억 만드는 법',
+    intro_script_30s: '대표님, 마케팅에 돈 쓰기 전에 이것 하나만 확인하세요. 저도 처음엔 몰랐습니다...',
+    first_sentence: '대표님, 마케팅에 돈 쓰기 전에 이것 하나만 확인하세요.',
+    hook_structure: '약점 고백 → 손실 경고 → 해결 예고',
+    promise: '돈 낭비 없이 마케팅 성과를 내는 방법을 알려드립니다',
+    curiosity_gap: '확인해야 할 것이 무엇인지 궁금하게 만듦',
+    applied_insights: baseInsights,
+  };
+
+  it('정상 입력으로 Intro30sComposition 반환', () => {
+    const result = composeIntro30s(base);
+    expect(result.id).toBe('comp-1');
+    expect(result.key_content_title).toBe(base.key_content_title);
+    expect(result.intro_script_30s).toBe(base.intro_script_30s);
+    expect(result.applied_insights).toHaveLength(1);
+    expect(result.applied_insights[0].insight).toBe(baseInsights[0].insight);
+    expect(result.applied_insights[0].how_applied).toBe(baseInsights[0].how_applied);
+  });
+
+  it('optional 필드 생략 시 빈 문자열로 정규화', () => {
+    const result = composeIntro30s({
+      id: 'comp-2',
+      key_content_title: '타이틀',
+      intro_script_30s: '원고',
+      applied_insights: baseInsights,
+    });
+    expect(result.first_sentence).toBe('');
+    expect(result.hook_structure).toBe('');
+    expect(result.promise).toBe('');
+    expect(result.curiosity_gap).toBe('');
+  });
+
+  it('key_content_title 비면 throw', () => {
+    expect(() => composeIntro30s({ ...base, key_content_title: '' })).toThrow(
+      '키 콘텐츠 없이 도입부 작성 금지',
+    );
+  });
+
+  it('key_content_title 공백만이면 throw', () => {
+    expect(() => composeIntro30s({ ...base, key_content_title: '   ' })).toThrow(
+      '키 콘텐츠 없이 도입부 작성 금지',
+    );
+  });
+
+  it('intro_script_30s 비면 throw', () => {
+    expect(() => composeIntro30s({ ...base, intro_script_30s: '' })).toThrow(
+      '도입부 원고가 비어 있음',
+    );
+  });
+
+  it('applied_insights 빈 배열이면 throw', () => {
+    expect(() => composeIntro30s({ ...base, applied_insights: [] })).toThrow(
+      '세컨브레인 인사이트 적용 없이 도입부 작성 금지',
+    );
+  });
+
+  it('applied_insights 항목의 insight가 비면 throw', () => {
+    expect(() =>
+      composeIntro30s({ ...base, applied_insights: [{ insight: '', how_applied: '적용방법' }] }),
+    ).toThrow('세컨브레인 인사이트 적용 없이 도입부 작성 금지');
+  });
+
+  it('applied_insights 항목의 how_applied가 비면 throw', () => {
+    expect(() =>
+      composeIntro30s({ ...base, applied_insights: [{ insight: '인사이트', how_applied: '' }] }),
+    ).toThrow('세컨브레인 인사이트 적용 없이 도입부 작성 금지');
+  });
+
+  it('applied_insights 내용 trim 정규화', () => {
+    const result = composeIntro30s({
+      ...base,
+      applied_insights: [{ insight: '  인사이트  ', how_applied: '  적용방법  ' }],
+    });
+    expect(result.applied_insights[0].insight).toBe('인사이트');
+    expect(result.applied_insights[0].how_applied).toBe('적용방법');
   });
 });

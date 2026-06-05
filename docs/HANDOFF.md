@@ -1,6 +1,21 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-05 (CMO Video Room 워크플로우 강의 정합 + 라이브 세컨브레인 결선, E2E 22/22)
+최종 업데이트: 2026-06-05 (CMO Video Room Phase 3 — 세컨브레인 기반 도입부 30초, E2E 25/25)
+
+---
+
+## 🟢 2026-06-05 — CMO Video Room Phase 3: 세컨브레인 기반 도입부 30초 + 적용 인사이트 승인 (branch `cmo/video-room-clean`)
+
+**배경**: 사장님 — 원고 작성 구조는 AI Slide Factory에 이미 있음(`docs/projects/ai-content-flow/`의 strategy_brief.md+script.md = Hook+beat-by-beat 포맷, review_only). Phase 3에서 추가할 것 = **세컨브레인 기반 도입부 30초 적용 + "어떤 인사이트를 어떻게 적용했는지" 보고 승인하는 단계**. 기존 `analyzeIntro30s`는 레퍼런스 영상 의존 → 세컨브레인 기반으로 교체(additive). sub agent 3개(l5-core/백엔드/UI).
+
+- **l5-core** `video-room/reference-analysis.ts`+`types.ts`: `composeIntro30s` + `AppliedInsight{insight,how_applied}` + `Intro30sComposition`. 검증 throw: 키콘텐츠/도입부원고/applied_insights 비면 거부("세컨브레인 인사이트 적용 없이 도입부 작성 금지").
+- **백엔드** `plugin.ts`: `cmo:commitStrategyArtifact`에 stage `'intro_30s'` 추가 → `composeIntro30s`. applied_insights 비면 라이브 세컨브레인("썸네일 도입부 후킹 빌드업") 쿼리로 자동 시드.
+- **UI** `video-room/page.tsx`: `Intro30sCard` — 도입부 원고+훅구조 + **"적용된 Second Brain 인사이트" 표(인사이트 → 적용 방식)**. 승인은 기존 hook 게이트.
+- 승인 흐름: CMO가 도입부 단계서 세컨브레인 적용해 제안 → 카드로 "인사이트→적용방식" 표시 → 사장님이 hook_draft_approval 게이트서 승인.
+
+**검증**: l5-core tsc 0, jest **806/806**(+9). 격리 NocoBase 라이브 **E2E 25/25 ALL GREEN**(+3: 도입부 적용인사이트 구성·라이브 SB 자동시드·키콘텐츠 누락 거부). 브라우저 스크린샷으로 적용인사이트 표 렌더 확인.
+
+**남은 것**: 원고(script) 단계를 팩토리 Scene JSON 포맷으로 산출 + 실제 MP4 렌더 자동화. 배포(launchd→clean), PR #3 머지.
 
 ---
 
