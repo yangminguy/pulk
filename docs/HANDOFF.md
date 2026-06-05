@@ -1,6 +1,28 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-04 (CMO Chat UI 리뷰 — LGTM)
+최종 업데이트: 2026-06-05 (CMO Video Room 전체 구현 — PRD v1.1 풀스택)
+
+---
+
+## 🟢 2026-06-05 — CMO Video Room 전체 구현 (PRD v1.1, branch `cmo/video-room-clean`)
+
+**근본 문제 해결**: 사장님 지적 "CMO랑 대화 안 돼"의 원인 = `POST /api/cmo:chatMessage` 백엔드 부재(404). 신규 구현으로 해소.
+
+### 산출물 (커밋 6개)
+- **l5-core `functions/video-room/`**: PRD §12 15개 데이터모델 타입(types.ts) + 25단계 워크플로우 상태머신(state-machine.ts: 전이/페이지소유/승인게이트/미니로드맵) + 도메인 모듈 10종(business-pt-context, key-content, viewtrap-research, reference-analysis, pulling-content[5세트 퍼널검증], second-brain-merge, approval-gates, production, review-publish). 전부 순수함수+PRD 금지규칙 throw. **146 단위테스트**.
+- **l5-core `functions/cmo-strategy/`**: `runCmoStrategyTurn` — 상태머신 기반 CMO 대화 턴 엔진(CTO planMessage 패턴 미러). STAGE_SCRIPT(25단계 가이드) + LLM주입/결정론적폴백 + 승인게이트 자동생성. **6 테스트**.
+- **NocoBase `plugin-orchestration`**: `registerCmoResource` — `cmo:chatMessage/createProject/listProjects/getProject/advanceStatus/decideGate/approvePlan/saveCard/buildSlideDeck/submitRender/runQA/createUploadDraft` 12개 액션 + 컬렉션 4종(cmo_planning_messages, video_room_projects/_cards/_gates) + ACL. 영상팩토리 transport(makeVideoFactoryTransport, 인메모리 폴백). **계약테스트 15개**.
+- **founder-ui `/video-room`**: 프로젝트 목록/생성 → 공통헤더 + 12노드 미니로드맵 + 3탭(Strategy/Production/Review&Publish) + CMO Chat + Strategy Board(단계별 카드) + Decision Panel(게이트 승인/수정/보류). api.ts 계약 확장.
+- **e2e**: `apps/founder-ui/e2e/verify-cmo-video-room.mjs` — create→chat→gate→advance→slide→render→qa→upload 라이브 검증.
+
+### 검증
+- l5-core: **791 jest 통과**, tsc 클린, dist 빌드 성공.
+- founder-ui: typecheck 클린, `next build` 성공(/video-room).
+- 백엔드 계약테스트 15개 통과(서브에이전트 컨텍스트).
+- **라이브 E2E**: clean worktree에 NocoBase 런타임 deps 미설치 → 격리 sqlite 인스턴스로 검증 진행 중(2026-06-05).
+
+### 배포 메모
+- 현재 :13000 launchd 서버는 **구 main 코드** 서빙. 이 기능을 실제 화면에 켜려면 launchd `com.l5.nocobase`가 clean 브랜치 코드를 서빙하도록 빌드+kickstart 필요(배포 결정은 Founder 확인 대상). 메모리 `cmo-video-room-clean-branch` 참조.
 
 ---
 
