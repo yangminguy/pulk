@@ -3,6 +3,15 @@
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
 > 최종 업데이트: 2026-06-05 (CMO Video Room PRD 갭 배선 P0+P1, 라이브 E2E 19/19). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
 
+## 🎬 CMO Video Room — 강의 워크플로우 정합 + 라이브 세컨브레인 (2026-06-05)
+
+> 비즈니스 PT 강의(세컨브레인 biz) 워크플로우를 그대로 재현. 상세 = `docs/HANDOFF.md` 2026-06-05.
+
+- [x] **Phase 1 흐름 정리**: `reference_analysis`·`second_brain_insight_merge` 상태 제거(25→23), 미니로드맵에 썸네일 구성/원고 도입부/훅 승인 노드(14노드), STAGE_SCRIPT를 강의 방법론(문제에서 시작·역순·현상→욕구→계획→행동→보상·경쟁사 벤치마킹·human-in-loop 리서치)으로 정비.
+- [x] **Phase 2 라이브 세컨브레인 결선**: `CmoStrategyContext.second_brain_insights` + plan-turn 렌더. 백엔드 `cmo:chatMessage`가 단계별 쿼리로 `makeSecondBrainTransport` 라이브 조회 주입, `loadPTContext` 빈 source_refs 자동충전.
+- [x] **검증**: l5-core tsc 0 / jest 797·격리 NocoBase 라이브 **E2E 22/22**(로드맵 14노드·reference_analysis 제거·라이브 SB 자동충전 입증).
+- [ ] **Phase 3(후속)**: 원고 단계 → AI 슬라이드 팩토리 멀티에이전트 포맷(Strategy Brief→Script→Scene JSON) 결선 + 실제 MP4 렌더 자동화.
+
 ## 🎬 CMO Video Room — PRD 갭 배선 (2026-06-05, branch `cmo/video-room-clean`)
 
 > PRD 갭 분석: 도메인(l5-core)은 전부 구현·테스트(tsc 0, jest 791/791). 갭은 전부 배선 레이어. sub agent 2개(FE/BE)로 ADDITIVE 배선. 상세 = `docs/HANDOFF.md` 2026-06-05.

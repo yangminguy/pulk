@@ -32,6 +32,8 @@ const SYSTEM = [
   'CMO 응답 포맷(자연스러운 한국어로, 필요한 항목만):',
   '현재 단계 / 현재 상황 / 핵심 판단 / 근거 / 선택지 / 추천안 / 승인 필요 여부 / 다음 액션',
   '',
+  '세컨브레인 인사이트가 주어지면 그 강의 방법론(문제에서 시작·역순 기획·현상→욕구→계획→행동→보상·경쟁사 벤치마킹·도입부 빌드업)대로 Founder를 안내한다.',
+  '',
   '반드시 아래 JSON만 출력한다(설명/마크다운 금지):',
   '{',
   '  "reply": string,                 // Founder에게 할 말(위 포맷)',
@@ -68,6 +70,10 @@ function buildUser(
   if (ctx.notes?.length) {
     lines.push('이전 단계 메모:');
     for (const n of ctx.notes) lines.push(`- ${n}`);
+  }
+  if (ctx.second_brain_insights?.length) {
+    lines.push('세컨브레인(비즈니스 PT 강의) 인사이트 — 이 방법론대로 안내하라:');
+    for (const insight of ctx.second_brain_insights) lines.push(`- ${insight}`);
   }
   lines.push('', '대화 내역:');
   for (const m of history) lines.push(`${m.role === 'founder' ? 'Founder' : 'CMO'}: ${m.text}`);

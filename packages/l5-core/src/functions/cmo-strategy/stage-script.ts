@@ -34,13 +34,13 @@ export const STAGE_SCRIPT: Record<VideoRoomStatus, StageGuidance> = {
   },
   key_content_ideation: {
     label: '키 콘텐츠 후보 기획',
-    focus: '판매로 이어질 키 콘텐츠 후보를 2~4개 만든다(확정하지 않음).',
-    prompt: '고객 문제와 직접 연결되는 키 콘텐츠 후보 몇 개를 잡아보겠습니다. 어떤 각도(현상/욕구/계획)를 강조하고 싶으신가요?',
+    focus: '상품 장점이 아니라 고객이 겪는 문제 상황에서 출발해 키 콘텐츠 후보를 2~4개 만든다. 판매목표를 먼저 정하고 역순으로 기획(역순 기획)한다.',
+    prompt: '먼저 이 영상으로 달성할 판매목표(상담 몇 건, 판매 몇 개 등)를 정해 주세요. 그 목표를 역으로 거슬러 올라가, 고객이 지금 실제로 겪고 있는 문제 상황에서 시작하는 키 콘텐츠 후보 2~4개를 잡겠습니다.',
   },
   viewtrap_key_research: {
     label: 'Viewtrap 키 리서치',
-    focus: 'Viewtrap에서 키 콘텐츠 키워드를 검색해 성과 레퍼런스를 모은다.',
-    prompt: 'Viewtrap(app.viewtrap.com/video-search)에서 검색할 키워드를 제안하겠습니다. 검색 결과(제목·조회수·URL·선택 이유)를 입력해 주시면 분석합니다.',
+    focus: '마케팅을 "고객 문제"로 재정의해 검색 키워드를 도출하고, 경쟁사 썸네일·도입부·형식을 벤치마킹할 레퍼런스를 찾는다. 검색 키워드와 방법은 CMO가 제안하고, 실제 검색은 사장님이 Viewtrap에서 직접 수행(human-in-loop)한다.',
+    prompt: '마케팅을 "우리 상품 홍보"가 아니라 "고객이 겪는 문제"로 재정의하면 검색할 키워드가 달라집니다. 아래 키워드로 Viewtrap(app.viewtrap.com/video-search)에서 검색해 주세요. 경쟁사 영상의 썸네일·도입부·형식도 함께 살펴보시고, 결과(제목·조회수·URL·선택 이유)를 입력해 주시면 분석하겠습니다.',
   },
   key_content_approval: {
     label: '키 콘텐츠 1개 확정',
@@ -49,8 +49,8 @@ export const STAGE_SCRIPT: Record<VideoRoomStatus, StageGuidance> = {
   },
   viewtrap_pulling_research: {
     label: 'Viewtrap 풀링 리서치',
-    focus: '확정된 키 콘텐츠로 끌어올 풀링 콘텐츠 후보를 Viewtrap에서 찾는다.',
-    prompt: '확정된 키 콘텐츠를 볼 사람을 끌어올 풀링 콘텐츠를 찾겠습니다. 현상/욕구/계획 키워드로 검색 결과를 모아 주세요.',
+    focus: '현상→욕구→계획→행동→보상 소비자 여정 각 단계의 풀링 콘텐츠 후보를 Viewtrap에서 찾는다. 검색 키워드와 단계 분류는 CMO가 제안하고, 실제 검색은 사장님이 수행(human-in-loop)한다.',
+    prompt: '풀링 콘텐츠는 소비자 여정 단계(현상→욕구→계획→행동→보상)를 따라 배치됩니다. 아래 단계별 키워드로 Viewtrap에서 검색해 주세요. 한 단계 분량만 먼저 검색하셔도 됩니다. 결과를 입력해 주시면 퍼널 구조에 맞게 풀링 5개로 엮겠습니다.',
   },
   pulling_content_set_selection: {
     label: '풀링 콘텐츠 5개 선별',
@@ -62,25 +62,15 @@ export const STAGE_SCRIPT: Record<VideoRoomStatus, StageGuidance> = {
     focus: '풀링 5개 세트와 키 콘텐츠로의 브릿지를 Founder 승인받는다.',
     prompt: '풀링 콘텐츠 5개 세트를 정리했습니다. 각 콘텐츠가 키 콘텐츠로 이어지는 브릿지를 확인하고 승인해 주세요.',
   },
-  reference_analysis: {
-    label: '레퍼런스 분석',
-    focus: '각 콘텐츠에 레퍼런스 영상 URL을 연결하고 저장한다.',
-    prompt: '각 콘텐츠에 붙일 레퍼런스 영상 URL과 선택 이유를 저장하겠습니다.',
-  },
   thumbnail_pattern_extraction: {
-    label: '썸네일 구조 추출',
-    focus: '레퍼런스 썸네일의 구조(문구·감정·구도)를 추출해 우리 주제로 치환한다.',
-    prompt: '레퍼런스 썸네일을 베끼지 않고 구조만 추출해 우리 주제로 치환하겠습니다.',
+    label: '썸네일 구성',
+    focus: '확정된 풀링 5개+키 콘텐츠의 썸네일을 세컨브레인 후기·경쟁사 벤치마킹 인사이트로 분석해 우리 주제 구조로 치환한다. 레퍼런스 영상 URL 입력 단계 없이 기존 풀링/키 콘텐츠 데이터로 바로 시작한다.',
+    prompt: '확정된 풀링 5개와 키 콘텐츠를 기준으로 썸네일 구성을 잡겠습니다. 세컨브레인 강의 방법론과 경쟁사 벤치마킹 인사이트를 반영해, 썸네일 문구·감정 훅·구도 구조를 우리 주제에 맞게 치환하겠습니다.',
   },
   intro_30s_analysis: {
-    label: '초반 30초 분석',
-    focus: '레퍼런스 영상 초반 30초 원고의 훅 구조를 분석한다.',
-    prompt: '레퍼런스 영상 초반 30초 원고를 분석해 도입부 훅 구조를 뽑겠습니다.',
-  },
-  second_brain_insight_merge: {
-    label: 'Second Brain 인사이트 결합',
-    focus: '레퍼런스 구조에 Second Brain 인사이트를 더해 판매 논리를 강화한다.',
-    prompt: '레퍼런스 구조에 Second Brain 인사이트를 결합해 도입부/원고 논리를 강화하겠습니다.',
+    label: '원고 도입부 30초',
+    focus: '도입부 0~30초의 빌드업·후킹 구조를 강의 원칙(초반 후킹, 빌드업 문장, "왜 봐야 하는가")대로 설계한다.',
+    prompt: '원고 도입부 0~30초를 설계하겠습니다. 첫 문장에서 시청자를 후킹하고, 빌드업 문장으로 긴장감을 높인 뒤, "왜 이 영상을 끝까지 봐야 하는지"를 명확히 제시하는 구조로 잡겠습니다.',
   },
   hook_draft_approval: {
     label: '썸네일/제목/도입부 승인',

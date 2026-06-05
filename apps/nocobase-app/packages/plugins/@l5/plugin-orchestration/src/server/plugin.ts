@@ -2491,7 +2491,35 @@ function registerCmoResource(app: any, db: any) {
 
         // Run the CMO strategy turn.
         const llm = buildLLMClient(founder_message);
-        const strategyCtx = {
+
+        // Second brain: query insights relevant to the current project status and
+        // inject them into the strategy context. Graceful — failure never blocks.
+        const SB_STATUS_QUERY: Record<string, string> = {
+          business_pt_context_loading: '비즈니스 PT 콘텐츠 전략 키 콘텐츠 풀링 채널',
+          product_defined:             '비즈니스 PT 콘텐츠 전략 키 콘텐츠 풀링 채널',
+          key_content_ideation:        '키 콘텐츠 기획 문제 상황 역순 기획',
+          key_content_approval:        '키 콘텐츠 기획 문제 상황 역순 기획',
+          viewtrap_key_research:       '콘텐츠 리서치 경쟁사 벤치마킹 풀 콘텐츠',
+          viewtrap_pulling_research:   '콘텐츠 리서치 경쟁사 벤치마킹 풀 콘텐츠',
+          pulling_content_set_selection: '풀링 콘텐츠 현상 욕구 계획 행동 보상',
+          pulling_content_set_approval:  '풀링 콘텐츠 현상 욕구 계획 행동 보상',
+          thumbnail_pattern_extraction: '썸네일 도입부 후킹 빌드업 벤치마킹',
+          intro_30s_analysis:           '썸네일 도입부 후킹 빌드업 벤치마킹',
+        };
+        let second_brain_insights: string[] = [];
+        const sbQuery = SB_STATUS_QUERY[proj.status as string];
+        if (_secondBrainTransport && sbQuery) {
+          try {
+            const sbHits = await _secondBrainTransport.query({ role: sbQuery as any, limit: 6 });
+            second_brain_insights = (sbHits ?? [])
+              .map((h: any) => String(h.insight ?? ''))
+              .filter(Boolean);
+          } catch {
+            // graceful: leave second_brain_insights empty
+          }
+        }
+
+        const strategyCtx: Record<string, any> = {
           status: proj.status,
           product: proj.product ?? null,
           target_audience: proj.target_audience ?? null,
@@ -2499,6 +2527,7 @@ function registerCmoResource(app: any, db: any) {
           context_loaded,
           selected_key_content_title,
           pulling_set_size,
+          ...(second_brain_insights.length > 0 ? { second_brain_insights } : {}),
         };
         const result = await runCmoStrategyTurn(history, founder_message, strategyCtx, { llm });
         const reply = String(result?.reply ?? '계속 이야기해 주세요.');
@@ -2851,8 +2880,29 @@ function registerCmoResource(app: any, db: any) {
         const project_id = String(v.project_id ?? '').trim();
         if (!project_id) ctx.throw(400, 'project_id is required');
 
-        const rawSourceRefs = Array.isArray(v.source_refs) ? v.source_refs : [];
+        let rawSourceRefs = Array.isArray(v.source_refs) ? v.source_refs : [];
         const rawRules = Array.isArray(v.rules) ? v.rules.map(String) : [];
+
+        // Second brain augmentation: when source_refs are not provided by the
+        // caller, auto-fill from live second brain so assertContextLoadingComplete
+        // (3-source rule) can be satisfied without manual input.
+        if (rawSourceRefs.length === 0 && _secondBrainTransport) {
+          try {
+            const sbHits = await _secondBrainTransport.query({
+              role: '비즈니스 PT 콘텐츠 전략' as any,
+              limit: 6,
+            });
+            rawSourceRefs = (sbHits ?? [])
+              .map((h: any) => {
+                const label = String(h.insight ?? '').slice(0, 120);
+                const agent = h.source_agent ? ` [${h.source_agent}]` : '';
+                return label + agent;
+              })
+              .filter(Boolean);
+          } catch {
+            // graceful: leave rawSourceRefs empty, caller will get the usual error
+          }
+        }
 
         try {
           const snapshot = createBusinessPTContextSnapshot({

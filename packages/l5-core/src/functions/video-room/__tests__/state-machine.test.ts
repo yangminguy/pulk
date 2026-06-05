@@ -9,10 +9,32 @@ import {
 } from '../state-machine';
 
 describe('Video Room state machine', () => {
-  it('flow covers all 24 happy-path statuses ending at completed', () => {
+  it('flow covers all 23 happy-path statuses ending at completed', () => {
     expect(VIDEO_ROOM_FLOW[0]).toBe('strategy_chat');
     expect(VIDEO_ROOM_FLOW[VIDEO_ROOM_FLOW.length - 1]).toBe('completed');
+    expect(VIDEO_ROOM_FLOW).toHaveLength(23);
     expect(new Set(VIDEO_ROOM_FLOW).size).toBe(VIDEO_ROOM_FLOW.length);
+  });
+
+  it('does not contain removed statuses reference_analysis and second_brain_insight_merge', () => {
+    expect(VIDEO_ROOM_FLOW).not.toContain('reference_analysis');
+    expect(VIDEO_ROOM_FLOW).not.toContain('second_brain_insight_merge');
+  });
+
+  it('pulling_content_set_approval transitions directly to thumbnail_pattern_extraction', () => {
+    expect(nextStatus('pulling_content_set_approval')).toBe('thumbnail_pattern_extraction');
+  });
+
+  it('intro_30s_analysis transitions directly to hook_draft_approval', () => {
+    expect(nextStatus('intro_30s_analysis')).toBe('hook_draft_approval');
+  });
+
+  it('mini roadmap includes thumbnail and intro nodes', () => {
+    const road = buildMiniRoadmap('thumbnail_pattern_extraction');
+    const keys = road.map((n) => n.key);
+    expect(keys).toContain('thumbnail');
+    expect(keys).toContain('intro');
+    expect(keys).toContain('hook_approval');
   });
 
   it('maps statuses to the owning page (PRD §11)', () => {

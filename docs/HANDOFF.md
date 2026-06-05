@@ -1,6 +1,29 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-05 (CMO Video Room PRD 갭 배선 — P0+P1, E2E 19/19)
+최종 업데이트: 2026-06-05 (CMO Video Room 워크플로우 강의 정합 + 라이브 세컨브레인 결선, E2E 22/22)
+
+---
+
+## 🟢 2026-06-05 — CMO Video Room: 비즈니스 PT 강의 워크플로우 정합 + 라이브 세컨브레인 결선 (branch `cmo/video-room-clean`)
+
+**배경**: 사장님이 듣는 "비즈니스 PT" 유튜브 강의(세컨브레인 `biz` 브레인에 1~4주차 저장)의 콘텐츠 제작 워크플로우를 CMO Video Room이 그대로 재현해야 함. 강의 흐름 = 판매 상품 → 키 콘텐츠 → 풀링 콘텐츠 → 썸네일/제목 → 내용 제작. sub agent 2개(l5-core/백엔드) 파일 분담.
+
+### Phase 1 — 흐름 정리 (l5-core, 25→23 상태)
+- `state-machine.ts`/`types.ts`: `reference_analysis`·`second_brain_insight_merge` 상태 제거(사장님: "레퍼런스 분석 단계 빠져야"). `pulling_content_set_approval → thumbnail_pattern_extraction → intro_30s_analysis → hook_draft_approval` 순서로 직결.
+- `ROADMAP_NODES`: 단일 'hook' 노드 → **썸네일 구성 / 원고 도입부 / 훅 승인** 3노드로(미니로드맵 14노드). 사장님 흐름이 화면에 보이도록.
+- `stage-script.ts`: 강의 방법론 반영 — 키 콘텐츠=문제 상황에서 시작·역순 기획, 풀링=현상→욕구→계획→행동→보상, 리서치=경쟁사 벤치마킹+human-in-loop(CMO 방법 안내→사장님이 Viewtrap 검색), 썸네일=레퍼런스 URL 없이 세컨브레인 후기+5콘텐츠 썸네일 분석.
+
+### Phase 2 — 라이브 세컨브레인 결선
+- l5-core `cmo-strategy/types.ts`·`plan-turn.ts`: `CmoStrategyContext.second_brain_insights?: string[]` 추가 + `buildUser`/`SYSTEM`에 렌더(강의 방법론대로 안내 지시).
+- 백엔드 `plugin.ts`: 기존 `makeSecondBrainTransport()`(라이브 Python `biz` 쿼리) 재사용. `cmo:chatMessage`가 단계별 쿼리(키→"문제 상황 역순", 풀링→"현상 욕구 계획 행동 보상", 썸네일→"썸네일 도입부 후킹" 등)로 세컨브레인을 실제 조회해 `ctx.second_brain_insights` 주입. `cmo:loadPTContext`는 source_refs 비면 라이브 세컨브레인으로 자동충전(graceful null).
+
+### 검증
+- l5-core tsc 0, jest **797/797**(+6). dist 재빌드 + plugin tsc 0 + plugin dist 재빌드.
+- 격리 NocoBase 13099 라이브 **E2E 22/22 ALL GREEN**(기존 19 + 신규 3): 로드맵 14노드·썸네일/도입부 노드 존재·reference_analysis 제거 확인 + **loadPTContext가 라이브 세컨브레인에서 자동충전(빈 source_refs→biz 실쿼리≥3 인사이트)** = 라이브 결선 입증.
+
+### 남은 것(후속)
+- 3단계: 원고 단계를 AI 슬라이드 팩토리 멀티에이전트 포맷(Strategy Brief→Script(Hook→…→CTA)→Scene JSON, `ai-content-flow` 구조)으로 결선 + 실제 MP4 렌더 자동화.
+- 배포(launchd :13000 → clean 코드), PR #3 머지.
 
 ---
 

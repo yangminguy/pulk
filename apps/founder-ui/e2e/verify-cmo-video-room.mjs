@@ -99,8 +99,13 @@ async function main() {
   const got = await call('getProject', { project_id: projectId });
   const gotData = data(got);
   ok('getProject returns project + roadmap', !!gotData?.project && Array.isArray(gotData?.roadmap), JSON.stringify(Object.keys(gotData ?? {})));
-  ok('getProject roadmap has 12 nodes', (gotData?.roadmap?.length ?? 0) === 12, `len ${gotData?.roadmap?.length}`);
+  ok('getProject roadmap has 14 nodes', (gotData?.roadmap?.length ?? 0) === 14, `len ${gotData?.roadmap?.length}`);
   ok('getProject messages persisted', Array.isArray(gotData?.messages) && gotData.messages.length >= 2);
+
+  // 3b. flow aligned to lecture: 썸네일 구성 + 원고 도입부 nodes exist, reference_analysis removed
+  const roadmap = gotData?.roadmap ?? [];
+  ok('roadmap includes 썸네일 구성 + 원고 도입부 nodes', roadmap.some((n) => (n.label ?? '').includes('썸네일')) && roadmap.some((n) => (n.label ?? '').includes('도입부')), JSON.stringify(roadmap.map((n) => n.label)));
+  ok('roadmap has no reference_analysis stage', !roadmap.some((n) => n.status === 'reference_analysis' || n.status === 'second_brain_insight_merge'), JSON.stringify(roadmap.map((n) => n.status)));
 
   // 4. walk to a gate stage by advancing through non-gate stages.
   //    strategy_chat → ... → key_content_approval is the first gate.
@@ -175,6 +180,10 @@ async function main() {
     rules: ['키콘텐츠 규칙'],
   });
   ok('loadPTContext accepts >=3 sources', ptPos.status === 200 && data(ptPos)?.context_loaded === true, JSON.stringify(data(ptPos))?.slice(0, 160));
+
+  // live Second Brain wiring: empty source_refs → auto-filled from biz brain
+  const ptAuto = await call('loadPTContext', { project_id: projectId, source_refs: [], rules: ['키콘텐츠 규칙'] });
+  ok('loadPTContext auto-fills from live Second Brain (empty source_refs → ok)', ptAuto.status === 200 && data(ptAuto)?.context_loaded === true, `status=${ptAuto.status} ${JSON.stringify(data(ptAuto))?.slice(0, 120)}`);
 
   const voice = await call('attachVoice', { project_id: projectId, file_url: 'https://example.com/voice.mp3', duration_sec: 120 });
   ok('attachVoice attaches a voice recording', voice.status === 200 && !!data(voice)?.voice, JSON.stringify(data(voice))?.slice(0, 160));

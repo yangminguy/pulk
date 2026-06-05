@@ -33,6 +33,41 @@ describe('runCmoStrategyTurn (deterministic fallback)', () => {
   });
 });
 
+describe('runCmoStrategyTurn (second_brain_insights injection)', () => {
+  it('buildUser includes second_brain_insights in the deterministic fallback reply path', async () => {
+    // We verify by checking that the LLM receives the insights in the user prompt.
+    // Use a spy LLM that captures the user string.
+    let capturedUser = '';
+    const llm = {
+      complete: async ({ user }: { system: string; user: string }) => {
+        capturedUser = user;
+        return JSON.stringify({ reply: 'ok', ready_to_advance: false, proposal: null, gate: null });
+      },
+    };
+    await runCmoStrategyTurn(
+      [],
+      '테스트',
+      ctx({ second_brain_insights: ['문제에서 시작하라', '역순 기획'] }),
+      { llm },
+    );
+    expect(capturedUser).toContain('세컨브레인(비즈니스 PT 강의) 인사이트');
+    expect(capturedUser).toContain('- 문제에서 시작하라');
+    expect(capturedUser).toContain('- 역순 기획');
+  });
+
+  it('does not add insights block when second_brain_insights is absent', async () => {
+    let capturedUser = '';
+    const llm = {
+      complete: async ({ user }: { system: string; user: string }) => {
+        capturedUser = user;
+        return JSON.stringify({ reply: 'ok', ready_to_advance: false, proposal: null, gate: null });
+      },
+    };
+    await runCmoStrategyTurn([], '테스트', ctx(), { llm });
+    expect(capturedUser).not.toContain('세컨브레인(비즈니스 PT 강의) 인사이트');
+  });
+});
+
 describe('runCmoStrategyTurn (LLM-driven)', () => {
   const llmReturning = (payload: object): CmoLLM => ({
     complete: async () => JSON.stringify(payload),

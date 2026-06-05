@@ -26,6 +26,8 @@ export interface CmoStrategyContext {
   pulling_set_size?: number;
   /** Free-form notes summarising prior cards so the CMO keeps continuity. */
   notes?: string[];
+  /** Insights from the Second Brain (Business PT lecture methodology) to inject into prompts. */
+  second_brain_insights?: string[];
 }
 
 /** A stage-specific artifact the CMO proposes — stored as a Strategy Board card. */
