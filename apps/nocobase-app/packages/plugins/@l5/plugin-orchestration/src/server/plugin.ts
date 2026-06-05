@@ -102,6 +102,13 @@ const {
   completeRenderJob,
   evaluateVideoRoomQA,
   createUploadDraft,
+  createBusinessPTContextSnapshot,
+  assertContextLoadingComplete,
+  createVoiceRecording,
+  attachVoiceFile,
+  selectKeyContent,
+  createPullingContentSet,
+  createSecondBrainInsightMerge,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/video-room'));
 
 const {
@@ -160,7 +167,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -2835,6 +2842,132 @@ function registerCmoResource(app: any, db: any) {
         );
 
         ctx.body = { ok: true, data: { upload_draft_id, draft } };
+        await next();
+      },
+
+      // POST /api/cmo:loadPTContext  { project_id, business_id?, source_refs, rules? }
+      loadPTContext: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        const rawSourceRefs = Array.isArray(v.source_refs) ? v.source_refs : [];
+        const rawRules = Array.isArray(v.rules) ? v.rules.map(String) : [];
+
+        try {
+          const snapshot = createBusinessPTContextSnapshot({
+            id: randomUUID(),
+            video_project_id: project_id,
+            loaded_at: new Date().toISOString(),
+            source_refs: rawSourceRefs,
+            key_content_rules: rawRules,
+            pulling_content_rules: rawRules,
+            freshness_status: 'fresh',
+          });
+          assertContextLoadingComplete(snapshot);
+
+          const card_id = randomUUID();
+          await db.sequelize.query(
+            `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+             VALUES ($1,$2,'pt_context',$3,$4, now(), now())`,
+            { bind: [card_id, project_id, 'Business PT Context loaded', JSON.stringify(snapshot)] },
+          );
+
+          ctx.body = { ok: true, data: { context_loaded: true, snapshot } };
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+        await next();
+      },
+
+      // POST /api/cmo:attachVoice  { project_id, scene_ref?, file_url, duration_sec? }
+      attachVoice: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const file_url = String(v.file_url ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!file_url) ctx.throw(400, 'file_url is required');
+
+        const duration_sec = v.duration_sec != null ? Number(v.duration_sec) : 0;
+
+        try {
+          const rec = createVoiceRecording({ id: randomUUID(), video_project_id: project_id });
+          const attached = attachVoiceFile(rec, file_url, duration_sec);
+
+          const card_id = randomUUID();
+          await db.sequelize.query(
+            `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+             VALUES ($1,$2,'voice',$3,$4, now(), now())`,
+            { bind: [card_id, project_id, file_url.slice(0, 200), JSON.stringify(attached)] },
+          );
+
+          ctx.body = { ok: true, data: { voice: attached } };
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+        await next();
+      },
+
+      // POST /api/cmo:commitStrategyArtifact  { project_id, stage, payload }
+      commitStrategyArtifact: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const stage = String(v.stage ?? '').trim();
+        const payload = (v.payload && typeof v.payload === 'object') ? v.payload as Record<string, any> : {};
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!['key_content', 'pulling_content', 'second_brain'].includes(stage)) {
+          ctx.throw(400, 'stage must be key_content, pulling_content, or second_brain');
+        }
+
+        try {
+          let artifact: any;
+
+          if (stage === 'key_content') {
+            const candidate = {
+              id: payload.candidate_id ?? randomUUID(),
+              title: payload.title ?? '',
+              target_problem: payload.target_problem ?? '',
+              consumer_stages: Array.isArray(payload.consumer_stages) ? payload.consumer_stages : [],
+              sales_logic: payload.sales_logic ?? '',
+              cta: payload.cta ?? '',
+              why_this_can_sell: payload.why_this_can_sell ?? '',
+            };
+            artifact = selectKeyContent(candidate, {
+              id: randomUUID(),
+              viewtrap_evidence: Array.isArray(payload.viewtrap_evidence) ? payload.viewtrap_evidence : [],
+              selected_reason: payload.selected_reason ?? '',
+            });
+          } else if (stage === 'pulling_content') {
+            artifact = createPullingContentSet({
+              id: randomUUID(),
+              key_content_id: String(payload.key_content_id ?? ''),
+              pulling_contents: Array.isArray(payload.pulling_contents) ? payload.pulling_contents : [],
+              set_logic: String(payload.set_logic ?? ''),
+              funnel_coverage: payload.funnel_coverage ?? { phenomenon: [], desire: [], plan: [], action_bridge: '' },
+            });
+          } else {
+            // second_brain
+            artifact = createSecondBrainInsightMerge({
+              id: randomUUID(),
+              content_plan_id: String(payload.content_plan_id ?? ''),
+              retrieved_insights: Array.isArray(payload.retrieved_insights) ? payload.retrieved_insights : [],
+              applied_to_thumbnail: Array.isArray(payload.applied_to_thumbnail) ? payload.applied_to_thumbnail : [],
+              applied_to_intro: Array.isArray(payload.applied_to_intro) ? payload.applied_to_intro : [],
+              applied_to_script_structure: Array.isArray(payload.applied_to_script_structure) ? payload.applied_to_script_structure : [],
+            });
+          }
+
+          const card_id = randomUUID();
+          await db.sequelize.query(
+            `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+             VALUES ($1,$2,$3,$4,$5, now(), now())`,
+            { bind: [card_id, project_id, stage, `${stage} artifact`, JSON.stringify(artifact)] },
+          );
+
+          ctx.body = { ok: true, data: { artifact } };
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
         await next();
       },
     },

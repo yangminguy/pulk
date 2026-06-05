@@ -1,7 +1,20 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-06-04 (State Machine Validation green + ContentApprovalGate core 검증 완료). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-06-05 (CMO Video Room PRD 갭 배선 P0+P1, 라이브 E2E 19/19). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+
+## 🎬 CMO Video Room — PRD 갭 배선 (2026-06-05, branch `cmo/video-room-clean`)
+
+> PRD 갭 분석: 도메인(l5-core)은 전부 구현·테스트(tsc 0, jest 791/791). 갭은 전부 배선 레이어. sub agent 2개(FE/BE)로 ADDITIVE 배선. 상세 = `docs/HANDOFF.md` 2026-06-05.
+
+- [x] **P0 Production/Publish 발동 버튼** (page.tsx): 슬라이드덱 생성→렌더 제출→QA 실행→업로드 초안 버튼. 기존 액션(ai-slide-video-factory transport 연결)을 화면에 노출.
+- [x] **P0 카드 stage 키 정합** (page.tsx): UI `render_job`/`video_qa` → 백엔드 `rendering`/`qa`. 렌더·QA 카드 표시.
+- [x] **P1 Business PT Context 로딩** (`cmo:loadPTContext`): `assertContextLoadingComplete` 3소스 규칙 런타임 강제.
+- [x] **P1 음성 녹음 업로드** (`cmo:attachVoice` + UI): disabled 플레이스홀더 → 작동.
+- [x] **P1 Strategy 구조화 검증** (`cmo:commitStrategyArtifact`): selectKeyContent/createPullingContentSet/createSecondBrainInsightMerge 도메인 검증 노출.
+- [x] **검증**: founder-ui tsc 0, plugin tsc 0, plugin dist 재빌드, 격리 NocoBase(13099) 라이브 E2E **19/19 ALL GREEN**(기존 14 + 신규 5).
+- [ ] **배포**: launchd :13000이 clean 코드 서빙하도록 빌드+kickstart (Founder 결정) + PR.
+- [ ] **P2 후속**: 성과 Memory completed 연결, KeyContentSet/funnel 전용 카드, Production 버튼 Playwright 클릭 검증.
 
 ## 🔥🔥 M9: CTO 시니어 개발자 자율 실행 — 컨트롤룸 라이브화 (2026-06-04 최우선, 창업자 지정)
 

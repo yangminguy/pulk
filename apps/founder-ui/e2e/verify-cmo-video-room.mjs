@@ -165,6 +165,26 @@ async function main() {
     }
   }
 
+  // ── P1: new backend actions — prove domain validation runs at runtime ──
+  const ptNeg = await call('loadPTContext', { project_id: projectId, source_refs: ['only-one'], rules: ['r1'] });
+  ok('loadPTContext rejects <3 sources (domain rule enforced)', ptNeg.status >= 400, `status=${ptNeg.status}`);
+
+  const ptPos = await call('loadPTContext', {
+    project_id: projectId,
+    source_refs: ['src-a', 'src-b', 'src-c'],
+    rules: ['키콘텐츠 규칙'],
+  });
+  ok('loadPTContext accepts >=3 sources', ptPos.status === 200 && data(ptPos)?.context_loaded === true, JSON.stringify(data(ptPos))?.slice(0, 160));
+
+  const voice = await call('attachVoice', { project_id: projectId, file_url: 'https://example.com/voice.mp3', duration_sec: 120 });
+  ok('attachVoice attaches a voice recording', voice.status === 200 && !!data(voice)?.voice, JSON.stringify(data(voice))?.slice(0, 160));
+
+  const sbNeg = await call('commitStrategyArtifact', { project_id: projectId, stage: 'second_brain', payload: { content_plan_id: 'cp1', retrieved_insights: [] } });
+  ok('commitStrategyArtifact rejects empty Second Brain insights', sbNeg.status >= 400, `status=${sbNeg.status}`);
+
+  const pullNeg = await call('commitStrategyArtifact', { project_id: projectId, stage: 'pulling_content', payload: { key_content_id: 'k1', pulling_contents: [{ order: 1 }], set_logic: 'x' } });
+  ok('commitStrategyArtifact rejects pulling set != 5 items', pullNeg.status >= 400, `status=${pullNeg.status}`);
+
   console.log(`\n${pass} passed, ${fails.length} failed`);
   if (fails.length) {
     console.log('FAILED:', fails.join(', '));

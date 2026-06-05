@@ -564,6 +564,37 @@ export const api = {
       body: JSON.stringify(input),
     }).then(r => unwrap(r)),
 
+  // CMO pipeline — new methods (backend agent implementing same contract)
+  cmoLoadPTContext: (
+    project_id: string,
+    source_refs: string[],
+    opts?: { business_id?: string; rules?: string[] },
+  ) =>
+    request<{ data: { ok: boolean; data: { context_loaded: boolean; snapshot: unknown } } }>('/api/cmo:loadPTContext', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, business_id: opts?.business_id, source_refs, rules: opts?.rules }),
+    }).then(r => unwrap(r)),
+
+  cmoAttachVoice: (
+    project_id: string,
+    file_url: string,
+    opts?: { scene_ref?: string; duration_sec?: number },
+  ) =>
+    request<{ data: { ok: boolean; data: { voice: unknown } } }>('/api/cmo:attachVoice', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, scene_ref: opts?.scene_ref, file_url, duration_sec: opts?.duration_sec }),
+    }).then(r => unwrap(r)),
+
+  cmoCommitStrategyArtifact: (
+    project_id: string,
+    stage: string,
+    payload: unknown,
+  ) =>
+    request<{ data: { ok: boolean; data: { artifact: unknown } } }>('/api/cmo:commitStrategyArtifact', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, stage, payload }),
+    }).then(r => unwrap(r)),
+
   closeInstruction: (id: string) =>
     request<{ data: unknown }>('/api/founder_instructions:update', {
       method: 'POST',

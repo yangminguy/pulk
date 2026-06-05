@@ -663,7 +663,7 @@ function StrategyBoard({
   const [saving, setSaving] = useState(false)
 
   const strategyCards = cards.filter(c =>
-    !['script_planning', 'script_draft', 'reading_script', 'voice_recording', 'slide_deck', 'render_job', 'video_qa', 'upload_draft'].includes(c.stage)
+    !['script_planning', 'script_draft', 'reading_script', 'voice_recording', 'slide_deck', 'rendering', 'qa', 'upload_draft'].includes(c.stage)
   )
 
   const saveRef = async () => {
@@ -762,8 +762,29 @@ function StrategyBoard({
 }
 
 // ── Production Board ─────────────────────────────────────────────────────────
-function ProductionBoard({ cards }: { cards: CmoCard[] }) {
-  const productionStages = ['script_planning', 'script_draft', 'reading_script', 'voice_recording', 'slide_deck', 'render_job']
+function ProductionBoard({
+  cards,
+  projectId,
+  onRefresh,
+}: {
+  cards: CmoCard[]
+  projectId: string
+  onRefresh: () => void
+}) {
+  const [buildingDeck, setBuildingDeck] = useState(false)
+  const [submittingRender, setSubmittingRender] = useState(false)
+  const [deckId, setDeckId] = useState<string | null>(null)
+  const [pipelineErr, setPipelineErr] = useState<string | null>(null)
+
+  // Voice upload state
+  const [voiceUrl, setVoiceUrl] = useState('')
+  const [voiceDuration, setVoiceDuration] = useState('')
+  const [attachingVoice, setAttachingVoice] = useState(false)
+  const [voiceErr, setVoiceErr] = useState<string | null>(null)
+  const [voiceOk, setVoiceOk] = useState(false)
+
+  // P0-2 fix: use backend stage keys
+  const productionStages = ['script_planning', 'script_draft', 'reading_script', 'voice_recording', 'slide_deck', 'rendering']
   const productionCards = cards.filter(c => productionStages.includes(c.stage))
 
   return (
@@ -806,21 +827,132 @@ function ProductionBoard({ cards }: { cards: CmoCard[] }) {
         return <CardShell key={card.id} card={card} />
       })}
 
-      {/* Voice upload placeholder */}
+      {/* P1: Voice attach UI */}
       <div style={{
-        border: '1px dashed var(--silver-3)',
+        border: '1px solid var(--silver-2)',
         borderRadius: 8,
-        padding: 20,
-        textAlign: 'center',
-        color: 'var(--ink-3)',
+        background: 'var(--paper-surface)',
+        overflow: 'hidden',
         marginTop: 16,
-        fontSize: 13,
       }}>
-        음성 파일 업로드 (준비 중)
-        <div style={{ marginTop: 8 }}>
-          <button className="j-btn j-btn-secondary j-btn-sm" disabled>
-            음성 파일 선택
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--silver-1)' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)' }}>음성 파일 첨부</span>
+        </div>
+        <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input
+            className="j-input"
+            placeholder="파일 URL (예: https://...)"
+            value={voiceUrl}
+            onChange={e => setVoiceUrl(e.target.value)}
+          />
+          <input
+            className="j-input"
+            placeholder="길이(초, 선택)"
+            type="number"
+            value={voiceDuration}
+            onChange={e => setVoiceDuration(e.target.value)}
+          />
+          {voiceErr && (
+            <div style={{ fontSize: 12, color: 'var(--red)', padding: '4px 8px', background: 'var(--red-tint)', borderRadius: 4 }}>
+              {voiceErr}
+            </div>
+          )}
+          {voiceOk && (
+            <div style={{ fontSize: 12, color: 'var(--green)', padding: '4px 8px', background: 'var(--p-green)', borderRadius: 4 }}>
+              음성 첨부 완료
+            </div>
+          )}
+          <button
+            className="j-btn j-btn-secondary j-btn-sm"
+            style={{ alignSelf: 'flex-end' }}
+            disabled={attachingVoice || !voiceUrl.trim()}
+            onClick={async () => {
+              setAttachingVoice(true)
+              setVoiceErr(null)
+              setVoiceOk(false)
+              try {
+                await api.cmoAttachVoice(projectId, voiceUrl.trim(), {
+                  duration_sec: voiceDuration ? Number(voiceDuration) : undefined,
+                })
+                setVoiceUrl('')
+                setVoiceDuration('')
+                setVoiceOk(true)
+                onRefresh()
+              } catch (e: unknown) {
+                setVoiceErr(e instanceof Error ? e.message : '첨부 실패')
+              } finally {
+                setAttachingVoice(false)
+              }
+            }}
+          >
+            {attachingVoice ? '첨부 중...' : '음성 첨부'}
           </button>
+        </div>
+      </div>
+
+      {/* P0-1: Slide deck + Render pipeline buttons */}
+      <div style={{
+        border: '1px solid var(--silver-2)',
+        borderRadius: 8,
+        background: 'var(--paper-surface)',
+        overflow: 'hidden',
+        marginTop: 12,
+      }}>
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--silver-1)' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)' }}>프로덕션 파이프라인</span>
+        </div>
+        <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {pipelineErr && (
+            <div style={{ fontSize: 12, color: 'var(--red)', padding: '4px 8px', background: 'var(--red-tint)', borderRadius: 4 }}>
+              {pipelineErr}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              className="j-btn j-btn-secondary j-btn-sm"
+              disabled={buildingDeck}
+              onClick={async () => {
+                setBuildingDeck(true)
+                setPipelineErr(null)
+                try {
+                  const res = await api.cmoBuildSlideDeck(projectId) as { slide_deck_spec_id: string }
+                  setDeckId(res.slide_deck_spec_id)
+                  onRefresh()
+                } catch (e: unknown) {
+                  setPipelineErr(e instanceof Error ? e.message : '슬라이드덱 생성 실패')
+                } finally {
+                  setBuildingDeck(false)
+                }
+              }}
+            >
+              {buildingDeck ? '생성 중...' : '슬라이드덱 생성'}
+            </button>
+            <button
+              className="j-btn j-btn-secondary j-btn-sm"
+              disabled={submittingRender || !deckId}
+              title={!deckId ? '먼저 슬라이드덱을 생성하세요' : undefined}
+              onClick={async () => {
+                if (!deckId) return
+                setSubmittingRender(true)
+                setPipelineErr(null)
+                try {
+                  await api.cmoSubmitRender(projectId, deckId)
+                  onRefresh()
+                } catch (e: unknown) {
+                  setPipelineErr(e instanceof Error ? e.message : '렌더 제출 실패')
+                } finally {
+                  setSubmittingRender(false)
+                }
+              }}
+            >
+              {submittingRender ? '제출 중...' : '렌더 제출'}
+            </button>
+          </div>
+          {deckId && (
+            <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontFamily: 'var(--font-mono)' }}>
+              deck: {deckId}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -863,8 +995,22 @@ function ProductionActionPanel({
 }
 
 // ── Review & Publish Board ───────────────────────────────────────────────────
-function ReviewPublishBoard({ cards }: { cards: CmoCard[] }) {
-  const reviewCards = cards.filter(c => ['video_qa', 'upload_draft'].includes(c.stage))
+function ReviewPublishBoard({
+  cards,
+  projectId,
+  onRefresh,
+}: {
+  cards: CmoCard[]
+  projectId: string
+  onRefresh: () => void
+}) {
+  const [runningQA, setRunningQA] = useState(false)
+  const [creatingDraft, setCreatingDraft] = useState(false)
+  const [publishErr, setPublishErr] = useState<string | null>(null)
+  const [publishOk, setPublishOk] = useState<string | null>(null)
+
+  // P0-2 fix: use backend stage key 'qa' (not 'video_qa')
+  const reviewCards = cards.filter(c => ['qa', 'upload_draft'].includes(c.stage))
 
   return (
     <div>
@@ -877,6 +1023,9 @@ function ReviewPublishBoard({ cards }: { cards: CmoCard[] }) {
       )}
 
       {reviewCards.map(card => {
+        if (card.stage === 'qa') {
+          return <CardShell key={card.id} card={card} />
+        }
         if (card.stage === 'upload_draft') {
           const data = card.data as Record<string, unknown> | null
           return (
@@ -929,6 +1078,85 @@ function ReviewPublishBoard({ cards }: { cards: CmoCard[] }) {
         }
         return <CardShell key={card.id} card={card} />
       })}
+
+      {/* P0-1: QA + Upload Draft pipeline buttons */}
+      <div style={{
+        border: '1px solid var(--silver-2)',
+        borderRadius: 8,
+        background: 'var(--paper-surface)',
+        overflow: 'hidden',
+        marginTop: 16,
+      }}>
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--silver-1)' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)' }}>게시 파이프라인</span>
+        </div>
+        <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {publishErr && (
+            <div style={{ fontSize: 12, color: 'var(--red)', padding: '4px 8px', background: 'var(--red-tint)', borderRadius: 4 }}>
+              {publishErr}
+            </div>
+          )}
+          {publishOk && (
+            <div style={{ fontSize: 12, color: 'var(--green)', padding: '4px 8px', background: 'var(--p-green)', borderRadius: 4 }}>
+              {publishOk}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              className="j-btn j-btn-secondary j-btn-sm"
+              disabled={runningQA}
+              onClick={async () => {
+                setRunningQA(true)
+                setPublishErr(null)
+                setPublishOk(null)
+                try {
+                  const renderCard = cards.find(c => c.stage === 'rendering')
+                  const renderJobId = renderCard
+                    ? ((renderCard.data as Record<string, unknown> | null)?.render_job_id as string | undefined) ?? renderCard.id
+                    : ''
+                  await api.cmoRunQA(projectId, renderJobId)
+                  setPublishOk('QA 실행 완료')
+                  onRefresh()
+                } catch (e: unknown) {
+                  setPublishErr(e instanceof Error ? e.message : 'QA 실행 실패')
+                } finally {
+                  setRunningQA(false)
+                }
+              }}
+            >
+              {runningQA ? '실행 중...' : 'QA 실행'}
+            </button>
+            <button
+              className="j-btn j-btn-secondary j-btn-sm"
+              disabled={creatingDraft}
+              onClick={async () => {
+                setCreatingDraft(true)
+                setPublishErr(null)
+                setPublishOk(null)
+                try {
+                  const renderCard = cards.find(c => c.stage === 'rendering')
+                  const renderJobId = renderCard
+                    ? ((renderCard.data as Record<string, unknown> | null)?.render_job_id as string | undefined) ?? renderCard.id
+                    : ''
+                  await api.cmoCreateUploadDraft({
+                    project_id: projectId,
+                    render_job_id: renderJobId,
+                    title: '',
+                  })
+                  setPublishOk('업로드 초안 생성 완료 (비공개)')
+                  onRefresh()
+                } catch (e: unknown) {
+                  setPublishErr(e instanceof Error ? e.message : '업로드 초안 생성 실패')
+                } finally {
+                  setCreatingDraft(false)
+                }
+              }}
+            >
+              {creatingDraft ? '생성 중...' : '업로드 초안 생성'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1333,7 +1561,7 @@ function VideoRoomContent() {
             </div>
             {/* Center: Production Board */}
             <div style={{ overflowY: 'auto', borderRight: '1px solid var(--silver-2)', padding: 16 }}>
-              <ProductionBoard cards={cards} />
+              <ProductionBoard cards={cards} projectId={projectId} onRefresh={() => loadDetail(projectId)} />
             </div>
             {/* Right: Action Panel */}
             <div style={{ overflowY: 'auto', padding: 16 }}>
@@ -1366,7 +1594,7 @@ function VideoRoomContent() {
             </div>
             {/* Center: Review & Publish Board */}
             <div style={{ overflowY: 'auto', borderRight: '1px solid var(--silver-2)', padding: 16 }}>
-              <ReviewPublishBoard cards={cards} />
+              <ReviewPublishBoard cards={cards} projectId={projectId} onRefresh={() => loadDetail(projectId)} />
             </div>
             {/* Right: Approval Panel */}
             <div style={{ overflowY: 'auto', padding: 16 }}>

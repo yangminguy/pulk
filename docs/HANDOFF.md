@@ -1,6 +1,29 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-05 (CMO Video Room 전체 구현 — PRD v1.1 풀스택)
+최종 업데이트: 2026-06-05 (CMO Video Room PRD 갭 배선 — P0+P1, E2E 19/19)
+
+---
+
+## 🟢 2026-06-05 — CMO Video Room PRD 갭 배선 (P0+P1, branch `cmo/video-room-clean`)
+
+**배경**: PRD 갭 분석 결과 도메인 로직(l5-core)은 전부 구현·테스트 완료였고, 갭은 전부 **배선 레이어**에 있었다. (도메인 함수 → 백엔드 액션 미노출, 백엔드 액션 → UI 버튼 미연결, 카드 stage 키 불일치.) sub agent 2개(FE/BE)로 파일 분담해 ADDITIVE 배선만 추가.
+
+**선행 확인**: clean 브랜치(264b3ce)는 메모리 기록(99c4369)보다 진전 — l5-core **tsc 0 + jest 791/791** 이미 통과(메모리의 미완 3건 해소됨).
+
+### 변경 (4파일, ADDITIVE)
+- **P0 — `founder-ui/video-room/page.tsx`**: Production 탭에 "슬라이드덱 생성→렌더 제출", Review&Publish 탭에 "QA 실행→업로드 초안 생성" 버튼 추가(기존 `cmoBuildSlideDeck/submitRender/runQA/createUploadDraft` 액션 노출 — 백엔드는 기존 ai-slide-video-factory transport에 연결됨). 음성 업로드 disabled 플레이스홀더 → 작동 입력(file_url+길이→`cmoAttachVoice`).
+- **P0 — 카드 stage 키 정합**: UI 필터 `render_job`/`video_qa` → 백엔드 정본 `rendering`/`qa`로 수정(렌더·QA 카드가 화면에 표시되도록).
+- **P1 — `plugin-orchestration/plugin.ts` 신규 액션 3종**: `cmo:loadPTContext`(Business PT Context 3소스 규칙 `assertContextLoadingComplete` 강제), `cmo:attachVoice`(`createVoiceRecording`+`attachVoiceFile`), `cmo:commitStrategyArtifact`(stage별 `selectKeyContent`/`createPullingContentSet`/`createSecondBrainInsightMerge` 도메인 검증 런타임 강제). ACL 3개 추가. `api.ts` 메서드 3종 추가.
+
+### 검증
+- founder-ui typecheck **0**, plugin-orchestration tsc **0**, l5-core build **0**.
+- plugin dist 재빌드 후 격리 NocoBase(13099, `nocobase_cmoe2e`) 부팅.
+- **라이브 E2E 19/19 ALL GREEN** (기존 14 + 신규 5). 신규 액션은 새 dist에만 존재 → 새 코드 서빙 입증. P1 음성/양성: PT Context <3소스 거부·≥3 수용, 음성 첨부, Second Brain 빈 인사이트 거부, 풀링 5개 아님 거부 = PRD 비즈니스 규칙 런타임 강제 확인.
+
+### 남은 것
+- **배포**: :13000 launchd는 여전히 구 main 코드 서빙. 신규 UI를 실제 화면에서 보려면 launchd가 clean 코드 서빙하도록 빌드+kickstart 필요(Founder 결정). PR도 Founder 리뷰 후.
+- **후속(P2)**: 성과 Memory 후보 completed 연결, KeyContentSet/funnel 전용 카드 시각화(현재 raw JSON). Production 버튼 브라우저 클릭 검증(Playwright)은 권장 후속.
+- 실제 MP4 렌더(`render-final.ts`, 수 분)는 factory PRD 설계대로 CLI 단계 유지 — transport.generate는 job작성+validate까지.
 
 ---
 
