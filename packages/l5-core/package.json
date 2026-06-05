@@ -13,7 +13,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint src/**/*.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "qa:arch": "npx dependency-cruiser --config ../../.dependency-cruiser.cjs src/"
   },
   "keywords": [
     "l5",
@@ -24,6 +25,10 @@
   ],
   "author": "L5 Team",
   "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "pptxgenjs": "^3.12.0",
+    "zod": "^3.22.0"
+  },
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "@types/node": "^20.10.0",

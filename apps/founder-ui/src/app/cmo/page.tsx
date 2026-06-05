@@ -5,116 +5,12 @@ import TabLayout from '@/components/TabLayout'
 import Icon from '@/components/Icon'
 import { api, type CmoMarketingPlan, type TaskItem } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
-
-// ── Risk badge classes ──────────────────────────────────────────────────────
-const RISK_CLASS: Record<string, string> = {
-  D1: 'j-risk-d1',
-  D2: 'j-risk-d2',
-  D3: 'j-risk-d3',
-  D4: 'j-risk-d4',
-  D5: 'j-risk-d5',
-}
+import { CmoResultCard } from '@/components/CmoResultCard'
 
 const CMO_TABS = [
   { id: 'chat', label: '대화' },
   { id: 'tasks', label: 'CMO 과제' },
 ]
-
-// ── CmoResultCard — exported for test ───────────────────────────────────────
-export function CmoResultCard({
-  plan,
-  onApprove,
-  onReject,
-  approved,
-}: {
-  plan: CmoMarketingPlan
-  onApprove: () => void
-  onReject: () => void
-  approved: boolean
-}) {
-  const riskCls = RISK_CLASS[plan.risk_level] ?? ''
-
-  return (
-    <div style={{
-      marginTop: 10,
-      border: '1px solid var(--silver-2)',
-      borderRadius: 8,
-      overflow: 'hidden',
-      background: 'var(--paper-elevated)',
-    }}>
-      {/* Decision */}
-      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--silver-1)' }}>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink-1)', lineHeight: 1.4 }}>
-          {plan.decision}
-        </div>
-      </div>
-
-      {/* Reasoning */}
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--silver-1)' }}>
-        <div className="j-overline" style={{ marginBottom: 4 }}>판단 근거</div>
-        <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
-          {plan.reasoning}
-        </div>
-      </div>
-
-      {/* Next Action */}
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--silver-1)' }}>
-        <div style={{
-          background: 'var(--green-tint)',
-          border: '1px solid var(--green-tint-2)',
-          borderRadius: 6,
-          padding: '9px 12px',
-        }}>
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--green-press)', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Icon name="arrowR" size={12} stroke={2} /> 다음 액션
-          </div>
-          <div style={{ fontSize: 12.5, color: 'var(--ink-1)', lineHeight: 1.5 }}>
-            {plan.next_action}
-          </div>
-        </div>
-      </div>
-
-      {/* Risk + Approval CTA */}
-      <div style={{
-        padding: '10px 14px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        flexWrap: 'wrap',
-      }}>
-        {plan.risk_level && (
-          <span className={`j-badge ${riskCls}`}>{plan.risk_level}</span>
-        )}
-
-        {approved ? (
-          <span style={{
-            marginLeft: 'auto',
-            fontSize: 12.5,
-            fontWeight: 600,
-            color: 'var(--green-press)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-          }}>
-            <Icon name="check" size={13} stroke={2.2} />
-            승인됨
-          </span>
-        ) : plan.requires_founder_approval ? (
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <button onClick={onApprove} className="j-btn j-btn-primary j-btn-sm">
-              <Icon name="check" size={13} stroke={2.2} />
-              승인
-            </button>
-            <button onClick={onReject} className="j-btn j-btn-danger j-btn-sm">
-              <Icon name="x" size={13} stroke={2} />
-              수정 요청
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  )
-}
 
 // ── CMO message type ────────────────────────────────────────────────────────
 type CmoMsg = {
@@ -143,9 +39,7 @@ function AgentChip() {
 // ── Chat Tab ────────────────────────────────────────────────────────────────
 function CmoChatTab() {
   const { selectedId } = useBusiness()
-  const [threadId] = useState(
-    () => `cmo-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now())}`,
-  )
+  const [projectId, setProjectId] = useState<string | null>(null)
   const [messages, setMessages] = useState<CmoMsg[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -156,6 +50,21 @@ function CmoChatTab() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Lazily create a project on first send so the backend has a video_room_projects row.
+  const ensureProject = async (): Promise<string> => {
+    if (projectId) return projectId
+    const res = await api.cmoCreateProject({
+      title: 'CMO 대화',
+      product: '',
+      target_audience: '',
+      business_goal: 'brand_growth',
+      business_id: selectedId ?? null,
+    })
+    const pid = res.project_id
+    setProjectId(pid)
+    return pid
+  }
+
   const send = async () => {
     const text = input.trim()
     if (!text || sending) return
@@ -164,8 +73,9 @@ function CmoChatTab() {
     setSending(true)
     setMessages(m => [...m, { role: 'founder', text }])
     try {
-      const res = await api.cmoChatMessage(threadId, text, { business_id: selectedId ?? null })
-      setMessages(m => [...m, { role: 'cmo', text: res.reply, plan: res.plan, cmo_message_id: res.cmo_message_id }])
+      const pid = await ensureProject()
+      const res = await api.cmoChatMessage(pid, text, { business_id: selectedId ?? null })
+      setMessages(m => [...m, { role: 'cmo', text: res.reply, plan: res.plan ?? null, cmo_message_id: res.cmo_message_id }])
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : '전송 실패')
     } finally {

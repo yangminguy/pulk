@@ -25,16 +25,22 @@ assert.ok(CmoPage, 'AC-1: /cmo page should exist and export a default component'
 assert.ok(ICONS['megaphone'], 'AC-2: Icon module should include a megaphone icon for CMO sidebar nav')
 
 // ─── AC-4 + AC-5: CmoResultCard renders plan fields + approval CTA ─────────
-// Try to import the named export CmoResultCard from the cmo page module.
+// CmoResultCard is exported from components/CmoResultCard (moved out of page for Next.js 14 compat)
 let CmoResultCard: ((props: Record<string, unknown>) => React.ReactElement) | null = null
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mod = require('../../app/cmo/page')
+  const mod = require('../CmoResultCard')
   CmoResultCard = mod.CmoResultCard ?? null
 } catch {
-  // expected to fail before implementation
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('../../app/cmo/page')
+    CmoResultCard = mod.CmoResultCard ?? null
+  } catch {
+    // expected to fail before implementation
+  }
 }
-assert.ok(CmoResultCard, 'AC-4: CmoResultCard should be exported from cmo/page')
+assert.ok(CmoResultCard, 'AC-4: CmoResultCard should be exported from CmoResultCard component')
 
 const planHtml = renderToStaticMarkup(
   React.createElement(CmoResultCard!, {

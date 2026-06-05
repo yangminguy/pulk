@@ -1,6 +1,118 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-05 (GitHub 정리 + CTO 파이프라인 결정적화 B1~B5 배포)
+최종 업데이트: 2026-06-05 (CMO Video Room Phase 3 잔여 — 원고 beat 편집 + 팩토리 Scene JSON 전달, E2E 27/27)
+
+---
+
+## 🟢 2026-06-05 — CMO Video Room Phase 3 잔여: 원고(장면 beat) 편집 + 팩토리 전달 (branch `cmo/video-room-clean`)
+
+**배경**: 사장님 — 원고 작성 구조는 AI Slide Factory에 이미 존재(format). 사장님이 **원고를 장면(beat) 단위로 수정·확인 → 확정본을 팩토리 Scene JSON으로 전달**(실제 MP4 렌더는 사장님이 별도 발동). sub agent 3개(l5-core/백엔드/UI).
+
+- **l5-core** `video-room/script-factory.ts`: `ScriptBeat`(scene_id/scene_type/rhythm_role/headline/speaker_text/duration + 타입별 optional 필드) + `buildFactoryVideoJob` — 팩토리 16개 scene 타입 전부 valid 매핑(필수 sub-field 파생, 불가 타입은 insight 폴백, scene_type 때문에 throw 안 함). 팩토리 `src/lib/schema.ts` 준수. 55 테스트.
+- **백엔드** `plugin.ts` + `video-factory-transport.ts`: `cmo:saveScript`(beats upsert→stage 'script' 카드), `cmo:sendToFactory`(script 카드 beats→buildFactoryVideoJob→`transport.submitJob`: `~/ai-slide-video-factory/jobs/l5-<slug>.json` 작성+validate-job.ts spawn→stage 'factory_job' 카드). require는 video-room 배럴(cmo-strategy 아님 — 수정).
+- **UI** `video-room/page.tsx`+`api.ts`: `ScriptBeatEditor`(장면별 유형/헤드라인/대사/길이 편집·행 추가삭제·원고 저장) + 팩토리 전달 버튼 + `FactoryJobCard`(job_path·검증통과 배지). `cmoSaveScript`/`cmoSendToFactory`.
+
+**검증**: l5-core tsc 0, jest **806→(script-factory +)**·founder-ui tsc 0·plugin tsc 0. 격리 NocoBase 라이브 **E2E 27/27 ALL GREEN**(+2: saveScript·sendToFactory 멀티타입 validate). 팩토리에 실제 job 파일(scenes [hero,problem,cta]) 작성·validate 통과 확인. 브라우저 스크린샷으로 원고 편집기+전달 완료 확인.
+
+**남은 것**: 실제 MP4 렌더(render-final.ts, 수 분)는 사장님 발동(버튼/CLI) — 미자동화. 배포(launchd→clean), PR #3 머지.
+
+---
+
+## 🟢 2026-06-05 — CMO Video Room Phase 3: 세컨브레인 기반 도입부 30초 + 적용 인사이트 승인 (branch `cmo/video-room-clean`)
+
+**배경**: 사장님 — 원고 작성 구조는 AI Slide Factory에 이미 있음(`docs/projects/ai-content-flow/`의 strategy_brief.md+script.md = Hook+beat-by-beat 포맷, review_only). Phase 3에서 추가할 것 = **세컨브레인 기반 도입부 30초 적용 + "어떤 인사이트를 어떻게 적용했는지" 보고 승인하는 단계**. 기존 `analyzeIntro30s`는 레퍼런스 영상 의존 → 세컨브레인 기반으로 교체(additive). sub agent 3개(l5-core/백엔드/UI).
+
+- **l5-core** `video-room/reference-analysis.ts`+`types.ts`: `composeIntro30s` + `AppliedInsight{insight,how_applied}` + `Intro30sComposition`. 검증 throw: 키콘텐츠/도입부원고/applied_insights 비면 거부("세컨브레인 인사이트 적용 없이 도입부 작성 금지").
+- **백엔드** `plugin.ts`: `cmo:commitStrategyArtifact`에 stage `'intro_30s'` 추가 → `composeIntro30s`. applied_insights 비면 라이브 세컨브레인("썸네일 도입부 후킹 빌드업") 쿼리로 자동 시드.
+- **UI** `video-room/page.tsx`: `Intro30sCard` — 도입부 원고+훅구조 + **"적용된 Second Brain 인사이트" 표(인사이트 → 적용 방식)**. 승인은 기존 hook 게이트.
+- 승인 흐름: CMO가 도입부 단계서 세컨브레인 적용해 제안 → 카드로 "인사이트→적용방식" 표시 → 사장님이 hook_draft_approval 게이트서 승인.
+
+**검증**: l5-core tsc 0, jest **806/806**(+9). 격리 NocoBase 라이브 **E2E 25/25 ALL GREEN**(+3: 도입부 적용인사이트 구성·라이브 SB 자동시드·키콘텐츠 누락 거부). 브라우저 스크린샷으로 적용인사이트 표 렌더 확인.
+
+**남은 것**: 원고(script) 단계를 팩토리 Scene JSON 포맷으로 산출 + 실제 MP4 렌더 자동화. 배포(launchd→clean), PR #3 머지.
+
+---
+
+## 🟢 2026-06-05 — CMO Video Room: 비즈니스 PT 강의 워크플로우 정합 + 라이브 세컨브레인 결선 (branch `cmo/video-room-clean`)
+
+**배경**: 사장님이 듣는 "비즈니스 PT" 유튜브 강의(세컨브레인 `biz` 브레인에 1~4주차 저장)의 콘텐츠 제작 워크플로우를 CMO Video Room이 그대로 재현해야 함. 강의 흐름 = 판매 상품 → 키 콘텐츠 → 풀링 콘텐츠 → 썸네일/제목 → 내용 제작. sub agent 2개(l5-core/백엔드) 파일 분담.
+
+### Phase 1 — 흐름 정리 (l5-core, 25→23 상태)
+- `state-machine.ts`/`types.ts`: `reference_analysis`·`second_brain_insight_merge` 상태 제거(사장님: "레퍼런스 분석 단계 빠져야"). `pulling_content_set_approval → thumbnail_pattern_extraction → intro_30s_analysis → hook_draft_approval` 순서로 직결.
+- `ROADMAP_NODES`: 단일 'hook' 노드 → **썸네일 구성 / 원고 도입부 / 훅 승인** 3노드로(미니로드맵 14노드). 사장님 흐름이 화면에 보이도록.
+- `stage-script.ts`: 강의 방법론 반영 — 키 콘텐츠=문제 상황에서 시작·역순 기획, 풀링=현상→욕구→계획→행동→보상, 리서치=경쟁사 벤치마킹+human-in-loop(CMO 방법 안내→사장님이 Viewtrap 검색), 썸네일=레퍼런스 URL 없이 세컨브레인 후기+5콘텐츠 썸네일 분석.
+
+### Phase 2 — 라이브 세컨브레인 결선
+- l5-core `cmo-strategy/types.ts`·`plan-turn.ts`: `CmoStrategyContext.second_brain_insights?: string[]` 추가 + `buildUser`/`SYSTEM`에 렌더(강의 방법론대로 안내 지시).
+- 백엔드 `plugin.ts`: 기존 `makeSecondBrainTransport()`(라이브 Python `biz` 쿼리) 재사용. `cmo:chatMessage`가 단계별 쿼리(키→"문제 상황 역순", 풀링→"현상 욕구 계획 행동 보상", 썸네일→"썸네일 도입부 후킹" 등)로 세컨브레인을 실제 조회해 `ctx.second_brain_insights` 주입. `cmo:loadPTContext`는 source_refs 비면 라이브 세컨브레인으로 자동충전(graceful null).
+
+### 검증
+- l5-core tsc 0, jest **797/797**(+6). dist 재빌드 + plugin tsc 0 + plugin dist 재빌드.
+- 격리 NocoBase 13099 라이브 **E2E 22/22 ALL GREEN**(기존 19 + 신규 3): 로드맵 14노드·썸네일/도입부 노드 존재·reference_analysis 제거 확인 + **loadPTContext가 라이브 세컨브레인에서 자동충전(빈 source_refs→biz 실쿼리≥3 인사이트)** = 라이브 결선 입증.
+
+### 남은 것(후속)
+- 3단계: 원고 단계를 AI 슬라이드 팩토리 멀티에이전트 포맷(Strategy Brief→Script(Hook→…→CTA)→Scene JSON, `ai-content-flow` 구조)으로 결선 + 실제 MP4 렌더 자동화.
+- 배포(launchd :13000 → clean 코드), PR #3 머지.
+
+---
+
+## 🟢 2026-06-05 — CMO Video Room PRD 갭 배선 (P0+P1, branch `cmo/video-room-clean`)
+
+**배경**: PRD 갭 분석 결과 도메인 로직(l5-core)은 전부 구현·테스트 완료였고, 갭은 전부 **배선 레이어**에 있었다. (도메인 함수 → 백엔드 액션 미노출, 백엔드 액션 → UI 버튼 미연결, 카드 stage 키 불일치.) sub agent 2개(FE/BE)로 파일 분담해 ADDITIVE 배선만 추가.
+
+**선행 확인**: clean 브랜치(264b3ce)는 메모리 기록(99c4369)보다 진전 — l5-core **tsc 0 + jest 791/791** 이미 통과(메모리의 미완 3건 해소됨).
+
+### 변경 (4파일, ADDITIVE)
+- **P0 — `founder-ui/video-room/page.tsx`**: Production 탭에 "슬라이드덱 생성→렌더 제출", Review&Publish 탭에 "QA 실행→업로드 초안 생성" 버튼 추가(기존 `cmoBuildSlideDeck/submitRender/runQA/createUploadDraft` 액션 노출 — 백엔드는 기존 ai-slide-video-factory transport에 연결됨). 음성 업로드 disabled 플레이스홀더 → 작동 입력(file_url+길이→`cmoAttachVoice`).
+- **P0 — 카드 stage 키 정합**: UI 필터 `render_job`/`video_qa` → 백엔드 정본 `rendering`/`qa`로 수정(렌더·QA 카드가 화면에 표시되도록).
+- **P1 — `plugin-orchestration/plugin.ts` 신규 액션 3종**: `cmo:loadPTContext`(Business PT Context 3소스 규칙 `assertContextLoadingComplete` 강제), `cmo:attachVoice`(`createVoiceRecording`+`attachVoiceFile`), `cmo:commitStrategyArtifact`(stage별 `selectKeyContent`/`createPullingContentSet`/`createSecondBrainInsightMerge` 도메인 검증 런타임 강제). ACL 3개 추가. `api.ts` 메서드 3종 추가.
+
+### 검증
+- founder-ui typecheck **0**, plugin-orchestration tsc **0**, l5-core build **0**.
+- plugin dist 재빌드 후 격리 NocoBase(13099, `nocobase_cmoe2e`) 부팅.
+- **라이브 E2E 19/19 ALL GREEN** (기존 14 + 신규 5). 신규 액션은 새 dist에만 존재 → 새 코드 서빙 입증. P1 음성/양성: PT Context <3소스 거부·≥3 수용, 음성 첨부, Second Brain 빈 인사이트 거부, 풀링 5개 아님 거부 = PRD 비즈니스 규칙 런타임 강제 확인.
+
+### 남은 것
+- **배포**: :13000 launchd는 여전히 구 main 코드 서빙. 신규 UI를 실제 화면에서 보려면 launchd가 clean 코드 서빙하도록 빌드+kickstart 필요(Founder 결정). PR도 Founder 리뷰 후.
+- **후속(P2)**: 성과 Memory 후보 completed 연결, KeyContentSet/funnel 전용 카드 시각화(현재 raw JSON). Production 버튼 브라우저 클릭 검증(Playwright)은 권장 후속.
+- 실제 MP4 렌더(`render-final.ts`, 수 분)는 factory PRD 설계대로 CLI 단계 유지 — transport.generate는 job작성+validate까지.
+
+---
+
+## 🟢 2026-06-05 — CMO Video Room 전체 구현 (PRD v1.1, branch `cmo/video-room-clean`)
+
+**근본 문제 해결**: 사장님 지적 "CMO랑 대화 안 돼"의 원인 = `POST /api/cmo:chatMessage` 백엔드 부재(404). 신규 구현으로 해소.
+
+### 산출물 (커밋 6개)
+- **l5-core `functions/video-room/`**: PRD §12 15개 데이터모델 타입(types.ts) + 25단계 워크플로우 상태머신(state-machine.ts: 전이/페이지소유/승인게이트/미니로드맵) + 도메인 모듈 10종(business-pt-context, key-content, viewtrap-research, reference-analysis, pulling-content[5세트 퍼널검증], second-brain-merge, approval-gates, production, review-publish). 전부 순수함수+PRD 금지규칙 throw. **146 단위테스트**.
+- **l5-core `functions/cmo-strategy/`**: `runCmoStrategyTurn` — 상태머신 기반 CMO 대화 턴 엔진(CTO planMessage 패턴 미러). STAGE_SCRIPT(25단계 가이드) + LLM주입/결정론적폴백 + 승인게이트 자동생성. **6 테스트**.
+- **NocoBase `plugin-orchestration`**: `registerCmoResource` — `cmo:chatMessage/createProject/listProjects/getProject/advanceStatus/decideGate/approvePlan/saveCard/buildSlideDeck/submitRender/runQA/createUploadDraft` 12개 액션 + 컬렉션 4종(cmo_planning_messages, video_room_projects/_cards/_gates) + ACL. 영상팩토리 transport(makeVideoFactoryTransport, 인메모리 폴백). **계약테스트 15개**.
+- **founder-ui `/video-room`**: 프로젝트 목록/생성 → 공통헤더 + 12노드 미니로드맵 + 3탭(Strategy/Production/Review&Publish) + CMO Chat + Strategy Board(단계별 카드) + Decision Panel(게이트 승인/수정/보류). api.ts 계약 확장.
+- **e2e**: `apps/founder-ui/e2e/verify-cmo-video-room.mjs` — create→chat→gate→advance→slide→render→qa→upload 라이브 검증.
+
+### 검증
+- l5-core: **791 jest 통과**, tsc 클린, dist 빌드 성공.
+- founder-ui: typecheck 클린, `next build` 성공(/video-room).
+- 백엔드 계약테스트 15개 통과.
+- **라이브 E2E: 14/14 ALL GREEN (2026-06-05)**. 격리 postgres DB(`nocobase_cmoe2e`) + 포트 13099로 clean 코드 NocoBase 부팅 → `cmo:chatMessage`가 404→**401(인증필요)→실동작**. create→chat→roadmap(12노드)→게이트 도달→decideGate(승인)→advance→buildSlideDeck→submitRender→runQA→createUploadDraft(private) 전부 통과. 사장님 #1 불만("CMO 대화 안 됨") 라이브 해소 입증.
+
+### 격리 라이브 E2E 재현 방법
+```
+# clean worktree: ~/l5-workspace/pulk-cmo-clean
+cd apps/nocobase-app && yarn install                       # 1회(런타임 deps)
+rm -rf node_modules/@l5/core/node_modules/zod              # 번들러 zod 중첩 충돌 회피
+yarn nocobase build @l5/plugin-orchestration               # dist 생성(cmo 코드)
+createdb nocobase_cmoe2e                                    # 격리 DB
+env APP_KEY=... APP_PORT=13099 DB_DIALECT=postgres DB_DATABASE=nocobase_cmoe2e DB_USER=wonminyang DB_PASSWORD= \
+  APPEND_PRESET_LOCAL_PLUGINS=@l5/plugin-orchestration INIT_ROOT_EMAIL=admin@nocobase.com INIT_ROOT_PASSWORD=admin123 \
+  yarn nocobase install -f
+env (...동일...) yarn nocobase pm enable @l5/plugin-orchestration
+env (...동일...) yarn nocobase start &
+cd ../founder-ui && NOCOBASE_BASE_URL=http://localhost:13099 node e2e/verify-cmo-video-room.mjs
+```
+
+### 배포 메모
+- 현재 :13000 launchd 서버는 **구 main 코드** 서빙. 이 기능을 실제 화면에 켜려면 launchd `com.l5.nocobase`가 clean 브랜치 코드를 서빙하도록 빌드+kickstart 필요(배포 결정은 Founder 확인 대상). 메모리 `cmo-video-room-clean-branch` 참조.
 
 ---
 

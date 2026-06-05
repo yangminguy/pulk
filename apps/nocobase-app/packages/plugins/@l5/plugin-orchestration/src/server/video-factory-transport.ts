@@ -93,7 +93,7 @@ function runValidate(dir: string, jobRelPath: string): Promise<{ ok: boolean; er
 
 const PRESET_FILE = '_l5-preset.json';
 
-export function makeVideoFactoryTransport(): VideoFactoryTransport | null {
+export function makeVideoFactoryTransport(): (VideoFactoryTransport & { submitJob(videoJob: unknown): Promise<{ ok: boolean; job_path?: string; validated?: boolean; error?: string }> }) | null {
   const dir = getDir();
   if (!dir) return null;
 
@@ -158,6 +158,28 @@ export function makeVideoFactoryTransport(): VideoFactoryTransport | null {
         };
       } catch {
         return {};
+      }
+    },
+
+    async submitJob(videoJob: unknown): Promise<{ ok: boolean; job_path?: string; validated?: boolean; error?: string }> {
+      try {
+        const rawSlug = String((videoJob as any).slug ?? (videoJob as any).id ?? 'l5-job');
+        const slug = sanitizeSlug(rawSlug);
+        const filename = `l5-${slug}.json`;
+        // Block path traversal: ensure filename is just a basename.
+        if (basename(filename) !== filename) {
+          return { ok: false, error: 'invalid slug' };
+        }
+        const jobRelPath = `jobs/${filename}`;
+        const jobAbsPath = resolve(dir, jobRelPath);
+        writeFileSync(jobAbsPath, JSON.stringify(videoJob, null, 2), 'utf8');
+        const result = await runValidate(dir, jobRelPath);
+        if (!result.ok) {
+          return { ok: false, error: result.error };
+        }
+        return { ok: true, job_path: jobAbsPath, validated: true };
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
       }
     },
   };

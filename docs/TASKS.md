@@ -1,7 +1,31 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-06-05 (CMO Video Room 158/158 완주 + 통합/검증 + 속도 근본수정). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-06-05 (CMO Video Room PRD 갭 배선 P0+P1, 라이브 E2E 19/19). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+
+## 🎬 CMO Video Room — 강의 워크플로우 정합 + 라이브 세컨브레인 (2026-06-05)
+
+> 비즈니스 PT 강의(세컨브레인 biz) 워크플로우를 그대로 재현. 상세 = `docs/HANDOFF.md` 2026-06-05.
+
+- [x] **Phase 1 흐름 정리**: `reference_analysis`·`second_brain_insight_merge` 상태 제거(25→23), 미니로드맵에 썸네일 구성/원고 도입부/훅 승인 노드(14노드), STAGE_SCRIPT를 강의 방법론(문제에서 시작·역순·현상→욕구→계획→행동→보상·경쟁사 벤치마킹·human-in-loop 리서치)으로 정비.
+- [x] **Phase 2 라이브 세컨브레인 결선**: `CmoStrategyContext.second_brain_insights` + plan-turn 렌더. 백엔드 `cmo:chatMessage`가 단계별 쿼리로 `makeSecondBrainTransport` 라이브 조회 주입, `loadPTContext` 빈 source_refs 자동충전.
+- [x] **검증**: l5-core tsc 0 / jest 797·격리 NocoBase 라이브 **E2E 22/22**(로드맵 14노드·reference_analysis 제거·라이브 SB 자동충전 입증).
+- [x] **Phase 3 — 세컨브레인 기반 도입부 30초**: `composeIntro30s`(applied_insights 인사이트→적용방식 매핑, 레퍼런스 의존 제거) + 백엔드 `commitStrategyArtifact` stage `intro_30s`(빈 applied_insights는 라이브 SB 자동시드) + UI `Intro30sCard`(적용 인사이트 표). 사장님이 적용 인사이트 보고 hook 게이트서 승인. l5-core jest 806, 라이브 **E2E 25/25**. 브라우저 확인.
+- [x] **Phase 3 잔여 — 원고 beat 편집 + 팩토리 전달**: `script-factory.ts`(`ScriptBeat`+`buildFactoryVideoJob`, 팩토리 16타입 valid 매핑·insight 폴백) + 백엔드 `cmo:saveScript`/`cmo:sendToFactory`(transport `submitJob`: jobs/ 작성+validate) + UI `ScriptBeatEditor`(장면별 편집·저장)+`FactoryJobCard`. 사장님이 원고 수정→저장→팩토리 전달→검증통과. 라이브 **E2E 27/27**(멀티타입 validate). 팩토리에 실제 Scene JSON 작성 확인.
+- [ ] **실제 MP4 렌더 자동화(후속)**: render-final.ts(수 분) 자동 발동 — 현재는 사장님 발동(버튼/CLI).
+
+## 🎬 CMO Video Room — PRD 갭 배선 (2026-06-05, branch `cmo/video-room-clean`)
+
+> PRD 갭 분석: 도메인(l5-core)은 전부 구현·테스트(tsc 0, jest 791/791). 갭은 전부 배선 레이어. sub agent 2개(FE/BE)로 ADDITIVE 배선. 상세 = `docs/HANDOFF.md` 2026-06-05.
+
+- [x] **P0 Production/Publish 발동 버튼** (page.tsx): 슬라이드덱 생성→렌더 제출→QA 실행→업로드 초안 버튼. 기존 액션(ai-slide-video-factory transport 연결)을 화면에 노출.
+- [x] **P0 카드 stage 키 정합** (page.tsx): UI `render_job`/`video_qa` → 백엔드 `rendering`/`qa`. 렌더·QA 카드 표시.
+- [x] **P1 Business PT Context 로딩** (`cmo:loadPTContext`): `assertContextLoadingComplete` 3소스 규칙 런타임 강제.
+- [x] **P1 음성 녹음 업로드** (`cmo:attachVoice` + UI): disabled 플레이스홀더 → 작동.
+- [x] **P1 Strategy 구조화 검증** (`cmo:commitStrategyArtifact`): selectKeyContent/createPullingContentSet/createSecondBrainInsightMerge 도메인 검증 노출.
+- [x] **검증**: founder-ui tsc 0, plugin tsc 0, plugin dist 재빌드, 격리 NocoBase(13099) 라이브 E2E **19/19 ALL GREEN**(기존 14 + 신규 5).
+- [ ] **배포**: launchd :13000이 clean 코드 서빙하도록 빌드+kickstart (Founder 결정) + PR.
+- [ ] **P2 후속**: 성과 Memory completed 연결, KeyContentSet/funnel 전용 카드, Production 버튼 Playwright 클릭 검증.
 
 ## ✅ CMO Video Room — CTO 자율 개발 완료 (2026-06-05)
 

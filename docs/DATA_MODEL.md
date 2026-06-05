@@ -94,6 +94,30 @@ type Project = {
 };
 ```
 
+### VideoProject
+
+```ts
+type VideoProject = {
+  id: string;
+  business_id: string | null;
+  topic: string;
+  angle: string | null;
+  format: string | null;
+  status: 'draft' | 'generating' | 'completed' | 'failed';
+  config_snapshot: {
+    strategy?: string;
+    content_style?: string;
+    notes?: string;
+  } | null;
+  output_url: string | null;
+  output_metadata: unknown | null;
+  error: string | null;
+  job_path: string | null;
+  created_at: string;
+  updated_at: string;
+};
+```
+
 ### ChatMessage
 
 ```ts
