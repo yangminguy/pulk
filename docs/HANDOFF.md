@@ -18,8 +18,23 @@
 ### 검증
 - l5-core: **791 jest 통과**, tsc 클린, dist 빌드 성공.
 - founder-ui: typecheck 클린, `next build` 성공(/video-room).
-- 백엔드 계약테스트 15개 통과(서브에이전트 컨텍스트).
-- **라이브 E2E**: clean worktree에 NocoBase 런타임 deps 미설치 → 격리 sqlite 인스턴스로 검증 진행 중(2026-06-05).
+- 백엔드 계약테스트 15개 통과.
+- **라이브 E2E: 14/14 ALL GREEN (2026-06-05)**. 격리 postgres DB(`nocobase_cmoe2e`) + 포트 13099로 clean 코드 NocoBase 부팅 → `cmo:chatMessage`가 404→**401(인증필요)→실동작**. create→chat→roadmap(12노드)→게이트 도달→decideGate(승인)→advance→buildSlideDeck→submitRender→runQA→createUploadDraft(private) 전부 통과. 사장님 #1 불만("CMO 대화 안 됨") 라이브 해소 입증.
+
+### 격리 라이브 E2E 재현 방법
+```
+# clean worktree: ~/l5-workspace/pulk-cmo-clean
+cd apps/nocobase-app && yarn install                       # 1회(런타임 deps)
+rm -rf node_modules/@l5/core/node_modules/zod              # 번들러 zod 중첩 충돌 회피
+yarn nocobase build @l5/plugin-orchestration               # dist 생성(cmo 코드)
+createdb nocobase_cmoe2e                                    # 격리 DB
+env APP_KEY=... APP_PORT=13099 DB_DIALECT=postgres DB_DATABASE=nocobase_cmoe2e DB_USER=wonminyang DB_PASSWORD= \
+  APPEND_PRESET_LOCAL_PLUGINS=@l5/plugin-orchestration INIT_ROOT_EMAIL=admin@nocobase.com INIT_ROOT_PASSWORD=admin123 \
+  yarn nocobase install -f
+env (...동일...) yarn nocobase pm enable @l5/plugin-orchestration
+env (...동일...) yarn nocobase start &
+cd ../founder-ui && NOCOBASE_BASE_URL=http://localhost:13099 node e2e/verify-cmo-video-room.mjs
+```
 
 ### 배포 메모
 - 현재 :13000 launchd 서버는 **구 main 코드** 서빙. 이 기능을 실제 화면에 켜려면 launchd `com.l5.nocobase`가 clean 브랜치 코드를 서빙하도록 빌드+kickstart 필요(배포 결정은 Founder 확인 대상). 메모리 `cmo-video-room-clean-branch` 참조.
