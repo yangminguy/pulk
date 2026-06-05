@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMO Video Room — 전체 워크플로우 (사장님 기획 대조용)</title>
+<style>
+  :root{
+    --paper:#faf9f6;--surface:#fff;--ink-1:#1c1b18;--ink-2:#46443e;--ink-3:#88857c;
+    --silver-1:#ecebe6;--silver-2:#dad8d0;--green:#2f7d4f;--green-tint:#eef6f0;--green-press:#236b41;
+    --amber:#b5802a;--amber-tint:#fbf3e3;--red:#b3402f;--red-tint:#fbecea;--blue:#2f5f9e;--blue-tint:#eaf1fa;
+    --violet:#6b4fa0;--violet-tint:#f0ebf7;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;--serif:"Iowan Old Style",Georgia,serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Pretendard","SUIT",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink-1);font-family:var(--sans);line-height:1.62;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 22px}
+  header.hero{background:linear-gradient(155deg,#1c1b18,#243029);color:#f2f0ea;padding:48px 0 40px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#9fc7ad;margin:0 0 12px}
+  h1{font-family:var(--serif);font-weight:600;font-size:36px;line-height:1.15;margin:0 0 12px}
+  header.hero p{max-width:720px;color:#cfcdc4;margin:0}
+  .legend{margin-top:22px;display:flex;flex-wrap:wrap;gap:8px}
+  .lg{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:16px;border:1px solid rgba(255,255,255,.16);color:#dde6e0;display:inline-flex;gap:6px;align-items:center}
+  .dot{width:8px;height:8px;border-radius:50%}
+  section{padding:40px 0;border-bottom:1px solid var(--silver-1)}
+  .sec-label{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--green);margin:0 0 8px}
+  h2{font-family:var(--serif);font-weight:600;font-size:25px;margin:0 0 6px}
+  .lead{color:var(--ink-2);max-width:780px;margin:0 0 22px}
+  /* top flow strip */
+  .strip{display:flex;flex-wrap:wrap;align-items:center;gap:0;margin:6px 0 8px}
+  .sn{border:1px solid var(--silver-2);background:var(--surface);border-radius:9px;padding:9px 13px;font-weight:650;font-size:13.5px;text-align:center}
+  .sa{color:var(--silver-2);padding:0 6px;font-size:17px}
+  /* stage cards */
+  .stage{border:1px solid var(--silver-2);border-radius:13px;background:var(--surface);margin-bottom:14px;overflow:hidden}
+  .stage .top{display:flex;align-items:center;gap:12px;padding:13px 17px;border-bottom:1px solid var(--silver-1)}
+  .stage .num{flex:none;width:30px;height:30px;border-radius:8px;background:var(--green);color:#fff;font-family:var(--mono);font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .stage.gate .num{background:var(--amber)}
+  .stage .tt{font-weight:680;font-size:16px}
+  .stage .key{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);margin-top:1px}
+  .stage .badges{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+  .bg{font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:6px;font-weight:600;white-space:nowrap}
+  .bg-sb{background:var(--violet-tint);color:var(--violet)}
+  .bg-you{background:var(--blue-tint);color:var(--blue)}
+  .bg-gate{background:var(--amber-tint);color:var(--amber)}
+  .bg-cmo{background:var(--green-tint);color:var(--green-press)}
+  .stage .body{padding:14px 17px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .stage .body.one{grid-template-columns:1fr}
+  .blk{font-size:13.5px}
+  .blk .h{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+  .blk.cmo .h{color:var(--green-press)}
+  .blk.you .h{color:var(--blue)}
+  .say{background:#f7f5ef;border-radius:8px;padding:8px 11px;font-style:italic;color:#3c3a33;font-size:13px}
+  .quote-pt{background:var(--violet-tint);border-left:3px solid var(--violet);padding:8px 11px;border-radius:6px;font-size:12.5px;color:#3e3357}
+  .gate-row{background:var(--amber-tint);border-top:1px solid #eadfc4;padding:9px 17px;font-size:12.5px;color:#6d5520;display:flex;gap:8px;align-items:center}
+  .note{background:var(--blue-tint);border:1px solid #cfe0f2;border-radius:10px;padding:13px 16px;font-size:13px;color:#274463;margin-top:8px}
+  .note b{color:#1d3550}
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;background:var(--green-tint);color:var(--green-press);padding:1px 6px;border-radius:5px}
+  .checkrow{display:flex;gap:9px;align-items:flex-start;font-size:13.5px;padding:5px 0}
+  .checkrow .c{color:var(--green);font-weight:700;flex:none}
+  footer{padding:26px 0 56px;color:var(--ink-3);font-size:12px}
+  @media(max-width:680px){.stage .body{grid-template-columns:1fr}h1{font-size:28px}}
+</style>
+</head>
+<body>
+
+<header class="hero"><div class="wrap">
+  <p class="eyebrow">L5 Business OS · CMO Video Room — 최종 워크플로우</p>
+  <h1>사장님 기획대로 흐르는<br>CMO 영상 제작 워크플로우</h1>
+  <p>비즈니스 PT 강의(세컨브레인 <b>biz</b>)의 방법론을 그대로 재현했습니다. 아래 흐름이 사장님 기획과 맞는지 확인해 주세요. 각 단계에 <b>CMO가 하는 일</b>, <b>사장님이 하는 일</b>, <b>세컨브레인 활용</b>, <b>승인 지점</b>을 표시했습니다.</p>
+  <div class="legend">
+    <span class="lg"><span class="dot" style="background:#8fd6a8"></span>CMO가 함</span>
+    <span class="lg"><span class="dot" style="background:#7fb0e8"></span>사장님이 함</span>
+    <span class="lg"><span class="dot" style="background:#b89bd8"></span>세컨브레인(강의) 활용</span>
+    <span class="lg"><span class="dot" style="background:#e0b25e"></span>승인 게이트</span>
+  </div>
+</div></header>
+
+<section><div class="wrap">
+  <p class="sec-label">전체 흐름 (사장님 기획)</p>
+  <h2>상품 → 키 콘텐츠 → 풀링 → 썸네일 → 도입부 → 원고 → 녹음 → 영상</h2>
+  <div class="strip">
+    <span class="sn">상품</span><span class="sa">→</span>
+    <span class="sn">키 콘텐츠</span><span class="sa">→</span>
+    <span class="sn">풀링 콘텐츠</span><span class="sa">→</span>
+    <span class="sn">썸네일 구성</span><span class="sa">→</span>
+    <span class="sn">원고 도입부</span><span class="sa">→</span>
+    <span class="sn">원고</span><span class="sa">→</span>
+    <span class="sn">녹음</span><span class="sa">→</span>
+    <span class="sn">영상</span>
+  </div>
+  <div class="note"><b>핵심 원칙(강의대로):</b> 상품 장점이 아니라 <b>고객 문제 상황</b>에서 시작 · <b>역순 기획</b>(판매 목표 먼저) · 풀링은 <b>현상→욕구→계획→행동→보상</b> · 리서치는 <b>사장님이 Viewtrap에서 직접</b> 수행(CMO는 방법만 안내) · 도입부는 <b>세컨브레인 인사이트 적용</b>을 보고 승인. <b>레퍼런스 분석 단계는 제거</b>했습니다.</div>
+</div></section>
+
+<section><div class="wrap">
+  <p class="sec-label">단계별 상세</p>
+  <h2>14단계 — 누가 무엇을 하나</h2>
+
+  <!-- 1 -->
+  <div class="stage">
+    <div class="top"><div class="num">1</div><div><div class="tt">PT 컨텍스트 로딩</div><div class="key">business_pt_context_loading</div></div>
+      <div class="badges"><span class="bg bg-cmo">CMO</span><span class="bg bg-sb">세컨브레인</span></div></div>
+    <div class="body">
+      <div class="blk cmo"><div class="h">CMO가 하는 일</div>세컨브레인 <span class="pill">biz</span> 강의 자료를 <b>자동으로 읽어</b> 이 사업의 기획 원칙을 정리합니다(최소 3소스).</div>
+      <div class="blk"><div class="h">결과</div>비즈니스 PT 컨텍스트 스냅샷. 이게 없으면 키 콘텐츠로 못 넘어갑니다.</div>
+    </div>
+  </div>
+
+  <!-- 2 -->
+  <div class="stage">
+    <div class="top"><div class="num">2</div><div><div class="tt">상품 정의</div><div class="key">product_defined</div></div>
+      <div class="badges"><span class="bg bg-cmo">CMO</span></div></div>
+    <div class="body">
+      <div class="blk cmo"><div class="h">CMO가 하는 일</div>상품·타깃·<b>고객 문제</b>·목표를 정리. (상품 설명이 아니라 "어떤 문제를 푸는가"가 핵심)</div>
+      <div class="blk"><div class="h">결과</div>이 기준으로 키 콘텐츠 후보를 잡습니다.</div>
+    </div>
+  </div>
+
+  <!-- 3 -->
+  <div class="stage">
+    <div class="top"><div class="num">3</div><div><div class="tt">키 콘텐츠 후보</div><div class="key">key_content_ideation</div></div>
+      <div class="badges"><span class="bg bg-cmo">CMO</span><span class="bg bg-sb">세컨브레인</span></div></div>
+    <div class="body one">
+      <div class="blk cmo"><div class="h">CMO가 하는 일</div>세컨브레인 강의 방법론으로 키 콘텐츠 후보를 제시(확정 X).</div>
+      <div class="quote-pt">강의 인사이트: "키 콘텐츠는 <b>고객 문제 상황</b>에서 시작 + <b>역순 기획</b>(판매 목표 먼저 정하고 역으로)"</div>
+    </div>
+  </div>
+
+  <!-- 4 -->
+  <div class="stage">
+    <div class="top"><div class="num">4</div><div><div class="tt">Viewtrap 키 리서치</div><div class="key">viewtrap_key_research</div></div>
+      <div class="badges"><span class="bg bg-cmo">CMO 안내</span><span class="bg bg-you">사장님 수행</span></div></div>
+    <div class="body">
+      <div class="blk cmo"><div class="h">CMO가 하는 일</div>"이렇게 검색하세요" — 검색 키워드·방법 안내. (마케팅을 <b>문제</b>로 재정의, 경쟁사 벤치마킹)</div>
+      <div class="blk you"><div class="h">사장님이 하는 일</div><b>Viewtrap에서 직접 리서치</b> → 결과(제목·조회수·URL·선택 이유)를 화면에 입력.</div>
+    </div>
+  </div>
+
+  <!-- 5 gate -->
+  <div class="stage gate">
+    <div class="top"><div class="num">5</div><div><div class="tt">키 콘텐츠 승인 🔒</div><div class="key">key_content_approval · gate</div></div>
+      <div class="badges"><span class="bg bg-gate">승인</span></div></div>
+    <div class="body one">
+      <div class="blk cmo"><div class="h">CMO가 하는 일</div>Viewtrap 근거로 키 콘텐츠 1개를 추천.</div>
+    </div>
+    <div class="gate-row">🔒 <b>사장님 승인</b> — 이 주제로 갈지 결정(승인/수정/다른 후보/보류).</div>
+  </div>
+
+  <!-- 6 -->
+  <div class="stage">
+    <div class="top"><div class="num">6</div><div><div class="tt">풀링 콘텐츠 5세트</div><div class="key">viewtrap_pulling_research → pulling_content_set_selection</div></div>
+      <div class="badges"><span class="bg bg-cmo">CMO 안내</span><span class="bg bg-you">사장님 수행</span><span class="bg bg-sb">세컨브레인</span></div></div>
+    <div class="body">
+      <div class="blk cmo"><div class="h">CMO가 하는 일</div>키 콘텐츠로 끌어올 풀링 콘텐츠 검색법 안내 → 모인 결과로 <b>5개 세트</b> 선별.</div>
+      <div class="blk you"><div class="h">사장님이 하는 일</div>Viewtrap에서 풀링 후보 리서치 → 입력.</div>
+    </div>
+    <div class="gate-row" style="background:var(--violet-tint);border-color:#e0d5f0;color:#3e3357">강의: 풀링은 <b>현상 → 욕구 → 계획 → 행동 → 보상</b> 중 한 단계만 담아도 됨. 각 콘텐츠가 키 콘텐츠로 이어지는 브릿지 필수.</div>
+  </div>
+
+  <!-- 7 gate -->
+  <div class="stage gate">
+    <div class="top"><div class="num">7</div><div><div class="tt">풀링 세트 승인 🔒</div><div class="key">pulling_content_set_approval · gate</div></div>
+      <div class="badges"><span class="bg bg-gate">승인</span></div></div>
+    <div class="gate-row">🔒 <b>사장님 승인</b> — 풀링 5개 세트 + 키 콘텐츠 브릿지 확인 후 승인.</div>
+  </div>
+
+  <!-- 8 -->
+  <div class="stage">
+    <div class="top"><div class="num">8</div><div><div class="tt">썸네일 구성</div><div class="key">thumbnail_pattern_extraction</div></div>
+      <div class="badges"><span class="bg bg-cmo">CMO</span><span class="bg bg-sb">세컨브레인</span></div></div>
+    <div class="body one">
+      <div class="blk cmo"><div class="h">CMO가 하는 일</div>5세트 확정 후, <b>세컨브레인 후기 인사이트</b> + 확정한 5개 콘텐츠의 썸네일을 분석해 우리 주제 구조로 구성. <b>(레퍼런스 영상 URL 단계 없음 — 제거됨)</b></div>
+    </div>
+  </div>
+
+  <!-- 9 -->
+  <div class="stage">
+    <div class="top"><div class="num">9</div><div><div class="tt">원고 도입부 30초</div><div class="key">intro_30s_analysis</div></div>
+      <div class="badges"><span class="bg bg-cmo">CMO</span><span class="bg bg-sb">세컨브레인</span><span class="bg bg-you">사장님 확인</span></div></div>
+    <div class="body">
+      <div class="blk cmo"><div class="h">CMO가 하는 일</div>세컨브레인 <b>도입부/후킹 인사이트</b>를 적용해 30초 도입부를 구성. <b>"어떤 인사이트를 어떻게 적용했는지"</b>를 표로 보여줍니다.</div>
+      <div class="blk you"><div class="h">사장님이 하는 일</div>적용 인사이트 → 적용 방식을 <b>보고 판단</b>. (다음 게이트에서 승인)</div>
+    </div>
+    <div class="gate-row" style="background:var(--violet-tint);border-color:#e0d5f0;color:#3e3357">강의: 도입부 0~5초 <b>빌드업 문장</b>으로 "왜 봐야 하는가" 제시 → 초반 후킹.</div>
+  </div>
+
+  <!-- 10 gate -->
+  <div class="stage gate">
+    <div class="top"><div class="num">10</div><div><div class="tt">훅 승인 🔒</div><div class="key">hook_draft_approval · gate</div></div>
+      <div class="badges"><span class="bg bg-gate">승인</span></div></div>
+    <div class="gate-row">🔒 <b>사장님 승인</b> — 썸네일·제목·도입부(적용 인사이트 포함)를 보고 괜찮으면 승인 → Production으로.</div>
+  </div>
+
+  <!-- 11 -->
+  <div class="stage">
+    <div class="top"><div class="num">11</div><div><div class="tt">원고 (장면 beat)</div><div class="key">script_planning → script_draft</div></div>
+      <div class="badges"><span class="bg bg-cmo">CMO 초안</span><span class="bg bg-you">사장님 수정·확인</span></div></div>
+    <div class="body">
+      <div class="blk cmo"><div class="h">CMO가 하는 일</div>AI 슬라이드 팩토리 포맷(Hook→문제→전환→…→CTA 장면)으로 원고 초안 작성.</div>
+      <div class="blk you"><div class="h">사장님이 하는 일</div><b>장면별로 헤드라인·대사·길이 직접 수정·확인</b> → "원고 저장".</div>
+    </div>
+    <div class="gate-row">🔒 <b>원고 승인</b>(script_approval) 후 → <span class="pill">팩토리로 전달</span> 버튼 → 확정 원고가 <b>Scene JSON으로 AI 슬라이드 팩토리에 전달·검증</b>됩니다.</div>
+  </div>
+
+  <!-- 12 -->
+  <div class="stage">
+    <div class="top"><div class="num">12</div><div><div class="tt">녹음</div><div class="key">voice_recording</div></div>
+      <div class="badges"><span class="bg bg-you">사장님 수행</span></div></div>
+    <div class="body one">
+      <div class="blk you"><div class="h">사장님이 하는 일</div>확정 원고를 <b>직접 녹음</b>해 음성 파일 업로드. (TTS 아님 — 사장님 목소리)</div>
+    </div>
+  </div>
+
+  <!-- 13 -->
+  <div class="stage">
+    <div class="top"><div class="num">13</div><div><div class="tt">영상 — 슬라이드 · 렌더 · QA 🔒</div><div class="key">slide_deck → rendering → qa → video_qa_approval</div></div>
+      <div class="badges"><span class="bg bg-cmo">CMO/팩토리</span><span class="bg bg-gate">QA 승인</span></div></div>
+    <div class="body">
+      <div class="blk cmo"><div class="h">CMO/팩토리</div>원고+녹음 → 슬라이드 → <b>AI 슬라이드 팩토리(Remotion) 렌더</b> → 7항목 QA. (실제 MP4 렌더는 사장님이 발동)</div>
+      <div class="blk you"><div class="h">사장님이 하는 일</div>QA 결과 확인 → 🔒 승인.</div>
+    </div>
+  </div>
+
+  <!-- 14 gate -->
+  <div class="stage gate">
+    <div class="top"><div class="num">14</div><div><div class="tt">발행 🔒</div><div class="key">upload_draft → upload_approval → completed</div></div>
+      <div class="badges"><span class="bg bg-gate">발행 승인</span></div></div>
+    <div class="body one">
+      <div class="blk cmo"><div class="h">CMO가 하는 일</div>제목·설명·태그로 업로드 초안 작성 — <b>기본 비공개</b>.</div>
+    </div>
+    <div class="gate-row">🔒 <b>사장님 발행 승인</b> — 공개는 승인 후에만. 완료 시 성과 기록.</div>
+  </div>
+
+</div></section>
+
+<section><div class="wrap">
+  <p class="sec-label">사장님 기획 대비 체크</p>
+  <h2>이번에 사장님 지시대로 바꾼 것</h2>
+  <div class="checkrow"><span class="c">✓</span><div><b>레퍼런스 분석 단계 제거</b> — 사장님: "레퍼런스 분석 단계가 빠져야 돼". 별도 단계 삭제, 썸네일은 세컨브레인 후기+5콘텐츠로.</div></div>
+  <div class="checkrow"><span class="c">✓</span><div><b>리서치는 사장님이 수행</b> — CMO가 Viewtrap 검색법만 안내, 사장님이 직접 리서치해서 자료 제공.</div></div>
+  <div class="checkrow"><span class="c">✓</span><div><b>세컨브레인(강의) 라이브 결선</b> — 키/풀링/썸네일/도입부/리서치 전 단계에 강의 인사이트 자동 반영.</div></div>
+  <div class="checkrow"><span class="c">✓</span><div><b>도입부 = 같이 하는 단계</b> — 어떤 인사이트를 어떻게 적용했는지 보여주고 사장님이 승인.</div></div>
+  <div class="checkrow"><span class="c">✓</span><div><b>원고 = 사장님이 수정·확인한 걸 전달</b> — 장면별 편집 → 확정 → AI 슬라이드 팩토리로 Scene JSON 전달(기존 팩토리 구조 재사용).</div></div>
+  <div class="checkrow"><span class="c">✓</span><div><b>흐름 정합</b> — 상품 → 키콘텐츠 → 풀링 → 썸네일 → 도입부 → 원고 → 녹음 → 영상.</div></div>
+  <div class="note" style="margin-top:18px"><b>현재 상태:</b> 라이브 :13000에 배포 완료(컬렉션 생성됨). 라이브 E2E 27/27. <b>남은 것</b> = 실제 MP4 자동 렌더(현재는 사장님이 버튼/CLI로 발동). <br><b>확인 부탁:</b> 위 14단계가 사장님 기획과 다른 부분이 있으면 알려주세요 — 단계 추가/제거/순서/승인 지점 조정 가능합니다.</div>
+</div></section>
+
+<footer><div class="wrap">L5 Business OS · CMO Video Room 최종 워크플로우 · 2026-06-05 · branch main(머지 완료)</div></footer>
+
+</body>
+</html>
