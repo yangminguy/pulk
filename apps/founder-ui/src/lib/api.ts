@@ -139,6 +139,25 @@ export type LiveStatusGroup = {
 }
 
 // P3-3 — control room tree
+// PRD §8.2 ExecutionRun.checks — per verifier gate. Absent gate = not reported.
+export type AcrCheckStatus = 'pass' | 'fail' | 'skipped'
+export type AcrChecks = {
+  typecheck?: AcrCheckStatus
+  lint?: AcrCheckStatus
+  test?: AcrCheckStatus
+  build?: AcrCheckStatus
+  playwright?: AcrCheckStatus
+  boundary?: AcrCheckStatus
+}
+// PRD §8.1 — one prior run attempt (compact summary; full run lives in ACR).
+export type AcrRunSummary = {
+  run_id: string
+  status: string
+  agent?: string | null
+  branch?: string | null
+  checks?: AcrChecks | null
+  created_at?: string | null
+}
 export type ControlRoomDevTask = {
   task_id: string
   title: string
@@ -161,6 +180,17 @@ export type ControlRoomDevTask = {
   /** Measured token usage + cost from the CLI runtime (via ACR), when available. */
   actual_total_tokens?: number | null
   actual_cost_usd?: number | null
+  // PRD §18.1 task ▸ run axes (null/empty when ACR absent → UI hides them).
+  /** Latest ExecutionRun id; scopes retry/review. */
+  run_id?: string | null
+  /** PRD §8.2 verifier gate outcomes for the latest run. */
+  checks?: AcrChecks | null
+  /** PRD §16 ResultPacket.nextAction — what to do next. */
+  next_action?: string | null
+  /** PRD §16 ResultPacket.recommendation (merge_ready/human_review/…). */
+  recommendation?: string | null
+  /** PRD §8.1 prior run attempts (newest first). */
+  run_history?: AcrRunSummary[] | null
 }
 export type ControlRoomProject = {
   project_id: string | null
@@ -723,6 +753,18 @@ export const api = {
     )
       .then(r => unwrap(r) as ControlRoomBusiness[])
       .catch(() => [] as ControlRoomBusiness[]),
+
+  // PRD §9.1 — retry a task = create a NEW ExecutionRun for it (ACR Kernel owns
+  // the run; this is a thin POST). Returns the new run id when ACR is reachable.
+  // Resolves to null (never throws) when ACR isn't deployed so the button can
+  // surface a soft failure without breaking the Control Room.
+  acrRetryRun: (taskId: string) =>
+    request<{ data: { ok: boolean; data: { run_id?: string } } }>('/api/monitor:retryRun', {
+      method: 'POST',
+      body: JSON.stringify({ task_id: taskId }),
+    })
+      .then(r => unwrap(r) as { run_id?: string })
+      .catch(() => null),
 
   // P3-2 — knowledge auto-curation
   curationSummary: () =>

@@ -58,6 +58,7 @@ PLISTS=(
   "com.l5.hermes.self-learning.plist"
   "com.l5.hermes.cmo-strategy-watch.plist"
   "com.l5.hermes.task-archiver.plist"
+  "com.l5.git-acr-cleanup.plist"
 )
 
 for PLIST in "${PLISTS[@]}"; do
@@ -72,6 +73,7 @@ for PLIST in "${PLISTS[@]}"; do
   sed \
     -e "s|__NODE_PATH__|$NODE_PATH|g" \
     -e "s|__HERMES_DIR__|$HERMES_DIR|g" \
+    -e "s|__REPO_ROOT__|$REPO_ROOT|g" \
     -e "s|__LOG_DIR__|$LOG_DIR|g" \
     "$SRC" > "$DEST"
 

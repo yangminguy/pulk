@@ -26,6 +26,77 @@
 
 ---
 
+## 🟢 2026-06-06 — 데몬을 기본 실행 경로로 승격 (라이브)
+
+`ACR_EXTERNAL_RUNNER=1` → auto-dispatcher가 인라인 대신 **잡큐 enqueue**, 상시 데몬(`com.l5.acr-phase-runner`)이 별도 프로세스에서 claim→prepare→spawn→finalize. acr-web 재시작이 in-flight phase를 못 죽임. 설계 = `docs/DECISIONS.md` 2026-06-06(마지막 항목).
+
+- 신규: `lib/orchestration/phase-runner-queue.ts`, `app/api/runner/queue/claim`, `scripts/phase-runner-daemon.mjs` poll 모드, `launchd/com.l5.acr-phase-runner.plist`. `auto-dispatcher.ts` 외부 분기 + plan당 1 in-flight 가드. `prepare` prompt override.
+- **라이브 검증**: FAKE + **실 claude** 둘 다 enqueue→claim→prepare→spawn→finalize→done(커밋+머지) 통과. 테스트 GREEN, tsc 0, 배포(BUILD_ID M0A5WLQiEMcXhDw2aW2m1).
+- **롤백**: `.env.local` `ACR_EXTERNAL_RUNNER=0`+재빌드/재시작 → 인라인. 데몬 중지: `launchctl unload`.
+- **주의**: stale plan 28개(2일+ 버려진 것)는 가드+dirty cwd 409로 inert. 별도 아카이브 권장(미변경).
+
+---
+
+
+## 🟢 2026-06-06 — 데몬 in-flight 생존 ③④ 라이브 시연 완료
+
+설계·근거 = `docs/DECISIONS.md` 2026-06-06(네 번째 항목). ①특성화 테스트 ②finalizer 추출에 이어 ③데몬+엔드포인트 구현 ④라이브 시연까지 완료.
+
+**③ 구현**: `app/api/runner/prepare/route.ts`(pre-spawn 컨텍스트) + `app/api/runner/finalize/route.ts`(공유 finalizePhaseExecution 호출) + `scripts/phase-runner-daemon.mjs`(별도 프로세스 spawn + acr-web 재시작 견디는 finalize 재시도). 둘 다 `x-l5-shared-secret` 인증. 인라인 `/api/runner` 무수정.
+
+**④ 라이브 시연**(격리 `~/l5-workspace/daemon-demo`):
+- **in-flight 생존 증명**: 40초 spawn 도중 acr-web 강제 종료(`kickstart -k`) → 데몬·spawn 자식 생존(acr-web=000 DOWN 동시 확인) → spawn 완주 → 복귀 후 finalize 안착.
+- 결과: ACR 태스크 **done**, 격리 브랜치 커밋+main 머지(D2 자동머지), exec-log done/exit0, L5콜백 도달, 브라우저(acr-web)에 데몬-생성 프로젝트 렌더.
+- 검증: 신규 4 + 기존 GREEN, tsc 0, rebuild(BUILD_ID 6vRuYYGfRK1FmGingK29S)+restart 배포.
+
+**남은 1단계**: 데몬을 **기본 경로로 승격**(auto-dispatcher가 인라인 POST 대신 데몬 잡 큐로 enqueue + 워커 N개 동시성). 현재 데몬은 명시적/opt-in 경로로 동작.
+
+---
+
+## 🟢 2026-06-06 — 데몬 in-flight 생존 ①②단계 완료 (finalize 추출, 무회귀)
+
+설계·근거 = `docs/DECISIONS.md` 2026-06-06(세 번째 항목). 데몬 in-flight 생존의 안전 순서(①특성화 테스트 →②추출 →③플래그 데몬 →④라이브 통합) 중 헤드리스로 안전 검증 가능한 ①②를 완료.
+
+- **① 특성화 테스트**(`__tests__/runner-finalize.test.ts`): finalize의 관찰 행동(최종 PlanTask 상태 + L5 콜백 status)을 4 시나리오로 고정. 추출 전/후 동일 통과 = 무회귀 증명.
+- **② finalizer 추출**(`lib/runner/finalize-phase-execution.ts`): `/api/runner` post-spawn 블록(상태·커밋·머지·**L5 taskCallback**·빈출력·경계)을 verbatim 추출(`controller.enqueue` → `emit` 콜백만 변경). route.ts 609→365줄. 고아 import 정리. **인라인 러너와 미래 별도-프로세스 러너가 공유**.
+- 검증: 전체 ACR 742 GREEN(사전존재 ENOENT 1건 제외), tsc 0. **배포: ACR rebuild + acr-web restart**(behavior-identical, live==repo).
+
+**남은 ③④(라이브 세션 필요)**: `/api/runner/prepare`+`/api/runner/finalize` 엔드포인트 + **별도 프로세스 데몬**(기본 OFF 플래그)이 CLI를 spawn → 플래그 켜고 실제 phase 1개로 "L5 콜백 도착" 확인. 실 acr-web·worktree·CLI 필요해 헤드리스 불가.
+
+---
+
+## 🟢 2026-06-06 — CTO 개선 후속 3종 적용 + 데몬 in-flight 보류 재확인
+
+설계·근거 = `docs/DECISIONS.md` 2026-06-06(두 번째 항목).
+
+**① per-phase agy 모델** (속도/비용): agy CLI `--model`(per-session=병렬 안전) 활용. `buildAgyArgs`에 `--model`, spawn 경로를 전역 settings.json 재작성(`withAntigravityModel`)에서 플래그로 전환. `/api/runner`가 phase kind로 모델 선택 — 경량=Gemini 3.5 Flash (High), 코딩=Gemini 3.1 Pro (High). env `ACR_AGY_MODEL_LIGHT`/`_CODE`/`_PER_PHASE_MODEL=0`.
+
+**② 쿼터 추적 갱신부** (B5 read-path 완성): `lib/agents/quota-tracker-file.ts` 신규 — runtime-registry(claude→T1/codex→T2/agy→T3)를 `QuotaState`로 `ACR_QUOTA_TRACKER_PATH`에 원자적 영속화. `updateAgentRuntime` choke point에서 fire-and-forget. **전제: pulk 디스패처·acr-web이 같은 env 공유**(미설정 시 graceful).
+
+**③ 브랜치 정리 자동화**: `scripts/git-acr-cleanup.sh`(머지+7일 경과 acr/* 만, 보호/워크트리 제외)를 일일 launchd(`com.l5.git-acr-cleanup.plist` 03:30) 스케줄. installer에 `__REPO_ROOT__` 치환 + 등록.
+
+**데몬 in-flight 생존 — 보류 유지(근거 강화)**: runner 테스트가 **pre-spawn만** 커버, **post-spawn finalize(상태·커밋·머지·L5콜백)는 테스트 0** 확인 → 안전망 없는 ~250줄 리팩터는 라이브 자율 루프 회귀 위험. 올바른 순서 = finalize 특성화 테스트 선작성 → 추출 → 플래그 게이트 데몬 → 라이브 통합 테스트(헤드리스 불가 → 별도 세션).
+
+**검증**: 신규 antigravity-runner `--model` 3종(+37)·quota-tracker-file 6 GREEN. 회귀 auto-dispatcher/resilience/pre-dispatch/execution-safety-regression/phase19 GREEN, ACR tsc 0. cleanup dry-run·plist plutil·installer bash -n OK. (qa-fixes-phase11 1건 실패는 사전 존재 ENOENT, 무관.) **반영: ACR rebuild+restart 시.**
+
+---
+
+## 🟢 2026-06-06 — ACR 자율 코딩 정체/재시작 낭비 근본 제거
+
+**배경**: CTO/ACR 자율 코딩의 마지막 근본 병목 = 인메모리 plan 락 + abort 없는 SSE 드레인. 행 발생 시 락 점유 → 드라이버가 acr-web을 재시작 → 진행 phase 폐기·재실행(토큰 낭비). 설계·근거 = `docs/DECISIONS.md` 2026-06-06.
+
+**수술적·무회귀 수정 (잡큐 전면 재작성 보류)**
+- **하트비트 lease** (`agent_control_room_docs/lib/orchestration/auto-dispatcher.ts`): `planDrainLocks` 고정 20분 stale → 30초 갱신 하트비트. 산 drain은 유지, 죽은 홀더는 3분 내 stale → 자동 재청구. `acquirePlanDrain`/`releasePlanDrain`/`isPlanDrainLocked`.
+- **/api/runner abort 타임아웃**: `dispatchNextTask`의 SSE 드레인에 `AbortController`(`ACR_RUNNER_TIMEOUT_MS`, 기본 `ACR_AGENT_TIMEOUT_MS`+90s). abort 시 `failed:runner_timeout` → lease 해제 → 다음 패스 재큐. 단일 phase 영구행 불가.
+- **드라이버**(`~/l5-workspace/cmo-driver.mjs`): `GLOBAL_STALL → restartAcrWeb()` 제거(고아 `restartAcrWeb`/`sleep` 정리). 지속 정체 시 고아 running→planned 힐만(재시작·재실행 낭비 0).
+- **`/api/runner` 무수정** → L5 `taskCallback`·머지·경계 검사·phase 커밋 전부 무회귀.
+
+**원안(데몬 직접 spawn) 보류 이유**: `/api/runner`가 spawn 외에 L5 콜백·머지·경계·커밋까지 수행 → 데몬 직접 spawn 전환 시 이들 회귀(특히 펄크가 phase 완료를 인지하는 유일 경로인 L5 콜백). in-flight CLI의 재시작 생존은 후속(`/api/runner` 후처리를 공유 finalizer로 추출 후).
+
+**검증**: `__tests__/auto-dispatcher-resilience.test.ts` 신규 2종(타임아웃 바운드 + lease 재청구) PASS. 기존 `auto-dispatcher.test.ts`(5)·`resilience-loop.test.ts`(9) 회귀 0 → 전부 GREEN. 드라이버 `node --check` OK.
+
+---
+
 ## 🟢 2026-06-06 — 자가개선 루프 Phase B(일일 감시) + Phase C(에스컬레이션 배선) 완료
 
 **배경**: Phase A(read-path)·Phase B 코어(`cmoStrategyWatch`)에 이어, 일일 감시 래퍼와 CTO 에스컬레이션 배선을 코드로 완성. 설계 = `docs/DECISIONS.md` 2026-06-06. **원칙 불변: 승인 전엔 코드 한 줄도 안 바뀜(기존 self_mod_status 게이트 보장).**
@@ -2617,3 +2688,31 @@ type AgentHandoff = {
 4. Approval queue.
 5. Hermes stalled-task/approval checks.
 6. BPR and Memory updates from completed tasks.
+
+---
+
+## CTO Harness / ACR Kernel 계약 레이어 (2026-06-06, 브랜치 cto/acr-kernel-harness)
+
+- pulk CTO = source of truth, ACR = 실행 커널 원칙을 코드 계약으로 고정. PRD `FINAL_pulk_cto_acr_kernel_harness_agent_team_prd.md`의 pulk 측 1차 구현 범위(타입·복잡도 라우터·가드·프롬프트 빌더·Agent Team router) 완료.
+- 위치: `packages/l5-core/src/functions/cto-harness/` (8 모듈 + 7 테스트 스위트, 216 테스트 GREEN, tsc 0). 루트 `index.ts`에 export 1줄 추가.
+- 실제 worktree 실행/HTTP API/ACR UI는 별도 저장소 agent-control-room 책임 — pulk에 중복 구현하지 않음(상세 docs/ACR_KERNEL_REFACTOR_PLAN.md).
+- CMO 작업과 완전 분리(공유 파일 충돌 없음). 커밋 시 cto-harness/·index.ts·신규 문서 2개만 선택 add 권장(CMO 미커밋 변경분 제외).
+- 다음 단계(선택): hermes acr-client.ts에 buildWorkOrder→ACRIntent 어댑터 배선, founder-ui control-room에 ExecutionRun 상태 표시.
+
+---
+
+## CTO×ACR Kernel×Harness×Agent Team 풀구현 (2026-06-06, dynamic phased workflow 8단계)
+
+PRD `FINAL_pulk_cto_acr_kernel_harness_agent_team_prd.md` MVP **완료(PASS)**. 판정 리포트: `docs/CTO_ACR_PRD_COMPLETION.html`.
+
+- **ACR repo**(agent-control-room, 브랜치 feat/runner-verify-merge-phase123) 신규 실행 커널 — 전부 additive, 111 WIP 불가침:
+  - `b8ecacd` ExecutionRun API(§8/§9): lib/execution-run/*, lib/storage/execution-run-store, app/api/execution-runs/{,[run_id],/result}
+  - `9cc7474` Worktree+Boundary(§12): lib/worktree/{worktree-manager,boundary-check,run-worktree}
+  - `0556c9e` Harness 코어(§13/§14/§15): lib/harness/{types,verification-runner,command-guard,handoff-generator,playwright-artifact,harness-pipeline}
+  - `d3dca52` Context Harness(§14.7)+command-guard PreToolUse hook(§19.1): lib/harness/context-harness, scripts/hooks/command-guard-hook.mjs
+- **pulk repo**(브랜치 cto/acr-kernel-harness):
+  - `fa69570` Agent Team 라이브 배선(§29)+execution-runs 클라이언트+Control Room §18.1 UI(checks/history/retry·review/ComplexityBadge)
+  - `7243ec4` Context Tax 인덱스(docs/index)+HARNESS_UTILIZATION 매핑
+- **QA/E2E**: ACR our-tests 124/124 + next build PASS, pulk l5-core 1414/1414·agent-runtime 16/16·founder-ui build PASS·control-room E2E(clean dev) PASS, ACR smoke PASS.
+- **잔여 통합 단서(4)**: ① runner-adapter thin(실 CLI 실행 트리거 1스텝 남음, 인터페이스 완비) ② cto.ts 라이브는 현재 solo run(다중feature 입력시 팀런 가동) ③ retry 버튼은 /api/monitor:retryRun 서버액션 필요(graceful degrade) ④ .claude/rules·settings.json은 양 repo gitignore(로컬 동작).
+- **사용자 WIP 오류 2건(미수정)**: ACR quota-tracker-file.test.ts:27 / runner-prepare-finalize.test.ts:77 TS2352 — 111 WIP라 분리 원칙대로 미수정.

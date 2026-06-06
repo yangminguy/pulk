@@ -816,6 +816,176 @@ ACR → L5 `agent:taskCallback` 인증을 만료형 JWT(`L5_ADMIN_TOKEN`, ~17h)�
 - `~/Desktop/양원민 개발자/agent_control_room_docs/lib/runner/git-utils.ts` (commitAll)
 - `~/Desktop/양원민 개발자/agent_control_room_docs/app/api/runner/route.ts` (onSuccess 커밋)
 - `~/Desktop/양원민 개발자/agent_control_room_docs/lib/orchestration/auto-dispatcher.ts` (in-flight 락)
+
+---
+
+## 2026-06-06 — ACR 오케스트레이션 정체 근본화: 하트비트 lease + /api/runner abort 타임아웃
+
+### Decision
+
+ACR 자동실행의 정체/재시작 낭비를 근본 제거하되, **잡큐+데몬 전면 재작성은 보류**한다. 대신 두 가지 수술적 변경으로 같은 효과를 얻는다.
+
+1. 인메모리 `planDrainLocks`(고정 20분 stale)를 **하트비트 lease**로 교체 — 살아있는 drain은 30초마다 갱신돼 유지되고, 홀더가 죽으면 3분 내 stale → 자동 재청구.
+2. `dispatchNextTask`의 `/api/runner` fetch+SSE 드레인에 **AbortController 타임아웃**(`ACR_RUNNER_TIMEOUT_MS`, 기본 `ACR_AGENT_TIMEOUT_MS`+90s) 추가 — 단일 phase가 영구 행 불가.
+
+### Reason
+
+**근본 원인(문서·코드로 확정)**: `dispatchNextTask`가 `/api/runner` SSE를 abort 타임아웃 없이 동기 드레인 → 행이 발생하면 무한 await → 인메모리 plan 락 점유 + 활성 CLI 0 → 드라이버가 `GLOBAL_STALL`로 **acr-web 재시작** → 진행 중 phase 폐기·재실행(토큰 낭비). 20분 stale 해제는 너무 느려 실질적으로 재시작에 의존.
+
+**원안(데몬이 CLI 직접 spawn으로 in-flight 생존) 보류 이유**: `/api/runner`는 단순 spawn이 아니라 **브랜치 격리·빈출력 검증·파일 경계 검사·phase 커밋·머지 조정·L5 `taskCallback`·텔레그램·토큰 캡처**까지 수행한다. 기존 `local-runner` 데몬/브리지는 이 후처리가 전부 빠져 있어, 데몬 직접 spawn으로 전환하면 **L5 콜백(펄크가 phase 완료를 인지하는 유일 경로)·머지·경계 검사가 회귀**한다. 회귀 위험 대비 이득이 낮아, in-flight CLI의 acr-web 재시작 생존은 후속 단계로 연기한다(이 경우에도 재시작 자체가 희귀해지므로 영향 미미).
+
+### Impact
+
+**ACR 코드 (`lib/orchestration/auto-dispatcher.ts`)**
+- `planDrainLocks` 값 = 마지막 하트비트 ms. `acquirePlanDrain`(30s 갱신 타이머, `unref`)·`releasePlanDrain`·`isPlanDrainLocked`(stale 시 재청구). `DRAIN_LOCK_STALE_MS` 20분→3분.
+- `/api/runner` fetch에 `signal` + 타임아웃. abort 시 `failed:runner_timeout`(waiting 아님 → drain 정리·lease 해제 → 다음 패스 재큐).
+- `__leaseTestHooks` export(테스트 전용).
+- **`/api/runner`는 무수정 → L5 콜백·머지·경계·커밋 무회귀.**
+
+**드라이버 (`~/l5-workspace/cmo-driver.mjs`)**
+- `GLOBAL_STALL → restartAcrWeb()` 제거(고아 `restartAcrWeb`/`sleep` 정리). 지속 정체 시 고아 running→planned 힐만 수행(재시작·재실행 낭비 0).
+
+**검증**
+- `__tests__/auto-dispatcher-resilience.test.ts` 신규 2종: ① SSE 미종료 러너가 타임아웃에 묶여 `failed:runner_timeout` 반환(무한행 아님), ② lease 산 홀더 유지 + 만료 홀더 재청구.
+- 기존 `auto-dispatcher.test.ts`(5)·`resilience-loop.test.ts`(9) 회귀 없음 → 전부 GREEN.
+
+### Related Files
+- `~/Desktop/양원민 개발자/agent_control_room_docs/lib/orchestration/auto-dispatcher.ts` (하트비트 lease + abort 타임아웃)
+- `~/Desktop/양원민 개발자/agent_control_room_docs/__tests__/auto-dispatcher-resilience.test.ts` (신규 테스트)
+- `~/l5-workspace/cmo-driver.mjs` (acr-web 재시작 제거)
+
+### 후속(연기)
+- 데몬 별도 프로세스 실행으로 in-flight CLI의 acr-web 재시작 생존 — `/api/runner` 후처리를 공유 finalizer로 추출 후 진행.
+- per-phase agy 모델 선택(Flash/Pro), 쿼터 추적 갱신부, 병렬 worktree 통합지점 선셋업.
+
+---
+
+## 2026-06-06 — CTO 개선 후속 3종(agy 모델·쿼터 writer·브랜치 정리) + 데몬 in-flight 보류 재확인
+
+### Decision
+
+위 후속 중 **저위험·고가치 3종을 적용**하고, **데몬 in-flight 생존(finalizer 추출)은 보류 유지**한다.
+
+1. **per-phase agy 모델** — agy CLI `--model`(per-session, 병렬 안전) 활용. 경량 phase=Flash, 코딩=Pro.
+2. **쿼터 추적 갱신부** — ACR runtime-registry 상태를 `ACR_QUOTA_TRACKER_PATH`의 `QuotaState`로 영속화(B5 read-path 완성).
+3. **브랜치 정리 자동화** — `git-acr-cleanup.sh`를 일일 launchd 스케줄.
+
+### Reason
+
+**agy 모델**: 기존 모델 전환 = `withAntigravityModel`(전역 settings.json 재작성) → **병렬 worktree에서 경쟁 조건**이라 per-phase 불가였음. agy CLI `--help` 확인 결과 `--model`(="Model for the current CLI session")이 per-invocation이라 병렬 안전 → settings.json 재작성 없이 안전하게 per-phase 가능.
+
+**쿼터 writer**: B5에서 `cto.ts loadQuotaState`(read)는 넣었으나 **writer가 없어** 항상 전 tier 가용으로 읽혀 소진 tier로 phase 배정. ACR가 이미 in-memory로 쿼터를 알므로(`updateAgentRuntime`) 그 choke point에서 파일로 미러링.
+
+**데몬 in-flight 보류 재확인(중요)**: `execution-safety-regression`/`qa-fixes` 등 runner 테스트는 **pre-spawn(토큰/cwd 검증·거부)만** 커버하고 **post-spawn finalize(상태도출·커밋·머지·L5콜백·빈출력)는 테스트 0**임을 확인. 즉 finalize를 추출하면 보안·정확성·L5콜백이 걸린 ~250줄을 **안전망 없이** 리팩터하는 것 → 라이브 자율 루프를 조용히 깨뜨릴 위험. lease+timeout 적용으로 acr-web 재시작이 이미 희귀해져 in-flight 생존의 이득도 한계. **올바른 순서 = ① finalize 특성화 테스트 선작성 → ② finalizer 추출(무회귀 검증) → ③ 플래그 게이트(default off) 데몬 spawn 경로 → ④ 라이브 통합 테스트.** 헤드리스로 ③④ 검증 불가하므로 별도 세션으로 연기.
+
+### Impact
+
+**ACR (`~/Desktop/양원민 개발자/agent_control_room_docs`)**
+- `lib/agents/antigravity-runner.ts`: `buildAgyArgs`에 `--model <targetModel>`(set 시).
+- `lib/runner/spawn-runner.ts`: agy를 `withAntigravityModel`(전역 재작성) 대신 `--model` 플래그로(병렬 안전, recovery 경로 포함).
+- `lib/runner/spawn-with-verification.ts`: `targetModel` opts 추가·forward.
+- `app/api/runner/route.ts`: agy일 때 phase kind(`expectsChanges`)로 모델 선택(env `ACR_AGY_MODEL_LIGHT`/`_CODE`/`_PER_PHASE_MODEL`).
+- `lib/agents/quota-tracker-file.ts`(신규): `buildQuotaState`+`persistQuotaTracker`(원자적, no-op when env unset).
+- `lib/agents/runtime-registry.ts`: `updateAgentRuntime`에서 dynamic-import fire-and-forget로 persist.
+
+**pulk**
+- `services/hermes-runtime/launchd/com.l5.git-acr-cleanup.plist`(신규, 03:30 일일) + `scripts/install-launchd.sh`(`__REPO_ROOT__` 치환 + PLISTS 등록).
+- pulk TS 무변경(쿼터는 cto.ts가 이미 read; ACR가 write).
+
+**운영 전제**: 쿼터 파일이 효과를 내려면 pulk hermes 디스패처와 acr-web이 같은 `ACR_QUOTA_TRACKER_PATH` env 공유 필요.
+
+### 검증
+- 신규 테스트: antigravity-runner `--model` 3종(+37), quota-tracker-file 6 GREEN.
+- 회귀: auto-dispatcher/resilience-loop/pre-dispatch/execution-safety-regression/phase19 GREEN. ACR `tsc --noEmit` 0. cleanup dry-run 동작·plist `plutil` OK·installer `bash -n` OK.
+- qa-fixes-phase11 1건 실패는 **사전 존재**(`HERMES_INTEGRATION_ROADMAP.md` 누락 ENOENT, 본 변경 무관).
+
+### Related Files
+- ACR: `antigravity-runner.ts`·`spawn-runner.ts`·`spawn-with-verification.ts`·`app/api/runner/route.ts`·`lib/agents/quota-tracker-file.ts`·`runtime-registry.ts` + 테스트 2파일.
+- pulk: `services/hermes-runtime/launchd/com.l5.git-acr-cleanup.plist`·`scripts/install-launchd.sh`.
+
+### 후속(연기)
+- 데몬 in-flight 생존: finalize 특성화 테스트 → finalizer 추출 → 플래그 게이트 데몬 → 라이브 통합 테스트(별도 세션).
+- agy **모델별** 쿼터 추적(현재 tier 단위), worktree 통합 자동 머지/union 리졸버.
+
+---
+
+## 2026-06-06 — 데몬 in-flight 생존 ①②단계: finalize 특성화 테스트 + finalizer 추출(무회귀)
+
+### Decision
+
+위 "데몬 in-flight 생존"의 안전 순서 중 **①특성화 테스트 + ②finalizer 추출**을 완료(헤드리스로 안전 검증 가능한 부분). ③플래그 게이트 데몬 + ④라이브 통합 테스트는 실 acr-web·worktree·CLI가 필요해 라이브 세션으로 유지.
+
+### Reason
+
+`/api/runner`의 post-spawn finalize(상태도출·커밋·머지·**L5 taskCallback**·빈출력·경계)가 테스트 0이라 추출이 위험하다고 봤음 → **먼저 그 동작을 고정하는 특성화 테스트를 깔고**, 그 안전망 위에서 추출하면 무회귀를 증명할 수 있다. 추출하면 (1) 그 로직이 테스트로 보호되고 (2) 별도 프로세스 러너가 같은 finalizer를 호출할 수 있어 in-flight 생존의 토대가 된다 (3) 608줄 라우트가 ~360줄로 슬림해진다.
+
+### Impact
+
+**ACR**
+- `__tests__/runner-finalize.test.ts`(신규): finalize의 **관찰 가능 행동**(최종 PlanTask 상태 + L5 콜백 status)을 4 시나리오(성공/실패/빈출력/경계위반)로 고정. 추출 전 현재 라우트에 대해 통과 → 추출 후에도 동일 통과 = **무회귀 증명**.
+- `lib/runner/finalize-phase-execution.ts`(신규): post-spawn 블록을 **verbatim** 추출(`controller.enqueue(encode(..))` → `emit(..)` 콜백만 변경). 인라인 러너와 미래 별도-프로세스 러너가 공유.
+- `app/api/runner/route.ts`: 인라인 finalize(~244줄)를 `await finalizePhaseExecution({...})` 호출로 대체(609→365줄). 추출로 고아가 된 import 정리.
+- `__tests__/qa-fixes-phase11.test.ts`: boundary 로직이 finalizer로 이동했으므로 소스 검사 위치를 새 모듈로 갱신(의도 동일).
+
+### 검증
+- 추출 전 runner-finalize 4 GREEN → 추출 후 4 GREEN(행동 보존). execution-safety-regression 34·전체 ACR 742 GREEN, tsc 0. (qa-fixes-phase11 잔여 1건은 사전존재 ENOENT.)
+- 배포: behavior-identical → ACR rebuild + acr-web restart로 live==repo 유지.
+
+### 후속(라이브 세션 필요)
+- ③ `/api/runner/prepare`(pre-spawn) + `/api/runner/finalize`(finalizer 호출) 엔드포인트 + **별도 프로세스 데몬**이 CLI를 spawn(기본 OFF 플래그). ④ 플래그 켜고 실제 phase 1개로 "L5 콜백 정상 도착" 라이브 확인.
+
+---
+
+## 2026-06-06 — 데몬 in-flight 생존 ③④ 라이브 시연 완료
+
+### Decision
+별도 프로세스 phase-runner 데몬 + prepare/finalize 엔드포인트를 구현하고 **라이브로 in-flight 생존을 시연·검증**했다. 인라인 `/api/runner`는 무수정(데몬은 추가 경로, 명시적/opt-in).
+
+### Impact (ACR)
+- `app/api/runner/prepare/route.ts`(신규): pre-spawn(브랜치·exec-log·warm session·agy 모델·status→running), `x-l5-shared-secret` 인증, 컨텍스트 반환.
+- `app/api/runner/finalize/route.ts`(신규): 데몬의 spawn 결과를 받아 **공유 `finalizePhaseExecution` 호출**(상태·커밋·머지·L5콜백 = 인라인과 동일).
+- `scripts/phase-runner-daemon.mjs`(신규): prepare → **자기 프로세스에서 CLI spawn**(claude/codex/agy, FAKE 데모 지원) → git 변화 측정 → finalize. finalize POST는 acr-web 재시작을 견디도록 24×5s 재시도.
+- `__tests__/runner-prepare-finalize.test.ts`(신규 4): 인증 가드(401/503) + finalize 배선.
+
+### 라이브 시연 결과 (격리 샌드박스 `~/l5-workspace/daemon-demo`)
+- 인라인 경로 격리: phase를 `auto_execute=false`로 디스패치(auto-dispatch/resilience가 안 건드림) → 데몬이 명시적 처리.
+- **in-flight 생존 증명**: 40초 spawn 도중 06:38:15 `acr-web kickstart -k`로 강제 종료 → 그 직후 데몬(PID 15034)·spawn 자식(15083)·acr-web=000(DOWN) 동시 확인 → spawn 40초 완주(06:38:44) → acr-web 복귀 후 finalize 안착(06:38:46).
+- 결과: ACR 태스크 **done**, 격리 브랜치 커밋+main 머지(`619c7ad`→`25bc361`, D2 자동머지), exec-log done/exit0, L5 콜백(nocobase:13000) 도달, 브라우저(acr-web /projects/[id])에 데몬-생성 프로젝트 렌더 확인.
+- D4 phase는 자동머지 게이트가 올바르게 차단(리뷰 대기)됨을 함께 확인.
+
+### 검증
+- 신규 4 + 기존(runner-finalize 4, execution-safety 34 등) GREEN, tsc 0, ACR rebuild(BUILD_ID 6vRuYYGfRK1FmGingK29S)+restart 배포.
+
+### 후속(남은 1단계)
+- 데몬을 **기본 실행 경로로 승격**: auto-dispatcher가 인라인 POST 대신 데몬 잡 큐로 enqueue하도록 배선(현재는 데몬이 명시적/opt-in 경로). 이때 잡 큐 + 워커 N개로 동시성 운영.
+
+---
+
+## 2026-06-06 — 데몬을 기본 실행 경로로 승격 (라이브 적용)
+
+### Decision
+phase-runner 데몬을 ACR의 **기본 실행 경로**로 승격. `ACR_EXTERNAL_RUNNER=1`이면 auto-dispatcher가 인라인 `/api/runner` 대신 잡큐로 enqueue하고, 상시 데몬(launchd)이 별도 프로세스에서 spawn→finalize. **플래그 하나로 인라인 복귀 가능(reversible).**
+
+### Impact (ACR)
+- `lib/orchestration/phase-runner-queue.ts`(신규): 디스크 원자적 잡큐(enqueue 멱등 + claimNext FIFO/agent필터). PlanTask 상태가 source-of-truth, 큐는 ephemeral 핸드오프.
+- `app/api/runner/queue/claim/route.ts`(신규, shared-secret): 워커가 잡 claim.
+- `lib/orchestration/auto-dispatcher.ts`: `EXTERNAL_RUNNER` 분기 — 모든 pre-flight(replan·prior-context·quota·risk) 유지하되 실행만 enqueue로 교체. **plan당 1 in-flight 가드**(running 있으면 skip)로 같은 cwd 동시실행 충돌 차단.
+- `app/api/runner/prepare/route.ts`: 큐의 enriched prompt override 수용.
+- `scripts/phase-runner-daemon.mjs`: poll 모드(claim 루프) 추가. `launchd/com.l5.acr-phase-runner.plist`(신규, KeepAlive, PATH에 claude/codex/agy).
+
+### 라이브 적용 + 검증
+- acr-web `.env.local`에 `ACR_EXTERNAL_RUNNER=1` + 재빌드(BUILD_ID M0A5WLQiEMcXhDw2aW2m1)+재시작. `com.l5.acr-phase-runner` 설치·기동(PID poll 모드).
+- **FAKE 워커 검증**: auto_execute D2 디스패치 → enqueue → claim → prepare → spawn → finalize → done(커밋+머지).
+- **실 claude 검증**: 깨끗한 샌드박스에 사소한 작업 디스패치 → 실 데몬이 claim → **진짜 claude 실행** → `hello.txt` 정확 생성 → finalize → 태스크 done, 커밋+main 머지. (프로덕션 경로 실 에이전트로 end-to-end 입증.)
+- 테스트: phase-runner-queue 3 + 인라인 회귀(auto-dispatcher/resilience) GREEN, tsc 0.
+
+### 운영 주의 (stale 백로그)
+- 플래그 ON 시 resilience-tick이 기존 FeaturePlan의 'planned' phase도 큐에 쓸어담음. 현재 28개 stale plan(2일+, m9e2e 테스트/버려진 것, dirty cwd)이 존재 → **one-in-flight 가드 + dirty cwd 409로 전부 inert**(큐가 70초+ 0 유지 확인). 유저 실 데이터라 일괄 변경하지 않음. **권장: stale plan 별도 아카이브.**
+- 롤백: `.env.local`에서 `ACR_EXTERNAL_RUNNER=0`(또는 제거)+재빌드/재시작 → 인라인 복귀. 데몬 중지: `launchctl unload ~/Library/LaunchAgents/com.l5.acr-phase-runner.plist`.
+
+### 결과
+"데몬 in-flight 생존"의 마지막 단계(기본 경로 승격) 완료. CTO/ACR 자율 코딩의 모든 phase가 이제 acr-web 밖 별도 프로세스에서 실행 → acr-web 재시작이 진행 중 작업을 죽이지 않음.
+
 ---
 
 ## 2026-06-06 — CMO/Script Room v3.1 경계 확정 + 전체 구현(P0~P6)
@@ -838,3 +1008,21 @@ P0 계약문서 2종 / P1 타입+빌더+validator / P2 Research 5종+Gate1 / P3 
 
 ### Verify
 l5-core typecheck 0, video-room 509 tests/34 suites GREEN. founder-ui typecheck 0. dist/plugin.js node --check OK. 단일 카드 e2e(Research→Brief→Handoff) + 테스트6(scene_type 부재) 통과. 라이브 NocoBase DB E2E는 후속(헤드리스 불가).
+
+---
+
+## ACR을 pulk CTO의 실행 커널로 풀구현 (2026-06-06)
+
+### Decision
+PRD대로 ACR을 planning brain에서 **execution kernel**로 축소하고, ExecutionRun/Worktree/Harness/Verification/Handoff를 ACR repo에, Agent Team 분해·복잡도·경계 판단을 pulk에 두는 2-level 구조를 양 repo에 걸쳐 구현. dynamic phased workflow(agent team 기반 8 phase)로 진행.
+
+### Why
+이전 점검(CTO_ACR_HARNESS_ASSESSMENT.html)에서 "판단 계층은 라이브, 실행 계층은 계약만"이 최대 갭. 실행 커널을 실제로 세워야 팀/하네스가 설계도→라이브가 됨. ACR repo가 별도(yangminguy/agent-control-room)라 cross-repo 진행, 단 양쪽 미커밋(ACR 111 WIP / pulk CMO)은 불가침·선택 add.
+
+### Impact
+- ACR: lib/execution-run·lib/worktree·lib/harness 신규(기존 /api/runner·lib/runner 무손상 thin adapter). PreToolUse hook으로 §19.1 destructive 실제 차단.
+- pulk: cto-harness/{team-orchestrator,acr-intent-adapter}, agent-runtime/acr-execution-client, Control Room §18.1 UI. 기존 workbench dispatch 비파괴(ACR_EXECUTION_RUNS 플래그).
+- Dagu(§9)는 PRD Non-Goal로 보류.
+
+### Verify
+ACR 124/124 + next build PASS, pulk l5-core 1414·agent-runtime 16/16·founder-ui build·control-room E2E PASS. 통합 단서 4건은 라이브 ACR 백엔드 기동 시 검증(정적 컨텍스트 한계). 상세 docs/CTO_ACR_PRD_COMPLETION.html.

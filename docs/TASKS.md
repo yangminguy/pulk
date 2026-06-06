@@ -1452,6 +1452,26 @@ L5 Business OS
 - verify: E2E 9 테스트(secondbrain.read→ask_founder→재개→configure+generate, 역할권한, write CEO게이트). l5-core 410/413(3 pre-existing 무관). ✅
 
 **순서 의존:** M1(토대) → M2 → M3 → M4 → M5. **전부 완료 + 라이브/브라우저 검증.** 실연결 TODO: 세컨브레인 MCP(`SECONDBRAIN_MCP_URL/TOKEN`)·영상생성기(`VIDEO_FACTORY_URL/TOKEN`) env 설정 + transport 매핑(미설정 시 graceful).
+
+### ACR 오케스트레이션 정체 근본화  [x] 2026-06-06
+- ACR 자율 코딩의 인메모리 plan 락 + abort 없는 SSE 드레인 → 행 시 정체 → acr-web 재시작(재실행 낭비) 근본 제거.
+- **하트비트 lease**(`auto-dispatcher.ts`: 산 drain 유지, 죽은 홀더 3분 stale 재청구) + **/api/runner abort 타임아웃**(`ACR_RUNNER_TIMEOUT_MS`) + 드라이버 acr-web 재시작 제거(`cmo-driver.mjs`).
+- `/api/runner` 무수정 → L5 콜백·머지·경계 무회귀. 데몬 직접 spawn(in-flight 생존)은 회귀 위험으로 보류(`docs/DECISIONS.md` 2026-06-06).
+- verify: 신규 `__tests__/auto-dispatcher-resilience.test.ts` 2종 + 기존 auto-dispatcher/resilience-loop/pre-dispatch 19/19 GREEN. 드라이버 `node --check` OK. ✅
+
+### CTO 개선 후속 3종  [x] 2026-06-06
+- **per-phase agy 모델**: agy `--model`(병렬 안전) 배선 — 경량=Flash, 코딩=Pro. `antigravity-runner.ts`·`spawn-runner.ts`·`spawn-with-verification.ts`·`/api/runner`. env `ACR_AGY_MODEL_LIGHT/_CODE/_PER_PHASE_MODEL`.
+- **쿼터 추적 갱신부**: `lib/agents/quota-tracker-file.ts` — registry→`QuotaState`를 `ACR_QUOTA_TRACKER_PATH`에 영속화(`updateAgentRuntime` choke point). B5 read-path 완성. 전제: pulk·acr-web 같은 env 공유.
+- **브랜치 정리 자동화**: `git-acr-cleanup.sh` 일일 launchd(`com.l5.git-acr-cleanup.plist` 03:30) + installer 등록.
+- verify: antigravity-runner `--model` 3종(+37)·quota-tracker-file 6 GREEN, 회귀 GREEN, tsc 0. cleanup dry-run·plutil·bash -n OK. ✅
+- **데몬 in-flight 생존 보류**: runner finalize가 테스트 0 → 안전망 없는 리팩터 위험. 순서 = finalize 특성화 테스트 → 추출 → 플래그 게이트 데몬 → 라이브 통합 테스트(별도 세션).
+
+### 데몬 in-flight 생존 ①② (finalize 추출)  [x] 2026-06-06
+- **①특성화 테스트** `__tests__/runner-finalize.test.ts`: finalize 행동(PlanTask 상태+L5콜백 status) 4시나리오 고정 → 무회귀 안전망.
+- **②추출** `lib/runner/finalize-phase-execution.ts`: post-spawn 블록 verbatim 추출(emit 콜백화). route.ts 609→365줄, 고아 import 정리. 인라인+미래 데몬 공유.
+- verify: 추출 전후 finalize 4 GREEN(행동 보존), 전체 742 GREEN(사전존재 ENOENT 1건 제외), tsc 0. ACR rebuild+restart 배포. ✅
+- **③④(라이브 세션)**: prepare/finalize 엔드포인트 + 별도 프로세스 데몬(기본 OFF) + 플래그 켜고 실 phase 1개 L5콜백 확인.
+
 ---
 
 ## CMO / Script Room v3.1 구현 (2026-06-06 시작, workflow 연속 실행)
@@ -1466,3 +1486,25 @@ L5 Business OS
 - [x] P5 VideoExecutionBrief 빌더 완성 + 핸드오프(script-factory 대체)
 - [x] P6 UI 패널 + cmo: API + Content Card Board
 
+### 데몬 기본 실행 경로 승격 (외부러너)  [x] 2026-06-06
+- `ACR_EXTERNAL_RUNNER=1`: auto-dispatcher가 인라인 대신 잡큐 enqueue, 상시 데몬(`com.l5.acr-phase-runner`)이 별도 프로세스에서 claim→prepare→spawn→finalize. acr-web 재시작이 in-flight 못 죽임.
+- 신규: `phase-runner-queue.ts`, `api/runner/queue/claim`, 데몬 poll 모드, launchd plist. auto-dispatcher 외부분기+plan당 1 in-flight 가드. prepare prompt override.
+- verify: phase-runner-queue 3 + 인라인 회귀 GREEN, tsc 0. 라이브 FAKE+실 claude 둘 다 end-to-end done(커밋+머지). 배포 BUILD_ID M0A5WLQiEMcXhDw2aW2m1.
+- 롤백: `ACR_EXTERNAL_RUNNER=0`+재빌드/재시작 → 인라인. 데몬 중지 launchctl unload. ✅
+- 주의: stale plan 28개는 가드+dirty cwd 409로 inert(미변경, 별도 아카이브 권장).
+
+### CTO Harness / ACR Kernel 계약 레이어 (PRD: FINAL_pulk_cto_acr_kernel_harness_agent_team_prd)  [x] 2026-06-06
+- 브랜치: `cto/acr-kernel-harness` (CMO `cmo/video-room-ui-refactor`와 분리). CMO 영역(video-room/·cmo-strategy/·app/cmo·app/video-room·docs/CMO_*) 무수정.
+- 신규 모듈 `packages/l5-core/src/functions/cto-harness/` (순수·결정적·테스트, 1711 LOC):
+  - types.ts: ExecutionRun/HarnessInput·Output/ResultPacket/WorkOrder/MainAgentWorkPackage/AgentTeamRun/TeamResultPacket 계약(PRD §8/§10/§14/§16/§29). 루트 배럴 충돌 회피 위해 RiskLevel→HarnessRiskLevel.
+  - complexity-router(C0~C5 분류+mode/harnessMode/verificationProfile), command-guard(§14.8 금지명령), boundary-check(§12.3 allowed/blocked glob, DEFAULT_BLOCKED), work-order(§10 빌드/검증), team-router(§29 selectMainAgent/orchestrationMode/canParallelize/decompose, C0~C1 team금지·C5만 parallel), prompt-builder(§7.1 9블록), result-aggregator(§11 conflict detect+집계).
+- verify: l5-core tsc --noEmit 0 오류, jest cto-harness 216/216 GREEN (7 스위트). 통합오류 2건(work-order↔complexity-router 시그니처) + glob `**/` 루트매칭 3건 수정 완료.
+- 문서: docs/ACR_KERNEL_REFACTOR_PLAN.md, docs/AGENT_TEAM_ARCHITECTURE.md.
+- 범위 밖(보고): worktree 실제 git 실행·POST/GET /api/execution-runs·ACR debug UI·Playwright artifact 런타임·self-healing·Dagu → 별도 저장소 agent-control-room(이 워크스페이스 밖)이 이미 보유/책임. pulk 중복구현은 비효율이라 미구현.
+
+### CTO↔ACR 연계: WorkOrder→ACRIntent 어댑터 + Control Room 복잡도 표시  [x] 2026-06-06
+- 원칙 확정: ACR은 판단 안 함. CTO가 복잡도(C0~C5)·실행모드·경계(blocked_files)를 dispatch payload에 실어 보냄(PRD §5.2).
+- Step1 어댑터: `cto-harness/acr-intent-adapter.ts` (taskClassToComplexity/applyHarnessMetadata/workOrderToACRIntent). `types/acr-intent.ts`에 additive optional 필드(complexity/harness_mode/allowed_files/blocked_files/requires_approval). `agents/cto.ts` dispatch 직전 applyHarnessMetadata 배선(blocked_files=DEFAULT_BLOCKED 하드블록). 비파괴.
+- Step2 UI: build-control-room-tree에 complexity 패스스루(ACR echo), founder-ui ControlRoomDevTask + DevTaskRow에 ComplexityBadge(C0~C5). 데이터 없으면 미표시.
+- verify: l5-core tsc 0 + jest 236/236(9스위트), agent-runtime tsc 0 + cto.test 8/8 무회귀, founder-ui tsc 0. l5-core dist 재빌드(@l5/core=dist 해석).
+- 참고: control-room은 이미 run status·acr_agent·branch·phase·changed_files·log_tail 표시(§18.1 대부분 기존 충족). 신규는 complexity 축만.
