@@ -13,7 +13,11 @@
 - **배포**: l5-core dist 빌드(zod 미설치 typecheck 에러는 기존 환경 드리프트·내 파일은 정상 emit), plugin `dist/plugin.js` 직접 패치(require 추가 + 맵→함수, `node --check` OK), nocobase :13000 kickstart.
 - **검증**: strategy_chat 첫 메시지 `cmo:chatMessage` → HTTP 200·실제 LLM 답변·ok=true(새 경로 정상). 세컨브레인 biz 직접 조회 시 첫 단계 쿼리에 **PT 인사이트 6건 반환**("초기 타깃=작은 브랜드 대표", "고객 문제 인식→여정", "풀링2 문제 심화", "고객 관점 출발") — 이제 첫 메시지부터 프롬프트 주입.
 
-**남은 것**: **Phase B**(Hermes 일일 PT diff→🔔 승인 큐 카드), **Phase C**(구조 변경 건→CTO task 초안→사장님 승인/거절→ACR 디스패치+테스트게이트). 둘 다 승인 큐 데이터모델 설계 선행 필요. zod 미설치 환경 드리프트(전체 `pnpm install` 필요)는 별도.
+**Phase B 코어 완료 (2026-06-06)**: `l5-core/cmo-strategy/strategy-watch.ts` — `cmoStrategyWatch(prev, current)`가 biz 브레인 `brains/biz/memory/inventory.jsonl`(각 줄 source_id+hash)을 스냅샷 diff해 신규/수정 PT 감지 + 사장님 요약 생성(self-learning 동일 패턴, 시맨틱 추측 대신 파일 해시 diff = 신뢰적). `parsePTInventory`로 jsonl 파싱. 순수·NocoBase-free, 단위테스트 8건(cmo-strategy 16/16). **남은 것**: Hermes 래퍼 task(inventory 읽기→스냅샷 load/save→cmoStrategyWatch→🔔 제안+텔레그램, 없으면 skip) + launchd plist(09:00) + 라이브 배포.
+
+**Phase C 인프라 발견 (대부분 존재)**: executive-monitor + founder-ui에 자가수정 승인 체인 완비 — `approval/page.tsx`(`api.approvalQueue`/`approveTask`/`rejectTask`/`applySelfMod`/`rollbackSelfMod` + `acr_diff` diff 미리보기), `plugin-executive-monitor/src/server/plugin.ts:542~`("[CTO에게 전송]→self-mod task 생성, self_mod_origin/self_mod_status awaiting_apply→applied/rejected"), `acr-client.notifyACRApprovalRequired`. **승인 전 코드 불변은 기존 self_mod_status 게이트가 보장.** 남은 것: Phase B의 🔔 제안 → "CTO에게 전송"을 이 기존 에스컬레이션에 배선(2단계 승인: 의뢰 승인 → 적용 승인).
+
+**기타**: zod 미설치 환경 드리프트(전체 `pnpm install` 필요, 기존). Phase A·B 코어는 `cmo/video-room-ui-refactor` 브랜치 PR #5.
 
 ---
 
