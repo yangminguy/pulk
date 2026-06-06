@@ -24,7 +24,10 @@
 - l5-core: selfmod-criteria + cmo-strategy + second-brain-query 테스트 PASS.
 - **부수 수정**: Phase A의 `second-brain-query.ts` `QUERY_BY_STATUS`에 `paused` 누락(VideoRoomStatus exhaustiveness 타입 에러, 런타임 undefined 쿼리 버그) → `paused: null` 추가(일시정지 룸은 쿼리 안 함). hermes 테스트가 `@l5/core` 배럴을 타입체크하며 드러난 기존 갭.
 
-**남은 수동 단계(라이브, 의도적으로 미실행)**: ① hermes launchd 활성화(`launchctl load`) ② nocobase 재기동(executive-monitor dist 반영). ③ 환경 드리프트: l5-core `zod` 미설치 → `schemas/*.ts` tsc 에러(전체 `pnpm install` 필요, 기존). tsc는 JS는 emit하므로 런타임 영향 없음.
+**라이브 활성화 완료(2026-06-06 추가 실행)**:
+- ① **hermes launchd 활성화 완료**: `com.l5.hermes.cmo-strategy-watch.plist` 설치(placeholder 치환 + `NOCOBASE_TOKEN`은 설치본에만 주입, repo 템플릿은 시크릿 없이 `NOCOBASE_URL`만)·`launchctl load`. `install-launchd.sh` PLISTS 목록에도 추가. **1회 수동 실행으로 베이스라인 수립 검증**: 1059줄 → 중복 source_id 제거 후 **606개 스냅샷**, 카드/알림 0, exit 0(첫 실행 = 조용한 베이스라인). 내일 09:05부터 실제 변화만 보고.
+- ② **nocobase 재기동 완료**: `launchctl kickstart -k`(PID 70452, health 200). `toolRequests` OR 필터 라이브 확인(`ok=true`, SQL 에러 없음).
+- ③ **환경 드리프트 해소 완료**: l5-core `zod` 미설치 → **전체 `pnpm install`(node_modules wipe, 라이브 서비스 중단 위험) 대신 안전한 방법으로 해결**. (a) `zod`는 이미 pnpm store에 있어(3.25.76, `^3.22.0` 충족) `packages/l5-core/node_modules/zod` **심링크만 생성**(기존 typescript 링크와 동일 패턴). (b) 동일 드리프트인 `pptxgenjs`(store에 없음)는 **그 폴더에 격리 npm 설치**(`--no-save`, 기존 심링크 전부 유지, 추적파일 무변경). 결과 **l5-core 빌드 tsc 0(완전 clean)**, 테스트 24/24, 서비스 정상. 루트 `pnpm-lock.yaml`엔 이미 둘 다 기록돼 있었으므로(설치만 누락) lockfile 무변경. 커밋된 stale `package-lock.json`은 원본 그대로 복원(npm이 덮어쓴 것 git checkout).
 
 ---
 
