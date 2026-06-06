@@ -41,6 +41,8 @@ const QUERY_BY_STATUS: Record<VideoRoomStatus, string | null> = {
   upload_draft:                  '유튜브 업로드 제목 썸네일 설명 SEO',
   upload_approval:               '유튜브 업로드 제목 썸네일 설명 SEO',
   completed:                     null,
+  // Paused rooms run no active query (resumes pick up at their prior status).
+  paused:                        null,
 };
 
 /**

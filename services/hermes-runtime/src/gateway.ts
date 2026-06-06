@@ -8,6 +8,7 @@
 //   cto-weekly-review     — BPR phase transition check (Monday 10:00)
 //   model-verify          — model roster deprecation check (08:55)
 //   self-learning         — changelog diff + catalog update (09:00)
+//   cmo-strategy-watch    — biz Second Brain PT-change watcher (09:05)
 
 import {
   runRepetitionAnalyzerLive,
@@ -18,6 +19,7 @@ import {
   runCTOVerificationLoopLive,
   runModelVerifyLive,
   runSelfLearningLive,
+  runCmoStrategyWatchLive,
   runTaskArchiverLive,
 } from "./runner.js";
 
@@ -30,6 +32,7 @@ const TASK_RUNNERS: Record<string, () => Promise<unknown>> = {
   "cto-verification-loop": runCTOVerificationLoopLive,
   "model-verify": runModelVerifyLive,
   "self-learning": runSelfLearningLive,
+  "cmo-strategy-watch": runCmoStrategyWatchLive,
   "task-archiver": runTaskArchiverLive,
 };
 

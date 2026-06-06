@@ -449,12 +449,15 @@ async function toolRequests(ctx: MonitorContext) {
   const db = ctx.db || ctx.app.db;
   const { status } = requestValues(ctx) as { status?: string };
 
-  // Use raw query to filter by source_ref prefix (repetition-pattern:*)
+  // Use raw query to filter by source_ref prefix. Two sources land on this
+  // 🔔 surface: repetition-pattern:* (repetition-analyzer) and secondbrain-watch:*
+  // (cmo-strategy-watch, self-improvement loop Phase B). Both are CTO improvement
+  // proposals the founder escalates via [CTO에게 전송].
   const whereStatus = status && status !== 'all' ? `AND status = :status` : '';
   const tasks = await db.sequelize.query(
     `SELECT * FROM agent_tasks
      WHERE assigned_agent = 'CTO'
-       AND source_ref LIKE 'repetition-pattern:%'
+       AND (source_ref LIKE 'repetition-pattern:%' OR source_ref LIKE 'secondbrain-watch:%')
        ${whereStatus}
      ORDER BY updated_at DESC`,
     {

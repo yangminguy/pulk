@@ -16,6 +16,8 @@
 
 **배제/보류**: YouTube API 영상 반응 데이터(진짜 학습 신호)는 후속 — 들어오면 Phase C의 가치 ↑. 현재 세컨브레인 PT 인사이트가 적어 Phase A의 즉효는 작지만 "수도꼭지를 먼저 단다".
 
+**구현 완료(2026-06-06)**: Phase B 래퍼(`cmo-strategy-watch.ts`)·Phase C 배선 코드화. **핵심 결정 — 새 🔔 surface를 만들지 않고 기존 tool-requests 카드 surface를 재사용**: Phase B는 변화 감지 시 CTO tool-request 카드를 `source_ref:secondbrain-watch:<date>`로 생성하고, executive-monitor `toolRequests` 필터를 `repetition-pattern:%` 단독 → `(repetition-pattern:% OR secondbrain-watch:%)`로 한 줄 확장. 이렇게 하면 [CTO에게 전송]→`sendToCTO`→`applySelfMod`/`rollbackSelfMod`(2단계 승인) 전 체인이 source_ref에 무관하게 그대로 작동 → 신규 UI/액션 0. 추가 안전장치로 **첫 실행 베이스라인 가드**(빈 스냅샷 시 1059건 노이즈 알림 방지, 둘째 실행부터 실제 변화만 보고)를 래퍼에 둠(코어는 순수 유지). 라이브 활성화(launchd load + nocobase 재기동)는 수동 단계로 분리.
+
 ---
 
 ## 2026-06-05 — CTO 파이프라인 결정적화 우선 + ACR 브랜치 생명주기 정리

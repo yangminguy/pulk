@@ -1,6 +1,30 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-06 (CMO 세컨브레인 자가개선 루프 Phase A — read-path 전 단계 확장 + 배포)
+최종 업데이트: 2026-06-06 (CMO 세컨브레인 자가개선 루프 Phase B 래퍼 + Phase C 배선 완료)
+
+---
+
+## 🟢 2026-06-06 — 자가개선 루프 Phase B(일일 감시) + Phase C(에스컬레이션 배선) 완료
+
+**배경**: Phase A(read-path)·Phase B 코어(`cmoStrategyWatch`)에 이어, 일일 감시 래퍼와 CTO 에스컬레이션 배선을 코드로 완성. 설계 = `docs/DECISIONS.md` 2026-06-06. **원칙 불변: 승인 전엔 코드 한 줄도 안 바뀜(기존 self_mod_status 게이트 보장).**
+
+**Phase B — `services/hermes-runtime/src/tasks/cmo-strategy-watch.ts` (신규)**
+- self-learning 패턴 복제. biz 브레인 `brains/biz/memory/inventory.jsonl` 읽기 → `.omc/state/cmo-strategy-snapshot.json` load/save → `cmoStrategyWatch`(l5-core 순수 판단) → diff.
+- **첫 실행 베이스라인 가드**: prev 스냅샷이 비면 1059건 전체가 "added"로 잡혀 무의미한 알림이 되므로, 베이스라인만 조용히 저장하고 카드/알림 없이 종료. 둘째 실행부터 실제 변화만 보고.
+- 변화 시: **CTO tool-request 카드 1건 생성**(`assigned_agent:CTO`, `source_ref:secondbrain-watch:<date>`, status queued, approval_required false) + 텔레그램(dedupKey 일별). 변화 없으면 조용히 skip. 절대 throw 안 함(오프라인/파일 없음 graceful).
+- 배선: `runner.runCmoStrategyWatchLive`(createAgentTask 주입, repetition-analyzer와 동일하게 instruction FK 자동 provision) + `gateway` 등록(`cmo-strategy-watch`). launchd 템플릿 `launchd/com.l5.hermes.cmo-strategy-watch.plist`(09:05, self-learning 직후, RunAtLoad false).
+
+**Phase C — 기존 체인 재사용 배선 (executive-monitor)**
+- 갭은 단 하나: `toolRequests` 액션의 SQL이 `source_ref LIKE 'repetition-pattern:%'`만 잡아 B 카드가 안 보임. → `(repetition-pattern:% OR secondbrain-watch:%)`로 확장(`src/server/plugin.ts:448~` + `dist/plugin.js` 직접 패치).
+- 그 외 전 체인(UI [CTO에게 전송] 버튼 → `sendToCTO` self-mod 생성 → `applySelfMod`/`rollbackSelfMod` + diff 미리보기 + blast-radius deny)은 source_ref에 무관하게 작동 → 추가 변경 불필요.
+- `buildSelfModAcceptanceCriteria`(l5-core): `secondbrain-watch:<date>` prefix를 strip해 수용 기준이 날짜 대신 카드 제목으로 fallback(테스트 1건 추가).
+
+**검증**
+- hermes `cmo-strategy-watch` 테스트 4건 PASS(baseline/change-card+alert/silent/missing). hermes 빌드 tsc 0, gateway가 `cmo-strategy-watch` 등록 확인. 전체 hermes 89/90(실패 1건 `model-verify` roster_entries — 라이브 모델 데이터 네트워크 의존, 본 변경과 무관/기존).
+- l5-core: selfmod-criteria + cmo-strategy + second-brain-query 테스트 PASS.
+- **부수 수정**: Phase A의 `second-brain-query.ts` `QUERY_BY_STATUS`에 `paused` 누락(VideoRoomStatus exhaustiveness 타입 에러, 런타임 undefined 쿼리 버그) → `paused: null` 추가(일시정지 룸은 쿼리 안 함). hermes 테스트가 `@l5/core` 배럴을 타입체크하며 드러난 기존 갭.
+
+**남은 수동 단계(라이브, 의도적으로 미실행)**: ① hermes launchd 활성화(`launchctl load`) ② nocobase 재기동(executive-monitor dist 반영). ③ 환경 드리프트: l5-core `zod` 미설치 → `schemas/*.ts` tsc 에러(전체 `pnpm install` 필요, 기존). tsc는 JS는 emit하므로 런타임 영향 없음.
 
 ---
 

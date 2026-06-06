@@ -8,10 +8,10 @@
 > 사장님: 비즈니스 PT 정보가 매주 쌓임 → CMO가 진화해야. 데이터층(자동)/코드층(승인된 CTO) 분리. 설계 = `docs/DECISIONS.md` 2026-06-06. **원칙: 승인 전엔 코드 안 바뀜.**
 
 - [x] **Phase A — read-path 전 단계 확장**: `l5-core/second-brain-query.ts`(`secondBrainQueryForStatus`, 23단계 전수, strategy_chat·원고·제작·발행 포함) + 테스트 4건. plugin 하드코딩 맵 제거→함수 사용. l5-core video-room 218/218. dist 패치+nocobase 재시작 배포. strategy_chat 첫 메시지 200·LLM 답변·SB 인사이트 6건 반환 확인.
-- [~] **Phase B — 일일 PT 감시**:
+- [x] **Phase B — 일일 PT 감시**:
   - [x] 코어 판단 로직: `l5-core/cmo-strategy/strategy-watch.ts` (`cmoStrategyWatch` snapshot diff + `parsePTInventory`). biz 브레인 `brains/biz/memory/inventory.jsonl`(source_id+hash) 스냅샷 비교로 신규/수정 PT 감지 + 사장님 요약 생성. 순수·테스트 8건(cmo-strategy 16/16).
-  - [ ] Hermes 래퍼 task `cmo-strategy-watch.ts`(self-learning 패턴): inventory.jsonl 읽기→스냅샷 load/save→`cmoStrategyWatch`→hasChanges 시 🔔 제안 생성+텔레그램, 없으면 skip. launchd plist(09:00). **라이브 hermes 배포 = 별도 단계.**
-- [ ] **Phase C — CTO 자가개조(승인 게이트)**: ★인프라 대부분 존재★ — executive-monitor에 "[CTO에게 전송]→self-mod task→승인 큐(🔔)→`applySelfMod`(ACR 적용)/`rollbackSelfMod`+diff 미리보기" 체인 완비(`approval/page.tsx`, `plugin.ts:542~`). 남은 것: B의 🔔 제안에서 "CTO에게 전송" 버튼을 이 기존 에스컬레이션에 배선. 승인 전 코드 불변은 기존 self_mod_status 게이트가 보장.
+  - [x] Hermes 래퍼 task `cmo-strategy-watch.ts`(self-learning 패턴): inventory.jsonl 읽기→스냅샷 load/save→`cmoStrategyWatch`→**첫 실행은 베이스라인만 조용히 저장(1059건 노이즈 방지)**, hasChanges 시 CTO tool-request 카드(`source_ref: secondbrain-watch:<date>`)+텔레그램, 없으면 skip. `runner.runCmoStrategyWatchLive`(createAgentTask 주입)+gateway 등록. 테스트 4건(baseline/change/silent/missing). launchd plist `com.l5.hermes.cmo-strategy-watch.plist`(09:05). **launchd 활성화 = 수동(별도 단계).**
+- [x] **Phase C — CTO 자가개조(승인 게이트)** *(배선 완료)*: ★인프라 대부분 존재★ — executive-monitor "[CTO에게 전송]→self-mod task→승인 큐(🔔)→`applySelfMod`/`rollbackSelfMod`+diff 미리보기" 체인 완비. **배선 = `toolRequests` SQL 필터를 `repetition-pattern:%` 단독 → `(repetition-pattern:% OR secondbrain-watch:%)`로 확장**(src+dist 패치). 이제 B 카드가 같은 🔔 surface에 떠 기존 [CTO에게 전송]→sendToCTO→applySelfMod 체인이 그대로 작동. `buildSelfModAcceptanceCriteria`도 secondbrain-watch prefix strip(테스트 추가). 승인 전 코드 불변은 기존 self_mod_status 게이트가 보장. **라이브 nocobase 재기동 = 수동.**
 - [ ] **후속**: YouTube API 반응 데이터 → 학습 신호. zod 미설치 환경 드리프트(`pnpm install`).
 
 ## 🎬 CMO Video Room — UI 재설계: 단계 중심 단일 포커스 (2026-06-06, frontend-only)

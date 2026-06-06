@@ -56,6 +56,7 @@ PLISTS=(
   "com.l5.hermes.cto-verification-loop.plist"
   "com.l5.hermes.model-verify.plist"
   "com.l5.hermes.self-learning.plist"
+  "com.l5.hermes.cmo-strategy-watch.plist"
   "com.l5.hermes.task-archiver.plist"
 )
 
