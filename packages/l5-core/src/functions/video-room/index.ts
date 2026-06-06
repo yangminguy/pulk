@@ -11,3 +11,4 @@ export * from './approval-gates';
 export * from './production';
 export * from './review-publish';
 export * from './script-factory';
+export * from './second-brain-query';

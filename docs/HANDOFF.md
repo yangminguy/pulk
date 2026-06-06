@@ -1,6 +1,19 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-06 (CMO Video Room UI 재설계 — 단계 중심 단일 포커스: 5단계 타임라인 + 접이식 드로어 + 소프트 게이팅)
+최종 업데이트: 2026-06-06 (CMO 세컨브레인 자가개선 루프 Phase A — read-path 전 단계 확장 + 배포)
+
+---
+
+## 🟢 2026-06-06 — CMO 세컨브레인 자가개선 루프 Phase A: read-path 전 단계 확장 (배포 완료)
+
+**배경**: 사장님 — 세컨브레인의 비즈니스 PT 정보에 맞춰 CMO가 진화해야 한다. 조사 결과 CMO 챗은 세컨브레인을 전략~리서치 중간 단계에서만 조회(첫 대화 strategy_chat·원고·제작·발행 누락), 학습 루프 없음. 전체 설계는 `docs/DECISIONS.md` 2026-06-06 (데이터층 자동 / 코드층 승인된 CTO 분리).
+
+- **`l5-core/video-room/second-brain-query.ts` (신규)**: `secondBrainQueryForStatus(status)` — 23단계 전수 매핑(strategy_chat 포함, completed/unknown만 null). 단계별 PT 쿼리(원고=스토리텔링 현상욕구계획행동보상, 제작=나레이션/슬라이드/편집, 발행=유튜브 SEO 등). 단위테스트 `__tests__/second-brain-query.test.ts` 4건. **l5-core video-room 218/218 통과**(회귀 0).
+- **plugin chatMessage 배선**: 하드코딩 `SB_STATUS_QUERY` 맵(10단계만) 제거 → `secondBrainQueryForStatus` 사용. 도메인 매핑을 l5-core로 이전(CLAUDE.md 규칙). graceful 유지(무히트/실패 시 무시).
+- **배포**: l5-core dist 빌드(zod 미설치 typecheck 에러는 기존 환경 드리프트·내 파일은 정상 emit), plugin `dist/plugin.js` 직접 패치(require 추가 + 맵→함수, `node --check` OK), nocobase :13000 kickstart.
+- **검증**: strategy_chat 첫 메시지 `cmo:chatMessage` → HTTP 200·실제 LLM 답변·ok=true(새 경로 정상). 세컨브레인 biz 직접 조회 시 첫 단계 쿼리에 **PT 인사이트 6건 반환**("초기 타깃=작은 브랜드 대표", "고객 문제 인식→여정", "풀링2 문제 심화", "고객 관점 출발") — 이제 첫 메시지부터 프롬프트 주입.
+
+**남은 것**: **Phase B**(Hermes 일일 PT diff→🔔 승인 큐 카드), **Phase C**(구조 변경 건→CTO task 초안→사장님 승인/거절→ACR 디스패치+테스트게이트). 둘 다 승인 큐 데이터모델 설계 선행 필요. zod 미설치 환경 드리프트(전체 `pnpm install` 필요)는 별도.
 
 ---
 

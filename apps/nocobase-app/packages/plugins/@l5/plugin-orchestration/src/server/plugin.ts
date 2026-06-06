@@ -111,6 +111,7 @@ const {
   createSecondBrainInsightMerge,
   composeIntro30s,
   buildFactoryVideoJob,
+  secondBrainQueryForStatus,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/video-room'));
 
 const {
@@ -2496,20 +2497,11 @@ function registerCmoResource(app: any, db: any) {
 
         // Second brain: query insights relevant to the current project status and
         // inject them into the strategy context. Graceful — failure never blocks.
-        const SB_STATUS_QUERY: Record<string, string> = {
-          business_pt_context_loading: '비즈니스 PT 콘텐츠 전략 키 콘텐츠 풀링 채널',
-          product_defined:             '비즈니스 PT 콘텐츠 전략 키 콘텐츠 풀링 채널',
-          key_content_ideation:        '키 콘텐츠 기획 문제 상황 역순 기획',
-          key_content_approval:        '키 콘텐츠 기획 문제 상황 역순 기획',
-          viewtrap_key_research:       '콘텐츠 리서치 경쟁사 벤치마킹 풀 콘텐츠',
-          viewtrap_pulling_research:   '콘텐츠 리서치 경쟁사 벤치마킹 풀 콘텐츠',
-          pulling_content_set_selection: '풀링 콘텐츠 현상 욕구 계획 행동 보상',
-          pulling_content_set_approval:  '풀링 콘텐츠 현상 욕구 계획 행동 보상',
-          thumbnail_pattern_extraction: '썸네일 도입부 후킹 빌드업 벤치마킹',
-          intro_30s_analysis:           '썸네일 도입부 후킹 빌드업 벤치마킹',
-        };
+        // Status→query mapping lives in l5-core (secondBrainQueryForStatus) and
+        // now covers EVERY stage incl. strategy_chat / script / production / publish
+        // (Phase A read-path expansion).
         let second_brain_insights: string[] = [];
-        const sbQuery = SB_STATUS_QUERY[proj.status as string];
+        const sbQuery = secondBrainQueryForStatus(proj.status as string);
         if (_secondBrainTransport && sbQuery) {
           try {
             const sbHits = await _secondBrainTransport.query({ role: sbQuery as any, limit: 6 });

@@ -3,6 +3,15 @@
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
 > 최종 업데이트: 2026-06-06 (CMO Video Room UI 재설계 — 단계 중심 단일 포커스). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
 
+## 🧠 CMO 세컨브레인 자가개선 루프 (2026-06-06)
+
+> 사장님: 비즈니스 PT 정보가 매주 쌓임 → CMO가 진화해야. 데이터층(자동)/코드층(승인된 CTO) 분리. 설계 = `docs/DECISIONS.md` 2026-06-06. **원칙: 승인 전엔 코드 안 바뀜.**
+
+- [x] **Phase A — read-path 전 단계 확장**: `l5-core/second-brain-query.ts`(`secondBrainQueryForStatus`, 23단계 전수, strategy_chat·원고·제작·발행 포함) + 테스트 4건. plugin 하드코딩 맵 제거→함수 사용. l5-core video-room 218/218. dist 패치+nocobase 재시작 배포. strategy_chat 첫 메시지 200·LLM 답변·SB 인사이트 6건 반환 확인.
+- [ ] **Phase B — 일일 PT 감시**: Hermes `self-learning` 패턴 복제 → 세컨브레인 biz PT 항목 일일 diff → 신규 있으면 "오늘의 PT 변화" 요약을 🔔 승인 큐 카드, 없으면 skip. (D1) **승인 큐 데이터모델 설계 선행.**
+- [ ] **Phase C — CTO 자가개조(승인 게이트)**: B의 구조변경 건 → CTO task 초안+영향범위 승인 항목 → 사장님 승인 시 `acr-client` ACR 디스패치(worktree·테스트·PR), 거절 시 폐기. (D4-D5) 승인+테스트게이트 필수.
+- [ ] **후속**: YouTube API 반응 데이터 → 학습 신호. zod 미설치 환경 드리프트(`pnpm install`).
+
 ## 🎬 CMO Video Room — UI 재설계: 단계 중심 단일 포커스 (2026-06-06, frontend-only)
 
 > 사장님 피드백: "너무 많은 워크플로우를 한 곳에 담아 복잡". 백엔드 25단계/API 불변, `apps/founder-ui`만 재구성. 상세 = `docs/HANDOFF.md` 2026-06-06.
