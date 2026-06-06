@@ -758,10 +758,10 @@ export const api = {
   // the run; this is a thin POST). Returns the new run id when ACR is reachable.
   // Resolves to null (never throws) when ACR isn't deployed so the button can
   // surface a soft failure without breaking the Control Room.
-  acrRetryRun: (taskId: string) =>
+  acrRetryRun: (runId: string) =>
     request<{ data: { ok: boolean; data: { run_id?: string } } }>('/api/monitor:retryRun', {
       method: 'POST',
-      body: JSON.stringify({ task_id: taskId }),
+      body: JSON.stringify({ run_id: runId }),
     })
       .then(r => unwrap(r) as { run_id?: string })
       .catch(() => null),

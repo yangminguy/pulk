@@ -377,7 +377,7 @@ function RunActions({ task }: { task: ControlRoomDevTask }) {
     if (retrying) return
     setRetrying(true)
     setRetryMsg(null)
-    const res = await api.acrRetryRun(task.task_id)
+    const res = await api.acrRetryRun(task.run_id!)
     setRetrying(false)
     setRetryMsg(res?.run_id ? `새 실행 시작됨 (${res.run_id})` : '재시도를 시작할 수 없습니다 (ACR 미연결)')
   }

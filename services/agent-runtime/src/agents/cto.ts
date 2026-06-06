@@ -411,9 +411,45 @@ function inferDomains(taskTitle: string, taskClass: TaskClass): WorkPackageDomai
   return ["api"];
 }
 
+/** task 메타의 구조화 subtask 형태(자유형 AgentInput 위에 optional 로 얹힘). */
+type TaskSubtask = { title?: string; objective?: string; rationale?: string };
+
+/**
+ * task → TeamFeatureInput[]. 구조화된 subtasks(2개 이상)가 있으면 각각을 feature 로
+ * 분해(→ 팀런), 없으면 task 자체를 단일 feature 로(→ solo run). 결정적·비파괴.
+ */
+export function extractTeamFeatures(
+  task: CTOAgentInput["task"],
+  complexity: Complexity,
+  taskClass: TaskClass,
+  blockedFiles: string[],
+): TeamFeatureInput[] {
+  const taskTitle = task?.title ?? "Unknown Task";
+  const toFeature = (objective: string, criteria: string[]): TeamFeatureInput => ({
+    objective,
+    domains: inferDomains(objective, taskClass),
+    allowedFiles: [],
+    blockedFiles,
+    complexity,
+    riskLevel: complexityToHarnessRisk(complexity),
+    acceptanceCriteria: criteria,
+  });
+
+  const meta = task as unknown as { subtasks?: TaskSubtask[] } | undefined;
+  const subs = (Array.isArray(meta?.subtasks) ? meta!.subtasks : [])
+    .map((s) => ({ objective: s?.objective ?? s?.title ?? "", rationale: s?.rationale }))
+    .filter((s) => s.objective.trim().length > 0);
+
+  if (subs.length > 1) {
+    return subs.map((s) => toFeature(s.objective, s.rationale ? [s.rationale] : []));
+  }
+  return [toFeature(taskTitle, task?.rationale ? [task.rationale] : [])];
+}
+
 /**
  * Execution-runs 레일을 실행한다(플래그 ON 일 때만 호출됨).
- * 단일 task 를 1개 feature 로 분해해 planTeamRun → 각 run 마다 createExecutionRun.
+ * task 를 1개 이상 feature 로 분해해 planTeamRun → 각 run 마다 createExecutionRun.
+ * 구조화 subtasks 가 있으면 팀런(다중 run), 없으면 solo run.
  * 모든 호출은 graceful — 실패해도 throw 하지 않는다.
  */
 async function dispatchExecutionRuns(
@@ -433,22 +469,18 @@ async function dispatchExecutionRuns(
   const taskId = task?.id ?? "unknown";
   const taskTitle = task?.title ?? "Unknown Task";
 
-  const feature: TeamFeatureInput = {
-    objective: taskTitle,
-    domains: inferDomains(taskTitle, taskClass),
-    allowedFiles: [],
-    blockedFiles,
-    complexity,
-    riskLevel: complexityToHarnessRisk(complexity),
-    acceptanceCriteria: task?.rationale ? [task.rationale] : [],
-  };
+  // §29 — multi-feature decomposition. When the task carries structured
+  // subtasks, each becomes its own feature so planTeamRun fans them out as a
+  // team run (multiple execution-runs). Without subtasks it stays a solo run.
+  // The C0/C1 team-forbidden guard lives in team-orchestrator and is reused.
+  const features = extractTeamFeatures(task, complexity, taskClass, blockedFiles);
 
   const plan = planTeamRun({
     parentTaskId: taskId,
     parentPlanId: `${taskId}-plan`,
     repoPath,
     baseBranch: process.env["ACR_BASE_BRANCH"] ?? "main",
-    features: [feature],
+    features,
   });
 
   console.warn(
