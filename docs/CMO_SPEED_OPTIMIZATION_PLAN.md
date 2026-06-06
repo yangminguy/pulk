@@ -29,18 +29,19 @@
 3. 행 감지: phase별 하트비트 + 타임아웃으로 dead run을 잡 큐에서 정리(재시작 불필요).
 **기대**: 재시작에 의한 재실행 낭비 0, 정체 자가복구.
 
-### 모델 라우팅 정교화
-**문제**: agy 모델이 settings.json 전역 1개라 per-phase 선택 불가. 현재 Pro(High) 고정.
-**수정**: ACR `lib/agents/antigravity-runner.ts` spawn에 **`--model` 플래그** 추가(이미 agy CLI 지원). 경량 phase(조사/스펙/리뷰)는 **Gemini 3.5 Flash**(더 싸고 빠름), 코딩 phase는 Pro/claude. `withAntigravityModel`로 per-call 전환. → 리빌드 필요.
+### 모델 라우팅 정교화 — ✅ 적용(2026-06-06)
+**문제**: agy 모델이 settings.json 전역 1개라 per-phase 선택 불가(병렬에선 전역 재작성이 경쟁 조건). 현재 Pro(High) 고정.
+**적용**: agy CLI가 `--model`(per-session, **병렬 안전**)을 지원함을 확인 → `buildAgyArgs`에 `--model` 추가(`antigravity-runner.ts`). spawn 경로(`spawn-runner.ts`)를 전역 `withAntigravityModel`(settings.json 재작성) 대신 플래그로 전환(recovery 경로도 병렬 안전화). `/api/runner`가 phase kind로 모델 선택: 경량(`expectsChanges=false`)=**Gemini 3.5 Flash (High)**, 코딩=**Gemini 3.1 Pro (High)**. env `ACR_AGY_MODEL_LIGHT`/`ACR_AGY_MODEL_CODE`/`ACR_AGY_PER_PHASE_MODEL=0`(off). 테스트 antigravity-runner 신규 3종 + 37 GREEN. → ACR rebuild+restart 시 반영.
 **기대**: 경량 phase 토큰·지연 추가 절감.
 
 ### no-op phase 제거
 **문제**: 커밋 phase(러너가 이미 커밋), "이전 세션에 이미 완료" phase = 빈 실행. 커밋은 이미 무력화(done 처리)했으나, **애초에 생성 안 하는 게 최선**.
 **수정**: cto.ts 템플릿에서 작은 작업의 커밋/조사 phase 생략(A와 함께). read-only phase는 `expectsChanges=false`로 일관 처리.
 
-### 쿼터 인지 스케줄링
-**문제**: tier 라우팅이 쿼터 상태 무시(소진된 codex/claude로 계속 보냄 → 폴백·재시도 낭비). agy 모델도 소진된 Claude로 고정돼 있었음(이번에 Gemini로 수정).
-**수정**: dispatch 전 `getAgentRuntime` 쿼터 + agy 모델 쿼터(`agy models`/대시보드)를 보고 **가용 모델로 사전 라우팅**. 드라이버 또는 auto-dispatcher에 쿼터 인지 추가.
+### 쿼터 인지 스케줄링 — ✅ 갱신부 적용(2026-06-06)
+**문제**: tier 라우팅이 쿼터 상태 무시. B5에서 cto.ts `loadQuotaState`(`ACR_QUOTA_TRACKER_PATH`)를 추가했으나 **그 파일을 아무도 안 써서** 항상 "전 tier 가용"으로 읽혀 소진 tier로 phase를 배정했음.
+**적용**: ACR `lib/agents/quota-tracker-file.ts` 신규 — runtime-registry 상태(claude→T1/codex→T2/agy→T3)를 `QuotaState`로 `ACR_QUOTA_TRACKER_PATH`에 영속화(원자적). `updateAgentRuntime`(상태 변경 choke point)에서 fire-and-forget 호출. 소진(rate_limited/token_exhausted)=`available:false`+`resetAt`. **운영 전제**: pulk hermes 디스패처와 acr-web 양쪽이 같은 `ACR_QUOTA_TRACKER_PATH` env를 공유해야 함(미설정 시 graceful=전 tier 가용). 테스트 quota-tracker-file 6 GREEN.
+- 잔여: agy **모델별** 쿼터(`agy models`)까지의 세밀 추적은 후속(현재는 에이전트 tier 단위).
 
 ---
 

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulk CMO / Script Room ↔ AI Slide Video Factory — 통합 아키텍처</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2430; --line:#30363d;
+    --ink:#e6edf3; --mut:#9aa7b4; --dim:#6e7b8a;
+    --exist:#3b4a5a; --existln:#54667a;
+    --new:#1f6f43; --newln:#2ea36a; --newbg:#11271c;
+    --seam:#9a6b00; --seamln:#e3a008; --seambg:#2a1f06;
+    --dep:#5a2330; --depln:#a23b4e;
+    --cmo:#1f6feb; --fac:#a371f7;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo",Pretendard,sans-serif;line-height:1.5;padding:28px}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 22px;font-size:12px}
+  .lg{display:flex;align-items:center;gap:6px;color:var(--mut)}
+  .sw{width:14px;height:14px;border-radius:3px;border:1px solid}
+  .sw.e{background:var(--exist);border-color:var(--existln)}
+  .sw.n{background:var(--newbg);border-color:var(--newln)}
+  .sw.s{background:var(--seambg);border-color:var(--seamln)}
+  .sw.d{background:var(--dep);border-color:var(--depln)}
+
+  .cols{display:grid;grid-template-columns:1fr 86px 1fr;gap:0;align-items:stretch}
+  @media(max-width:1000px){.cols{grid-template-columns:1fr;gap:14px}.seamcol{order:2}}
+  .col{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .col.cmo{border-top:3px solid var(--cmo)}
+  .col.fac{border-top:3px solid var(--fac)}
+  .coltag{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim)}
+  .colttl{font-size:16px;font-weight:700;margin:2px 0 2px}
+  .colrole{font-size:12px;color:var(--mut);margin-bottom:14px}
+  .colrole b{color:var(--ink)}
+
+  .layer{border:1px solid var(--existln);background:var(--exist);border-radius:10px;padding:9px 11px;margin:8px 0;position:relative}
+  .layer.new{border-color:var(--newln);background:var(--newbg)}
+  .layer.dep{border-color:var(--depln);background:var(--dep)}
+  .lname{font-weight:650;font-size:13px;display:flex;align-items:center;gap:7px}
+  .badge{font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:20px;letter-spacing:.3px}
+  .badge.NEW{background:var(--newln);color:#04130b}
+  .badge.DEP{background:var(--depln);color:#1a0307}
+  .mods{font-size:11px;color:var(--mut);margin-top:4px;font-family:"SF Mono",ui-monospace,Menlo,monospace;line-height:1.55}
+  .note{font-size:11px;color:var(--dim);margin-top:3px}
+  .arr{text-align:center;color:var(--dim);font-size:13px;margin:-3px 0}
+
+  .seamcol{display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}
+  .seamline{position:absolute;top:54px;bottom:24px;width:2px;background:linear-gradient(var(--cmo),var(--seamln),var(--fac))}
+  .seam{background:var(--seambg);border:1.5px solid var(--seamln);border-radius:12px;padding:12px 8px;text-align:center;z-index:2;writing-mode:vertical-rl;transform:rotate(180deg)}
+  @media(max-width:1000px){.seam{writing-mode:horizontal-tb;transform:none}.seamline{display:none}}
+  .seam b{color:var(--seamln);font-size:13px}
+  .seam span{font-size:10.5px;color:var(--mut)}
+  .seampill{font-family:ui-monospace,monospace;font-size:11px;color:var(--seamln);background:#000;border:1px solid var(--seamln);border-radius:6px;padding:2px 7px;margin-top:10px;writing-mode:horizontal-tb}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:26px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .card h3{margin:0 0 10px;font-size:15px}
+  .ba{display:grid;grid-template-columns:1fr 22px 1fr;gap:8px;align-items:center;margin:9px 0;font-size:12.5px}
+  .before{background:#1a1418;border:1px solid var(--depln);border-radius:8px;padding:7px 9px;color:#e9b8c2}
+  .after{background:var(--newbg);border:1px solid var(--newln);border-radius:8px;padding:7px 9px;color:#bfe9cf}
+  .ba .to{text-align:center;color:var(--seamln)}
+  .small{color:var(--mut);font-size:11px;margin-top:2px}
+  .foot{margin-top:24px;color:var(--dim);font-size:11.5px;border-top:1px solid var(--line);padding-top:12px}
+  .pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .pill{font-size:10.5px;background:#0b1f14;border:1px solid var(--newln);color:#bfe9cf;border-radius:20px;padding:2px 8px}
+</style>
+</head>
+<body>
+
+<h1>Pulk CMO / Script Room ↔ AI Slide Video Factory — 통합 아키텍처</h1>
+<div class="sub">2026-06-06 · 경계 = <b style="color:var(--seamln)">VideoExecutionBrief (cmo_to_factory_v2)</b> · 초록 박스 = 이번에 새로 만든 레이어</div>
+
+<div class="legend">
+  <div class="lg"><span class="sw e"></span> 기존(재사용)</div>
+  <div class="lg"><span class="sw n"></span> 신규 — 이번 세션</div>
+  <div class="lg"><span class="sw s"></span> 계약 seam</div>
+  <div class="lg"><span class="sw d"></span> 폐기(@deprecated)</div>
+</div>
+
+<div class="cols">
+
+  <!-- ───────── CMO ───────── -->
+  <div class="col cmo">
+    <div class="coltag">Pulk · repo: Desktop/pulk</div>
+    <div class="colttl">CMO / Script Room</div>
+    <div class="colrole">책임 = <b>무엇을 말할지</b> 결정 (조사·전략·원고). 영상은 만들지 않는다.</div>
+
+    <div class="layer">
+      <div class="lname">① Intake & Context</div>
+      <div class="mods">strategy-chat · business-pt-context · viewtrap-research · second-brain-query/merge</div>
+      <div class="note">기존 자산 — v3.1이 입력으로 재사용</div>
+    </div>
+    <div class="arr">▼</div>
+
+    <div class="layer new">
+      <div class="lname">② Research Room <span class="badge NEW">NEW</span></div>
+      <div class="mods">market-research · voc-research · claim-verification · audience-fit · script-material-pack · <b>research-gate(Gate1)</b></div>
+      <div class="note">"기획서보다 조사가 먼저" — 5종 Pack + 통과게이트</div>
+    </div>
+    <div class="arr">▼</div>
+
+    <div class="layer new">
+      <div class="lname">③ Strategy <span class="badge NEW">NEW</span></div>
+      <div class="mods">strategy-brief(<b>logic_blocks</b>) · content-set-validation(5단계) · thumbnail-plan</div>
+      <div class="note">소비자욕구 5단계 = 고정배정 X, 자유 covered_stages</div>
+    </div>
+    <div class="arr">▼</div>
+
+    <div class="layer new">
+      <div class="lname">④ Script Room <span class="badge NEW">NEW</span></div>
+      <div class="mods">intro-writer · logic-block-writers · script-integrator · founder-voice · <b>script-qa</b> · revision-router</div>
+      <div class="note">Writer는 단계가 아닌 <b>logic_block 기준</b> 분담 · 말투변환은 논리 불변</div>
+    </div>
+    <div class="arr">▼</div>
+
+    <div class="layer new">
+      <div class="lname">⑤ Contract & Handoff <span class="badge NEW">NEW</span></div>
+      <div class="mods">video-execution-brief · brief-validators · script-room-pipeline(e2e) · factory-handoff</div>
+      <div class="note">scene_type/duration <b>비움</b> · 타입레벨에서 금지필드 표현불가</div>
+    </div>
+
+    <div class="layer dep" style="margin-top:14px">
+      <div class="lname">script-factory <span class="badge DEP">DEPRECATED</span></div>
+      <div class="mods">ScriptBeat → scene_type 확정 VideoJob (v2 방식)</div>
+      <div class="note">⑤로 교체 — CMO가 scene_type 확정하던 강결합 제거</div>
+    </div>
+
+    <div style="margin-top:14px;font-size:11px;color:var(--dim)">UI 신규: <span class="pill" style="display:inline-block">/video-room/script-room</span> · API 신규: <span style="font-family:monospace">cmo:generateVideoExecutionBrief</span> (+ video_execution_briefs 테이블)</div>
+  </div>
+
+  <!-- ───────── SEAM ───────── -->
+  <div class="seamcol">
+    <div class="seamline"></div>
+    <div class="seam">
+      <b>VideoExecutionBrief</b><br>
+      <span>기획+원고+근거+에셋요청 1장</span>
+    </div>
+    <div class="seampill">cmo_to_factory_v2</div>
+  </div>
+
+  <!-- ───────── FACTORY ───────── -->
+  <div class="col fac">
+    <div class="coltag">repo: ~/ai-slide-video-factory</div>
+    <div class="colttl">AI Slide Video Factory v2</div>
+    <div class="colrole">책임 = <b>어떻게 보여줄지</b> 결정 (장면·매체·렌더). 판매논리/CTA는 안 바꾼다.</div>
+
+    <div class="layer new">
+      <div class="lname">A. Brief Intake / Validate <span class="badge NEW">NEW</span></div>
+      <div class="mods">videoExecutionBriefSchema(zod) · validate-brief · <b>detectForcedSceneTypes</b></div>
+      <div class="note">core_message 없으면 fail · CMO가 scene_type 넣으면 WARN(테스트2)</div>
+    </div>
+    <div class="arr">▼</div>
+
+    <div class="layer new">
+      <div class="lname">B. 사용자 에셋 + 오디오 <span class="badge NEW">NEW</span></div>
+      <div class="mods">assetManifestSchema · build-asset-manifest · enhance-audio · transcribe-audio · captions · referenceCandidates</div>
+      <div class="note">얼굴/화면/이미지 파일은 <b>사용자가 직접 제공</b>(brief 밖) · 핸드폰 오디오 보정·전사</div>
+    </div>
+    <div class="arr">▼</div>
+
+    <div class="layer new">
+      <div class="lname">C. MessageUnit 분해 <span class="badge NEW">NEW</span></div>
+      <div class="mods">messageUnits · brief-to-message-units</div>
+      <div class="note">logic_block.speaker_text → 영상 판단 단위로 쪼갬</div>
+    </div>
+    <div class="arr">▼</div>
+
+    <div class="layer new">
+      <div class="lname">D. Scene Decision Engine <span class="badge NEW">NEW</span></div>
+      <div class="mods"><b>sceneDecision.decideScene</b> · scene-decision-draft</div>
+      <div class="note">best_medium·scene_type·confidence를 <b>여기서 결정</b> · asset 없으면 slide fallback · conf&lt;0.7 → review_required</div>
+    </div>
+    <div class="arr">▼</div>
+
+    <div class="layer new">
+      <div class="lname">E. Timeline v2 + Render <span class="badge NEW">NEW</span></div>
+      <div class="mods">timelineV2Schema · build-timeline-v2 · timeline-v2-to-video-job · render-final-v2 · qualityGate · usedSources</div>
+      <div class="note">Remotion 렌더 + FFmpeg + QA리포트(CMO 전략 일치도 검수)</div>
+    </div>
+
+    <div class="layer" style="margin-top:14px">
+      <div class="lname">render core (기존)</div>
+      <div class="mods">schema.ts · render-final.ts · SlideDeckVideo · scenes</div>
+      <div class="note">slide-only VideoJob 렌더 — v2가 그 위에 얹힘(호환 유지)</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ───────── 무엇이 달라졌나 ───────── -->
+<div class="grid2">
+
+  <div class="card">
+    <h3>🧭 의사결정 구조의 변화</h3>
+
+    <div class="ba">
+      <div class="before">CMO가 scene_type까지 확정<br><span style="font-size:10px">(ScriptBeat → VideoJob 16종)</span></div>
+      <div class="to">→</div>
+      <div class="after">CMO는 의도만(visual_intent_hint)<br><span style="font-size:10px">Factory가 scene_type 결정</span></div>
+    </div>
+
+    <div class="ba">
+      <div class="before">주제 → 바로 기획서<br><span style="font-size:10px">조사 없이 얕은 원고</span></div>
+      <div class="to">→</div>
+      <div class="after">조사 5종 → 재료표 → 기획서<br><span style="font-size:10px">Gate1 통과 전 원고 금지</span></div>
+    </div>
+
+    <div class="ba">
+      <div class="before">Writer가 현상/욕구/계획<br>단계 고정 분담</div>
+      <div class="to">→</div>
+      <div class="after">Writer가 logic_block 분담<br><span style="font-size:10px">한 블록이 여러 단계 가능</span></div>
+    </div>
+
+    <div class="ba">
+      <div class="before">QA 실패 → 전체 재작성</div>
+      <div class="to">→</div>
+      <div class="after">revision-router → 원인별<br>담당 agent만 되돌림</div>
+    </div>
+
+    <div class="small">핵심: <b>"무엇을 말할지(CMO)"와 "어떻게 보여줄지(Factory)"를 brief 1장으로 분리</b>. 두 시스템이 서로의 결정을 침범하지 않음 — Factory는 판매논리/CTA를, CMO는 sceneType을 건드리지 않는다.</div>
+  </div>
+
+  <div class="card">
+    <h3>🖥️ UI 구조의 변화</h3>
+
+    <div class="ba">
+      <div class="before">video-room 단일 플로우<br><span style="font-size:10px">strategy→production→publish 3페이지(25-step)</span></div>
+      <div class="to">→</div>
+      <div class="after">+ /script-room 신규 라우트<br><span style="font-size:10px">기존 3페이지는 무수정 유지</span></div>
+    </div>
+
+    <div class="small" style="margin-bottom:8px">신규 패널(5):</div>
+    <div class="pills">
+      <span class="pill">ResearchRoomPanel</span>
+      <span class="pill">StrategyBriefPanel</span>
+      <span class="pill">ScriptRoomPanel</span>
+      <span class="pill">VideoExecutionBriefPanel</span>
+      <span class="pill">ContentCardBoard</span>
+    </div>
+
+    <div class="small" style="margin-top:12px">
+      • <b>ContentCardBoard</b>: 키1+풀링5 카드, 카드별 research/strategy/script/qa/video 상태 배지<br>
+      • <b>카드별 "영상 생성" 버튼</b> = 누른 카드만 Factory로 전송(일괄 생성 X, 순차 제작)<br>
+      • <b>VideoExecutionBriefPanel</b>: 생성 brief + validation 배지 + scene_type 부재 확인 + Factory 전송<br>
+      • <b>ScriptRoomPanel</b>: Intro/블록원고/통합/말투변환/QA점수 + 재작업 요청
+    </div>
+    <div class="small" style="margin-top:10px">데이터: founder-ui → <span style="font-family:monospace">@/lib/api</span> → NocoBase <span style="font-family:monospace">cmo:*</span> 액션 → l5-core(dist)</div>
+  </div>
+
+</div>
+
+<div class="foot">
+검증: l5-core typecheck 0 · video-room 509 tests/34 suites GREEN · founder-ui typecheck 0 · Factory videoExecutionBriefSchema가 pulk brief를 그대로 검증(seam 호환 확인).<br>
+통합 전 남은 것: ① 라이브 NocoBase E2E(cmo:generateVideoExecutionBrief 실 DB) · ② Factory가 실제 brief 파일을 받아 timeline draft 생성하는 cross-repo 스모크 · ③ 양 repo 커밋.
+</div>
+
+</body>
+</html>

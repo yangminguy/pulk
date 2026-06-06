@@ -816,3 +816,25 @@ ACR → L5 `agent:taskCallback` 인증을 만료형 JWT(`L5_ADMIN_TOKEN`, ~17h)�
 - `~/Desktop/양원민 개발자/agent_control_room_docs/lib/runner/git-utils.ts` (commitAll)
 - `~/Desktop/양원민 개발자/agent_control_room_docs/app/api/runner/route.ts` (onSuccess 커밋)
 - `~/Desktop/양원민 개발자/agent_control_room_docs/lib/orchestration/auto-dispatcher.ts` (in-flight 락)
+---
+
+## 2026-06-06 — CMO/Script Room v3.1 경계 확정 + 전체 구현(P0~P6)
+
+### Decision
+CMO/Script Room의 책임 경계를 **VideoExecutionBrief(schema_version `cmo_to_factory_v2`)까지**로 확정. CMO는 "무엇을 말할지"(조사→전략→원고→QA→brief)만 결정하고, scene_type/best_medium/duration/timeline 등 "어떻게 보여줄지"는 **AI Slide Video Factory의 Scene Decision Engine**에 위임한다.
+
+### Why
+PRD 3종 교차 분석 결과: v3.1(정본)과 v2는 90% 동일하나 핸드오프 경계가 충돌 — v2는 CMO가 ScriptBeat로 scene_type을 확정(Factory VideoJob 직접 변환), v3.1은 brief까지만. 수신측 `ai_slide_video_factory_v2_1` PRD 테스트2/6이 "Pulk가 scene_type 확정 시 fail"을 명시 → Factory의 Scene Decision Engine을 무력화하지 않도록 **v3.1 경계 채택**. v2식 결합은 폐기.
+
+### Impact
+- 기존 `video-room/script-factory.ts`(ScriptBeat→scene_type 확정 VideoJob) `@deprecated`, `video-execution-brief.ts`로 교체.
+- §13 제외 범위(voice/slide/render/upload) = production.ts/review-publish.ts는 레거시 유지, 신규 플로우 미호출.
+- 신규 도메인은 별도 `cmo-script-room/` 폴더 대신 **기존 video-room 모듈에 평면 통합**(business-pt-context/second-brain/viewtrap/key·pulling-content 재사용, 중복 제거).
+- ConsumerStage 한글 enum 유지 + brief 계약은 영문 매핑(ConsumerStageEn).
+- BriefLogicBlock은 허용 5필드만 노출 → 금지필드를 타입레벨에서 표현 불가하게(invalid brief unrepresentable) + brief-validators 런타임 검증 이중 안전.
+
+### How (workflow 연속 실행, 6 phase)
+P0 계약문서 2종 / P1 타입+빌더+validator / P2 Research 5종+Gate1 / P3 Strategy+ContentSet / P4 Script Room+Router / P5 e2e+handoff / P6 풀스택(NocoBase cmo:generateVideoExecutionBrief 액션 src+dist 패치 + founder-ui script-room 라우트). 각 phase = workflow 1회(agent team 병렬+QA), phase 사이 typecheck/jest 검증·통합.
+
+### Verify
+l5-core typecheck 0, video-room 509 tests/34 suites GREEN. founder-ui typecheck 0. dist/plugin.js node --check OK. 단일 카드 e2e(Research→Brief→Handoff) + 테스트6(scene_type 부재) 통과. 라이브 NocoBase DB E2E는 후속(헤드리스 불가).

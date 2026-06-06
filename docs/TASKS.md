@@ -1452,3 +1452,17 @@ L5 Business OS
 - verify: E2E 9 테스트(secondbrain.read→ask_founder→재개→configure+generate, 역할권한, write CEO게이트). l5-core 410/413(3 pre-existing 무관). ✅
 
 **순서 의존:** M1(토대) → M2 → M3 → M4 → M5. **전부 완료 + 라이브/브라우저 검증.** 실연결 TODO: 세컨브레인 MCP(`SECONDBRAIN_MCP_URL/TOKEN`)·영상생성기(`VIDEO_FACTORY_URL/TOKEN`) env 설정 + transport 매핑(미설정 시 graceful).
+---
+
+## CMO / Script Room v3.1 구현 (2026-06-06 시작, workflow 연속 실행)
+
+실행계획: `docs/CMO_SCRIPT_ROOM_EXECUTION_PLAN.md`. 경계 확정: CMO=VideoExecutionBrief까지, scene_type은 Factory.
+
+- [x] P0 계약 문서(CMO_SCRIPT_ROOM_PRD.md, CMO_TO_FACTORY_CONTRACT.md) + 갭 확정
+- [x] P1 타입 + VideoExecutionBrief + brief-validators (scene_type 부재 검증)
+- [x] P2 Research Room 5종 + Gate1
+- [x] P3 Strategy Brief(logic_blocks) + Content Set Validation
+- [x] P4 Script Room(Intro/Writers/Integrator/Voice/QA) + Revision Router
+- [x] P5 VideoExecutionBrief 빌더 완성 + 핸드오프(script-factory 대체)
+- [x] P6 UI 패널 + cmo: API + Content Card Board
+

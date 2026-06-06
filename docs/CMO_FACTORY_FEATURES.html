@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulk 영상 시스템 — 기능 한눈에 보기 (비개발자용)</title>
+<style>
+  :root{
+    --bg:#0f1216;--card:#171c23;--card2:#1d2530;--line:#2b3340;
+    --ink:#eef2f6;--mut:#a3afbd;--dim:#73808f;
+    --cmo:#2f81f7;--cmobg:#11233f;--fac:#a371f7;--facbg:#241a3d;
+    --new:#2ea36a;--newbg:#0f2419;--warn:#e3a008;--warnbg:#2a1f06;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",Pretendard,"Segoe UI",sans-serif;
+    line-height:1.62;padding:30px 22px;max-width:1180px;margin:0 auto}
+  h1{font-size:25px;margin:0 0 6px}
+  .lead{color:var(--mut);font-size:14px;margin-bottom:8px}
+  .oneline{background:linear-gradient(90deg,var(--cmobg),var(--facbg));border:1px solid var(--line);
+    border-radius:14px;padding:16px 18px;font-size:15px;margin:18px 0 30px}
+  .oneline b{color:#fff}
+  .sechead{font-size:13px;letter-spacing:.6px;color:var(--dim);text-transform:uppercase;margin:34px 0 12px;border-bottom:1px solid var(--line);padding-bottom:6px}
+
+  /* 두 주인공 */
+  .actors{display:grid;grid-template-columns:1fr 70px 1fr;gap:0;align-items:center;margin-bottom:8px}
+  @media(max-width:820px){.actors{grid-template-columns:1fr}}
+  .actor{border-radius:16px;padding:18px;border:1px solid var(--line)}
+  .actor.c{background:var(--cmobg);border-color:#2f4d78}
+  .actor.f{background:var(--facbg);border-color:#5a449a}
+  .actor .em{font-size:30px}
+  .actor h2{font-size:17px;margin:6px 0 2px}
+  .actor .who{font-size:12.5px;color:var(--mut)}
+  .actor .does{font-size:13.5px;margin-top:8px}
+  .between{text-align:center}
+  .between .pipe{font-size:11px;color:var(--warn);background:var(--warnbg);border:1px solid var(--warn);
+    border-radius:10px;padding:8px 6px;line-height:1.4}
+  @media(max-width:820px){.between{margin:10px 0}.between .pipe{display:inline-block}}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:13px}
+  .feat{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:15px;position:relative}
+  .feat .n{position:absolute;top:-10px;left:14px;width:26px;height:26px;border-radius:50%;
+    display:grid;place-items:center;font-size:13px;font-weight:700;color:#fff}
+  .feat.c .n{background:var(--cmo)}.feat.f .n{background:var(--fac)}
+  .feat h3{font-size:15px;margin:6px 0 6px}
+  .feat p{font-size:13px;color:var(--mut);margin:0}
+  .feat .ex{font-size:12px;color:var(--dim);margin-top:8px;border-left:2px solid var(--line);padding-left:9px}
+  .tag{display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px;margin-left:6px;vertical-align:middle}
+  .tag.new{background:var(--new);color:#04130b}
+  .tag.key{background:var(--warn);color:#1a1402}
+
+  /* 바뀐 점 before/after */
+  .changes{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+  @media(max-width:760px){.changes{grid-template-columns:1fr}}
+  .chg{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:15px}
+  .chg h3{font-size:14.5px;margin:0 0 10px}
+  .row{display:grid;grid-template-columns:1fr 20px 1fr;gap:7px;align-items:center;margin:7px 0;font-size:12.5px}
+  .was{background:#1c1418;border:1px solid #6e3140;border-radius:8px;padding:6px 9px;color:#eab8c2}
+  .now{background:var(--newbg);border:1px solid var(--new);border-radius:8px;padding:6px 9px;color:#bce8cf}
+  .row .a{text-align:center;color:var(--warn);font-weight:700}
+
+  /* UI 미니목업 */
+  .ui{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:16px}
+  .board{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:10px}
+  @media(max-width:640px){.board{grid-template-columns:1fr 1fr}}
+  .cc{background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:10px}
+  .cc .t{font-size:12px;font-weight:650;margin-bottom:6px}
+  .cc .b{display:inline-block;font-size:9.5px;padding:1px 6px;border-radius:6px;margin:1px 2px 1px 0}
+  .b.ok{background:var(--newbg);color:#8fe0b0;border:1px solid var(--new)}
+  .b.pend{background:#241d0a;color:#e9cf86;border:1px solid var(--warn)}
+  .btn{display:block;text-align:center;font-size:11.5px;background:var(--cmo);color:#fff;border-radius:7px;padding:5px;margin-top:8px;font-weight:650}
+  .cc.key{border-color:var(--warn)}
+
+  /* 로드맵 */
+  .road{position:relative;margin-top:6px}
+  .step{display:grid;grid-template-columns:34px 1fr;gap:12px;padding:10px 0;border-bottom:1px dashed var(--line)}
+  .step:last-child{border-bottom:none}
+  .dot{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:700;
+    background:var(--card2);border:1px solid var(--line)}
+  .dot.done{background:var(--newbg);border-color:var(--new);color:#8fe0b0}
+  .dot.next{background:var(--warnbg);border-color:var(--warn);color:#e9cf86}
+  .step h4{margin:0 0 2px;font-size:14px}
+  .step h4 .st{font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px;margin-left:7px}
+  .st.done{background:var(--new);color:#04130b}.st.next{background:var(--warn);color:#1a1402}.st.todo{background:#3a4350;color:#c7d0db}
+  .step p{margin:0;font-size:12.5px;color:var(--mut)}
+  .foot{margin-top:26px;color:var(--dim);font-size:11.5px;border-top:1px solid var(--line);padding-top:12px}
+</style>
+</head>
+<body>
+
+<h1>Pulk 영상 시스템 — 기능 한눈에 보기</h1>
+<div class="lead">비개발자용 · 2026-06-06 · "이 시스템이 실제로 뭘 해주는가"를 기능 단위로</div>
+
+<div class="oneline">
+  영상 한 편을 만들 때 — <b>"무슨 말을 할지"는 CMO</b>가 끝까지 책임지고,
+  <b>"그걸 어떻게 화면으로 보여줄지"는 영상 공장(AI Slide)</b>이 책임집니다.
+  둘은 <b style="color:var(--warn)">기획서 한 장</b>으로 일을 주고받습니다.
+</div>
+
+<!-- 두 주인공 -->
+<div class="sechead">두 명의 일꾼</div>
+<div class="actors">
+  <div class="actor c">
+    <div class="em">✍️</div>
+    <h2>CMO / 스크립트 룸</h2>
+    <div class="who">= 마케팅 팀장 + 작가팀</div>
+    <div class="does">제품·고객을 조사하고, 판매 논리를 설계하고, <b>내 말투로 된 대본</b>까지 만들어 줍니다. 영상은 만들지 않습니다.</div>
+  </div>
+  <div class="between"><div class="pipe">기획서 1장<br>▶</div></div>
+  <div class="actor f">
+    <div class="em">🎬</div>
+    <h2>AI Slide 영상 공장</h2>
+    <div class="who">= 영상 편집실</div>
+    <div class="does">기획서 + 내가 올린 <b>녹음·얼굴 영상·화면</b>을 받아, 각 장면을 어떤 화면으로 보여줄지 정하고 <b>영상으로 렌더링</b>합니다.</div>
+  </div>
+</div>
+
+<!-- CMO 기능 -->
+<div class="sechead">CMO가 해주는 일 (무슨 말을 할지)</div>
+<div class="grid">
+  <div class="feat c"><div class="n">1</div>
+    <h3>정보 한 번에 받기</h3>
+    <p>제품·고객·채널 상황을 <b>폼으로 한 번에</b> 수집. 부족한 칸만 따로 물어봅니다.</p>
+  </div>
+  <div class="feat c"><div class="n">2</div>
+    <h3>조사부터 한다 <span class="tag key">핵심</span></h3>
+    <p>시장조사 · 고객 실제 말투 · 근거 검증 · "듣고 싶은 말인지" 점수. <b>점수 미달이면 원고 작성 못 넘어감.</b></p>
+    <div class="ex">"광고비는 쓰는데 손님이 안 늘어요" 같은 진짜 표현을 수집</div>
+  </div>
+  <div class="feat c"><div class="n">3</div>
+    <h3>전략·세트 설계</h3>
+    <p>핵심 메시지·설득 순서·CTA 결정. 키 콘텐츠 1개 + 풀링 5개를 <b>세트로</b> 검증.</p>
+    <div class="ex">현상→욕구→계획→행동→보상 5단계가 세트 전체에 빠짐없는지 자동 점검</div>
+  </div>
+  <div class="feat c"><div class="n">4</div>
+    <h3>원고 작성 + 내 말투</h3>
+    <p>도입부·본문·통합 후 <b>내 말투로 변환</b>(논리는 안 바꿈). 마지막에 5개 항목 QA 검수.</p>
+    <div class="ex">QA 실패 시 → 문제 난 단계만 다시 작업(전체 재작성 X)</div>
+  </div>
+  <div class="feat c"><div class="n">5</div>
+    <h3>기획서 한 장으로 넘기기</h3>
+    <p>대본·근거·전략·필요 자료를 <b>한 장에 묶어</b> 영상 공장으로 전달. 여기서 CMO 일 끝.</p>
+  </div>
+</div>
+
+<!-- Factory 기능 -->
+<div class="sechead">영상 공장이 해주는 일 (어떻게 보여줄지)</div>
+<div class="grid">
+  <div class="feat f"><div class="n">A</div>
+    <h3>기획서 검수</h3>
+    <p>기획서가 제대로 왔는지 확인. <b>CMO가 화면 종류를 미리 정해 넣으면 경고.</b></p>
+  </div>
+  <div class="feat f"><div class="n">B</div>
+    <h3>녹음·자료 정리</h3>
+    <p>핸드폰 녹음의 잡음·울림·볼륨을 <b>자동 보정</b> + 자막 생성. 얼굴/화면/이미지 자료 등록.</p>
+    <div class="ex">실제 영상 파일은 CMO가 아니라 <b>사용자가 직접</b> 올립니다</div>
+  </div>
+  <div class="feat f"><div class="n">C</div>
+    <h3>장면 결정 <span class="tag key">핵심</span></h3>
+    <p>문장마다 "슬라이드 / 얼굴 영상 / 화면 녹화 / 이미지" 중 <b>뭐가 제일 잘 이해되는지 알아서 선택</b>.</p>
+    <div class="ex">자료 없으면 슬라이드로 대체 · 애매하면 "사람 검토 필요" 표시</div>
+  </div>
+  <div class="feat f"><div class="n">D</div>
+    <h3>영상 렌더링</h3>
+    <p>실제 <b>영상 파일 + 자막 + 챕터 + 품질 리포트</b> 생성. CMO의 판매 논리·CTA는 안 바꿉니다.</p>
+  </div>
+</div>
+
+<!-- 바뀐 점 -->
+<div class="sechead">이번에 바뀐 핵심</div>
+<div class="changes">
+  <div class="chg">
+    <h3>🧭 일하는 방식</h3>
+    <div class="row"><div class="was">CMO가 화면 종류까지 정해서 넘김</div><div class="a">→</div><div class="now">CMO는 메시지만, 화면은 공장이 결정</div></div>
+    <div class="row"><div class="was">주제 → 바로 기획 (얕은 원고)</div><div class="a">→</div><div class="now">조사 먼저 → 재료 갖춘 깊은 원고</div></div>
+    <div class="row"><div class="was">원고 안 좋으면 처음부터 다시</div><div class="a">→</div><div class="now">문제 난 부분만 고침</div></div>
+  </div>
+  <div class="chg">
+    <h3>🖥️ 보이는 화면</h3>
+    <div class="row"><div class="was">영상룸 한 화면에 다 섞임</div><div class="a">→</div><div class="now">"스크립트 룸" 화면 새로 추가(기존은 그대로)</div></div>
+    <div class="row"><div class="was">한꺼번에 6개 영상 생성</div><div class="a">→</div><div class="now">카드별 버튼 → 누른 것만 생성</div></div>
+    <div class="row"><div class="was">결과만 보임</div><div class="a">→</div><div class="now">조사·전략·원고·QA 점수까지 단계별로 보임</div></div>
+  </div>
+</div>
+
+<!-- UI 목업 -->
+<div class="sechead">새 화면: 콘텐츠 카드 보드</div>
+<div class="ui">
+  <div style="font-size:12.5px;color:var(--mut)">키 콘텐츠 1개 + 풀링 5개가 카드로 보이고, 각 카드마다 상태 배지와 <b>"영상 생성" 버튼</b>이 있습니다.</div>
+  <div class="board">
+    <div class="cc key"><div class="t">⭐ 키 콘텐츠</div><span class="b ok">조사✓</span><span class="b ok">전략✓</span><span class="b ok">원고✓</span><span class="b ok">QA통과</span><div class="btn">▶ 영상 생성</div></div>
+    <div class="cc"><div class="t">풀링 1 · 문제자각</div><span class="b ok">조사✓</span><span class="b ok">원고✓</span><span class="b pend">QA 대기</span><div class="btn" style="background:#3a4350">생성 잠김</div></div>
+    <div class="cc"><div class="t">풀링 2 · 오해깨기</div><span class="b ok">조사✓</span><span class="b ok">전략✓</span><span class="b ok">QA통과</span><div class="btn">▶ 영상 생성</div></div>
+    <div class="cc"><div class="t">풀링 3 · 욕구증폭</div><span class="b ok">조사✓</span><span class="b pend">원고 작성중</span><div class="btn" style="background:#3a4350">생성 잠김</div></div>
+    <div class="cc"><div class="t">풀링 4 · 작은행동</div><span class="b pend">조사중</span><div class="btn" style="background:#3a4350">생성 잠김</div></div>
+    <div class="cc"><div class="t">풀링 5 · 사례</div><span class="b ok">조사✓</span><span class="b ok">전략✓</span><span class="b ok">QA통과</span><div class="btn">▶ 영상 생성</div></div>
+  </div>
+</div>
+
+<!-- 로드맵 -->
+<div class="sechead">앞으로 해야 하는 개발 과정</div>
+<div class="road">
+  <div class="step"><div class="dot done">✓</div><div>
+    <h4>0. 양쪽 두뇌 만들기 <span class="st done">완료</span></h4>
+    <p>CMO 쪽 조사·전략·원고·기획서 로직 + 영상 공장 쪽 장면결정·렌더 로직. 양쪽 다 코드·테스트 완료.</p>
+  </div></div>
+  <div class="step"><div class="dot next">1</div><div>
+    <h4>1. 코드 저장(커밋) <span class="st next">다음</span></h4>
+    <p>지금까지 만든 걸 양쪽 저장소에 정식 저장. (현재 미저장 상태라 가장 먼저 해야 함)</p>
+  </div></div>
+  <div class="step"><div class="dot next">2</div><div>
+    <h4>2. CMO 실제 동작 확인 <span class="st next">다음</span></h4>
+    <p>실제 서버(NocoBase)를 켜고, "영상 생성" 버튼 → 기획서 1장이 진짜 DB에 만들어지는지 확인.</p>
+  </div></div>
+  <div class="step"><div class="dot">3</div><div>
+    <h4>3. 두 시스템 연결 테스트 (가장 중요) <span class="st todo">예정</span></h4>
+    <p>CMO가 만든 기획서 1장을 영상 공장에 실제로 넣어 → 검수 → 장면결정 → 영상 직전(타임라인)까지 한 번 흘려보기. <b>여기서 둘이 진짜 맞물리는지 판가름.</b></p>
+  </div></div>
+  <div class="step"><div class="dot">4</div><div>
+    <h4>4. 진짜 영상 1편 뽑기 <span class="st todo">예정</span></h4>
+    <p>내 녹음·얼굴 영상·화면을 올리고, 공장이 실제 MP4를 렌더 → 결과물 품질 확인.</p>
+  </div></div>
+  <div class="step"><div class="dot">5</div><div>
+    <h4>5. 화면 마감 <span class="st todo">예정</span></h4>
+    <p>스크립트 룸 화면을 브라우저에서 검증, 카드 버튼이 실제 동작하게 연결, 완성된 영상 링크 표시.</p>
+  </div></div>
+  <div class="step"><div class="dot">6</div><div>
+    <h4>6. 운영 다듬기 <span class="st todo">예정</span></h4>
+    <p>기획서 자동 전달, 재작업(수정 요청) 흐름, 품질 점수 대시보드, 여러 영상 관리.</p>
+  </div></div>
+</div>
+
+<div class="foot">
+지금 상태: CMO·영상공장 양쪽 두뇌(로직)는 완성·검증됨(테스트 통과). 아직 둘을 <b>실제로 한 번 연결해서 영상 1편을 끝까지 뽑아본 적은 없음</b> → 그게 다음 핵심 작업(3·4번).
+</div>
+
+</body>
+</html>

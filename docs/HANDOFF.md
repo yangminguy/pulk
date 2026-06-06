@@ -1,6 +1,28 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-06 (CMO 세컨브레인 자가개선 루프 Phase B 래퍼 + Phase C 배선 완료)
+최종 업데이트: 2026-06-06 (CMO/Script Room v3.1 전체 구현 P0~P6)
+
+---
+
+## 🟢 2026-06-06 — CMO/Script Room v3.1 전체 구현 (P0~P6, workflow 연속 실행)
+
+설계·근거 = `docs/CMO_SCRIPT_ROOM_EXECUTION_PLAN.md` + `docs/DECISIONS.md` 2026-06-06. PRD 3종(`~/Downloads/pulk_cmo_script_room_prd_v3_1_full.md` 정본, v2는 ScriptBeat 폐기, `ai_slide_video_factory_v2_1`은 수신측) 정합.
+
+**확정 경계**: CMO = **무엇을 말할지** → 산출물 끝 = `VideoExecutionBrief`(schema_version `cmo_to_factory_v2`). scene_type/best_medium/duration/timeline **확정 금지**(Factory의 Scene Decision Engine 몫). v2식 `script-factory.ts`(scene_type 확정 VideoJob)는 `@deprecated`, `video-execution-brief.ts`로 교체.
+
+**구현(기존 video-room 모듈에 통합, 평면 배치)** — l5-core `packages/l5-core/src/functions/video-room/`:
+- 타입: types.ts +27 export(Research packs, CmoVideoStrategyBrief+LogicBlock, ContentSetValidation, Intro30s/ScriptPart/IntegratedScript/VoiceMatchedScript/ScriptQaReport, VideoExecutionBrief(BriefLogicBlock는 금지필드 타입레벨 부재), CmoContentCard, RevisionTarget, ConsumerStageEn 매핑).
+- Research: market-research/voc-research/claim-verification/audience-fit/script-material-pack + research-gate(Gate1).
+- Strategy: strategy-brief(logic_blocks/Gate3) + content-set-validation(Gate2, 5단계 자유배정) + thumbnail-plan.
+- Script: intro-writer/logic-block-writers(블록 기준 분담)/script-integrator/founder-voice(논리 불변)/script-qa(전략80·타깃80·말투75·판매80·사실90)/revision-router(§16.15).
+- 핸드오프: video-execution-brief(빌더) + brief-validators(scene_type 포함시 invalid) + script-room-pipeline(e2e runScriptRoomToBrief) + factory-handoff(transport 주입, 외부전달 승인게이트).
+- 검증: **l5-core typecheck 0, video-room 509 tests / 34 suites GREEN**. 단일 카드 Research→Strategy→Script→QA→Brief→Handoff e2e 동작, 테스트6(scene_type 부재) 보장.
+
+**풀스택(P6)**:
+- NocoBase plugin-orchestration: cmo 리소스에 `generateVideoExecutionBrief` 액션 + `video_execution_briefs` 테이블 + ACL 추가. **src/server/plugin.ts와 dist/plugin.js 양쪽 패치**(빌드스크립트 없음 — 메모리 주의). dist `node --check` OK.
+- founder-ui: 신규 라우트 `/video-room/script-room` + ResearchRoomPanel/StrategyBriefPanel/ScriptRoomPanel/VideoExecutionBriefPanel/ContentCardBoard(카드별 영상생성 버튼=순차제작) + api.ts cmo:* 헬퍼. 기존 page.tsx(3페이지) 무수정. **founder-ui typecheck 0**.
+
+**남은 것(라이브 세션)**: NocoBase 기동 후 cmo:generateVideoExecutionBrief 실 DB E2E(테이블 생성·upsert·ACL) 확인 + script-room 페이지 브라우저 검증. 헤드리스 불가(실 DB/NocoBase 필요). 커밋 미실행(사용자 지시 대기).
 
 ---
 

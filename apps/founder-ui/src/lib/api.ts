@@ -607,6 +607,30 @@ export const api = {
       body: JSON.stringify({ project_id }),
     }).then(r => unwrap(r)),
 
+  generateVideoExecutionBrief: (params: { project_id: string; content_card_id: string; [key: string]: unknown }) =>
+    request<{ data: { ok: boolean; data: { brief_id: string; brief: unknown; factory_job_url?: string } } }>('/api/cmo:generateVideoExecutionBrief', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }).then(r => unwrap(r)),
+
+  cmoGetScriptRoomData: (params: { project_id: string; content_card_id: string }) =>
+    request<{ data: { ok: boolean; data: unknown } }>('/api/cmo:getScriptRoomData', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }).then(r => unwrap(r)),
+
+  cmoRequestScriptRevision: (params: { project_id: string; content_card_id: string; revision_target: string }) =>
+    request<{ data: { ok: boolean; data: unknown } }>('/api/cmo:requestScriptRevision', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }).then(r => unwrap(r)),
+
+  cmoSendBriefToFactory: (params: { project_id: string; content_card_id: string; brief_id?: string; brief: unknown }) =>
+    request<{ data: { ok: boolean; data: { factory_result_url?: string } } }>('/api/cmo:sendBriefToFactory', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }).then(r => unwrap(r)),
+
   closeInstruction: (id: string) =>
     request<{ data: unknown }>('/api/founder_instructions:update', {
       method: 'POST',
