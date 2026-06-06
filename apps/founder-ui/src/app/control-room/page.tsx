@@ -260,6 +260,28 @@ function AcrStrip({ task }: { task: ControlRoomDevTask }) {
 // Leads with plain language a non-developer reads ("Claude가 작업 중 · 6단계 중
 // 4단계"); the developer data (branch hash, phase numbers, files, log, risk
 // level) is tucked behind a collapsed "개발 상세".
+// CTO Harness 복잡도 칩 (C0~C5). ACR이 dispatch 때 받은 intent.complexity 를 echo한
+// 값. CTO가 "무엇을/얼마나 무겁게" 판단했는지 한눈에 보여준다. 데이터 없으면 미표시.
+const COMPLEXITY_LABELS: Record<string, string> = {
+  C0: '문서', C1: '소규모', C2: '기능', C3: '교차모듈', C4: '위험', C5: '대형',
+}
+function ComplexityBadge({ level }: { level: string }) {
+  const label = COMPLEXITY_LABELS[level]
+  if (!label) return null
+  return (
+    <span
+      title={`복잡도 ${level} · CTO 판단`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px',
+        borderRadius: 999, fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-mono)',
+        background: 'var(--silver-1)', color: 'var(--ink-2)',
+      }}
+    >
+      {level}<span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, color: 'var(--ink-3)' }}>{label}</span>
+    </span>
+  )
+}
+
 function DevTaskRow({ task }: { task: ControlRoomDevTask }) {
   const riskStyle = task.risk_level ? (RISK_STYLES[task.risk_level] ?? null) : null
   const live = hasAcr(task)
@@ -286,6 +308,7 @@ function DevTaskRow({ task }: { task: ControlRoomDevTask }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         <AgentChip agent={displayAgent} />
         <StatusBadge status={execStatus} />
+        {task.complexity && <ComplexityBadge level={task.complexity} />}
       </div>
 
       {/* Title — what this task is */}

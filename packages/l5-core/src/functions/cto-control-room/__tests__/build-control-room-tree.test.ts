@@ -79,6 +79,17 @@ describe('buildControlRoomTree', () => {
     expect(dt.log_tail).toBe('last lines');
   });
 
+  it('echoes CTO Harness complexity when ACR reports it; null otherwise', () => {
+    const args = baseArgs();
+    args.ctoTasks = [task({ id: 't1' }), task({ id: 't2', project_id: 'p1', business_id: 'b1' })];
+    args.acrByTaskId = { t1: { acr_task_id: 't1', complexity: 'C3' } };
+    const tasks = buildControlRoomTree(args)[0].projects[0].dev_tasks;
+    const dt1 = tasks.find((d) => d.task_id === 't1')!;
+    const dt2 = tasks.find((d) => d.task_id === 't2')!;
+    expect(dt1.complexity).toBe('C3');
+    expect(dt2.complexity).toBeNull(); // ACR record absent → degraded
+  });
+
   it('merges measured token usage + cost when ACR reports it', () => {
     const args = baseArgs();
     args.ctoTasks = [task({ id: 't1' })];

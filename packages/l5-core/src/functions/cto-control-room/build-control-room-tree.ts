@@ -27,6 +27,9 @@ export interface AcrExecTask {
   // ACR runner captures it; estimate is shown meanwhile).
   total_tokens?: number | null;
   estimated_cost_usd?: number | null;
+  /** CTO Harness 복잡도(C0~C5). ACR이 dispatch 때 받은 intent.complexity 를 그대로
+   * echo. null이면 UI는 뱃지를 숨긴다(degraded view). */
+  complexity?: string | null;
 }
 
 export interface ControlRoomBusinessInput {
@@ -83,6 +86,8 @@ export interface ControlRoomDevTask {
   exec_status: string | null; // workspace_status ?? plan_status
   changed_files: number | null;
   log_tail: string | null;
+  /** CTO가 배정한 복잡도(C0~C5). ACR echo. null = 미표시. */
+  complexity: string | null;
   /** Forecast token range for this task (추정, from classification). */
   est_tokens_low: number | null;
   est_tokens_high: number | null;
@@ -192,6 +197,7 @@ function mergeDevTask(t: ControlRoomTaskInput, acr: AcrExecTask | undefined): Co
     exec_status: null,
     changed_files: null,
     log_tail: null,
+    complexity: null,
     est_tokens_low: est.low,
     est_tokens_high: est.high,
     actual_total_tokens: null,
@@ -212,6 +218,7 @@ function mergeDevTask(t: ControlRoomTaskInput, acr: AcrExecTask | undefined): Co
     exec_status: acr.workspace_status ?? acr.plan_status ?? null,
     changed_files: acr.changed_files ?? null,
     log_tail: acr.log_tail ?? null,
+    complexity: acr.complexity ?? null,
     actual_total_tokens: typeof acr.total_tokens === 'number' ? acr.total_tokens : null,
     actual_cost_usd: typeof acr.estimated_cost_usd === 'number' ? acr.estimated_cost_usd : null,
   };

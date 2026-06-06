@@ -153,6 +153,8 @@ export type ControlRoomDevTask = {
   exec_status?: string | null
   changed_files?: number | null
   log_tail?: string | null
+  /** CTO Harness 복잡도(C0~C5). ACR이 dispatch intent.complexity 를 echo. null = 미표시. */
+  complexity?: string | null
   /** Forecast token range (추정, from classification — not measured usage). */
   est_tokens_low?: number | null
   est_tokens_high?: number | null
