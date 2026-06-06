@@ -1,6 +1,26 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-05 (CMO Video Room Phase 3 잔여 — 원고 beat 편집 + 팩토리 Scene JSON 전달, E2E 27/27)
+최종 업데이트: 2026-06-06 (CMO Video Room UI 재설계 — 단계 중심 단일 포커스: 5단계 타임라인 + 접이식 드로어 + 소프트 게이팅)
+
+---
+
+## 🟢 2026-06-06 — CMO Video Room UI 재설계: 단계 중심 단일 포커스 (frontend-only)
+
+**배경**: 사장님 — Movie/Video Room이 "너무 많은 워크플로우를 한 곳에 담아" 복잡. 실제 화면 확인(스크린샷) 결과 3대 문제: ① 3열 그리드가 모든 탭에 강제 → 좌(빈 CMO챗)·우(빈 승인) 컬럼이 가로 ~40% 죽임 ② 단계 무관하게 제작 보드에 원고·팩토리·음성·렌더 폼이 한꺼번에 다 노출 → "지금 뭐 할지" 안 보임 ③ 25점 미니로드맵 라벨 잘림 + 헤더 우상단 배지/알림벨 충돌. **백엔드 25단계 status/`cmo:*` API/데이터는 불변, 프론트(`apps/founder-ui`)만 재구성.**
+
+- **`video-room/_lib/phases.ts` (신규)**: 백엔드 status(25) → 5 Phase(전략/리서치/원고/제작/발행) 매핑. `STATUS_LABEL` 단일 출처화(page.tsx 중복 제거). `phaseOfStatus`/`phaseState`/`statusOrder`/`blockState`. 단위 테스트 `phases.test.ts`(`node --import tsx`, 기존 e2e 컨벤션) — 매핑 전수·순서·게이트 상태 검증.
+- **`PhaseTimeline`**: 잘리던 25점 로드맵 대체. 5단계 진행중(●)·완료(✓)·잠금(🔒) 표시, 클릭=이동, 페이지별 pending 배지. `PHASE_TO_PAGE`로 5phase→백엔드 3page 매핑.
+- **레이아웃**: 3열 강제 폐기 → **전체 폭 보드 + 접이식 우측 드로어(360px, CMO챗+승인 통합, 접으면 44px 레일+pending 배지)**. 죽은 빈 컬럼 제거.
+- **소프트 게이팅 `StageGate`**: 제작 보드의 4블록(원고 Beat / 팩토리 전달 / 음성 첨부 / 파이프라인)을 현재 status 기준 `blockState`로 — active=펼침, done=접기(클릭 펼침), locked=🔒 비활성 바("이전 단계 완료 후"). 게이팅 수준은 사장님 선택(소프트). 모든 블록은 DOM에 존재(완전 숨김 아님).
+- **헤더**: 알림벨 충돌 `paddingRight: 48`, 타임라인과 중복되던 page 라벨 제거, 내부 탭 내비 제거(타임라인이 대체).
+
+**검증**: founder-ui **tsc 0**, **next build 성공**(/video-room 10.4kB 정적), `phases.test.ts` 통과. 라이브 백엔드(:13000) 대상 Playwright 스크린샷 — 전략/제작/발행/드로어접힘/원고-active(새 프로젝트 walk→script_planning) 5종 확인: locked 4바→active 원고편집기만 펼침 입증. 헬퍼 `e2e/shot-video-room.mjs`·`e2e/shot-active-stage.mjs`.
+
+**후속 완료 (2026-06-06, 동일 frontend-only)**:
+- **전 보드 게이팅 일관화**: StrategyBoard(Viewtrap 수동 입력 → range `key_content_ideation`~`hook_draft_approval`), ReviewPublishBoard(게시 파이프라인 QA·업로드 → range `qa`~`upload_approval`)에도 `StageGate` 적용. 이제 전략/제작/발행 3보드 모두 현재 status 기준 active/done/locked 일관.
+- **`page.tsx` 컴포넌트 분리**: 2141줄 단일 파일 → 컨테이너(`VideoRoomContent`/`VideoRoomPage`)만 ~230줄로 슬림화. 추출: `_lib/types.ts`(공통 타입), `_components/`{`StageGate`,`cards`(Intro30s/FactoryJob/CardShell),`ScriptBeatEditor`,`DecisionPanel`,`CmoChatPanel`,`PhaseTimeline`(+`PHASE_TO_PAGE`),`VideoRoomHeader`,`StrategyBoard`,`ProductionBoard`(+`ProductionActionPanel`),`ReviewPublishBoard`(+`ReviewApprovalPanel`),`ProjectSelector`}.
+- **검증**: tsc 0, next 프로덕션 빌드 성공, `phases.test.ts` 통과, 프로덕션 서버(3002) 대상 Playwright 스크린샷으로 전략(Viewtrap '완료·보기' done)·발행(게시 파이프라인 🔒 locked) 게이팅 확인. 헬퍼 `e2e/shot-full-gating.mjs`.
+- **운영 주의(함정)**: launchd `com.l5.founder-ui`는 `next start -p 3002`(프로덕션). 떠 있는 수동 `next dev`(:3000)와 **같은 `.next`를 공유** → 실행 중 `next build`를 돌리면 청크가 깨져 화면이 로그인에서 안 넘어감(리소스 404). 복구: `rm -rf .next && next build && launchctl kickstart -k gui/$(id -u)/com.l5.founder-ui`.
 
 ---
 

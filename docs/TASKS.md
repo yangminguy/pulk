@@ -1,7 +1,20 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-06-05 (CMO Video Room PRD 갭 배선 P0+P1, 라이브 E2E 19/19). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-06-06 (CMO Video Room UI 재설계 — 단계 중심 단일 포커스). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+
+## 🎬 CMO Video Room — UI 재설계: 단계 중심 단일 포커스 (2026-06-06, frontend-only)
+
+> 사장님 피드백: "너무 많은 워크플로우를 한 곳에 담아 복잡". 백엔드 25단계/API 불변, `apps/founder-ui`만 재구성. 상세 = `docs/HANDOFF.md` 2026-06-06.
+
+- [x] **status→phase 매핑 + 테스트**: `video-room/_lib/phases.ts`(25 status → 5 phase, `blockState`/`statusOrder` 등) + `phases.test.ts`(전수 매핑·순서·게이트 상태). `STATUS_LABEL` page.tsx 중복 제거.
+- [x] **PhaseTimeline**: 25점 잘린 로드맵 → 5단계(진행중/완료/🔒잠금, 클릭 이동, pending 배지).
+- [x] **레이아웃 재구성**: 3열 강제 폐기 → 전체 폭 보드 + 접이식 우측 드로어(CMO챗+승인, 접으면 44px 레일). 빈 좌우 컬럼 제거.
+- [x] **소프트 게이팅 StageGate**: 제작 보드 4블록(원고/팩토리/음성/파이프라인) active=펼침·done=접기·locked=🔒. 사장님이 "소프트 게이팅" 선택.
+- [x] **헤더 정리**: 알림벨 충돌(paddingRight) + 중복 page 라벨·내부 탭 제거.
+- [x] **검증**: tsc 0, next build 성공(/video-room 10.3kB), phases.test 통과, Playwright 스크린샷 5종(전략/제작/발행/드로어접힘/원고-active).
+- [x] **후속 — 전 보드 게이팅 일관화**: StrategyBoard(Viewtrap 수동입력)·ReviewPublishBoard(게시 파이프라인)에도 StageGate 적용. 3보드 모두 active/done/locked 일관.
+- [x] **후속 — page.tsx 컴포넌트 분리**: 2141줄 → 컨테이너만 ~230줄. `_lib/types.ts` + `_components/`(StageGate/cards/ScriptBeatEditor/DecisionPanel/CmoChatPanel/PhaseTimeline/VideoRoomHeader/StrategyBoard/ProductionBoard/ReviewPublishBoard/ProjectSelector) 추출. tsc 0·빌드 성공·전략/발행 게이팅 스크린샷 확인.
 
 ## 🎬 CMO Video Room — 강의 워크플로우 정합 + 라이브 세컨브레인 (2026-06-05)
 
