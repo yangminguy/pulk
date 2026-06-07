@@ -117,6 +117,7 @@ function toCTOPhase(
   taskTitle: string,
   taskClass: TaskClass = "FEATURE",
   quotaState?: QuotaState,
+  taskExpected: string = "",
 ): CTOPhase {
   // Default to 'spec' only as a last resort — new phase kinds pass through as-is
   // because DevPhaseKind now covers all class-specific kinds.
@@ -129,21 +130,39 @@ function toCTOPhase(
   const resolved = resolveModel(taskClass, kind, quotaState);
   const runtime = tierToRuntime(resolved.tier);
   const riskLevel: CTOPhase["risk_level"] = p.risk_level ?? (p.read_only ? "D1" : "D2");
-  const promptPacket =
-    p.prompt_packet ??
-    [
-      `[${kind}] ${p.name ?? kind} — task: ${taskTitle}`,
-      "acceptance:",
-      ...(Array.isArray(p.acceptance_criteria)
-        ? (p.acceptance_criteria as string[]).map((c) => `- ${c}`)
-        : []),
-      `verifier_hint: ${typeof p.verifier_hint === "string" ? p.verifier_hint : ""}`,
-    ].join("\n");
   const expectedOutput =
     p.expected_output ??
-    (Array.isArray(p.acceptance_criteria)
-      ? (p.acceptance_criteria as string[]).join("; ")
-      : "");
+    (taskExpected ||
+      (Array.isArray(p.acceptance_criteria)
+        ? (p.acceptance_criteria as string[]).join("; ")
+        : ""));
+  // 경로 혼동 방지: 이 repo엔 같은 basename 파일이 여러 디렉토리에 존재한다
+  // (types.ts가 services/agent-runtime · packages/l5-core · apps/founder-ui 등).
+  // ACR 에이전트가 지정 경로 밖 동명 파일을 건드리는 문제를 막기 위해 정확한
+  // 대상 경로를 prompt_packet에 강하게 박는다.
+  const targetPath = p.expected_output ?? taskExpected ?? "";
+  const pathConstraint = targetPath
+    ? [
+        "",
+        "[CRITICAL — FILE PATH]",
+        "작업 대상은 아래 TARGET PATH에 적힌 정확한 경로의 파일뿐이다.",
+        "이 저장소에는 같은 이름(basename)의 파일이 여러 디렉토리에 존재한다",
+        "(예: types.ts가 services/agent-runtime, packages/l5-core, apps/founder-ui에 모두 있음).",
+        "반드시 이 경로의 파일만 생성/수정하고, 동명의 다른 파일은 절대 건드리지 마라.",
+        "대상 파일이 없으면 정확히 그 경로에 새로 만들어라. 지정 경로 밖 작업 금지.",
+        `TARGET PATH: ${targetPath}`,
+      ].join("\n")
+    : "";
+  const promptPacket =
+    (p.prompt_packet ??
+      [
+        `[${kind}] ${p.name ?? kind} — task: ${taskTitle}`,
+        "acceptance:",
+        ...(Array.isArray(p.acceptance_criteria)
+          ? (p.acceptance_criteria as string[]).map((c) => `- ${c}`)
+          : []),
+        `verifier_hint: ${typeof p.verifier_hint === "string" ? p.verifier_hint : ""}`,
+      ].join("\n")) + pathConstraint;
 
   // T1 (top-tier reasoning, e.g. architecture/spec/research) phases are pinned to
   // their big model: ACR must wait for that agent to recover rather than downgrade.
@@ -185,7 +204,7 @@ function buildDeterministicIntent(
   const taskId = task?.id ?? "unknown";
   const taskTitle = task?.title ?? "Unknown Task";
   const devPhases = buildDeterministicDevPhases(taskTitle, taskClass);
-  const phases: CTOPhase[] = devPhases.map((p) => toCTOPhase(p as LLMDevPhase, taskTitle, taskClass, quotaState));
+  const phases: CTOPhase[] = devPhases.map((p) => toCTOPhase(p as LLMDevPhase, taskTitle, taskClass, quotaState, task?.expected_output ?? ""));
   const intent: ACRIntent = {
     l5_task_id: taskId,
     task_title: taskTitle,
@@ -548,7 +567,7 @@ export async function runCTOAgent(
       acrIntent = {
         l5_task_id: taskId,
         task_title: taskTitle,
-        phases: llmResult.phases.map((p) => toCTOPhase(p, taskTitle, resolvedTaskClass, quotaState)),
+        phases: llmResult.phases.map((p) => toCTOPhase(p, taskTitle, resolvedTaskClass, quotaState, input.task?.expected_output ?? "")),
         created_at: new Date().toISOString(),
         // See buildDeterministicIntent: dispatcher only forwards approved tasks.
         l5_approved: true,
