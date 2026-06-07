@@ -131,7 +131,12 @@ export interface SelfModOrigin {
 
 export function buildSelfModAcceptanceCriteria(origin: SelfModOrigin): string[] {
   const pattern =
-    (origin.source_ref && origin.source_ref.replace(/^repetition-pattern:/, '')) ||
+    (origin.source_ref &&
+      origin.source_ref
+        .replace(/^repetition-pattern:/, '')
+        // secondbrain-watch cards carry a date suffix, not a human-readable slug;
+        // strip the whole ref so the criteria falls back to the card title.
+        .replace(/^secondbrain-watch:.*$/, '')) ||
     origin.task_title ||
     '제안된 개선';
   return [

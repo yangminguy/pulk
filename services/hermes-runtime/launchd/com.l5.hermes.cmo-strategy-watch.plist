@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.l5.hermes.cmo-strategy-watch</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE_PATH__</string>
+    <string>__HERMES_DIR__/dist/gateway.js</string>
+    <string>cmo-strategy-watch</string>
+  </array>
+
+  <!-- 09:05 daily — runs after self-learning (09:00) -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>5</integer>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>__HERMES_DIR__</string>
+
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/cmo-strategy-watch.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/cmo-strategy-watch.err</string>
+
+  <!-- Do not run immediately on launchctl load -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <key>NOCOBASE_URL</key>
+    <string>http://localhost:13000</string>
+    <!-- NOCOBASE_TOKEN is injected into the installed copy at install time so the
+         tool-request card can be written to the running NocoBase. SECONDBRAIN_DIR
+         defaults to "/Users/wonminyang/세컨 브레인"; override here if it moves.
+         TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set in the user environment
+         or injected here after substitution. Never hardcode secrets in this file. -->
+  </dict>
+</dict>
+</plist>

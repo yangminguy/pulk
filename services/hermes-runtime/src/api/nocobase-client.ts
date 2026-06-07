@@ -108,7 +108,7 @@ export async function updateAgentTask(
 
 export async function fetchPendingApprovalTasks(): Promise<AgentTask[]> {
   const data = await apiFetch(
-    "/api/agent_tasks:list?filter[approval_required]=true&filter[status][notIn][]=done&filter[status][notIn][]=killed&pageSize=200",
+    "/api/agent_tasks:list?filter[approval_required]=true&filter[status][$notIn][]=done&filter[status][$notIn][]=killed&pageSize=200",
   );
   return (data.data ?? []) as AgentTask[];
 }

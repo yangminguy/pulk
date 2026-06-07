@@ -449,12 +449,15 @@ async function toolRequests(ctx: MonitorContext) {
   const db = ctx.db || ctx.app.db;
   const { status } = requestValues(ctx) as { status?: string };
 
-  // Use raw query to filter by source_ref prefix (repetition-pattern:*)
+  // Use raw query to filter by source_ref prefix. Two sources land on this
+  // 🔔 surface: repetition-pattern:* (repetition-analyzer) and secondbrain-watch:*
+  // (cmo-strategy-watch, self-improvement loop Phase B). Both are CTO improvement
+  // proposals the founder escalates via [CTO에게 전송].
   const whereStatus = status && status !== 'all' ? `AND status = :status` : '';
   const tasks = await db.sequelize.query(
     `SELECT * FROM agent_tasks
      WHERE assigned_agent = 'CTO'
-       AND source_ref LIKE 'repetition-pattern:%'
+       AND (source_ref LIKE 'repetition-pattern:%' OR source_ref LIKE 'secondbrain-watch:%')
        ${whereStatus}
      ORDER BY updated_at DESC`,
     {
@@ -504,6 +507,29 @@ async function approveTask(ctx: MonitorContext) {
     values: { status: 'done', approval_required: false, updated_at: new Date() },
   });
   ctx.body = { ok: true, task_id, new_status: 'done' };
+}
+
+// PRD §18.1 — control-room retry. Re-runs a settled ACR ExecutionRun by run_id
+// via the ACR `/api/execution-runs/:run_id/retry` endpoint. Graceful: when ACR
+// is unreachable the transport returns null and we report ok:false so the UI
+// shows "ACR 미연결" instead of erroring. An optional `agent` override supports
+// the retry_with_verifier escalation.
+async function retryRun(ctx: MonitorContext) {
+  const { run_id, agent } = requestValues(ctx) as { run_id?: string; agent?: string };
+  if (!run_id) {
+    ctx.status = 400;
+    ctx.body = { ok: false, error: 'run_id is required' };
+    return;
+  }
+  const transport = makeAcrExecutionTransport();
+  const result = transport
+    ? await transport.retryRun(run_id, typeof agent === 'string' ? agent : undefined)
+    : null;
+  if (!result) {
+    ctx.body = { ok: false, error: 'ACR unreachable or retry failed', data: {} };
+    return;
+  }
+  ctx.body = { ok: true, data: { run_id: result.run_id } };
 }
 
 async function rejectTask(ctx: MonitorContext) {
@@ -1419,6 +1445,10 @@ export default class PluginExecutiveMonitorServer extends Plugin {
           await rollbackSelfMod(ctx);
           await next();
         },
+        retryRun: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await retryRun(ctx);
+          await next();
+        },
       },
     });
 
@@ -1485,6 +1515,7 @@ export default class PluginExecutiveMonitorServer extends Plugin {
       'sendToCTO',
       'applySelfMod',
       'rollbackSelfMod',
+      'retryRun',
     ], 'loggedIn');
     this.app.acl.allow('roadmap', ['list'], 'loggedIn');
     this.app.acl.allow('discovery', ['today'], 'loggedIn');

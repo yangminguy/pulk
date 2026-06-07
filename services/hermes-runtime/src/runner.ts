@@ -21,6 +21,7 @@ import { runTaskDispatcher } from "./tasks/task-dispatcher.js";
 import { runCTOVerificationLoop } from "./tasks/cto-verification-loop.js";
 import { runModelVerify } from "./tasks/model-verify.js";
 import { runSelfLearning } from "./tasks/self-learning.js";
+import { runCmoStrategyWatch } from "./tasks/cmo-strategy-watch.js";
 import { runTaskArchiver } from "./tasks/task-archiver.js";
 import type { DailyApprovalBrief } from "./tasks/approval-checker.js";
 import type { DailyBrief } from "./tasks/daily-brief-generator.js";
@@ -173,6 +174,15 @@ export async function runModelVerifyLive() {
 
 export async function runSelfLearningLive() {
   return runSelfLearning();
+}
+
+export async function runCmoStrategyWatchLive() {
+  // Mirror repetition-analyzer: the card needs a fresh instruction FK, which
+  // createAgentTask provisions when given an instruction_id.
+  return runCmoStrategyWatch({
+    createToolRequest: async (payload) =>
+      createAgentTask({ ...payload, instruction_id: randomUUID() }),
+  });
 }
 
 export async function runTaskArchiverLive() {

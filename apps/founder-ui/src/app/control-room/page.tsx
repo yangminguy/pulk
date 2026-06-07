@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import AuthGate from '@/components/AuthGate'
-import { api, ControlRoomBusiness, ControlRoomDevTask, CtoPlan, RoadmapProgressItem, RoadmapProgressSummary } from '@/lib/api'
+import { api, AcrChecks, AcrCheckStatus, AcrRunSummary, ControlRoomBusiness, ControlRoomDevTask, CtoPlan, RoadmapProgressItem, RoadmapProgressSummary } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
 
 // ── Joinery status tokens ─────────────────────────────────────────────────────
@@ -260,6 +260,179 @@ function AcrStrip({ task }: { task: ControlRoomDevTask }) {
 // Leads with plain language a non-developer reads ("Claude가 작업 중 · 6단계 중
 // 4단계"); the developer data (branch hash, phase numbers, files, log, risk
 // level) is tucked behind a collapsed "개발 상세".
+// CTO Harness 복잡도 칩 (C0~C5). ACR이 dispatch 때 받은 intent.complexity 를 echo한
+// 값. CTO가 "무엇을/얼마나 무겁게" 판단했는지 한눈에 보여준다. 데이터 없으면 미표시.
+const COMPLEXITY_LABELS: Record<string, string> = {
+  C0: '문서', C1: '소규모', C2: '기능', C3: '교차모듈', C4: '위험', C5: '대형',
+}
+function ComplexityBadge({ level }: { level: string }) {
+  const label = COMPLEXITY_LABELS[level]
+  if (!label) return null
+  return (
+    <span
+      title={`복잡도 ${level} · CTO 판단`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px',
+        borderRadius: 999, fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-mono)',
+        background: 'var(--silver-1)', color: 'var(--ink-2)',
+      }}
+    >
+      {level}<span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, color: 'var(--ink-3)' }}>{label}</span>
+    </span>
+  )
+}
+
+// ── Checks badges (PRD §8.2 ExecutionRun.checks) ──────────────────────────────
+// typecheck/lint/test/build/playwright/boundary → pass·fail·skipped. Pure display;
+// the verifier outcome is decided in ACR, echoed via build-control-room-tree.
+// Gates exactly like ComplexityBadge: absent → hidden.
+const CHECK_LABELS: Record<keyof AcrChecks, string> = {
+  typecheck: '타입', lint: '린트', test: '테스트', build: '빌드', playwright: 'E2E', boundary: '경계',
+}
+const CHECK_ORDER: (keyof AcrChecks)[] = ['typecheck', 'lint', 'test', 'build', 'playwright', 'boundary']
+const CHECK_TONE: Record<AcrCheckStatus, { bg: string; fg: string; mark: string }> = {
+  pass:    { bg: 'var(--green-tint)', fg: 'var(--green-press)', mark: '✓' },
+  fail:    { bg: 'var(--red-tint)',   fg: '#8C2A1F',            mark: '✕' },
+  skipped: { bg: 'var(--silver-1)',   fg: 'var(--ink-4)',       mark: '–' },
+}
+function ChecksBadges({ checks }: { checks: AcrChecks }) {
+  const entries = CHECK_ORDER
+    .map(k => [k, checks[k]] as const)
+    .filter(([, v]) => v != null) as [keyof AcrChecks, AcrCheckStatus][]
+  if (entries.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+      {entries.map(([key, status]) => {
+        const tone = CHECK_TONE[status]
+        return (
+          <span
+            key={key}
+            title={`${CHECK_LABELS[key]} ${status}`}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px',
+              borderRadius: 4, fontSize: 10.5, fontWeight: 600, fontFamily: 'var(--font-mono)',
+              background: tone.bg, color: tone.fg,
+            }}
+          >
+            <span aria-hidden>{tone.mark}</span>
+            {CHECK_LABELS[key]}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Run history (PRD §8.1 task ▸ many runs) ───────────────────────────────────
+// Prior ExecutionRun attempts for this task, newest first. Collapsed; hidden when
+// empty. Display only — ACR owns the runs.
+function RunHistory({ runs }: { runs: AcrRunSummary[] }) {
+  if (runs.length === 0) return null
+  return (
+    <details>
+      <summary
+        style={{
+          cursor: 'pointer', fontFamily: 'var(--font-sans)', fontSize: 11.5,
+          color: 'var(--ink-4)', userSelect: 'none', outline: 'none',
+        }}
+      >
+        이전 실행 {runs.length}회
+      </summary>
+      <div style={{ marginTop: 7, display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {runs.map((r, i) => (
+          <div key={r.run_id || i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 11 }}>
+              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--ink-3)' }}>{r.run_id}</span>
+              {r.agent && <AgentChip agent={r.agent} />}
+              <span style={{ fontFamily: 'var(--font-sans)', color: 'var(--ink-3)' }}>{r.status}</span>
+            </div>
+            {r.checks && <ChecksBadges checks={r.checks} />}
+          </div>
+        ))}
+      </div>
+    </details>
+  )
+}
+
+// ── Next action + run actions (PRD §16 ResultPacket; §18.1 retry/review) ──────
+const RECOMMENDATION_LABELS: Record<string, string> = {
+  merge_ready: '병합 준비됨',
+  human_review: '사람 검토 필요',
+  retry_same_agent: '같은 에이전트로 재시도',
+  retry_with_verifier: '검증자와 재시도',
+  blocked: '막힘',
+  discard_patch: '패치 폐기',
+}
+function RunActions({ task }: { task: ControlRoomDevTask }) {
+  const [retrying, setRetrying] = useState(false)
+  const [retryMsg, setRetryMsg] = useState<string | null>(null)
+  const [reviewOpen, setReviewOpen] = useState(false)
+
+  const recommendation = task.recommendation ? (RECOMMENDATION_LABELS[task.recommendation] ?? task.recommendation) : null
+  // Retry needs a run to re-run; review needs a run to inspect (PRD §18.1).
+  const canRetry = !!task.run_id
+  const canReview = !!task.run_id
+
+  const retry = async () => {
+    if (retrying) return
+    setRetrying(true)
+    setRetryMsg(null)
+    const res = await api.acrRetryRun(task.run_id!)
+    setRetrying(false)
+    setRetryMsg(res?.run_id ? `새 실행 시작됨 (${res.run_id})` : '재시도를 시작할 수 없습니다 (ACR 미연결)')
+  }
+
+  if (!task.next_action && !recommendation && !canRetry && !canReview) return null
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      {(task.next_action || recommendation) && (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, flexWrap: 'wrap', fontSize: 12 }}>
+          <span style={{ fontSize: 11, color: 'var(--ink-4)', fontWeight: 600 }}>다음 액션</span>
+          {recommendation && (
+            <span style={{
+              fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 4,
+              background: 'var(--amber-tint)', color: '#8A5408', whiteSpace: 'nowrap',
+            }}>
+              {recommendation}
+            </span>
+          )}
+          {task.next_action && <span style={{ color: 'var(--ink-2)', lineHeight: 1.5 }}>{task.next_action}</span>}
+        </div>
+      )}
+
+      {(canRetry || canReview) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {canRetry && (
+            <button onClick={retry} disabled={retrying} className="j-btn j-btn-secondary j-btn-sm">
+              <IconRefresh size={12} />
+              {retrying ? '재시도 중...' : '재시도'}
+            </button>
+          )}
+          {canReview && (
+            <button onClick={() => setReviewOpen(v => !v)} className="j-btn j-btn-secondary j-btn-sm">
+              {reviewOpen ? '검토 닫기' : '검토'}
+            </button>
+          )}
+          {retryMsg && <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>{retryMsg}</span>}
+        </div>
+      )}
+
+      {reviewOpen && (
+        <div style={{
+          fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.6, color: 'var(--ink-3)',
+          background: 'var(--bg-inset, var(--silver-1))', padding: '8px 10px', borderRadius: 6,
+          display: 'flex', flexDirection: 'column', gap: 3,
+        }}>
+          <div><span style={{ color: 'var(--ink-4)' }}>run </span>{task.run_id}</div>
+          {task.branch && <div><span style={{ color: 'var(--ink-4)' }}>branch </span>{task.branch}</div>}
+          {task.changed_files != null && <div><span style={{ color: 'var(--ink-4)' }}>changed </span>{task.changed_files} files</div>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DevTaskRow({ task }: { task: ControlRoomDevTask }) {
   const riskStyle = task.risk_level ? (RISK_STYLES[task.risk_level] ?? null) : null
   const live = hasAcr(task)
@@ -286,6 +459,7 @@ function DevTaskRow({ task }: { task: ControlRoomDevTask }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         <AgentChip agent={displayAgent} />
         <StatusBadge status={execStatus} />
+        {task.complexity && <ComplexityBadge level={task.complexity} />}
       </div>
 
       {/* Title — what this task is */}
@@ -314,6 +488,12 @@ function DevTaskRow({ task }: { task: ControlRoomDevTask }) {
         </div>
       )}
 
+      {/* Checks status (PRD §8.2) — verifier gates; hidden when not reported */}
+      {task.checks && <ChecksBadges checks={task.checks} />}
+
+      {/* Next action + retry/review (PRD §16, §18.1) — hidden when no run data */}
+      <RunActions task={task} />
+
       {/* Token usage: measured actuals once the CLI has run, else the forecast */}
       {task.actual_total_tokens != null ? (
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--ink-3)' }}>
@@ -327,7 +507,7 @@ function DevTaskRow({ task }: { task: ControlRoomDevTask }) {
       ) : null}
 
       {/* Developer details — collapsed for non-developers */}
-      {(live || (task.risk_level && riskStyle)) && (
+      {(live || (task.risk_level && riskStyle) || (task.run_history && task.run_history.length > 0)) && (
         <details style={{ marginTop: -1 }}>
           <summary
             style={{
@@ -358,6 +538,7 @@ function DevTaskRow({ task }: { task: ControlRoomDevTask }) {
               </div>
             )}
             <AcrStrip task={task} />
+            {task.run_history && task.run_history.length > 0 && <RunHistory runs={task.run_history} />}
           </div>
         </details>
       )}

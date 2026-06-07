@@ -139,6 +139,25 @@ export type LiveStatusGroup = {
 }
 
 // P3-3 — control room tree
+// PRD §8.2 ExecutionRun.checks — per verifier gate. Absent gate = not reported.
+export type AcrCheckStatus = 'pass' | 'fail' | 'skipped'
+export type AcrChecks = {
+  typecheck?: AcrCheckStatus
+  lint?: AcrCheckStatus
+  test?: AcrCheckStatus
+  build?: AcrCheckStatus
+  playwright?: AcrCheckStatus
+  boundary?: AcrCheckStatus
+}
+// PRD §8.1 — one prior run attempt (compact summary; full run lives in ACR).
+export type AcrRunSummary = {
+  run_id: string
+  status: string
+  agent?: string | null
+  branch?: string | null
+  checks?: AcrChecks | null
+  created_at?: string | null
+}
 export type ControlRoomDevTask = {
   task_id: string
   title: string
@@ -153,12 +172,25 @@ export type ControlRoomDevTask = {
   exec_status?: string | null
   changed_files?: number | null
   log_tail?: string | null
+  /** CTO Harness 복잡도(C0~C5). ACR이 dispatch intent.complexity 를 echo. null = 미표시. */
+  complexity?: string | null
   /** Forecast token range (추정, from classification — not measured usage). */
   est_tokens_low?: number | null
   est_tokens_high?: number | null
   /** Measured token usage + cost from the CLI runtime (via ACR), when available. */
   actual_total_tokens?: number | null
   actual_cost_usd?: number | null
+  // PRD §18.1 task ▸ run axes (null/empty when ACR absent → UI hides them).
+  /** Latest ExecutionRun id; scopes retry/review. */
+  run_id?: string | null
+  /** PRD §8.2 verifier gate outcomes for the latest run. */
+  checks?: AcrChecks | null
+  /** PRD §16 ResultPacket.nextAction — what to do next. */
+  next_action?: string | null
+  /** PRD §16 ResultPacket.recommendation (merge_ready/human_review/…). */
+  recommendation?: string | null
+  /** PRD §8.1 prior run attempts (newest first). */
+  run_history?: AcrRunSummary[] | null
 }
 export type ControlRoomProject = {
   project_id: string | null
@@ -607,6 +639,30 @@ export const api = {
       body: JSON.stringify({ project_id }),
     }).then(r => unwrap(r)),
 
+  generateVideoExecutionBrief: (params: { project_id: string; content_card_id: string; [key: string]: unknown }) =>
+    request<{ data: { ok: boolean; data: { brief_id: string; brief: unknown; factory_job_url?: string } } }>('/api/cmo:generateVideoExecutionBrief', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }).then(r => unwrap(r)),
+
+  cmoGetScriptRoomData: (params: { project_id: string; content_card_id: string }) =>
+    request<{ data: { ok: boolean; data: unknown } }>('/api/cmo:getScriptRoomData', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }).then(r => unwrap(r)),
+
+  cmoRequestScriptRevision: (params: { project_id: string; content_card_id: string; revision_target: string }) =>
+    request<{ data: { ok: boolean; data: unknown } }>('/api/cmo:requestScriptRevision', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }).then(r => unwrap(r)),
+
+  cmoSendBriefToFactory: (params: { project_id: string; content_card_id: string; brief_id?: string; brief: unknown }) =>
+    request<{ data: { ok: boolean; data: { factory_result_url?: string } } }>('/api/cmo:sendBriefToFactory', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }).then(r => unwrap(r)),
+
   closeInstruction: (id: string) =>
     request<{ data: unknown }>('/api/founder_instructions:update', {
       method: 'POST',
@@ -697,6 +753,18 @@ export const api = {
     )
       .then(r => unwrap(r) as ControlRoomBusiness[])
       .catch(() => [] as ControlRoomBusiness[]),
+
+  // PRD §9.1 — retry a task = create a NEW ExecutionRun for it (ACR Kernel owns
+  // the run; this is a thin POST). Returns the new run id when ACR is reachable.
+  // Resolves to null (never throws) when ACR isn't deployed so the button can
+  // surface a soft failure without breaking the Control Room.
+  acrRetryRun: (runId: string) =>
+    request<{ data: { ok: boolean; data: { run_id?: string } } }>('/api/monitor:retryRun', {
+      method: 'POST',
+      body: JSON.stringify({ run_id: runId }),
+    })
+      .then(r => unwrap(r) as { run_id?: string })
+      .catch(() => null),
 
   // P3-2 — knowledge auto-curation
   curationSummary: () =>

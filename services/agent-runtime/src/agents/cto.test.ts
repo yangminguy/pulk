@@ -1,10 +1,50 @@
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { runCTOAgent } from './cto.js';
+import { runCTOAgent, extractTeamFeatures } from './cto.js';
 import type { LLMClient } from '@l5/core';
 
 type Complete = LLMClient['complete'];
+
+describe('extractTeamFeatures (§29 multi-feature decomposition)', () => {
+  it('returns a single feature when the task has no subtasks (solo run)', () => {
+    const task = { id: 't1', title: 'Add login API', rationale: 'users need auth' } as never;
+    const features = extractTeamFeatures(task, 'C2', 'FEATURE', ['.env']);
+    expect(features).toHaveLength(1);
+    expect(features[0]!.objective).toBe('Add login API');
+    expect(features[0]!.acceptanceCriteria).toEqual(['users need auth']);
+    expect(features[0]!.blockedFiles).toEqual(['.env']);
+  });
+
+  it('fans out one feature per subtask when 2+ subtasks exist (team run)', () => {
+    const task = {
+      id: 't2',
+      title: 'Build dashboard',
+      subtasks: [
+        { objective: 'Build chart component', rationale: 'render metrics' },
+        { title: 'Add data API endpoint' },
+      ],
+    } as never;
+    const features = extractTeamFeatures(task, 'C3', 'FEATURE', ['.env']);
+    expect(features).toHaveLength(2);
+    expect(features[0]!.objective).toBe('Build chart component');
+    expect(features[0]!.acceptanceCriteria).toEqual(['render metrics']);
+    expect(features[1]!.objective).toBe('Add data API endpoint');
+    // UI keyword routes to the ui domain (deterministic inference).
+    expect(features[0]!.domains).toContain('ui');
+  });
+
+  it('ignores blank/empty subtasks and falls back to solo when <2 valid', () => {
+    const task = {
+      id: 't3',
+      title: 'Single thing',
+      subtasks: [{ objective: '   ' }, { title: '' }],
+    } as never;
+    const features = extractTeamFeatures(task, 'C1', 'FEATURE', []);
+    expect(features).toHaveLength(1);
+    expect(features[0]!.objective).toBe('Single thing');
+  });
+});
 
 function makeLLM(responses: Array<string | Error | null>): LLMClient {
   let i = 0;

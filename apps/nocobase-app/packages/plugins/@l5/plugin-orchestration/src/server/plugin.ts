@@ -111,6 +111,10 @@ const {
   createSecondBrainInsightMerge,
   composeIntro30s,
   buildFactoryVideoJob,
+  secondBrainQueryForStatus,
+  buildVideoExecutionBrief,
+  validateVideoExecutionBrief,
+  prepareFactoryHandoff,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/video-room'));
 
 const {
@@ -169,7 +173,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -403,6 +407,25 @@ async function ensureOrchestrationColumns(db: any) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     db.logger?.warn?.(`Could not ensure video_room_gates table: ${message}`);
+  }
+
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS video_execution_briefs (
+        id text PRIMARY KEY,
+        content_card_id text,
+        project_id text,
+        schema_version text,
+        brief jsonb,
+        validation_status text,
+        handoff_status text,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure video_execution_briefs table: ${message}`);
   }
 }
 
@@ -2496,20 +2519,11 @@ function registerCmoResource(app: any, db: any) {
 
         // Second brain: query insights relevant to the current project status and
         // inject them into the strategy context. Graceful — failure never blocks.
-        const SB_STATUS_QUERY: Record<string, string> = {
-          business_pt_context_loading: '비즈니스 PT 콘텐츠 전략 키 콘텐츠 풀링 채널',
-          product_defined:             '비즈니스 PT 콘텐츠 전략 키 콘텐츠 풀링 채널',
-          key_content_ideation:        '키 콘텐츠 기획 문제 상황 역순 기획',
-          key_content_approval:        '키 콘텐츠 기획 문제 상황 역순 기획',
-          viewtrap_key_research:       '콘텐츠 리서치 경쟁사 벤치마킹 풀 콘텐츠',
-          viewtrap_pulling_research:   '콘텐츠 리서치 경쟁사 벤치마킹 풀 콘텐츠',
-          pulling_content_set_selection: '풀링 콘텐츠 현상 욕구 계획 행동 보상',
-          pulling_content_set_approval:  '풀링 콘텐츠 현상 욕구 계획 행동 보상',
-          thumbnail_pattern_extraction: '썸네일 도입부 후킹 빌드업 벤치마킹',
-          intro_30s_analysis:           '썸네일 도입부 후킹 빌드업 벤치마킹',
-        };
+        // Status→query mapping lives in l5-core (secondBrainQueryForStatus) and
+        // now covers EVERY stage incl. strategy_chat / script / production / publish
+        // (Phase A read-path expansion).
         let second_brain_insights: string[] = [];
-        const sbQuery = SB_STATUS_QUERY[proj.status as string];
+        const sbQuery = secondBrainQueryForStatus(proj.status as string);
         if (_secondBrainTransport && sbQuery) {
           try {
             const sbHits = await _secondBrainTransport.query({ role: sbQuery as any, limit: 6 });
@@ -3152,6 +3166,75 @@ function registerCmoResource(app: any, db: any) {
         );
 
         ctx.body = { ok: true, data: { job_path: result.job_path, validated: result.validated } };
+        await next();
+      },
+
+      // POST /api/cmo:generateVideoExecutionBrief  { project_id, card_id, brief? }
+      generateVideoExecutionBrief: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const card_id = String(v.card_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!card_id) ctx.throw(400, 'card_id is required');
+
+        let brief: any = v.brief ?? null;
+
+        if (!brief) {
+          // Load strategy artifact card
+          const strategyRows = await q(
+            `SELECT data FROM video_room_cards WHERE id = $1 AND video_project_id = $2 AND stage = 'strategy' ORDER BY "createdAt" DESC LIMIT 1`,
+            [card_id, project_id],
+          );
+          // Fall back to any card matching card_id if stage filter yields nothing
+          const cardRows = strategyRows.length > 0 ? strategyRows : await q(
+            `SELECT data FROM video_room_cards WHERE id = $1 AND video_project_id = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+            [card_id, project_id],
+          );
+          if (!cardRows[0]) ctx.throw(404, `card ${card_id} not found for project ${project_id}`);
+
+          // Load latest script card
+          const scriptRows = await q(
+            `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'script' ORDER BY "createdAt" DESC LIMIT 1`,
+            [project_id],
+          );
+
+          const cardData = cardRows[0].data;
+          const parsedCard = typeof cardData === 'string' ? JSON.parse(cardData) : cardData;
+          const scriptData = scriptRows[0]?.data;
+          const parsedScript = scriptData ? (typeof scriptData === 'string' ? JSON.parse(scriptData) : scriptData) : null;
+
+          try {
+            brief = buildVideoExecutionBrief({ cardData: parsedCard, scriptData: parsedScript, card_id, project_id });
+          } catch (err: any) {
+            ctx.throw(400, `buildVideoExecutionBrief 실패: ${err?.message ?? String(err)}`);
+          }
+        }
+
+        const validation = validateVideoExecutionBrief(brief);
+        if (!validation.valid) {
+          ctx.throw(400, `brief 검증 실패: ${(validation.errors ?? []).join(', ')}`);
+        }
+
+        const handoff = prepareFactoryHandoff({ brief, project_id, content_card_id: card_id });
+        const record_id = randomUUID();
+        const now = new Date().toISOString();
+
+        await db.sequelize.query(
+          `INSERT INTO video_execution_briefs (id, content_card_id, project_id, schema_version, brief, validation_status, handoff_status, "createdAt", "updatedAt")
+           VALUES ($1,$2,$3,$4,$5,'valid','ready', now(), now())
+           ON CONFLICT (id) DO UPDATE SET brief=$5, validation_status='valid', handoff_status='ready', "updatedAt"=now()`,
+          {
+            bind: [
+              record_id,
+              card_id,
+              project_id,
+              brief.schema_version ?? 'cmo_to_factory_v2',
+              JSON.stringify(handoff),
+            ],
+          },
+        );
+
+        ctx.body = { ok: true, data: { id: record_id, brief: handoff } };
         await next();
       },
     },

@@ -15,4 +15,12 @@ describe('buildSelfModAcceptanceCriteria', () => {
     expect(buildSelfModAcceptanceCriteria({ task_title: '영상 자동화' }).some(x => x.includes('영상 자동화'))).toBe(true);
     expect(buildSelfModAcceptanceCriteria({}).some(x => x.includes('제안된 개선'))).toBe(true);
   });
+  it('strips secondbrain-watch source_ref (date suffix) and falls back to title', () => {
+    const c = buildSelfModAcceptanceCriteria({
+      source_ref: 'secondbrain-watch:2026-06-06',
+      task_title: 'CMO 운영전략 업그레이드',
+    });
+    expect(c.some(x => x.includes('CMO 운영전략 업그레이드'))).toBe(true);
+    expect(c.some(x => x.includes('2026-06-06'))).toBe(false);
+  });
 });

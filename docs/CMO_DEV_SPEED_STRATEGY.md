@@ -32,8 +32,9 @@
 ### 5. 오케스트레이션이 작업을 잃고 정체
 - **증상(반복)**: ACR `planDrainLock`(인메모리) + `/api/runner`가 긴 HTTP 1회로 inline spawn → 연결 끊김/행 시 **락이 남아 전체 정체**. acr-web 재시작으로만 해제되고, 재시작 시 진행 중 phase 폐기·재실행(토큰 낭비). 고아 'running'이 동시성 슬롯을 막아 데드락.
 - **근본**: 인메모리 락 + inline-HTTP + 행 감지/타임아웃 부재.
-- **임시 해결(적용함)**: 드라이버가 CLI 비활성 4틱 정체 시 acr-web 재시작 + 고아 running→planned 힐. 17분 ORPHAN timeout 안전망.
-- **다음번(근본)**: 인메모리 락 → **파일/DB 잡 큐 + 워커**(local-runner 골격 활용). dispatch는 enqueue 후 즉시 반환, 워커가 처리. 행은 하트비트+타임아웃으로 큐에서 정리(재시작 불필요).
+- **임시 해결(과거)**: 드라이버가 CLI 비활성 4틱 정체 시 acr-web 재시작 + 고아 running→planned 힐. 17분 ORPHAN timeout 안전망.
+- **근본 해결(2026-06-06 적용함)**: 인메모리 락 → **하트비트 lease**(산 drain 30초 갱신 유지, 죽은 홀더 3분 stale 자동 재청구) + `/api/runner` SSE 드레인에 **AbortController 타임아웃**(단일 phase 영구행 차단). 드라이버의 **acr-web 재시작 제거**(lease가 자가복구) → 재시작에 의한 재실행 토큰 낭비 0. `agent_control_room_docs/lib/orchestration/auto-dispatcher.ts` + `cmo-driver.mjs`. 설계 = `docs/DECISIONS.md` 2026-06-06.
+  - **잡큐+데몬 전면 재작성은 보류**: `/api/runner`가 L5 콜백·머지·경계·커밋까지 수행 → 데몬 직접 spawn은 그 후처리를 회귀시킴. in-flight CLI의 재시작 생존은 후속(공유 finalizer 추출 후).
 
 ### 6. 비원자적 JSON 쓰기 → 손상
 - **증상**: 병렬 드레인이 `execution-logs.json` 동시 쓰기 → "Extra data after JSON" 손상 → ACR 라우트 연쇄 실패.
@@ -49,6 +50,8 @@
 - **증상**: 4 worktree 병렬이 빨랐지만, 공유 통합 파일(Sidebar, AgentOutputDetail, 페이지, package.json)을 각자 독립 수정 → 마지막에 병합 충돌. (다행히 대부분 가산적이라 union으로 해결, 락파일만 수동.)
 - **근본**: 병렬 작업이 같은 통합 지점을 건드림.
 - **다음번**: ① 통합 지점(공유 컴포넌트/라우터/스키마)을 **먼저 1회 셋업**(직렬)하고, 그 위에서 기능별 병렬. ② 또는 기능별 파일 경계를 강하게(각 기능은 자기 폴더만) 잡아 충돌 면적 축소. ③ 통합 자동화(주기적 머지 + union 리졸버).
+- **확립된 실천(2026-06-06)**: 위 ①을 표준 절차로 채택 — PRD 시작 시 **통합 지점(라우터/사이드바/스키마/package.json)을 직렬로 1회 선셋업**한 뒤 기능별 worktree 병렬. ACR의 file-boundary 게이트(`allowedFiles`/`doNotTouchFiles`)로 ②를 강제.
+- **브랜치 위생 자동화 ✅**: ACR이 phase마다 만드는 `acr/l5-*` 브랜치 누적을 막기 위해 `scripts/git-acr-cleanup.sh`(머지+7일 경과분만, 보호/워크트리 브랜치 제외)를 **일일 launchd로 스케줄**(`launchd/com.l5.git-acr-cleanup.plist` 03:30, installer 등록). 근본(ACR 머지 후 즉시 삭제)은 finalizer 후속과 함께.
 
 ---
 

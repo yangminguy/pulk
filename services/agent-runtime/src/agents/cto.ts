@@ -33,7 +33,20 @@ import {
   classifyTask,
   createDefaultLLMClient,
   resolveModel,
+  applyHarnessMetadata,
+  taskClassToComplexity,
+  complexityToMode,
+  DEFAULT_BLOCKED,
+  planTeamRun,
 } from "@l5/core";
+import type {
+  Complexity,
+  HarnessRiskLevel,
+  WorkPackageDomain,
+  TeamFeatureInput,
+  PlannedExecutionRun,
+} from "@l5/core";
+import { createExecutionRun } from "./acr-execution-client.js";
 import { readFileSync } from "node:fs";
 
 export type CTOAgentInput = AgentInput;
@@ -363,6 +376,127 @@ async function dispatchToACR(intent: ACRIntent): Promise<void> {
   }
 }
 
+// ── Execution-Runs 레일 (PRD §9/§29) ────────────────────────────────────────
+// 기존 workbench dispatch 와 별개의 *추가* 레일. ACR_EXECUTION_RUNS=on 일 때만
+// 활성화되며, 비파괴(점진 활성화)다. CTO가 작업을 분류해 큰 작업(C5 또는 다중
+// feature)은 MainAgentWorkPackage[] 로 분해 → 각 패키지마다 POST /api/execution-runs
+// 를 호출(다중 run = 팀런). 소형은 단일 run. C0/C1 팀 금지 가드는 team-router/
+// team-orchestrator 에 이미 들어 있어 재사용한다.
+
+/** harness 복잡도(C0~C5) → HarnessRiskLevel(D0~D4). 위험 영역일수록 높게. */
+function complexityToHarnessRisk(c: Complexity): HarnessRiskLevel {
+  switch (c) {
+    case "C0":
+      return "D0";
+    case "C1":
+    case "C2":
+      return "D1";
+    case "C3":
+      return "D2";
+    case "C4":
+      return "D3";
+    case "C5":
+      return "D4";
+  }
+}
+
+/** 단일 task → feature 도메인 추론(결정적, 키워드 기반). UI 신호가 있으면 ui. */
+function inferDomains(taskTitle: string, taskClass: TaskClass): WorkPackageDomain[] {
+  const t = taskTitle.toLowerCase();
+  if (/\b(ui|page|component|screen|버튼|화면|컴포넌트|렌더)\b/.test(t)) {
+    return ["ui"];
+  }
+  if (taskClass === "RESEARCH") return ["docs"];
+  if (/\b(test|테스트|spec)\b/.test(t)) return ["test"];
+  return ["api"];
+}
+
+/** task 메타의 구조화 subtask 형태(자유형 AgentInput 위에 optional 로 얹힘). */
+type TaskSubtask = { title?: string; objective?: string; rationale?: string };
+
+/**
+ * task → TeamFeatureInput[]. 구조화된 subtasks(2개 이상)가 있으면 각각을 feature 로
+ * 분해(→ 팀런), 없으면 task 자체를 단일 feature 로(→ solo run). 결정적·비파괴.
+ */
+export function extractTeamFeatures(
+  task: CTOAgentInput["task"],
+  complexity: Complexity,
+  taskClass: TaskClass,
+  blockedFiles: string[],
+): TeamFeatureInput[] {
+  const taskTitle = task?.title ?? "Unknown Task";
+  const toFeature = (objective: string, criteria: string[]): TeamFeatureInput => ({
+    objective,
+    domains: inferDomains(objective, taskClass),
+    allowedFiles: [],
+    blockedFiles,
+    complexity,
+    riskLevel: complexityToHarnessRisk(complexity),
+    acceptanceCriteria: criteria,
+  });
+
+  const meta = task as unknown as { subtasks?: TaskSubtask[] } | undefined;
+  const subs = (Array.isArray(meta?.subtasks) ? meta!.subtasks : [])
+    .map((s) => ({ objective: s?.objective ?? s?.title ?? "", rationale: s?.rationale }))
+    .filter((s) => s.objective.trim().length > 0);
+
+  if (subs.length > 1) {
+    return subs.map((s) => toFeature(s.objective, s.rationale ? [s.rationale] : []));
+  }
+  return [toFeature(taskTitle, task?.rationale ? [task.rationale] : [])];
+}
+
+/**
+ * Execution-runs 레일을 실행한다(플래그 ON 일 때만 호출됨).
+ * task 를 1개 이상 feature 로 분해해 planTeamRun → 각 run 마다 createExecutionRun.
+ * 구조화 subtasks 가 있으면 팀런(다중 run), 없으면 solo run.
+ * 모든 호출은 graceful — 실패해도 throw 하지 않는다.
+ */
+async function dispatchExecutionRuns(
+  task: CTOAgentInput["task"],
+  complexity: Complexity,
+  taskClass: TaskClass,
+  blockedFiles: string[],
+): Promise<void> {
+  const repoPath = resolveProjectPath(task);
+  if (!repoPath) {
+    console.warn(
+      "[CTO] execution-runs rail: no repo_path (project_path/cwd/L5_DEFAULT_PROJECT_PATH) — skipping",
+    );
+    return;
+  }
+
+  const taskId = task?.id ?? "unknown";
+  const taskTitle = task?.title ?? "Unknown Task";
+
+  // §29 — multi-feature decomposition. When the task carries structured
+  // subtasks, each becomes its own feature so planTeamRun fans them out as a
+  // team run (multiple execution-runs). Without subtasks it stays a solo run.
+  // The C0/C1 team-forbidden guard lives in team-orchestrator and is reused.
+  const features = extractTeamFeatures(task, complexity, taskClass, blockedFiles);
+
+  const plan = planTeamRun({
+    parentTaskId: taskId,
+    parentPlanId: `${taskId}-plan`,
+    repoPath,
+    baseBranch: process.env["ACR_BASE_BRANCH"] ?? "main",
+    features,
+  });
+
+  console.warn(
+    `[CTO] execution-runs rail (${plan.kind}): dispatching ${plan.runs.length} run(s) for "${taskTitle}"`,
+  );
+
+  for (const run of plan.runs as PlannedExecutionRun[]) {
+    const created = await createExecutionRun(run.request);
+    if (created) {
+      console.warn(
+        `[CTO] execution-run created: ${created.run_id} (${created.status}) for package ${run.package.packageId}`,
+      );
+    }
+  }
+}
+
 function resolveLLMClient(deps?: CTOAgentDeps): LLMClient | null {
   if (deps && Object.prototype.hasOwnProperty.call(deps, "llm")) {
     return deps.llm ?? null;
@@ -441,8 +575,29 @@ export async function runCTOAgent(
     acrIntent = buildDeterministicIntent(input.task, resolvedTaskClass, quotaState);
   }
 
+  // CTO orchestration: 복잡도·하드 경계를 dispatch payload에 실어 ACR이 격리 범위와
+  // 검증 강도를 정하게 한다. ACR은 "무엇을 할지" 판단하지 않는다(PRD §5.2) — 복잡도
+  // (taskClass→C0~C5), 실행모드, blocked_files(.env·lockfile 등)는 모두 CTO가 결정.
+  const harnessComplexity = taskClassToComplexity(resolvedTaskClass);
+  acrIntent = applyHarnessMetadata(acrIntent, {
+    complexity: harnessComplexity,
+    mode: complexityToMode(harnessComplexity),
+    blockedFiles: DEFAULT_BLOCKED,
+  });
+
   await registerWithACR(input.task);
   await dispatchToACR(acrIntent);
+
+  // 추가 레일(비파괴): ACR_EXECUTION_RUNS=on 일 때만 execution-runs 로도 디스패치.
+  // 기존 workbench dispatch 는 그대로 유지된다. 분해/팀런 판단은 team-orchestrator.
+  if (process.env["ACR_EXECUTION_RUNS"] === "on") {
+    await dispatchExecutionRuns(
+      input.task,
+      harnessComplexity,
+      resolvedTaskClass,
+      DEFAULT_BLOCKED,
+    );
+  }
 
   const riskOrder: CTOPhase["risk_level"][] = ["D1", "D2", "D3", "D4", "D5"];
   const highestRisk = acrIntent.phases.reduce<CTOPhase["risk_level"]>(

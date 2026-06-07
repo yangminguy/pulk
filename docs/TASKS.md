@@ -1,7 +1,32 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-06-05 (CMO Video Room PRD 갭 배선 P0+P1, 라이브 E2E 19/19). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-06-06 (CMO Video Room UI 재설계 — 단계 중심 단일 포커스). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+
+## 🧠 CMO 세컨브레인 자가개선 루프 (2026-06-06)
+
+> 사장님: 비즈니스 PT 정보가 매주 쌓임 → CMO가 진화해야. 데이터층(자동)/코드층(승인된 CTO) 분리. 설계 = `docs/DECISIONS.md` 2026-06-06. **원칙: 승인 전엔 코드 안 바뀜.**
+
+- [x] **Phase A — read-path 전 단계 확장**: `l5-core/second-brain-query.ts`(`secondBrainQueryForStatus`, 23단계 전수, strategy_chat·원고·제작·발행 포함) + 테스트 4건. plugin 하드코딩 맵 제거→함수 사용. l5-core video-room 218/218. dist 패치+nocobase 재시작 배포. strategy_chat 첫 메시지 200·LLM 답변·SB 인사이트 6건 반환 확인.
+- [x] **Phase B — 일일 PT 감시**:
+  - [x] 코어 판단 로직: `l5-core/cmo-strategy/strategy-watch.ts` (`cmoStrategyWatch` snapshot diff + `parsePTInventory`). biz 브레인 `brains/biz/memory/inventory.jsonl`(source_id+hash) 스냅샷 비교로 신규/수정 PT 감지 + 사장님 요약 생성. 순수·테스트 8건(cmo-strategy 16/16).
+  - [x] Hermes 래퍼 task `cmo-strategy-watch.ts`(self-learning 패턴): inventory.jsonl 읽기→스냅샷 load/save→`cmoStrategyWatch`→**첫 실행은 베이스라인만 조용히 저장(1059건 노이즈 방지)**, hasChanges 시 CTO tool-request 카드(`source_ref: secondbrain-watch:<date>`)+텔레그램, 없으면 skip. `runner.runCmoStrategyWatchLive`(createAgentTask 주입)+gateway 등록. 테스트 4건(baseline/change/silent/missing). launchd plist `com.l5.hermes.cmo-strategy-watch.plist`(09:05). **launchd 활성화 = 수동(별도 단계).**
+- [x] **Phase C — CTO 자가개조(승인 게이트)** *(배선 완료)*: ★인프라 대부분 존재★ — executive-monitor "[CTO에게 전송]→self-mod task→승인 큐(🔔)→`applySelfMod`/`rollbackSelfMod`+diff 미리보기" 체인 완비. **배선 = `toolRequests` SQL 필터를 `repetition-pattern:%` 단독 → `(repetition-pattern:% OR secondbrain-watch:%)`로 확장**(src+dist 패치). 이제 B 카드가 같은 🔔 surface에 떠 기존 [CTO에게 전송]→sendToCTO→applySelfMod 체인이 그대로 작동. `buildSelfModAcceptanceCriteria`도 secondbrain-watch prefix strip(테스트 추가). 승인 전 코드 불변은 기존 self_mod_status 게이트가 보장. **라이브 nocobase 재기동 = 수동.**
+- [x] **환경 드리프트 해소(2026-06-06)**: l5-core `zod`/`pptxgenjs` 미설치 → 전체 node_modules wipe 없이 해결(zod=store 심링크, pptxgenjs=격리 npm 설치). l5-core 빌드 tsc 0, 테스트 24/24, lockfile/추적파일 무변경. 라이브 서비스 무중단. 상세 = `docs/HANDOFF.md` 2026-06-06.
+- [ ] **후속**: YouTube API 반응 데이터 → 학습 신호(들어오면 Phase C 가치 ↑).
+
+## 🎬 CMO Video Room — UI 재설계: 단계 중심 단일 포커스 (2026-06-06, frontend-only)
+
+> 사장님 피드백: "너무 많은 워크플로우를 한 곳에 담아 복잡". 백엔드 25단계/API 불변, `apps/founder-ui`만 재구성. 상세 = `docs/HANDOFF.md` 2026-06-06.
+
+- [x] **status→phase 매핑 + 테스트**: `video-room/_lib/phases.ts`(25 status → 5 phase, `blockState`/`statusOrder` 등) + `phases.test.ts`(전수 매핑·순서·게이트 상태). `STATUS_LABEL` page.tsx 중복 제거.
+- [x] **PhaseTimeline**: 25점 잘린 로드맵 → 5단계(진행중/완료/🔒잠금, 클릭 이동, pending 배지).
+- [x] **레이아웃 재구성**: 3열 강제 폐기 → 전체 폭 보드 + 접이식 우측 드로어(CMO챗+승인, 접으면 44px 레일). 빈 좌우 컬럼 제거.
+- [x] **소프트 게이팅 StageGate**: 제작 보드 4블록(원고/팩토리/음성/파이프라인) active=펼침·done=접기·locked=🔒. 사장님이 "소프트 게이팅" 선택.
+- [x] **헤더 정리**: 알림벨 충돌(paddingRight) + 중복 page 라벨·내부 탭 제거.
+- [x] **검증**: tsc 0, next build 성공(/video-room 10.3kB), phases.test 통과, Playwright 스크린샷 5종(전략/제작/발행/드로어접힘/원고-active).
+- [x] **후속 — 전 보드 게이팅 일관화**: StrategyBoard(Viewtrap 수동입력)·ReviewPublishBoard(게시 파이프라인)에도 StageGate 적용. 3보드 모두 active/done/locked 일관.
+- [x] **후속 — page.tsx 컴포넌트 분리**: 2141줄 → 컨테이너만 ~230줄. `_lib/types.ts` + `_components/`(StageGate/cards/ScriptBeatEditor/DecisionPanel/CmoChatPanel/PhaseTimeline/VideoRoomHeader/StrategyBoard/ProductionBoard/ReviewPublishBoard/ProjectSelector) 추출. tsc 0·빌드 성공·전략/발행 게이팅 스크린샷 확인.
 
 ## 🎬 CMO Video Room — 강의 워크플로우 정합 + 라이브 세컨브레인 (2026-06-05)
 
@@ -1427,3 +1452,70 @@ L5 Business OS
 - verify: E2E 9 테스트(secondbrain.read→ask_founder→재개→configure+generate, 역할권한, write CEO게이트). l5-core 410/413(3 pre-existing 무관). ✅
 
 **순서 의존:** M1(토대) → M2 → M3 → M4 → M5. **전부 완료 + 라이브/브라우저 검증.** 실연결 TODO: 세컨브레인 MCP(`SECONDBRAIN_MCP_URL/TOKEN`)·영상생성기(`VIDEO_FACTORY_URL/TOKEN`) env 설정 + transport 매핑(미설정 시 graceful).
+
+### ACR 오케스트레이션 정체 근본화  [x] 2026-06-06
+- ACR 자율 코딩의 인메모리 plan 락 + abort 없는 SSE 드레인 → 행 시 정체 → acr-web 재시작(재실행 낭비) 근본 제거.
+- **하트비트 lease**(`auto-dispatcher.ts`: 산 drain 유지, 죽은 홀더 3분 stale 재청구) + **/api/runner abort 타임아웃**(`ACR_RUNNER_TIMEOUT_MS`) + 드라이버 acr-web 재시작 제거(`cmo-driver.mjs`).
+- `/api/runner` 무수정 → L5 콜백·머지·경계 무회귀. 데몬 직접 spawn(in-flight 생존)은 회귀 위험으로 보류(`docs/DECISIONS.md` 2026-06-06).
+- verify: 신규 `__tests__/auto-dispatcher-resilience.test.ts` 2종 + 기존 auto-dispatcher/resilience-loop/pre-dispatch 19/19 GREEN. 드라이버 `node --check` OK. ✅
+
+### CTO 개선 후속 3종  [x] 2026-06-06
+- **per-phase agy 모델**: agy `--model`(병렬 안전) 배선 — 경량=Flash, 코딩=Pro. `antigravity-runner.ts`·`spawn-runner.ts`·`spawn-with-verification.ts`·`/api/runner`. env `ACR_AGY_MODEL_LIGHT/_CODE/_PER_PHASE_MODEL`.
+- **쿼터 추적 갱신부**: `lib/agents/quota-tracker-file.ts` — registry→`QuotaState`를 `ACR_QUOTA_TRACKER_PATH`에 영속화(`updateAgentRuntime` choke point). B5 read-path 완성. 전제: pulk·acr-web 같은 env 공유.
+- **브랜치 정리 자동화**: `git-acr-cleanup.sh` 일일 launchd(`com.l5.git-acr-cleanup.plist` 03:30) + installer 등록.
+- verify: antigravity-runner `--model` 3종(+37)·quota-tracker-file 6 GREEN, 회귀 GREEN, tsc 0. cleanup dry-run·plutil·bash -n OK. ✅
+- **데몬 in-flight 생존 보류**: runner finalize가 테스트 0 → 안전망 없는 리팩터 위험. 순서 = finalize 특성화 테스트 → 추출 → 플래그 게이트 데몬 → 라이브 통합 테스트(별도 세션).
+
+### 데몬 in-flight 생존 ①② (finalize 추출)  [x] 2026-06-06
+- **①특성화 테스트** `__tests__/runner-finalize.test.ts`: finalize 행동(PlanTask 상태+L5콜백 status) 4시나리오 고정 → 무회귀 안전망.
+- **②추출** `lib/runner/finalize-phase-execution.ts`: post-spawn 블록 verbatim 추출(emit 콜백화). route.ts 609→365줄, 고아 import 정리. 인라인+미래 데몬 공유.
+- verify: 추출 전후 finalize 4 GREEN(행동 보존), 전체 742 GREEN(사전존재 ENOENT 1건 제외), tsc 0. ACR rebuild+restart 배포. ✅
+- **③④(라이브 세션)**: prepare/finalize 엔드포인트 + 별도 프로세스 데몬(기본 OFF) + 플래그 켜고 실 phase 1개 L5콜백 확인.
+
+---
+
+## CMO / Script Room v3.1 구현 (2026-06-06 시작, workflow 연속 실행)
+
+실행계획: `docs/CMO_SCRIPT_ROOM_EXECUTION_PLAN.md`. 경계 확정: CMO=VideoExecutionBrief까지, scene_type은 Factory.
+
+- [x] P0 계약 문서(CMO_SCRIPT_ROOM_PRD.md, CMO_TO_FACTORY_CONTRACT.md) + 갭 확정
+- [x] P1 타입 + VideoExecutionBrief + brief-validators (scene_type 부재 검증)
+- [x] P2 Research Room 5종 + Gate1
+- [x] P3 Strategy Brief(logic_blocks) + Content Set Validation
+- [x] P4 Script Room(Intro/Writers/Integrator/Voice/QA) + Revision Router
+- [x] P5 VideoExecutionBrief 빌더 완성 + 핸드오프(script-factory 대체)
+- [x] P6 UI 패널 + cmo: API + Content Card Board
+- [x] 커밋 `45c8330` (2026-06-06, `cto/acr-kernel-harness`에 CMO만 분리 커밋; CTO Harness 변경분 제외). 라이브 DB E2E·브라우저 검증은 라이브 세션 잔여.
+
+### 데몬 기본 실행 경로 승격 (외부러너)  [x] 2026-06-06
+- `ACR_EXTERNAL_RUNNER=1`: auto-dispatcher가 인라인 대신 잡큐 enqueue, 상시 데몬(`com.l5.acr-phase-runner`)이 별도 프로세스에서 claim→prepare→spawn→finalize. acr-web 재시작이 in-flight 못 죽임.
+- 신규: `phase-runner-queue.ts`, `api/runner/queue/claim`, 데몬 poll 모드, launchd plist. auto-dispatcher 외부분기+plan당 1 in-flight 가드. prepare prompt override.
+- verify: phase-runner-queue 3 + 인라인 회귀 GREEN, tsc 0. 라이브 FAKE+실 claude 둘 다 end-to-end done(커밋+머지). 배포 BUILD_ID M0A5WLQiEMcXhDw2aW2m1.
+- 롤백: `ACR_EXTERNAL_RUNNER=0`+재빌드/재시작 → 인라인. 데몬 중지 launchctl unload. ✅
+- 주의: stale plan 28개는 가드+dirty cwd 409로 inert(미변경, 별도 아카이브 권장).
+
+### CTO Harness / ACR Kernel 계약 레이어 (PRD: FINAL_pulk_cto_acr_kernel_harness_agent_team_prd)  [x] 2026-06-06
+- 브랜치: `cto/acr-kernel-harness` (CMO `cmo/video-room-ui-refactor`와 분리). CMO 영역(video-room/·cmo-strategy/·app/cmo·app/video-room·docs/CMO_*) 무수정.
+- 신규 모듈 `packages/l5-core/src/functions/cto-harness/` (순수·결정적·테스트, 1711 LOC):
+  - types.ts: ExecutionRun/HarnessInput·Output/ResultPacket/WorkOrder/MainAgentWorkPackage/AgentTeamRun/TeamResultPacket 계약(PRD §8/§10/§14/§16/§29). 루트 배럴 충돌 회피 위해 RiskLevel→HarnessRiskLevel.
+  - complexity-router(C0~C5 분류+mode/harnessMode/verificationProfile), command-guard(§14.8 금지명령), boundary-check(§12.3 allowed/blocked glob, DEFAULT_BLOCKED), work-order(§10 빌드/검증), team-router(§29 selectMainAgent/orchestrationMode/canParallelize/decompose, C0~C1 team금지·C5만 parallel), prompt-builder(§7.1 9블록), result-aggregator(§11 conflict detect+집계).
+- verify: l5-core tsc --noEmit 0 오류, jest cto-harness 216/216 GREEN (7 스위트). 통합오류 2건(work-order↔complexity-router 시그니처) + glob `**/` 루트매칭 3건 수정 완료.
+- 문서: docs/ACR_KERNEL_REFACTOR_PLAN.md, docs/AGENT_TEAM_ARCHITECTURE.md.
+- 범위 밖(보고): worktree 실제 git 실행·POST/GET /api/execution-runs·ACR debug UI·Playwright artifact 런타임·self-healing·Dagu → 별도 저장소 agent-control-room(이 워크스페이스 밖)이 이미 보유/책임. pulk 중복구현은 비효율이라 미구현.
+
+### CTO↔ACR 연계: WorkOrder→ACRIntent 어댑터 + Control Room 복잡도 표시  [x] 2026-06-06
+- 원칙 확정: ACR은 판단 안 함. CTO가 복잡도(C0~C5)·실행모드·경계(blocked_files)를 dispatch payload에 실어 보냄(PRD §5.2).
+- Step1 어댑터: `cto-harness/acr-intent-adapter.ts` (taskClassToComplexity/applyHarnessMetadata/workOrderToACRIntent). `types/acr-intent.ts`에 additive optional 필드(complexity/harness_mode/allowed_files/blocked_files/requires_approval). `agents/cto.ts` dispatch 직전 applyHarnessMetadata 배선(blocked_files=DEFAULT_BLOCKED 하드블록). 비파괴.
+- Step2 UI: build-control-room-tree에 complexity 패스스루(ACR echo), founder-ui ControlRoomDevTask + DevTaskRow에 ComplexityBadge(C0~C5). 데이터 없으면 미표시.
+- verify: l5-core tsc 0 + jest 236/236(9스위트), agent-runtime tsc 0 + cto.test 8/8 무회귀, founder-ui tsc 0. l5-core dist 재빌드(@l5/core=dist 해석).
+- 참고: control-room은 이미 run status·acr_agent·branch·phase·changed_files·log_tail 표시(§18.1 대부분 기존 충족). 신규는 complexity 축만.
+
+## CMO Orchestrator & AgentSkill 인터페이스 (2026-06-07, spec=`docs/specs/cmo-orchestrator-agentskill-spec.md`)
+
+> 채택: Mastra 현행 스택 확장 (신규 의존성 없음). 비교 조사: Mastra vs LangGraph.js vs Vercel AI SDK vs CrewAI/AutoGen — Mastra만 통합 비용 제로+TS 네이티브+멀티에이전트 완비. 상세 = spec 문서 §배경.
+
+- [x] **Phase 1-1: AgentSkill 타입 + SkillRegistry** (`packages/l5-core/src/functions/cmo-orchestrator/`): `AgentSkill extends ExecutiveTool`(skill_id/category/depends_on/default_risk) + `SkillResult extends ToolResult` + `SkillRegistry`(등록/카테고리 필터/의존성 해소/순환 탐지). 단위 테스트 5+건.
+- [x] **Phase 1-2: CmoOrchestrator** (`cmo-orchestrator/orchestrator.ts`): rule 기반 스킬 선택 → 의존성 순서 실행 → HandlerResult 조합. D3+ 승인 게이트 삽입. 단위 테스트 3+건.
+- [x] **Phase 1-3: PoC 스킬 2개**: `cmo.research.market`(MarketResearchPack) + `cmo.positioning.message`(PMF 메시지 변형 2개, depends_on=market). 스킬 등록+실행 테스트.
+- [x] **Phase 1-4: cmo-handler 위임**: 하드코딩 → `CmoOrchestrator.execute()` 위임. HandlerResult 시그니처 무변경. `pnpm typecheck && pnpm build` 통과.
+- [x] **Phase 1 검증**: l5-core tsc 0 + jest 전수 GREEN + build 성공. NocoBase 독립 테스트 가능 확인.

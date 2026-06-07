@@ -1,3 +1,6 @@
+/**
+ * @deprecated v3.1에서 폐기 — scene_type 확정 경로. video-execution-brief.ts(VideoExecutionBrief) 사용. Factory가 scene_type을 결정함.
+ */
 // CMO Video Room — ScriptBeat → AI Slide Factory VideoJob mapping.
 //
 // Converts a confirmed script beat list (확정 원고 장면 beat) into a plain-object
