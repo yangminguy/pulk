@@ -430,6 +430,161 @@ export interface VoiceRecording {
   quality_status: 'unchecked' | 'pass' | 'needs_rerecording';
 }
 
+// ── CMO Content Strategy v3 — Key/Pulling strategy model ──────────────────
+// Appended per docs/prd/cmo-content-strategy-v3.md.
+
+export interface ProductBrief {
+  product_name: string;
+  category: string;
+  target_audience: string;
+  core_offer: string;
+  business_goal: BusinessGoal;
+}
+
+export interface KeyContentEntryDecision {
+  selected_entry_stage: 'phenomenon' | 'desire' | 'plan';
+  rationale: string;
+}
+
+export interface KeyContentSearchKeywordSet {
+  problem_keywords: string[];
+  item_name_keywords: string[];
+  category_name_keywords: string[];
+  item_feature_benefit_keywords: string[];
+  category_feature_benefit_keywords: string[];
+}
+
+export interface KeyContentViewtrapValidation {
+  validated_keywords: string[];
+  candidate_titles: string[];
+  performance_score: 'normal' | 'good' | 'great';
+  contribution_score: 'normal' | 'good' | 'great';
+  growth_status: 'growing' | 'stalled' | 'unknown';
+  channel_value_risk: boolean;
+  person_value_risk: boolean;
+  verdict: 'use' | 'watch' | 'reject';
+}
+
+export interface SalesLogicMap {
+  problem_statement: string;
+  category_feature_benefit: string;
+  category_need: string;
+  item_feature_benefit: string;
+  item_solution_statement: string;
+  cta: string;
+}
+
+export interface ApprovedKeyContentTopic {
+  title: string;
+  thumbnail_promise: string;
+  entry_stage: 'phenomenon' | 'desire' | 'plan';
+  sales_logic: SalesLogicMap;
+  viewtrap_validation: KeyContentViewtrapValidation;
+  intro_direction: string;
+  body_structure: string[];
+  cta: string;
+}
+
+export interface PullingTopicCandidate {
+  title: string;
+  covered_stages: ConsumerStageEn[];
+  topic_axis: string;
+  key_content_connection: string;
+}
+
+export interface ContentTypePortfolio {
+  evergreen_candidates: PullingTopicCandidate[];
+  daily_candidates: PullingTopicCandidate[];
+  seasonal_candidates: PullingTopicCandidate[];
+  hero_candidates: PullingTopicCandidate[];
+}
+
+export interface HotVideoStructureTemplate {
+  original_title: string;
+  original_thumbnail_copy?: string;
+  structure_pattern: string;
+  emotional_trigger:
+    | 'worry'
+    | 'loss'
+    | 'desire'
+    | 'comparison'
+    | 'mistake'
+    | 'prohibition'
+    | 'checklist'
+    | 'twist';
+  adapted_title: string;
+  adapted_thumbnail_promise: string;
+  connected_sales_logic: string;
+}
+
+export interface ExposureProbabilityCandidate {
+  source_title: string;
+  exposure_probability: 'normal' | 'good' | 'great';
+  adapted_topic: string;
+  recommended_content_type: 'daily' | 'seasonal' | 'evergreen' | 'hero';
+  reason: string;
+}
+
+export interface LongtailEvergreenCandidate {
+  source_title: string;
+  published_age: 'old';
+  exposure_probability: 'good' | 'great';
+  evergreen_reason: string;
+  adapted_topic: string;
+  must_use: true;
+}
+
+export interface PullingTopicScore {
+  performance_score: number;
+  contribution_score: number;
+  exposure_probability_score: number;
+  growth_score: number;
+  evergreen_score: number;
+  reproducibility_score: number;
+  key_connection_score: number;
+  sales_logic_connection_score: number;
+  home_selection_score: number;
+  total_score: number;
+  verdict: 'use' | 'watch' | 'reject';
+}
+
+export interface ConsumerJourneyCoverageReport {
+  phenomenon_covered: boolean;
+  desire_covered: boolean;
+  plan_covered: boolean;
+  action_connected: boolean;
+  reward_promised: boolean;
+  natural_flow_score: number;
+  notes: string[];
+}
+
+export interface ApprovedPullingTopic {
+  title: string;
+  thumbnail_promise: string;
+  covered_stages: ConsumerStageEn[];
+  content_type: 'daily' | 'seasonal' | 'evergreen' | 'hero';
+  score: PullingTopicScore;
+  key_content_connection: string;
+}
+
+export interface ApprovedPullingContentSet {
+  pulling_topics: ApprovedPullingTopic[];
+  key_content_topic: ApprovedKeyContentTopic;
+  journey_coverage_report: ConsumerJourneyCoverageReport;
+  set_logic: string;
+  approval_status: 'approved';
+}
+
+export interface ApprovedContentStrategyPackage {
+  product_brief: ProductBrief;
+  key_content_strategy: ApprovedKeyContentTopic;
+  pulling_content_set: ApprovedPullingContentSet;
+  content_type_portfolio: ContentTypePortfolio;
+  title_thumbnail_direction: string;
+  script_direction: string;
+  cta_strategy: string;
+}
+
 // ── CMO / Script Room v3.1 — Contract Types ───────────────────────────────
 // Appended per PRD v3.1 + CMO_TO_FACTORY_CONTRACT.md (2026-06-06).
 // All types below are append-only; nothing above is modified.
