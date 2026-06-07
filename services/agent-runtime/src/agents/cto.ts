@@ -140,18 +140,24 @@ function toCTOPhase(
   // (types.ts가 services/agent-runtime · packages/l5-core · apps/founder-ui 등).
   // ACR 에이전트가 지정 경로 밖 동명 파일을 건드리는 문제를 막기 위해 정확한
   // 대상 경로를 prompt_packet에 강하게 박는다.
-  const targetPath = p.expected_output ?? taskExpected ?? "";
+  // expected_output 자유텍스트에서 실제 파일 경로만 추출해 TARGET PATH로 준다.
+  // (문장 통째로 주면 codex가 "경로가 아니라 문장"이라며 작업을 거부한다.)
+  const fullExpected = p.expected_output ?? taskExpected ?? "";
+  const pathMatch = fullExpected.match(/[\w./-]+\.(?:ts|tsx|js|jsx|json|md)\b/);
+  const targetPath = pathMatch ? pathMatch[0] : "";
   const pathConstraint = targetPath
     ? [
         "",
         "[CRITICAL — FILE PATH]",
-        "작업 대상은 아래 TARGET PATH에 적힌 정확한 경로의 파일뿐이다.",
+        `반드시 이 파일만 생성/수정하라: ${targetPath}`,
         "이 저장소에는 같은 이름(basename)의 파일이 여러 디렉토리에 존재한다",
         "(예: types.ts가 services/agent-runtime, packages/l5-core, apps/founder-ui에 모두 있음).",
-        "반드시 이 경로의 파일만 생성/수정하고, 동명의 다른 파일은 절대 건드리지 마라.",
+        "위 경로의 파일만 작업하고 동명의 다른 파일은 절대 건드리지 마라.",
         "대상 파일이 없으면 정확히 그 경로에 새로 만들어라. 지정 경로 밖 작업 금지.",
-        `TARGET PATH: ${targetPath}`,
-      ].join("\n")
+        fullExpected ? `상세 요구: ${fullExpected}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
     : "";
   const promptPacket =
     (p.prompt_packet ??
