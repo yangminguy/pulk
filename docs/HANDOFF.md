@@ -1,6 +1,26 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-06 (CMO/Script Room v3.1 전체 구현 P0~P6)
+최종 업데이트: 2026-06-07 (CMO Orchestrator & AgentSkill 인터페이스 설계 (Phase 1))
+
+---
+
+## 🟢 2026-06-07 — CMO Orchestrator & AgentSkill 인터페이스 설계 (Phase 1)
+
+**배경**: CMO가 여러 개의 마케팅 스킬을 동적으로 선택 및 실행하고, 결과를 조합할 수 있도록 Mastra 프레임워크와 호환되는 오케스트레이터 및 스킬 인터페이스 레이어를 l5-core에 구현함.
+
+- **l5-core (`src/functions/cmo-orchestrator/`)**:
+  - `AgentSkill` 인터페이스 (`types.ts`): `ExecutiveTool`을 확장하며 `skill_id`, `category`, `depends_on`, `default_risk` 메타데이터를 추가.
+  - `SkillRegistry` (`skill-registry.ts`): 스킬 등록/조회/카테고리 필터링과 의존성 그래프의 위상 정렬(resolving dependencies) 및 순환 참조 방지 구현.
+  - `CmoOrchestrator` (`orchestrator.ts`): `selection_strategy: 'rule'` 기반으로 태스크 및 스킬 간의 매핑을 해석하고, 의존성 순서대로 순차 실행 후 결과를 조합하여 `HandlerResult`로 병합. 위험도가 D3(high) 이상인 경우 승인 대기 처리하는 승인 게이트 기능 포함.
+  - PoC 스킬 2개 구현 (`skills/market-research.ts`, `skills/positioning-message.ts`): `cmo.research.market` 및 `cmo.positioning.message` (market 스킬에 의존) 구현.
+  - 배럴 내보내기 및 re-export (`index.ts` 및 `packages/l5-core/src/index.ts`).
+- **cmo-handler (`src/functions/executive-runtime/handlers/cmo-handler.ts`)**:
+  - 기존 하드코딩 응답을 `CmoOrchestrator.execute()` 위임 방식으로 리팩터링하고 `HandlerResult` 계약 정합성 유지.
+
+**검증**:
+- l5-core typecheck 0, jest `cmo-orchestrator` 관련 테스트 7건 모두 통과.
+- `npx pnpm -r typecheck` 및 l5-core `tsc` 빌드 전체 통과.
+- NocoBase 외부 종속성 없이 l5-core 수준에서 독립 테스트 확인 완료.
 
 ---
 

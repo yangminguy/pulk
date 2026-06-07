@@ -37,5 +37,6 @@ export * from './functions/cto-harness'; // CTO Harness — ExecutionRun/complex
 export * from './functions/video-project';
 export * from './functions/video-room'; // CMO Video Room domain (PRD v1.1)
 export * from './functions/cmo-strategy'; // CMO strategy conversation turn engine
+export * from './functions/cmo-orchestrator'; // CMO AgentSkill registry and orchestrator
 export { createClaudeCLIClient } from './llm/claude-cli-client';
 export type { ClaudeCLIModel, ClaudeCLIClientOptions } from './llm/claude-cli-client';

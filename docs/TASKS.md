@@ -1509,3 +1509,13 @@ L5 Business OS
 - Step2 UI: build-control-room-tree에 complexity 패스스루(ACR echo), founder-ui ControlRoomDevTask + DevTaskRow에 ComplexityBadge(C0~C5). 데이터 없으면 미표시.
 - verify: l5-core tsc 0 + jest 236/236(9스위트), agent-runtime tsc 0 + cto.test 8/8 무회귀, founder-ui tsc 0. l5-core dist 재빌드(@l5/core=dist 해석).
 - 참고: control-room은 이미 run status·acr_agent·branch·phase·changed_files·log_tail 표시(§18.1 대부분 기존 충족). 신규는 complexity 축만.
+
+## CMO Orchestrator & AgentSkill 인터페이스 (2026-06-07, spec=`docs/specs/cmo-orchestrator-agentskill-spec.md`)
+
+> 채택: Mastra 현행 스택 확장 (신규 의존성 없음). 비교 조사: Mastra vs LangGraph.js vs Vercel AI SDK vs CrewAI/AutoGen — Mastra만 통합 비용 제로+TS 네이티브+멀티에이전트 완비. 상세 = spec 문서 §배경.
+
+- [x] **Phase 1-1: AgentSkill 타입 + SkillRegistry** (`packages/l5-core/src/functions/cmo-orchestrator/`): `AgentSkill extends ExecutiveTool`(skill_id/category/depends_on/default_risk) + `SkillResult extends ToolResult` + `SkillRegistry`(등록/카테고리 필터/의존성 해소/순환 탐지). 단위 테스트 5+건.
+- [x] **Phase 1-2: CmoOrchestrator** (`cmo-orchestrator/orchestrator.ts`): rule 기반 스킬 선택 → 의존성 순서 실행 → HandlerResult 조합. D3+ 승인 게이트 삽입. 단위 테스트 3+건.
+- [x] **Phase 1-3: PoC 스킬 2개**: `cmo.research.market`(MarketResearchPack) + `cmo.positioning.message`(PMF 메시지 변형 2개, depends_on=market). 스킬 등록+실행 테스트.
+- [x] **Phase 1-4: cmo-handler 위임**: 하드코딩 → `CmoOrchestrator.execute()` 위임. HandlerResult 시그니처 무변경. `pnpm typecheck && pnpm build` 통과.
+- [x] **Phase 1 검증**: l5-core tsc 0 + jest 전수 GREEN + build 성공. NocoBase 독립 테스트 가능 확인.
