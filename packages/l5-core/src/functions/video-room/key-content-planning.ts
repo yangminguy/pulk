@@ -235,6 +235,31 @@ export function assembleKeyContentPlan(input: KeyContentPlan): KeyContentPlan {
   if (input.step11_approved_topic.viewtrap_validation.verdict === 'reject') {
     throw new Error('Cannot assemble plan: step11 approved topic has rejected viewtrap');
   }
+
+  // Cross-step consistency: entry_stage must match between step6 and step11
+  if (input.step11_approved_topic.entry_stage !== input.step6_entry_decision.selected_entry_stage) {
+    throw new Error(
+      `entry_stage mismatch: step6="${input.step6_entry_decision.selected_entry_stage}" vs step11="${input.step11_approved_topic.entry_stage}"`,
+    );
+  }
+
+  // Cross-step consistency: step9 viable candidates must not be empty
+  if (input.step9_viable_candidates.length === 0) {
+    throw new Error('No viable candidates in step9: cannot approve key content without Viewtrap-validated candidates');
+  }
+
+  // Cross-step consistency: step5 funnel must have at least 2 filled stages
+  const filledStages = [
+    input.step5_funnel.phenomenon,
+    input.step5_funnel.desire,
+    input.step5_funnel.plan,
+    input.step5_funnel.action,
+    input.step5_funnel.reward,
+  ].filter((s) => s.length > 0).length;
+  if (filledStages < 2) {
+    throw new Error('Funnel requires at least 2 filled stages in pipeline');
+  }
+
   // Validate each step via schemas
   ItemGeneralizationSchema.parse(input.step1_generalization);
   ItemFeatureBenefitMapSchema.parse(input.step2_item_fb);
