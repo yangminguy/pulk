@@ -423,4 +423,123 @@ describe('assembleKeyContentPlan', () => {
     };
     expect(() => assembleKeyContentPlan(input)).toThrow();
   });
+
+  // ── RED: cross-step consistency — entry_stage 정합성 ──────────────────────
+  // spec §8: Step 11 approved topic의 entry_stage는 Step 6 결정과 일치해야 한다.
+  it('throws when step11.entry_stage mismatches step6.selected_entry_stage', () => {
+    const input = {
+      step1_generalization: GENERALIZATION,
+      step2_item_fb: ITEM_FB,
+      step3_category_fb: CATEGORY_FB,
+      step4_problems: PROBLEMS,
+      step5_funnel: FUNNEL,
+      step6_entry_decision: {
+        selected_entry_stage: 'desire' as const,  // Step 6: desire
+        rationale: '욕구 단계가 강함',
+      },
+      step7_search_keywords: {
+        problem_keywords: ['콘텐츠 주제가 감으로 정해짐'],
+        item_name_keywords: ['AI 마케팅팀'],
+        category_name_keywords: ['콘텐츠 마케팅 시스템'],
+        item_feature_benefit_keywords: ['기획 자동 구조화'],
+        category_feature_benefit_keywords: ['유입/판매 분리'],
+      },
+      step8_viewtrap_validation: GOOD_VALIDATION as any,
+      step9_viable_candidates: [GOOD_VALIDATION as any],
+      step10_sales_logic: SALES_LOGIC,
+      step11_approved_topic: {
+        title: '콘텐츠 마케팅 자동화',
+        thumbnail_promise: '매출이 오르는 콘텐츠 구조',
+        entry_stage: 'phenomenon' as const,  // Step 11: phenomenon ← 불일치!
+        sales_logic: SALES_LOGIC,
+        viewtrap_validation: GOOD_VALIDATION as any,
+        intro_direction: '문제 제시로 시작',
+        body_structure: ['문제 → 카테고리 → 솔루션 → CTA'],
+        cta: '무료 체험',
+      },
+    };
+    expect(() => assembleKeyContentPlan(input)).toThrow(/entry_stage/i);
+  });
+
+  // ── RED: cross-step consistency — step9 빈 배열이면 step11 확정 불가 ────────
+  // spec §3.4: Viewtrap 없이 확정 금지. step9가 비어있으면 viable candidate가 없다.
+  it('throws when step9_viable_candidates is empty', () => {
+    const input = {
+      step1_generalization: GENERALIZATION,
+      step2_item_fb: ITEM_FB,
+      step3_category_fb: CATEGORY_FB,
+      step4_problems: PROBLEMS,
+      step5_funnel: FUNNEL,
+      step6_entry_decision: {
+        selected_entry_stage: 'phenomenon' as const,
+        rationale: '계획 단계 고객 부족',
+      },
+      step7_search_keywords: {
+        problem_keywords: ['콘텐츠 주제가 감으로 정해짐'],
+        item_name_keywords: ['AI 마케팅팀'],
+        category_name_keywords: ['콘텐츠 마케팅 시스템'],
+        item_feature_benefit_keywords: ['기획 자동 구조화'],
+        category_feature_benefit_keywords: ['유입/판매 분리'],
+      },
+      step8_viewtrap_validation: GOOD_VALIDATION as any,
+      step9_viable_candidates: [],  // ← 빈 배열: viable candidate 없음
+      step10_sales_logic: SALES_LOGIC,
+      step11_approved_topic: {
+        title: '콘텐츠 마케팅 자동화',
+        thumbnail_promise: '매출이 오르는 콘텐츠 구조',
+        entry_stage: 'phenomenon' as const,
+        sales_logic: SALES_LOGIC,
+        viewtrap_validation: GOOD_VALIDATION as any,
+        intro_direction: '문제 제시로 시작',
+        body_structure: ['문제 → 카테고리 → 솔루션 → CTA'],
+        cta: '무료 체험',
+      },
+    };
+    expect(() => assembleKeyContentPlan(input)).toThrow(/viable/i);
+  });
+
+  // ── RED: pipeline funnel min-2-stages 우회 방지 ────────────────────────────
+  // spec §3.4: 퍼널 최소 2단계 채움. buildFunnelPlanningMap에서만 검증되고
+  // pipeline에서는 schema만 체크하므로 1단계 퍼널이 통과됨.
+  it('throws when step5_funnel has fewer than 2 filled stages', () => {
+    const singleStageFunnel = {
+      phenomenon: [fi],
+      desire: [],
+      plan: [],
+      action: [],
+      reward: [],
+    };
+    const input = {
+      step1_generalization: GENERALIZATION,
+      step2_item_fb: ITEM_FB,
+      step3_category_fb: CATEGORY_FB,
+      step4_problems: PROBLEMS,
+      step5_funnel: singleStageFunnel,  // ← 1단계만 채움
+      step6_entry_decision: {
+        selected_entry_stage: 'phenomenon' as const,
+        rationale: '계획 단계 고객 부족',
+      },
+      step7_search_keywords: {
+        problem_keywords: ['콘텐츠 주제가 감으로 정해짐'],
+        item_name_keywords: ['AI 마케팅팀'],
+        category_name_keywords: ['콘텐츠 마케팅 시스템'],
+        item_feature_benefit_keywords: ['기획 자동 구조화'],
+        category_feature_benefit_keywords: ['유입/판매 분리'],
+      },
+      step8_viewtrap_validation: GOOD_VALIDATION as any,
+      step9_viable_candidates: [GOOD_VALIDATION as any],
+      step10_sales_logic: SALES_LOGIC,
+      step11_approved_topic: {
+        title: '콘텐츠 마케팅 자동화',
+        thumbnail_promise: '매출이 오르는 콘텐츠 구조',
+        entry_stage: 'phenomenon' as const,
+        sales_logic: SALES_LOGIC,
+        viewtrap_validation: GOOD_VALIDATION as any,
+        intro_direction: '문제 제시로 시작',
+        body_structure: ['문제 → 카테고리 → 솔루션 → CTA'],
+        cta: '무료 체험',
+      },
+    };
+    expect(() => assembleKeyContentPlan(input)).toThrow(/funnel|stage/i);
+  });
 });
