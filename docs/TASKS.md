@@ -1485,6 +1485,7 @@ L5 Business OS
 - [x] P4 Script Room(Intro/Writers/Integrator/Voice/QA) + Revision Router
 - [x] P5 VideoExecutionBrief 빌더 완성 + 핸드오프(script-factory 대체)
 - [x] P6 UI 패널 + cmo: API + Content Card Board
+- [x] 커밋 `45c8330` (2026-06-06, `cto/acr-kernel-harness`에 CMO만 분리 커밋; CTO Harness 변경분 제외). 라이브 DB E2E·브라우저 검증은 라이브 세션 잔여.
 
 ### 데몬 기본 실행 경로 승격 (외부러너)  [x] 2026-06-06
 - `ACR_EXTERNAL_RUNNER=1`: auto-dispatcher가 인라인 대신 잡큐 enqueue, 상시 데몬(`com.l5.acr-phase-runner`)이 별도 프로세스에서 claim→prepare→spawn→finalize. acr-web 재시작이 in-flight 못 죽임.

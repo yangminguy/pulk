@@ -22,7 +22,9 @@
 - NocoBase plugin-orchestration: cmo 리소스에 `generateVideoExecutionBrief` 액션 + `video_execution_briefs` 테이블 + ACL 추가. **src/server/plugin.ts와 dist/plugin.js 양쪽 패치**(빌드스크립트 없음 — 메모리 주의). dist `node --check` OK.
 - founder-ui: 신규 라우트 `/video-room/script-room` + ResearchRoomPanel/StrategyBriefPanel/ScriptRoomPanel/VideoExecutionBriefPanel/ContentCardBoard(카드별 영상생성 버튼=순차제작) + api.ts cmo:* 헬퍼. 기존 page.tsx(3페이지) 무수정. **founder-ui typecheck 0**.
 
-**남은 것(라이브 세션)**: NocoBase 기동 후 cmo:generateVideoExecutionBrief 실 DB E2E(테이블 생성·upsert·ACL) 확인 + script-room 페이지 브라우저 검증. 헤드리스 불가(실 DB/NocoBase 필요). 커밋 미실행(사용자 지시 대기).
+**커밋 완료**(2026-06-06, 브랜치 `cto/acr-kernel-harness`): CMO/Script Room v3.1만 분리 커밋 `45c8330`(63 파일 +12,895/−10). working tree에 섞여 있던 CTO Harness 변경분은 제외 — 공유 파일(`api.ts`/`DECISIONS.md`/`HANDOFF.md`/`TASKS.md`)은 hunk·블록 단위로 CMO 부분만 스테이징. 커밋 전 재검증: l5-core typecheck 0 · video-room 509 tests / 34 suites GREEN · founder-ui typecheck 0. (dist/plugin.js는 gitignored라 커밋 대상 아님.)
+
+**남은 것(라이브 세션)**: NocoBase 기동 후 cmo:generateVideoExecutionBrief 실 DB E2E(테이블 생성·upsert·ACL) 확인 + script-room 페이지 브라우저 검증. 헤드리스 불가(실 DB/NocoBase 필요).
 
 ---
 
