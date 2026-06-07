@@ -35,3 +35,6 @@ export * from './brief-validators';
 export * from './video-execution-brief';
 export * from './script-room-pipeline';
 export * from './factory-handoff';
+// v3 CMO Key Content Planning (Phase 1)
+export * from './key-content-planning.schemas';
+export * from './key-content-planning';

@@ -970,3 +970,61 @@ export enum RevisionTarget {
   ContentSetValidator = 'content_set_validator',
   VideoExecutionBriefBuilder = 'video_execution_brief_builder',
 }
+
+// ── PRD v3 §3 키 콘텐츠 산출물 인터페이스 (Step 1~5) ──────────────────────────
+
+export interface FeatureBenefit {
+  item: string;
+  description: string;
+}
+
+export interface ProblemCandidate {
+  id: string;
+  problem: string;
+  derived_from: string;
+}
+
+export interface FunnelStageItem {
+  id: string;
+  content: string;
+}
+
+/** Step 1. 내 아이템 일반화 */
+export interface ItemGeneralization {
+  item_name: string;
+  direct_category: string;
+  parent_category: string;
+  customer_problem_category: string;
+  reason: string;
+}
+
+/** Step 2. 내 아이템의 기능/특징/장점 */
+export interface ItemFeatureBenefitMap {
+  features: FeatureBenefit[];
+  characteristics: FeatureBenefit[];
+  benefits: FeatureBenefit[];
+}
+
+/** Step 3. 카테고리의 기능/특징/장점 */
+export interface CategoryFeatureBenefitMap {
+  category_name: string;
+  features: FeatureBenefit[];
+  characteristics: FeatureBenefit[];
+  benefits: FeatureBenefit[];
+}
+
+/** Step 4. 기능/특징/장점이 해결하는 문제 도출 */
+export interface ProblemDerivationMap {
+  item_problem_candidates: ProblemCandidate[];
+  category_problem_candidates: ProblemCandidate[];
+  selected_problem_ids: string[];
+}
+
+/** Step 5. 현상/욕구/계획/행동/보상 퍼널 구성 */
+export interface FunnelPlanningMap {
+  phenomenon: FunnelStageItem[];
+  desire: FunnelStageItem[];
+  plan: FunnelStageItem[];
+  action: FunnelStageItem[];
+  reward: FunnelStageItem[];
+}
