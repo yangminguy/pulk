@@ -223,12 +223,48 @@ export function assembleKeyContentPlan(
 
 ## 7. 비채택 결정
 
+### 7.1 설계 결정
+
 | 고려사항 | 결정 | 이유 |
 |----------|------|------|
 | LLM 호출을 l5-core 안에 넣기 | 배제 | l5-core는 NocoBase 없이 테스트 가능해야 함 (규칙 2). LLM 호출은 agent-runtime에서 수행 |
 | XState 도입 | 배제 | 순차 11단계에 과잉. 기존 state-machine.ts로 충분 |
 | 새 타입 추가 | 배제 | types.ts에 10개 인터페이스 이미 완비 |
 | key-content.ts 리팩터 | 배제 | §7.2/§7.4 함수는 별도 책임. 건드리지 않음 |
+
+### 7.2 오픈소스 라이브러리 조사 결과 (2026-06-07)
+
+3개 카테고리를 조사한 결과, **모두 기존 스택 유지/확장**이 최선으로 판단.
+
+#### Category 1: Pipeline / Composition 라이브러리
+
+| 항목 | plain TS (현재) | neverthrow (~7.5K★) | Effect (~13.5K★) |
+|---|---|---|---|
+| 번들 크기 | 0 | ~3 KB | ~20 KB |
+| 핵심 장점 | 제로 의존성 | 경량 Result 타입 | DI·재시도·관찰성 내장 |
+| 핵심 단점 | — | 파이프라인 오케스트레이션 아님 | 학습 곡선 급격, 시스템 전체 통합 필요 |
+| **채택?** | **유지** | 조건부 | **배제** (과잉) |
+
+**결정:** plain TS 유지. 동기 순수 함수 11개 체인에 프레임워크 불필요.
+
+#### Category 2: LLM Structured Output (agent-runtime 측)
+
+| 항목 | 수동 JSON.parse (현재) | Vercel AI SDK (~18K★) | instructor-js (~2.5K★) | Mastra 내장 (~13K★) |
+|---|---|---|---|---|
+| Zod 통합 | 수동 | 완전 네이티브 | 네이티브 | 네이티브 |
+| Mastra 호환 | 네이티브 | 이중 클라이언트 문제 | 추가 연동 필요 | 완전 네이티브 |
+| **채택?** | — | **배제** | **배제** | **채택** |
+
+**결정:** Mastra `structuredOutput` 전환 + 얇은 retry wrapper 유지.
+
+#### Category 3: Workflow State Persistence
+
+| 항목 | Trigger.dev v3 (기배포) | Inngest (~12K★) | Temporal (~28K★) |
+|---|---|---|---|
+| 기존 통합 | hermes-runtime에 배포됨 | 추가 서비스 필요 | Worker 별도 운영 |
+| **채택?** | **확장** | **배제** | **배제** (과잉) |
+
+**결정:** Trigger.dev v3 확장. 신규 인프라 없이 스텝 재시작 + OTEL 관찰성 확보.
 
 ---
 
