@@ -52,6 +52,18 @@ export type {
   GenerateCandidatesDeps,
   FinalizeKeyContentChoiceResult,
 } from './key-content-candidates';
+// pulling-candidates: 선택된 키 콘텐츠로 끌어오는 풀링 주제 후보 N개 생성(키 콘텐츠와 동일 패턴).
+export {
+  generatePullingCandidates,
+  finalizePullingPlan,
+  PullingCandidateSchema,
+} from './pulling-candidates';
+export type {
+  PullingCandidate,
+  GeneratePullingDeps,
+  PullingCandidateInput,
+  FinalizePullingPlanResult,
+} from './pulling-candidates';
 // v3 CMO Content Strategy (Stage 1 domain) — pulling content set + viewtrap tools + strategy package.
 // Selective re-exports avoid name collisions with the established public surface:
 //   - PullingContentPlan: the per-item type in ./types stays the barrel-public one;

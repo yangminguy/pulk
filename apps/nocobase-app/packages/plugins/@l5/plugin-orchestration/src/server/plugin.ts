@@ -131,6 +131,9 @@ const {
   // v3 key-content 재기획: 서로 다른 주제 후보 N개 생성 + 사장님 선택 확정
   generateKeyContentCandidates,
   finalizeKeyContentChoice,
+  // R1 풀링: 선택된 키 콘텐츠로 끌어오는 풀링 주제 후보 N개 생성 + 사장님 승인 확정
+  generatePullingCandidates,
+  finalizePullingPlan,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/video-room'));
 
 const {
@@ -189,7 +192,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'runContentStrategy', 'proposeKeyContentDraft', 'selectKeyContentCandidate', 'saveKeyContentStep', 'submitViewtrapValidation', 'commitKeyContentPlan', 'getStageGuides'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'runContentStrategy', 'proposeKeyContentDraft', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'saveKeyContentStep', 'submitViewtrapValidation', 'commitKeyContentPlan', 'getStageGuides'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -3448,6 +3451,114 @@ function registerCmoResource(app: any, db: any) {
         }
 
         ctx.body = { ok: true, data: { choice, status: newStatus } };
+        await next();
+      },
+
+      // POST /api/cmo:proposePullingCandidates  { project_id }
+      // R1 풀링: 선택된 키 콘텐츠(key_content_choice)와 분석 초안(key_content_draft)으로
+      // 끌어오는 풀링 주제 후보 N개 생성 → pulling_candidates 카드 upsert.
+      proposePullingCandidates: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        // 선택된 키 콘텐츠 로드(key_topic_title 입력).
+        const choiceRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_choice' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!choiceRows[0]) ctx.throw(404, 'key_content_choice 카드가 없습니다. selectKeyContentCandidate를 먼저 호출하세요.');
+        const choice = typeof choiceRows[0].data === 'string' ? JSON.parse(choiceRows[0].data) : (choiceRows[0].data ?? {});
+        const key_topic_title = String(choice.key_topic_title ?? '').trim();
+        if (!key_topic_title) ctx.throw(400, 'key_content_choice 카드에 key_topic_title이 없습니다.');
+
+        // 분석 초안 로드(draft 입력).
+        const draftRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_draft' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!draftRows[0]) ctx.throw(404, 'key_content_draft 카드가 없습니다. proposeKeyContentDraft를 먼저 호출하세요.');
+        const draft = typeof draftRows[0].data === 'string' ? JSON.parse(draftRows[0].data) : (draftRows[0].data ?? {});
+
+        const llm = buildLLMClient('');
+        const llmComplete = (p: string) => llm.complete({ system: '', user: p });
+
+        // 풀링 주제 후보 생성(미설정/실패 시 도메인 모듈이 결정론 폴백).
+        let candidates: any[];
+        try {
+          candidates = await generatePullingCandidates({ key_topic_title, draft }, { llmComplete });
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        // pulling_candidates 카드 upsert.
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'pulling_candidates',
+          `pulling_candidates (${candidates.length}개 후보)`,
+          { candidates },
+        );
+
+        ctx.body = { ok: true, data: { candidates } };
+        await next();
+      },
+
+      // POST /api/cmo:commitPullingPlan  { project_id }
+      // R1 풀링 확정: pulling_candidates + key_content_choice를 읽어 finalizePullingPlan →
+      // pulling_plan 카드 저장 + 상태를 다음(제작) 단계로 advance.
+      commitPullingPlan: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        // 풀링 후보 카드 로드.
+        const candRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'pulling_candidates' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!candRows[0]) ctx.throw(404, 'pulling_candidates 카드가 없습니다. proposePullingCandidates를 먼저 호출하세요.');
+        const candData = typeof candRows[0].data === 'string' ? JSON.parse(candRows[0].data) : (candRows[0].data ?? {});
+        const candidates = candData.candidates ?? [];
+
+        // 선택된 키 콘텐츠 로드(key_topic_title).
+        const choiceRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_choice' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!choiceRows[0]) ctx.throw(404, 'key_content_choice 카드가 없습니다.');
+        const choice = typeof choiceRows[0].data === 'string' ? JSON.parse(choiceRows[0].data) : (choiceRows[0].data ?? {});
+        const key_topic_title = String(choice.key_topic_title ?? '').trim();
+
+        let plan: any;
+        try {
+          plan = finalizePullingPlan({ key_topic_title, candidates });
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        // 확정 카드 저장.
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'pulling_plan',
+          `pulling_plan: ${plan.pulling_topics.length}개 주제`,
+          plan,
+        );
+
+        // 다음(제작) 단계로 상태 진입(selectKeyContentCandidate와 동일 패턴).
+        const projRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [project_id]);
+        let newStatus: string | null = null;
+        if (projRows[0]) {
+          newStatus = advanceVideoRoomStatus(projRows[0].status);
+          const newPage = pageForStatus(newStatus);
+          await db.sequelize.query(
+            `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
+            { bind: [newStatus, newPage, project_id] },
+          );
+        }
+
+        ctx.body = { ok: true, data: { key_topic_title: plan.key_topic_title, pulling_topics: plan.pulling_topics } };
         await next();
       },
 

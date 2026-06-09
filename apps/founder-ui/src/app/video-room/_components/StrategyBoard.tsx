@@ -6,6 +6,7 @@ import type { CmoCard } from '../_lib/types'
 import { Intro30sCard, CardShell } from './cards'
 import StageGate from './StageGate'
 import KeyContentPlanBoard from './KeyContentPlanBoard'
+import PullingPlanBoard from './PullingPlanBoard'
 
 // ── Strategy Board ───────────────────────────────────────────────────────────
 export default function StrategyBoard({
@@ -65,7 +66,7 @@ export default function StrategyBoard({
 
       {strategyCards
         // 키 콘텐츠 v3 카드는 raw JSON으로 노출하지 않는다 — 전용 보드(KeyContentPlanBoard)가 렌더.
-        .filter(card => !['key_content_draft', 'key_content_candidates', 'key_content_choice', 'key_content'].includes(card.stage))
+        .filter(card => !['key_content_draft', 'key_content_candidates', 'key_content_choice', 'key_content', 'pulling_candidates', 'pulling_plan'].includes(card.stage))
         .map(card => {
           if (card.stage === 'intro_30s') {
             return <Intro30sCard key={card.id} card={card} />
@@ -77,6 +78,13 @@ export default function StrategyBoard({
       <div style={{ marginTop: 16 }}>
         <StageGate title="키 콘텐츠 기획 (v3 · 11스텝)" state={blockState({ from: 'key_content_ideation', to: 'key_content_approval' }, currentStatus)}>
           <KeyContentPlanBoard projectId={projectId} product={product} cards={cards} onRefresh={onRefresh} />
+        </StageGate>
+      </div>
+
+      {/* 풀링 주제 기획 보드 — pulling_content_set_selection ~ pulling_content_set_approval */}
+      <div style={{ marginTop: 16 }}>
+        <StageGate title="풀링 주제 기획 (v3 · 세트 승인)" state={blockState({ from: 'pulling_content_set_selection', to: 'pulling_content_set_approval' }, currentStatus)}>
+          <PullingPlanBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
         </StageGate>
       </div>
 

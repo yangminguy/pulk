@@ -2886,3 +2886,14 @@ PRD `FINAL_pulk_cto_acr_kernel_harness_agent_team_prd.md` MVP **완료(PASS)**. 
 - **QA/E2E**: ACR our-tests 124/124 + next build PASS, pulk l5-core 1414/1414·agent-runtime 16/16·founder-ui build PASS·control-room E2E(clean dev) PASS, ACR smoke PASS.
 - **잔여 통합 단서(4)**: ① runner-adapter thin(실 CLI 실행 트리거 1스텝 남음, 인터페이스 완비) ② cto.ts 라이브는 현재 solo run(다중feature 입력시 팀런 가동) ③ retry 버튼은 /api/monitor:retryRun 서버액션 필요(graceful degrade) ④ .claude/rules·settings.json은 양 repo gitignore(로컬 동작).
 - **사용자 WIP 오류 2건(미수정)**: ACR quota-tracker-file.test.ts:27 / runner-prepare-finalize.test.ts:77 TS2352 — 111 WIP라 분리 원칙대로 미수정.
+
+---
+
+## CMO Content Strategy v3 — R1 풀링 단계 완료 (2026-06-09, branch cmo/content-strategy-v3)
+
+현재 상태: 키 콘텐츠 단계(자동분석→후보 3개→택1)에 이어, **풀링 단계 v3** 동일 패턴으로 구현 완료.
+
+- 흐름: 키 콘텐츠 택1(`selectKeyContentCandidate`→`key_content_choice` 카드) → 풀링 보드 진입(`pulling_content_set_selection`) → `proposePullingCandidates`(자동) → 후보 5개 표시 → "세트 확정"(`commitPullingPlan`) → `pulling_plan` 카드 + 다음 단계 advance.
+- 도메인 정본: `packages/l5-core/src/functions/video-room/pulling-candidates.ts`(+ `__tests__/pulling-candidates.test.ts` 9건). 키 콘텐츠 정본은 `key-content-candidates.ts`.
+- 검증: l5-core tsc 0 / pulling-candidates 9 GREEN / founder-ui tsc 0 / plugin dist node --check 통과. 런타임 E2E 미실행(서버 가동 필요).
+- 다음: R2 텔레그램 알림 실작동(launchd 환경변수 주입) → R3 속도 최적화 → R4 제작 단계.

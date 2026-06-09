@@ -471,6 +471,19 @@ export type KeyContentCandidate = {
     funnel_application: string
   }
 }
+// CMO v3 풀링 — 풀링 주제 후보 1개. 본문구조·도입방향·CTA 없음(제작 단계로).
+// shape는 l5-core PullingCandidate 도메인 계약과 동일.
+export type PullingCandidate = {
+  id: string
+  order: number
+  title: string
+  selection_reasons: {
+    consumer_stage: string
+    bridge_to_key: string
+    search_demand: string
+    problem_addressed: string
+  }
+}
 export type CmoSaveCardInput = {
   project_id: string
   stage: string
@@ -736,6 +749,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ project_id, payload }),
     }).then(r => unwrap(r)) as Promise<{ approved_topic: unknown }>,
+
+  // CMO v3 풀링 — 선택된 키 콘텐츠로 시청자를 끌어오는 풀링 주제 후보 N개 자동 제안.
+  // 키 콘텐츠는 이미 택1 확정됨 → 인자는 project_id만. pulling_candidates 카드 upsert.
+  cmoProposePullingCandidates: (project_id: string) =>
+    request<{ data: { ok: boolean; data: { candidates: PullingCandidate[]; progress?: number } } }>('/api/cmo:proposePullingCandidates', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)) as Promise<{ candidates: PullingCandidate[]; progress?: number }>,
+
+  // CMO v3 풀링 — 사장님이 풀링 세트를 통째로 승인 → pulling_plan 확정 + 다음(제작) 단계 advance.
+  cmoCommitPullingPlan: (project_id: string) =>
+    request<{ data: { ok: boolean; data: { key_topic_title: string; pulling_topics: PullingCandidate[] } } }>('/api/cmo:commitPullingPlan', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)) as Promise<{ key_topic_title: string; pulling_topics: PullingCandidate[] }>,
 
   // CMO v3 skill-chain execution — runs CmoOrchestrator with default rule-based selection.
   // D3+ skills pause execution and return pending_skills for founder approval.

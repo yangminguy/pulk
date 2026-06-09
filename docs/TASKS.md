@@ -1619,3 +1619,19 @@ L5 Business OS
 ### 진행 중 실험 상태 (business 7 = ai-slide-video-factory)
 - Reels PRD task 15개 중 1개(SKILL.md+CLAUDE.md routing) done, 14개 동결(approval_required=true). ACR phase-runner는 bootout 상태(재개: `launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.l5.acr-phase-runner.plist`).
 - 부수 수정: 대상 repo `.gitignore`에 생성물 패턴 추가(만성 409 "uncommitted changes in cwd" 차단). 커밋 `e8e76ee`.
+
+## CMO Content Strategy v3 — 단계별 자동초안 로드맵 R1~R7 (2026-06-09)
+
+> 비전(메모리): 최소입력 → AI가 PRD 스텝 순차로 전단계 자동초안 → 사장님은 승인/수정만. 키 콘텐츠 단계가 정본 패턴(자동분석 → 후보 N개 + 선정이유 → 택1).
+
+- [x] **R1 풀링 단계 v3**: 선택한 키 콘텐츠 1개 기반 → 풀링 주제 N개(기본 5) + 선정이유 4종 자동생성(키 콘텐츠와 동일 패턴, 세트째 승인).
+  - 도메인 `packages/l5-core/.../video-room/pulling-candidates.ts`: `generatePullingCandidates({key_topic_title, draft}, deps, count=5)` + `finalizePullingPlan` (LLM 주입 + 결정론 폴백 + zod, 브릿지 필수). 테스트 9건 GREEN, l5-core tsc 0.
+  - plugin `@l5/plugin-orchestration`: `proposePullingCandidates`/`commitPullingPlan` 액션 + ACL + dist 패치(node --check 통과). 상태 advance는 `advanceStatus` 패턴(pulling_content_set_selection→approval).
+  - UI: `PullingPlanBoard.tsx`(자동제안+진행률+후보 카드+세트 확정 단일 버튼) + `api.ts`(cmoProposePullingCandidates/cmoCommitPullingPlan + PullingCandidate 타입) + `StrategyBoard.tsx` StageGate 배선. founder-ui tsc 0.
+  - 잔여: 런타임 E2E(nocobase 서버 가동 필요, 미실행). viewtrap_pulling_research→selection 진입은 기존 키콘텐츠와 대칭인 기존 흐름 책임.
+- [ ] **R2 텔레그램 알림 실작동**: TELEGRAM_BOT_TOKEN/CHAT_ID를 launchd에 주입(코드 준비됨) → 초안 완료 시 폰 알림.
+- [ ] **R3 속도 최적화**: 218초 → 독립 스텝 병렬화.
+- [ ] **R4 콘텐츠 제작 단계**: 확정 주제마다 제목/썸네일 상세·도입부 30초·원고(기존 자산 재활용).
+- [ ] **R5 Viewtrap 자동화(Phase 2)**: Playwright 로그인 1회 → 자동 검색·스크래핑.
+- [ ] **R6 전략패키지→Brief→Slide Factory→렌더**: 기존 도메인 함수 연결.
+- [ ] **R7 성과 재학습 루프**: 영상 성과 → 다음 기획 반영.
