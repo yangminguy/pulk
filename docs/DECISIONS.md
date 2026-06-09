@@ -1066,3 +1066,15 @@ SKILL.md 마크다운 1개 작성이 repro→fix→regress→review 4 cold phase
 
 ### Verify
 l5-core tsc 0 + jest dev-workflow-spec 60/60(신규 M9.8 5군 포함) GREEN, agent-runtime tsc 0. 라이브 단일 task 재실행으로 4→2 phase 축소·문서 연속성 실측은 ACR phase-runner 재기동 후 진행 예정.
+
+## R3 — 키 콘텐츠 워크플로우 속도: claude-cli 유지 + step2‖step3 병렬 (2026-06-09)
+
+**맥락**: `runKeyContentWorkflow` 1회가 ~218초. 실측 원인은 step 의존성이나 모델 속도가 아니라 **claude CLI를 호출마다 콜드 스타트로 spawn**(`llm/claude-cli-client.ts`)하는 것 — 6회 순차 spawn.
+
+**결정**:
+- LLM 백엔드는 **claude-cli 유지**(사장님 결정 — 구독 내 무료, Anthropic HTTP API 직접 호출은 비용/키 이유로 채택 안 함). 따라서 콜드 스타트 제거(API 전환)는 보류.
+- 워크플로우 스텝(step2→3→4→5→6→10)은 대부분 직전 산출물을 프롬프트 컨텍스트로 소비하는 **의도된 순차 체인**(원칙: 한방 LLM 금지). 유일한 예외가 step3.
+- **step3(카테고리 FB)는 build가 step1만 사용** → step2(아이템 FB) 컨텍스트 제거(디커플링). 카테고리 수준 FB는 아이템 FB에 의존할 필요 없음. 이로써 **step2‖step3 병렬 실행**(Promise.all) → cold-spawn 1회 절감(~14%, 218→~185초).
+- 테스트 `key-content-draft.test.ts`의 "step3 프롬프트가 step2 산출물 포함" 단언을 새 설계(미포함)로 갱신.
+
+**보류(향후)**: 더 큰 단축은 (a) Anthropic API 백엔드(콜드 스타트 제거, ~10x) 또는 (b) 스텝 병합(spawn 수 감소)이 필요하나 (a)는 비용, (b)는 stepwise 원칙·품질 트레이드오프로 현 시점 미채택.

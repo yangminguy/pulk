@@ -141,8 +141,10 @@ describe('runKeyContentWorkflow', () => {
     const captured: string[] = [];
     await runKeyContentWorkflow({ product }, { llmComplete: routedLlm(captured) });
 
+    // R3: step3(카테고리 FB)는 step1만 의존 → step2와 병렬 실행. step2 산출물(F2)을
+    // 컨텍스트로 받지 않는다(디커플링으로 cold-spawn 1회 절감). DECISIONS.md "R3".
     const step3Prompt = captured.find((p) => p.includes('Step 3:'))!;
-    expect(step3Prompt).toContain('F2'); // step2 산출물이 컨텍스트에 포함
+    expect(step3Prompt).not.toContain('F2');
 
     const step4Prompt = captured.find((p) => p.includes('Step 4:'))!;
     expect(step4Prompt).toContain('CF3'); // step3 산출물 포함

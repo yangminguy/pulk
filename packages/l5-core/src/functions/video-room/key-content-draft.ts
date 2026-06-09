@@ -421,14 +421,14 @@ function step2Prompt(input: DraftKeyContentInput, step1: KeyContentDraft['step1_
 function step3Prompt(
   input: DraftKeyContentInput,
   step1: KeyContentDraft['step1_generalization'],
-  step2: KeyContentDraft['step2_item_fb'],
 ): string {
+  // R3: 카테고리 수준 FB는 step1(일반화)만으로 도출 — 아이템 FB(step2)에 의존하지 않는다.
+  // 덕분에 step2와 step3를 병렬 실행할 수 있다(build도 step1만 사용). DECISIONS.md "R3" 참조.
   return [
     '당신은 CMO다. PRD v3 Step 3: 내 아이템이 속한 카테고리의 기능/특징/장점을 정리하라.',
     '상품 자체가 아니라 고객이 이해하는 카테고리 수준에서 작성.',
     ctxHeader(input),
     jsonBlock('이전 Step 1 (아이템 일반화)', step1),
-    jsonBlock('이전 Step 2 (아이템 기능/특징/장점)', step2),
     '아래 JSON만 출력(id 금지). 각 배열 최소 1개:',
     JSON.stringify({ category: { features: [{ item: '', description: '' }], characteristics: [{ item: '', description: '' }], benefits: [{ item: '', description: '' }] } }, null, 0),
   ].join('\n');
@@ -603,33 +603,33 @@ export async function runKeyContentWorkflow(
   const step1 = buildItemGeneralization({ product });
   progress++;
 
-  // Step 2 — LLM(product, step1).
-  const r2 = await runLlmStep({
-    llmComplete: deps.llmComplete,
-    attempts,
-    prompt: step2Prompt(input, step1),
-    build: (rawText) => {
-      const p = Step2Schema.parse(JSON.parse(extractJson(rawText)));
-      return buildItemFeatureBenefitMap({ product, ...p.item });
-    },
-    fallback: () => fallbackStep2(product),
-  });
+  // Step 2 ‖ Step 3 — 둘 다 step1만 의존(서로 독립) → 병렬 실행으로 cold-spawn 1회 절감.
+  // R3 속도 최적화: 선형 체인 중 유일하게 독립인 쌍. DECISIONS.md "R3" 참조.
+  const [r2, r3] = await Promise.all([
+    runLlmStep({
+      llmComplete: deps.llmComplete,
+      attempts,
+      prompt: step2Prompt(input, step1),
+      build: (rawText) => {
+        const p = Step2Schema.parse(JSON.parse(extractJson(rawText)));
+        return buildItemFeatureBenefitMap({ product, ...p.item });
+      },
+      fallback: () => fallbackStep2(product),
+    }),
+    runLlmStep({
+      llmComplete: deps.llmComplete,
+      attempts,
+      prompt: step3Prompt(input, step1),
+      build: (rawText) => {
+        const p = Step3Schema.parse(JSON.parse(extractJson(rawText)));
+        return buildCategoryFeatureBenefitMap({ generalization: step1, ...p.category });
+      },
+      fallback: () => fallbackStep3(step1, product),
+    }),
+  ]);
   const step2 = r2.value;
-  progress++;
-
-  // Step 3 — LLM(step1, step2).
-  const r3 = await runLlmStep({
-    llmComplete: deps.llmComplete,
-    attempts,
-    prompt: step3Prompt(input, step1, step2),
-    build: (rawText) => {
-      const p = Step3Schema.parse(JSON.parse(extractJson(rawText)));
-      return buildCategoryFeatureBenefitMap({ generalization: step1, ...p.category });
-    },
-    fallback: () => fallbackStep3(step1, product),
-  });
   const step3 = r3.value;
-  progress++;
+  progress += 2;
 
   // Step 4 — LLM(step2, step3, customer_problem). id 인덱스 결정론.
   const r4 = await runLlmStep({
