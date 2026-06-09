@@ -3408,13 +3408,20 @@ function registerCmoResource(app: any, db: any) {
           ctx.throw(400, 'invalid brief는 팩토리로 전송할 수 없습니다.');
         }
 
-        // 2) transport: 브리프 핸드오프는 렌더 잡 제출(submitJob)과 다른 행위다.
+        // 2) transport: 브리프 핸드오프 = 외부 팩토리 인박스(briefs/)에 brief JSON 전달.
         // submitJob은 슬라이드덱→렌더 잡 전용이라 VideoExecutionBrief를 넘기면 검증 실패함(사용 금지).
-        // 외부 팩토리의 "브리프 인제스트" 엔드포인트가 아직 없으므로, brief를
-        // video_execution_briefs에 영속하는 것 자체를 핸드오프로 간주해 sent 처리한다.
-        // 실제 팩토리 push 연결은 followup(VIDEO_FACTORY 브리프 인제스트 계약 필요).
+        // _videoFactoryTransport.submitBrief가 briefs/<slug>.json을 쓰고 validate:brief로 검증한다.
+        // factory dir 미존재(=transport null)면 graceful stub로 sent 처리(brief는 DB에 영속).
+        let brief_path: string | undefined;
+        let usedStub = true;
         const transport = {
-          async send(_brief: any): Promise<{ ok: boolean }> {
+          async send(brief: any): Promise<{ ok: boolean }> {
+            if (_videoFactoryTransport && typeof (_videoFactoryTransport as any).submitBrief === 'function') {
+              usedStub = false;
+              const res = await (_videoFactoryTransport as any).submitBrief(brief);
+              brief_path = res?.data?.brief_path;
+              return { ok: !!res?.ok };
+            }
             return { ok: true };
           },
         };
@@ -3455,7 +3462,7 @@ function registerCmoResource(app: any, db: any) {
           ctx.throw(400, `factory 전송 실패 (handoff_status=${sent.handoff_status})`);
         }
 
-        ctx.body = { ok: true, data: { handoff_status: sent.handoff_status, factory_result_url } };
+        ctx.body = { ok: true, data: { handoff_status: sent.handoff_status, factory_result_url, brief_path, stub: usedStub } };
         await next();
       },
 

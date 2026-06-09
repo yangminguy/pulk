@@ -91,9 +91,31 @@ function runValidate(dir: string, jobRelPath: string): Promise<{ ok: boolean; er
   });
 }
 
+function runValidateBrief(dir: string, briefRelPath: string): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    // Same pattern as runValidate — npx tsx scripts/validate-brief.ts --brief <path>.
+    execFile(
+      'npx',
+      ['tsx', 'scripts/validate-brief.ts', '--brief', briefRelPath],
+      { cwd: dir, timeout: VALIDATE_TIMEOUT_MS },
+      (err, stdout, stderr) => {
+        if (err) {
+          const summary = (stderr || stdout).slice(0, 400);
+          resolve({ ok: false, error: summary });
+          return;
+        }
+        resolve({ ok: true });
+      },
+    );
+  });
+}
+
 const PRESET_FILE = '_l5-preset.json';
 
-export function makeVideoFactoryTransport(): (VideoFactoryTransport & { submitJob(videoJob: unknown): Promise<{ ok: boolean; job_path?: string; validated?: boolean; error?: string }> }) | null {
+export function makeVideoFactoryTransport(): (VideoFactoryTransport & {
+  submitJob(videoJob: unknown): Promise<{ ok: boolean; job_path?: string; validated?: boolean; error?: string }>;
+  submitBrief(brief: unknown): Promise<{ ok: boolean; error?: string; data?: { brief_path: string; validated: boolean } }>;
+}) | null {
   const dir = getDir();
   if (!dir) return null;
 
@@ -178,6 +200,31 @@ export function makeVideoFactoryTransport(): (VideoFactoryTransport & { submitJo
           return { ok: false, error: result.error };
         }
         return { ok: true, job_path: jobAbsPath, validated: true };
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
+      }
+    },
+
+    async submitBrief(brief: unknown): Promise<{ ok: boolean; error?: string; data?: { brief_path: string; validated: boolean } }> {
+      try {
+        const b = brief as Record<string, unknown>;
+        const rawSlug = String(b?.content_card_id ?? b?.title ?? 'l5-brief');
+        const slug = sanitizeSlug(rawSlug);
+        const filename = `${slug}.json`;
+        // Block path traversal: ensure filename is just a basename.
+        if (basename(filename) !== filename) {
+          return { ok: false, error: 'invalid slug' };
+        }
+        const briefRelPath = `briefs/${filename}`;
+        const briefAbsPath = resolve(dir, briefRelPath);
+        // Always write the brief file (leave it on disk even if validation fails).
+        writeFileSync(briefAbsPath, JSON.stringify(brief, null, 2), 'utf8');
+
+        const result = await runValidateBrief(dir, briefRelPath);
+        if (!result.ok) {
+          return { ok: false, error: result.error };
+        }
+        return { ok: true, data: { brief_path: briefAbsPath, validated: true } };
       } catch (err) {
         return { ok: false, error: (err as Error).message };
       }
