@@ -667,6 +667,13 @@ export const api = {
       body: JSON.stringify({ gate_id, decision, note }),
     }).then(r => unwrap(r)),
 
+  // 새 보드 흐름(R1/R4 등)의 승인 게이트 통과 — pending gate row가 없을 때 사장님 권한으로 전진.
+  cmoApproveStageGate: (project_id: string) =>
+    request<{ data: { ok: boolean; data: { status: string; gate_id: string } } }>('/api/cmo:approveStageGate', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)) as Promise<{ status: string; gate_id: string }>,
+
   cmoSaveCard: (input: CmoSaveCardInput) =>
     request<{ data: { ok: boolean; data: { card_id: string } } }>('/api/cmo:saveCard', {
       method: 'POST',

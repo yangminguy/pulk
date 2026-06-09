@@ -56,6 +56,21 @@ function VideoRoomContent() {
     }
   }
 
+  // 새 보드 흐름은 승인 게이트 row를 만들지 않으므로, 게이트 상태에서 pending gate가 없을 때
+  // 사장님이 직접 단계를 승인하고 다음으로 진행한다(approveStageGate).
+  const handleApproveStage = async () => {
+    if (!projectId) return
+    setDeciding('stage')
+    try {
+      await api.cmoApproveStageGate(projectId)
+      await loadDetail(projectId)
+    } catch {
+      // ignore
+    } finally {
+      setDeciding(null)
+    }
+  }
+
   if (!projectId) {
     return <ProjectSelector onSelect={id => setProjectId(id)} />
   }
@@ -81,6 +96,10 @@ function VideoRoomContent() {
 
   const { project, cards, gates, messages } = detail
   const pendingGates = gates.filter(g => g.status === 'pending')
+  // 승인 게이트 상태(GATE_BY_STATUS) — 새 보드 흐름은 여기서 pending gate가 없으므로
+  // approveStageGate 버튼으로 통과한다.
+  const APPROVAL_GATE_STATES = ['key_content_approval', 'pulling_content_set_approval', 'hook_draft_approval', 'script_approval', 'video_qa_approval', 'upload_approval']
+  const needsStageApproval = pendingGates.length === 0 && APPROVAL_GATE_STATES.includes(project.status)
   const strategyGates = gates.filter(g => g.page === 'strategy' || (!g.page && !['script_approval', 'video_qa_approval', 'upload_approval'].includes(g.gate_type)))
   const productionGates = gates.filter(g => g.page === 'production' || g.gate_type === 'script_approval')
   const reviewGates = gates.filter(g => g.page === 'review_publish' || g.gate_type === 'video_qa_approval' || g.gate_type === 'upload_approval')
@@ -125,6 +144,31 @@ function VideoRoomContent() {
               background: 'var(--bg-surface)',
             }}>
               {actionPanel}
+            </div>
+          )}
+          {needsStageApproval && (
+            <div style={{
+              marginBottom: 16,
+              padding: 14,
+              border: '1px solid var(--silver-2)',
+              borderLeft: '4px solid var(--green)',
+              borderRadius: 8,
+              background: 'var(--bg-surface)',
+              display: 'flex', alignItems: 'center', gap: 12,
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-1)' }}>이 단계 승인 대기</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>
+                  초안을 확인하셨으면 승인하고 다음 단계로 진행합니다.
+                </div>
+              </div>
+              <button
+                className="j-btn j-btn-primary j-btn-sm"
+                onClick={handleApproveStage}
+                disabled={deciding === 'stage'}
+              >
+                {deciding === 'stage' ? '진행 중...' : '이 단계 승인하고 진행'}
+              </button>
             </div>
           )}
           {board}
