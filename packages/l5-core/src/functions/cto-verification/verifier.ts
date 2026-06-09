@@ -25,10 +25,25 @@ export interface VerifyCTOPhaseInput {
    * the process exited 0. Falls back to parsing diff_summary when omitted.
    */
   changed_files?: number;
+  /**
+   * Number of *pre-existing* files modified (not newly created). When the ACR
+   * runner reports this, the verifier can detect the "orphaned deliverable"
+   * failure mode of an integrate phase: new files added but no existing entry
+   * point touched, i.e. the work was never wired in. Omitted → graceful (the
+   * weaker no-change rule still applies).
+   */
+  modified_existing_files?: number;
 }
 
 // expected_output phrasing that implies the phase must produce code/file changes.
 const CODE_SIGNAL = /\b(implement|fix|refactor|test)\b|구현|수정|리팩터|작성|코드|함수/i;
+
+// expected_output phrasing for an integrate/wiring phase, whose whole point is to
+// connect a new deliverable into existing entry points. A phase like this that
+// changed nothing — or only added new files without touching any existing file —
+// left the deliverable orphaned (the exact "built but not wired" failure mode).
+const INTEGRATION_SIGNAL =
+  /\b(integrate|integration|wir(?:e|ing)|register|barrel|orchestrator)\b|통합|배선|등록|배럴|진입점/i;
 
 /** Files changed: explicit count if given, else parsed from a `git diff --stat` summary. */
 function countChangedFiles(input: VerifyCTOPhaseInput): number | undefined {
@@ -95,6 +110,37 @@ export function verifyCTOPhaseDeterministic(
       retry_recommended: true,
       confidence: 'high',
     };
+  }
+
+  // Integrate/wiring phase: the deliverable must be connected into existing
+  // entry points. Two orphan signals fail it on exit 0:
+  //   (a) nothing changed at all — nothing was wired;
+  //   (b) files changed but no pre-existing file was modified — only new files
+  //       were added, so the deliverable is still unreferenced.
+  // (b) requires modified_existing_files from the runner; absent → skip (graceful).
+  const expectsIntegration = INTEGRATION_SIGNAL.test(input.expected_output ?? '');
+  if (expectsIntegration) {
+    if (noChange) {
+      return {
+        verdict: 'fail',
+        reason: 'integrate phase changed nothing — deliverable left unwired',
+        retry_recommended: true,
+        confidence: 'high',
+      };
+    }
+    if (
+      typeof input.modified_existing_files === 'number' &&
+      input.modified_existing_files === 0 &&
+      (changedFiles ?? 0) > 0
+    ) {
+      return {
+        verdict: 'fail',
+        reason:
+          'integrate phase added new files but modified no existing entry point — deliverable is orphaned',
+        retry_recommended: true,
+        confidence: 'high',
+      };
+    }
   }
 
   // No diff at all may indicate the agent did nothing (unless expected_output

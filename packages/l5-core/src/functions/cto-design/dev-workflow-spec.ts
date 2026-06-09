@@ -7,11 +7,18 @@
  *
  * Classification-to-phase mapping:
  *   SMALL_FIX:  repro → fix → regress → commit
- *   FEATURE:    research → spec → test → implement → review → commit
- *   BIG_CHANGE: rfc → spec → test → implement → review → commit
+ *   FEATURE:    research → spec → test → implement → integrate → review → commit
+ *   BIG_CHANGE: rfc → spec → test → implement → integrate → review → commit
  *   OPS:        backup → implement → smoke → commit
  *   RESEARCH:   research
  *   REFACTOR:   regress → refactor → regress → commit
+ *
+ * The `integrate` phase (FEATURE/BIG_CHANGE only) exists to prevent the
+ * "built but not wired" failure mode: an implement phase can land a new file
+ * that passes its own tests yet is never registered with the orchestrator,
+ * exported from the barrel, or reachable from an existing entry point. Without
+ * an explicit wiring step the build stays green while the deliverable sits
+ * orphaned. integrate forces that connection before review/commit.
  *
  * This module is intentionally pure — no NocoBase, no network, no LLM. The
  * CTO agent (in services/agent-runtime) wires it into the runtime.
@@ -31,6 +38,7 @@ export type DevPhaseKind =
   | 'spec'
   | 'test'
   | 'implement'
+  | 'integrate'
   | 'review'
   | 'commit'
   | 'repro'
@@ -201,16 +209,32 @@ export const DEV_WORKFLOW_TEMPLATES: Record<TaskClass, DevPhaseTemplate[]> = {
         '직전 단계에서 작성된 실패 테스트가 통과한다 (green)',
         '기존 테스트가 회귀 없이 통과한다',
         '변경 범위는 spec에 명시된 파일/모듈에 한정된다',
+        '동일 책임의 기존 자산을 우선 재활용하고 중복 구현을 새로 만들지 않는다',
       ],
       verifier_hint:
-        '`pnpm test`가 green 상태인지, 변경된 파일이 spec 영향 범위 안에 있는지 확인한다.',
+        '`pnpm test`가 green 상태인지, 변경된 파일이 spec 영향 범위 안에 있는지, 기존 자산과 중복된 구현을 만들지 않았는지 확인한다.',
+    },
+    {
+      kind: 'integrate',
+      name: '통합·배선',
+      runtime: 'claude',
+      read_only: false,
+      dependsOn: ['implement'],
+      acceptance_criteria: [
+        '신규 산출물이 기존 진입점(orchestrator/registry/배럴 export/라우터)에 실제로 등록·연결되었다',
+        '기존 자산과 중복 없이 정렬되었다 (구버전이 병존하면 대체 또는 위임을 명시한다)',
+        '신규 기능이 기존 통합/E2E 경로에서 호출 가능함이 확인된다',
+        '새 파일만 추가되고 기존 진입점 파일 수정이 0인 고립 상태가 아니다',
+      ],
+      verifier_hint:
+        '신규 export가 기존 진입점 파일에서 실제로 import·등록되었는지, 새 파일만 추가되고 기존 파일 수정이 0인 고립 상태가 아닌지 확인한다.',
     },
     {
       kind: 'review',
       name: '리뷰',
       runtime: 'claude',
       read_only: true,
-      dependsOn: ['implement'],
+      dependsOn: ['integrate'],
       acceptance_criteria: [
         'diff 전체를 검토한 결과가 LGTM 또는 수정 사항 리스트로 명시되어 있다',
         '리뷰 코멘트는 어떤 라인/파일에 대한 것인지 식별 가능하다',
@@ -284,16 +308,32 @@ export const DEV_WORKFLOW_TEMPLATES: Record<TaskClass, DevPhaseTemplate[]> = {
         '직전 단계에서 작성된 실패 테스트가 통과한다 (green)',
         '기존 테스트가 회귀 없이 통과한다',
         '변경 범위는 spec에 명시된 파일/모듈에 한정된다',
+        '동일 책임의 기존 자산을 우선 재활용하고 중복 구현을 새로 만들지 않는다',
       ],
       verifier_hint:
-        '`pnpm test`가 green 상태인지, 변경된 파일이 spec 영향 범위 안에 있는지 확인한다.',
+        '`pnpm test`가 green 상태인지, 변경된 파일이 spec 영향 범위 안에 있는지, 기존 자산과 중복된 구현을 만들지 않았는지 확인한다.',
+    },
+    {
+      kind: 'integrate',
+      name: '통합·배선',
+      runtime: 'claude',
+      read_only: false,
+      dependsOn: ['implement'],
+      acceptance_criteria: [
+        '신규 산출물이 기존 진입점(orchestrator/registry/배럴 export/라우터)에 실제로 등록·연결되었다',
+        '기존 자산과 중복 없이 정렬되었다 (구버전이 병존하면 대체 또는 위임을 명시한다)',
+        '신규 기능이 기존 통합/E2E 경로에서 호출 가능함이 확인된다',
+        '새 파일만 추가되고 기존 진입점 파일 수정이 0인 고립 상태가 아니다',
+      ],
+      verifier_hint:
+        '신규 export가 기존 진입점 파일에서 실제로 import·등록되었는지, 새 파일만 추가되고 기존 파일 수정이 0인 고립 상태가 아닌지 확인한다.',
     },
     {
       kind: 'review',
       name: '리뷰',
       runtime: 'claude',
       read_only: true,
-      dependsOn: ['implement'],
+      dependsOn: ['integrate'],
       acceptance_criteria: [
         'diff 전체를 검토한 결과가 LGTM 또는 수정 사항 리스트로 명시되어 있다',
         '리뷰 코멘트는 어떤 라인/파일에 대한 것인지 식별 가능하다',
@@ -537,8 +577,8 @@ export interface DevWorkflowValidationResult {
 const CLASS_EXPECTED_ORDER: Record<TaskClass, DevPhaseKind[]> = {
   TINY:       ['implement', 'commit'],
   SMALL_FIX:  ['repro', 'fix', 'regress', 'commit'],
-  FEATURE:    ['research', 'spec', 'test', 'implement', 'review', 'commit'],
-  BIG_CHANGE: ['rfc', 'spec', 'test', 'implement', 'review', 'commit'],
+  FEATURE:    ['research', 'spec', 'test', 'implement', 'integrate', 'review', 'commit'],
+  BIG_CHANGE: ['rfc', 'spec', 'test', 'implement', 'integrate', 'review', 'commit'],
   OPS:        ['backup', 'implement', 'smoke', 'commit'],
   RESEARCH:   ['research'],
   REFACTOR:   ['regress', 'refactor', 'regress', 'commit'],
@@ -560,7 +600,8 @@ const CLASS_EXPECTED_DEPENDS_ON: Record<TaskClass, Record<string, DevPhaseKind[]
     spec: ['research'],
     test: ['spec'],
     implement: ['test'],
-    review: ['implement'],
+    integrate: ['implement'],
+    review: ['integrate'],
     commit: ['review'],
   },
   BIG_CHANGE: {
@@ -568,7 +609,8 @@ const CLASS_EXPECTED_DEPENDS_ON: Record<TaskClass, Record<string, DevPhaseKind[]
     spec: ['rfc'],
     test: ['spec'],
     implement: ['test'],
-    review: ['implement'],
+    integrate: ['implement'],
+    review: ['integrate'],
     commit: ['review'],
   },
   OPS: {
@@ -602,13 +644,14 @@ const NAME_TO_KIND: Array<{ pattern: RegExp; kind: DevPhaseKind }> = [
   { pattern: /smoke|스모크/i, kind: 'smoke' },
   { pattern: /spec|스펙|명세|설계/i, kind: 'spec' },
   { pattern: /test|테스트/i, kind: 'test' },
+  { pattern: /integrate|integration|통합|배선|wiring|등록|배럴/i, kind: 'integrate' },
   { pattern: /implement|구현|개발/i, kind: 'implement' },
   { pattern: /review|리뷰|검토/i, kind: 'review' },
   { pattern: /commit|커밋|배포/i, kind: 'commit' },
 ];
 
 const ALL_KINDS: DevPhaseKind[] = [
-  'spec', 'test', 'implement', 'review', 'commit',
+  'spec', 'test', 'implement', 'integrate', 'review', 'commit',
   'repro', 'fix', 'regress', 'research', 'rfc', 'refactor', 'backup', 'smoke',
 ];
 

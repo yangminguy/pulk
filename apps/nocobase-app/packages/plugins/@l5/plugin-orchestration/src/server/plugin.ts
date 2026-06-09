@@ -1293,6 +1293,9 @@ function registerCrudResources(app: any) {
           diff_summary,
           log_tail,
           exit_code,
+          // Phase 17: file-change counts for verifier orphan detection
+          changed_files,
+          modified_existing_files,
           branch,
           // Phase 18: clarification + risk reassessment fields
           questions,
@@ -1345,6 +1348,12 @@ function registerCrudResources(app: any) {
                 diff_summary: diff_summary ?? undefined,
                 log_tail: log_tail ?? undefined,
                 exit_code: typeof exit_code === 'number' ? exit_code : undefined,
+                changed_files:
+                  typeof changed_files === 'number' ? changed_files : undefined,
+                modified_existing_files:
+                  typeof modified_existing_files === 'number'
+                    ? modified_existing_files
+                    : undefined,
               },
               verifierLLM,
             );

@@ -101,6 +101,47 @@ describe('verifyCTOPhaseDeterministic', () => {
     expect(r.verdict).toBe('pass');
     expect(r.confidence).toBe('medium');
   });
+
+  it('fails an integrate phase that changed nothing (unwired)', () => {
+    const r = verifyCTOPhaseDeterministic({
+      task_title: 'wire key-content agent',
+      expected_output: '신규 산출물을 orchestrator에 등록·연결한다',
+      exit_code: 0,
+      log_tail: '이미 충분함',
+      changed_files: 0,
+    });
+    expect(r.verdict).toBe('fail');
+    expect(r.reason).toMatch(/unwired/);
+    expect(r.retry_recommended).toBe(true);
+  });
+
+  it('fails an integrate phase that only added new files (orphaned)', () => {
+    const r = verifyCTOPhaseDeterministic({
+      task_title: 'integrate skill into registry',
+      expected_output: '신규 스킬을 registry에 등록하고 진입점에 배선한다',
+      exit_code: 0,
+      log_tail: 'created new file',
+      diff_summary: 'src/skills/new-skill.ts | 80 +++\n1 file changed',
+      changed_files: 1,
+      modified_existing_files: 0,
+    });
+    expect(r.verdict).toBe('fail');
+    expect(r.reason).toMatch(/orphaned/);
+    expect(r.retry_recommended).toBe(true);
+  });
+
+  it('passes an integrate phase that modified an existing entry point', () => {
+    const r = verifyCTOPhaseDeterministic({
+      task_title: 'integrate skill into registry',
+      expected_output: '신규 스킬을 registry에 등록하고 진입점에 배선한다',
+      exit_code: 0,
+      log_tail: 'registered',
+      diff_summary: 'src/skills/new-skill.ts | 80 +++\nsrc/registry.ts | 4 ++\n2 files changed',
+      changed_files: 2,
+      modified_existing_files: 1,
+    });
+    expect(r.verdict).toBe('pass');
+  });
 });
 
 describe('verifyCTOPhase (with LLM)', () => {

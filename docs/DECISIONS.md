@@ -1,5 +1,15 @@
 # DECISIONS — L5 Business OS
 
+## 2026-06-09 — CTO SOP에 integrate(통합·배선) phase 신설: "built but not wired" 차단
+
+**컨텍스트**: 사장님 — ACR 기반 자동 개발에서 산출물이 "절반에서 멈추고 연결 안 된" 채 흩어진다. 신규 `cmo-orchestrator/`가 phase 단위로 일부만 생기고 orchestrator·기존 자산에 배선되지 않은 채 멈췄는데 빌드는 GREEN(typecheck 0, key-content 59/59). 근본 원인 = CTO dev-workflow SOP(FEATURE: research→spec→test→implement→review→commit)에 "통합/배선" 단계가 1급으로 없다. implement 합격기준이 "테스트 green + 변경 범위 한정"뿐이라, 새 파일이 진입점에 등록되지 않아도 고립 완료로 처리된다. verifier도 `changed_files>0`면 pass라 고립을 못 잡는다. 방향: ACR 레일 유지 + CTO 파이프라인 개선(사장님 확정, 트랙 A). CMO PRD v3 재구축은 사장님이 직접(트랙 B, "기존 video-room 위에 v3 orchestrator 얇게 얹기").
+
+**결정**: FEATURE/BIG_CHANGE SOP에 implement와 review 사이에 `integrate`(통합·배선) phase를 신설한다. read_only=false, tier=T1(claude — 진입점·등록처를 정확히 찾는 코드베이스 정합 판단). 합격기준 = ① 신규 산출물이 기존 진입점(orchestrator/registry/배럴/라우터)에 실제 등록·연결 ② 기존 자산과 중복 없이 정렬(구버전 병존 시 대체/위임 명시) ③ 기존 통합/E2E 경로에서 호출 가능 ④ 새 파일만 추가하고 기존 진입점 수정 0인 고립 금지. implement 합격기준에도 "동일 책임 기존 자산 우선 재활용·중복 구현 금지"를 추가. verifier에 integrate 고립 룰: 무변경=fail, (ACR가 `modified_existing_files` 제공 시) 새 파일만 추가=orphaned fail. SMALL_FIX/TINY는 단일 파일 가정으로 integrate 미적용.
+
+**배제/범위**: integrate의 "진짜 고립"(새 파일만, 기존 수정 0) 정밀 판정은 ACR runner가 phase 콜백에 `modified_existing_files`를 줘야 완성 → **2026-06-09 배선 완료**: ACR `file-boundary.ts countModifiedExistingFiles`(porcelain 신규/기존 구분) + `finalize-phase-execution.ts`가 콜백 body에 `changed_files`/`modified_existing_files` 적재, pulk `plugin.ts`(src+dist)가 verifyCTOPhase에 전달. **단 verifier는 `status==='all_done'`에만 돌아**(중간 phase의 task-전체-expected 대비 false-fail 방지) integrate **단독** 고립은 그 시점엔 직접 못 본다 → 완전 실효는 integrate phase_complete 경량 고립 검증 분기(후속). verifier는 입력 있으면 활용, 없으면 graceful. `model-routing.test.ts` 4건은 2026-06-07 implement T2→T1 전환 시 미갱신된 사전존재 드리프트(본 변경과 무관, 미수정). cto.test.ts의 `no LLM` runtime 단언은 그 드리프트로 사전 실패 상태였고, dist 재빌드로 7-phase가 반영되며 실제 라우팅(전부 claude, commit만 antigravity)으로 정정.
+
+**검증**: l5-core cto-design/cto-verification 관련 전부 GREEN(integrate 신규 테스트 포함), typecheck 0. agent-runtime cto.test 11/11(dist 재빌드로 7-phase 반영; deterministic/LLM-planner/fallback 경로 모두). 전체 회귀 0 — l5-core 5 failed는 baseline과 동일(사전존재: model-routing 4 + cmo-v3 미완 1). 미커밋, 라이브 반영은 nocobase/agent-runtime kickstart 시.
+
 ## 2026-06-06 — CMO 세컨브레인 자가개선 루프: 데이터층(자동) / 코드층(승인된 CTO) 분리
 
 **컨텍스트**: 사장님 — 비즈니스 PT 정보가 세컨브레인에 매주 쌓일 텐데, 그에 맞춰 CMO 작업 방식이 진화해야 한다. 제안: "하루 한 번 세컨브레인에 CMO 운영전략 업그레이드 거리가 있나 확인 → 있고 변경범위 크면 CTO에게 task → 종(🔔)알림에서 사장님이 승인/거절". 코드 조사 결과 인프라의 ~80%가 이미 존재(`self-learning.ts` 일일 diff+조용한 알림 패턴, `acr-client.ts` CTO 의뢰, founder 승인 게이트/알림벨). 단, 현 CMO 챗은 세컨브레인을 **특정 단계에서만** 조회(첫 대화 strategy_chat·원고·제작·발행 제외)했고, CMO 결과를 학습하지 않았다.

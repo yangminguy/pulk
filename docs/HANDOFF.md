@@ -1,6 +1,23 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-07 (CMO Orchestrator & AgentSkill 인터페이스 설계 (Phase 1))
+최종 업데이트: 2026-06-09 (CTO SOP integrate phase 신설 — 트랙 A: CTO 개선)
+
+---
+
+## 🟢 2026-06-09 — CTO SOP에 integrate(통합·배선) phase 신설 (트랙 A: CTO 개선)
+
+**배경**: ACR 산출물이 "고립 완료"(빌드 GREEN인데 orchestrator/진입점 미배선)되는 근본 원인 = CTO dev-workflow SOP에 통합 단계 부재. 방향 = ACR 레일 유지 + CTO 개선(사장님 확정). CMO PRD v3 재구축(사장님 직접, "기존 video-room 위에 v3 orchestrator 얇게")과 **파일 경계 분리 병렬**: 제 영역=`cto-*`/agent-runtime, 사장님 영역=`video-room`/`cmo-orchestrator`. 공유는 배럴(index.ts)뿐.
+
+- **`cto-design/dev-workflow-spec.ts`**: `DevPhaseKind`에 `integrate` 추가. FEATURE/BIG_CHANGE 6→7단계(implement→**integrate**→review). integrate=claude·mutating, 합격기준=진입점 등록·기존자산 정렬·고립 금지. implement 합격기준에 "기존 자산 재활용·중복 금지" 추가. `CLASS_EXPECTED_ORDER`/`CLASS_EXPECTED_DEPENDS_ON`/`NAME_TO_KIND`/`ALL_KINDS` 동반 갱신.
+- **`cto-design/model-routing.ts`**: `PHASE_TIER_DEFAULTS`에 `integrate: 'T1'`(exhaustive Record가 강제).
+- **`cto-verification/verifier.ts`**: integrate 고립 룰 — 무변경=fail, `modified_existing_files=0`(새 파일만)=orphaned fail(ACR 입력 시, 없으면 graceful). `VerifyCTOPhaseInput`에 `modified_existing_files?` 추가.
+- **테스트**: `dev-workflow-spec.test.ts`(7단계·integrate 전용), `verifier.test.ts`(+3: unwired/orphaned/pass), `agent-runtime/cto.test.ts`(7-phase 갱신 + 사전 실패한 runtime 단언 정정).
+
+**검증**: l5-core typecheck 0, cto-design/cto-verification 관련 GREEN. agent-runtime cto.test **11/11**(l5-core dist 재빌드로 7-phase 반영). **회귀 0** — l5-core 전체 5 failed는 baseline과 동일(사전존재: model-routing 4 = 2026-06-07 implement T2→T1 드리프트, cmo-v3 미완 1 = 사장님 트랙 B 진행 중).
+
+**후속 완료(트랙 A, 2026-06-09)**: ACR runner가 phase 콜백에 `changed_files`/`modified_existing_files` 포함 — ACR repo `lib/runner/file-boundary.ts`에 `countModifiedExistingFiles`(porcelain status로 신규 vs 기존수정 구분, 스모크 검증), `finalize-phase-execution.ts`가 commit 전 계산해 L5 콜백 body에 실음. pulk `plugin.ts` 콜백 수신부가 destructure→verifyCTOPhase에 전달(src+dist 미러 패치, node --check OK). runner-finalize.test.ts mock에 새 함수 추가. ACR 소스 tsc 클린·테스트 8/8(tsc 2건은 무관 사전존재 테스트 드리프트).
+
+**남은 것(트랙 A)**: ① **per-phase integrate 검증** — 현재 verifier는 `status==='all_done'`에만 돈다(중간 phase가 task 전체 expected_output 대비 false-fail 나는 것 방지). 그래서 integrate **단독** 고립은 그 시점엔 직접 못 잡는다(누적 diff + task expected에 통합 키워드 적음). `modified_existing_files` 배선이 **완전 실효**하려면 integrate phase_complete 시점의 경량 고립 검증(phase 종류 기반, LLM/expected 불요)을 plugin 콜백 핸들러에 추가해야 함. 현재는 배선·verifier 함수·단위테스트까지 완성되어 그 분기만 추가하면 즉시 작동. ② 라이브 kickstart(nocobase/agent-runtime, 현재 빌드만). ③ model-routing.test.ts 사전존재 4건.
 
 ---
 
