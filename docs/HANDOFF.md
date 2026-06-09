@@ -2897,3 +2897,15 @@ PRD `FINAL_pulk_cto_acr_kernel_harness_agent_team_prd.md` MVP **완료(PASS)**. 
 - 도메인 정본: `packages/l5-core/src/functions/video-room/pulling-candidates.ts`(+ `__tests__/pulling-candidates.test.ts` 9건). 키 콘텐츠 정본은 `key-content-candidates.ts`.
 - 검증: l5-core tsc 0 / pulling-candidates 9 GREEN / founder-ui tsc 0 / plugin dist node --check 통과. 런타임 E2E 미실행(서버 가동 필요).
 - 다음: R2 텔레그램 알림 실작동(launchd 환경변수 주입) → R3 속도 최적화 → R4 제작 단계.
+
+## R1~R3 완료 + R4 대기 (2026-06-09, branch cmo/content-strategy-v3)
+
+진행 현황(콘텐츠 전략 v3 로드맵):
+- **R1 풀링 단계 v3** ✅ — pulling-candidates.ts(도메인) + plugin 2액션 + PullingPlanBoard + api. 키 콘텐츠와 동일 패턴(세트 승인). 커밋 6cb2339.
+- **R2 텔레그램 알림** ✅ — nocobase launchd plist에 TELEGRAM_BOT_TOKEN/CHAT_ID 주입(기존 hermes 토큰 재사용)+재시작, 실제 전송 검증(ok=True). 풀링 초안 알림 추가. 커밋 71b30bb.
+- **R3 속도(부분)** ✅ — 218초 원인=6회 순차 claude CLI 콜드 스타트 spawn. claude-cli 유지(결정). step2‖step3 병렬화(~14%). 커밋 eb26d15. DECISIONS "R3".
+- nocobase 재기동(pid 34133)로 R1~R3 라이브. l5-core dist 재빌드 완료.
+
+남은 작업: R4 콘텐츠 제작(제목/썸네일 상세·도입부30초·원고, 기존 자산 thumbnail-plan/intro-writer/script-factory 재활용) → R5 Viewtrap 자동화 → R6 전략패키지→Brief→Slide→렌더 → R7 성과 재학습.
+
+권장: R4 착수 전 founder-ui에서 R1 풀링 단계 + R2 알림을 실제 클릭 검증(런타임 E2E 미실행분).
