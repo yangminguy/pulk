@@ -11,6 +11,18 @@ type LocalMsg = {
   ready_to_advance?: boolean
 }
 
+// 승인중심 전환: 챗은 자연어만 렌더. 산출물(JSON)은 카드 보드가 담당하므로
+// ```json ... ``` 펜스 블록과 노출된 raw JSON 객체는 챗에서 숨긴다.
+function stripJson(text: string): string {
+  let out = text.replace(/```(?:json)?\s*[\s\S]*?```/gi, '').trim()
+  // 펜스 없이 통째로 JSON 객체만 온 경우 → 무시(빈 문자열).
+  const t = out.trim()
+  if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) {
+    try { JSON.parse(t); out = '' } catch { /* JSON 아님 → 그대로 둠 */ }
+  }
+  return out.trim()
+}
+
 export default function CmoChatPanel({
   projectId,
   initialMessages,
@@ -60,7 +72,11 @@ export default function CmoChatPanel({
             <div style={{ fontSize: 13 }}>CMO와 영상 전략을 논의하세요</div>
           </div>
         )}
-        {messages.map((msg, i) => (
+        {messages.map((msg, i) => {
+          // CMO 메시지는 자연어만 표시; JSON 산출물만 담긴 메시지는 카드로 가므로 챗에서 생략.
+          const cmoText = msg.role === 'cmo' ? stripJson(msg.text) : msg.text
+          if (msg.role === 'cmo' && !cmoText) return null
+          return (
           <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'founder' ? 'flex-end' : 'flex-start' }}>
             {msg.role === 'founder' ? (
               <div style={{
@@ -98,11 +114,12 @@ export default function CmoChatPanel({
                     <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)' }}>CMO Agent</span>
                   </span>
                 </div>
-                <div style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+                <div style={{ whiteSpace: 'pre-wrap' }}>{cmoText}</div>
               </div>
             )}
           </div>
-        ))}
+          )
+        })}
         {sending && (
           <div style={{
             background: 'var(--paper-surface)',

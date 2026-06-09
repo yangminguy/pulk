@@ -5,6 +5,7 @@ import {
   buildDeterministicDevPhases,
   classifyTask,
   isCodeProducingKind,
+  progressNotePath,
 } from './dev-workflow-spec';
 
 // ---------------------------------------------------------------------------
@@ -477,6 +478,44 @@ describe('classifyTask', () => {
     expect(classifyTask('새 대시보드 추가', '매출 시각화')).toBe('FEATURE');
   });
 
+  it('M9.8 — pure content/doc authoring → TINY (no repro/fix/feature ceremony)', () => {
+    // The exact regression that motivated this: a markdown skill file ran 4 cold
+    // bug-workflow phases instead of implement→commit.
+    expect(classifyTask('SKILL.md 및 CLAUDE.md 라우팅 작성', 'Reels skill 문서화')).toBe('TINY');
+    expect(classifyTask('00-reels-pd-orchestrator.md 프롬프트 작성', '')).toBe('TINY');
+    expect(classifyTask('업로드 캡션 문구 작성', '해시태그 포함')).toBe('TINY');
+    expect(classifyTask('README 문서 업데이트', '')).toBe('TINY');
+  });
+
+  it('M9.8.1 — deliverable (.md) wins over title word: "Engine/Generator" → TINY', () => {
+    // expected_output names a *-agent.md prompt → markdown authoring, not code,
+    // even though the title says "Engine"/"Generator".
+    expect(
+      classifyTask('Quality Gate Engine', '점수화 기준', {}, '10-reels-quality-gate-agent.md. Scoring logic.'),
+    ).toBe('TINY');
+    expect(
+      classifyTask('Upload Package Generator', '', {}, '08-upload-package-agent.md 생성'),
+    ).toBe('TINY');
+    // title alone already carries ".md" → also TINY without expected_output.
+    expect(classifyTask('Quality Gate Engine (10-reels-quality-gate-agent.md)', '')).toBe('TINY');
+  });
+
+  it('M9.8.1 — genuine CODE deliverable (.ts/src) is NOT trivialized even with content keyword', () => {
+    // content keyword (프롬프트) present, but the deliverable is real TypeScript.
+    expect(classifyTask('프롬프트 로더 구현', '', {}, 'src/promptLoader.ts')).not.toBe('TINY');
+    expect(classifyTask('Scene JSON Draft Generator', 'VideoJob 생성기 구현')).not.toBe('TINY');
+    expect(classifyTask('VideoJobSchema 정의', 'zod schema 작성')).not.toBe('TINY');
+  });
+
+  it('M9.8 — content authoring with escalation signals is NOT trivialized', () => {
+    expect(
+      classifyTask('대규모 문서 작성', '여러 모듈 영향', {
+        estimatedLines: 400,
+        impactedModules: 5,
+      }),
+    ).not.toBe('TINY');
+  });
+
   it('escalation: SMALL_FIX + 3 indicators → FEATURE', () => {
     expect(
       classifyTask('fix minor crash', '버그', {
@@ -554,5 +593,50 @@ describe('classifyTask — single-component → SMALL_FIX', () => {
   it('genuine multi-component features are NOT trivialized to SMALL_FIX', () => {
     expect(classifyTask('사용자 인증 모듈 신규 구현', 'JWT 로그인 전체')).toBe('FEATURE');
     expect(classifyTask('결제 시스템 전체 구축', '')).toBe('FEATURE');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M9.8 — docs-based cross-phase continuity (no raw context re-injection)
+// ---------------------------------------------------------------------------
+
+describe('progressNotePath', () => {
+  it('is stable for the same title (so phases of one task share the note)', () => {
+    expect(progressNotePath('SKILL.md 작성')).toBe(progressNotePath('SKILL.md 작성'));
+  });
+
+  it('produces a path-safe note under docs/_acr-progress/', () => {
+    const p = progressNotePath('Add /health Endpoint!!');
+    expect(p.startsWith('docs/_acr-progress/')).toBe(true);
+    expect(p.endsWith('.md')).toBe(true);
+    expect(p).not.toMatch(/\s/);
+  });
+});
+
+describe('buildDeterministicDevPhases — docs grounding & progress record', () => {
+  it('every phase tells the agent to read project dev-docs FIRST', () => {
+    const phases = buildDeterministicDevPhases('SKILL.md 작성', 'FEATURE');
+    for (const p of phases) {
+      expect(p.prompt_packet).toContain('작업 전 필수');
+      expect(p.prompt_packet).toContain('CLAUDE.md');
+      expect(p.prompt_packet).toContain(progressNotePath('SKILL.md 작성'));
+    }
+  });
+
+  it('mutating phases record progress; read-only phases do NOT write', () => {
+    const phases = buildDeterministicDevPhases('새 기능 구현', 'FEATURE');
+    const research = phases.find((p) => p.kind === 'research'); // read_only
+    const implement = phases.find((p) => p.kind === 'implement'); // mutating
+    expect(research?.read_only).toBe(true);
+    expect(research?.prompt_packet).not.toContain('작업 기록');
+    expect(implement?.prompt_packet).toContain('작업 기록');
+  });
+
+  it('content task (TINY) runs 2 phases, both grounded', () => {
+    const cls = classifyTask('업로드 캡션 문구 작성', '');
+    expect(cls).toBe('TINY');
+    const phases = buildDeterministicDevPhases('업로드 캡션 문구 작성', cls);
+    expect(phases.map((p) => p.kind)).toEqual(['implement', 'commit']);
+    expect(phases[0].prompt_packet).toContain('작업 전 필수');
   });
 });

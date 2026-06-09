@@ -574,7 +574,12 @@ export async function runCTOAgent(
 
   // CTO is the sole authority on task classification — the deterministic keyword
   // heuristic is authoritative and the LLM may NOT override it.
-  const inferredClass: TaskClass = classifyTask(taskTitle, taskRationale);
+  const inferredClass: TaskClass = classifyTask(
+    taskTitle,
+    taskRationale,
+    {},
+    input.task?.expected_output ?? "",
+  );
 
   let acrIntent: ACRIntent | null = null;
   let clarifyingQuestions: string[] | undefined;

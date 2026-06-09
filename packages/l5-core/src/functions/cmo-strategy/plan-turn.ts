@@ -36,7 +36,7 @@ const SYSTEM = [
   '',
   '반드시 아래 JSON만 출력한다(설명/마크다운 금지):',
   '{',
-  '  "reply": string,                 // Founder에게 할 말(위 포맷)',
+  '  "reply": string,                 // Founder에게 할 자연어 안내만(JSON·구조화 데이터 직렬화 금지). 후보 목록/풀링세트/썸네일 등 구조화 데이터는 반드시 proposal.data에만 넣는다.',
   '  "ready_to_advance": boolean,     // 현재 단계 작업이 충분히 완료됐으면 true',
   '  "proposal": {                    // 현재 단계의 산출물 카드(없으면 null)',
   '    "summary": string,             // 카드 한 줄 요약',
@@ -81,13 +81,30 @@ function buildUser(
   return lines.join('\n');
 }
 
+/**
+ * Strip serialized structured data from a chat reply. The reply must stay a
+ * natural-language guidance message — structured data belongs only in
+ * `proposal`. A reply that is *entirely* a JSON/object blob (or fenced JSON, or
+ * a stray `{...}`/`[...]` literal) is rejected; mixed content has the blob
+ * removed. Returns the cleaned text, or empty string if nothing usable remains.
+ */
+function sanitizeReply(raw: string): string {
+  let text = raw;
+  // Remove fenced ```json ... ``` (and bare ``` ... ```) blocks.
+  text = text.replace(/```[a-zA-Z]*\s*[\s\S]*?```/g, ' ');
+  // Remove bare top-level JSON object/array literals embedded in the text.
+  text = text.replace(/\{[\s\S]*\}/g, ' ').replace(/\[[\s\S]*\]/g, ' ');
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 function extractJson(raw: string): string {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const body = fenced ? fenced[1] : raw;
-  const start = body.indexOf('{');
-  const end = body.lastIndexOf('}');
-  if (start === -1 || end === -1 || end < start) return body.trim();
-  return body.slice(start, end + 1);
+  // Take the outermost {...} of the raw output directly. Using the raw brace
+  // bounds (rather than a fence-body match) avoids being fooled by a ```json```
+  // block that the model serialized *inside* the reply string value.
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) return raw.trim();
+  return raw.slice(start, end + 1);
 }
 
 function normalizeProposal(
@@ -152,10 +169,10 @@ export async function runCmoStrategyTurn(
         proposal?: unknown;
         gate?: unknown;
       };
-      const reply =
-        typeof obj.reply === 'string' && obj.reply.trim()
-          ? obj.reply.trim()
-          : STAGE_SCRIPT[status].prompt;
+      const cleanedReply =
+        typeof obj.reply === 'string' ? sanitizeReply(obj.reply) : '';
+      // reply must be natural-language only; structured data lives in `proposal`.
+      const reply = cleanedReply || STAGE_SCRIPT[status].prompt;
       return {
         reply,
         proposal: normalizeProposal(obj.proposal, status),

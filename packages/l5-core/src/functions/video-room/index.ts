@@ -38,6 +38,20 @@ export * from './factory-handoff';
 // v3 CMO Key Content Planning (Phase 1)
 export * from './key-content-planning.schemas';
 export * from './key-content-planning';
+export * from './key-content-draft';
+// key-content-candidates: 재기획된 "서로 다른 주제 후보 N개" 생성기.
+// types.ts에 PRD §7.2 KeyContentCandidate(다른 shape)가 이미 barrel-public이라
+// 충돌을 피하려 신규 후보 타입은 KeyContentCandidateV3로 별칭 재export한다(값/함수는 그대로).
+export {
+  generateKeyContentCandidates,
+  finalizeKeyContentChoice,
+  KeyContentCandidateSchema,
+} from './key-content-candidates';
+export type {
+  KeyContentCandidate as KeyContentCandidateV3,
+  GenerateCandidatesDeps,
+  FinalizeKeyContentChoiceResult,
+} from './key-content-candidates';
 // v3 CMO Content Strategy (Stage 1 domain) — pulling content set + viewtrap tools + strategy package.
 // Selective re-exports avoid name collisions with the established public surface:
 //   - PullingContentPlan: the per-item type in ./types stays the barrel-public one;

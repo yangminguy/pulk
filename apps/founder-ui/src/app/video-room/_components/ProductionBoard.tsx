@@ -290,21 +290,14 @@ export default function ProductionBoard({
 // ── Production Action Panel ───────────────────────────────────────────────────
 export function ProductionActionPanel({
   gates,
-  readyToAdvance,
   onDecide,
-  onAdvance,
   deciding,
-  advancing,
 }: {
   gates: CmoGate[]
-  readyToAdvance: boolean
   onDecide: (gateId: string, decision: 'approved' | 'needs_revision' | 'rejected') => void
-  onAdvance: () => void
   deciding: string | null
-  advancing: boolean
 }) {
   const productionGates = gates.filter(g => g.page === 'production' || g.gate_type === 'script_approval')
-  const hasPendingGates = productionGates.some(g => g.status === 'pending')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -312,11 +305,8 @@ export function ProductionActionPanel({
 
       <DecisionPanel
         gates={productionGates}
-        readyToAdvance={readyToAdvance && !hasPendingGates}
         onDecide={onDecide}
-        onAdvance={onAdvance}
         deciding={deciding}
-        advancing={advancing}
       />
     </div>
   )

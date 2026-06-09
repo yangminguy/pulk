@@ -1048,3 +1048,21 @@ PRD대로 ACR을 planning brain에서 **execution kernel**로 축소하고, Exec
 
 ### Verify
 ACR 124/124 + next build PASS, pulk l5-core 1414·agent-runtime 16/16·founder-ui build·control-room E2E PASS. 통합 단서 4건은 라이브 ACR 백엔드 기동 시 검증(정적 컨텍스트 한계). 상세 docs/CTO_ACR_PRD_COMPLETION.html.
+
+## M9.8 — 과분해 차단 + 개발문서 기반 phase 연속성 (2026-06-09)
+
+### Decision
+실측 실험(Instagram Reels PRD를 business 7=ai-slide-video-factory로 dispatch)에서 두 비효율 확인 → pulk(오케스트레이션) 측만 수정:
+1. **과분해 차단**: `classifyTask`에 콘텐츠 저작(.md/프롬프트/캡션/문서/라우팅 작성) 감지 분기 추가 → 기존 **TINY(implement→commit, 2-phase)** 로 라우팅. 단 `engine/generator/validator/schema/.ts/component` 등 **코드 신호가 있으면 제외**(과소분해 방지). escalation 신호 있으면 무력화.
+2. **문서 기반 연속성**: `buildDeterministicDevPhases`의 모든 phase prompt_packet에 (a) "작업 전 repo 개발문서(README/CLAUDE/AGENTS/docs/ARCHITECTURE/관련 docs·SKILL) 먼저 읽기" grounding, (b) mutating phase 한정 "진행을 `docs/_acr-progress/<slug>.md` 에 기록" 주입. read-only(D1) phase는 기록 제외(verifier 충돌 방지).
+
+### Why
+SKILL.md 마크다운 1개 작성이 repro→fix→regress→review 4 cold phase(~7분, Claude Code 직접이면 ~40초)로 돎. phase마다 codex cold spawn + `[PRIOR PHASE CONTEXT]` raw 재주입이 본질 낭비. 컨텍스트를 raw 재주입 대신 repo 문서로 이어가면 per-phase 격리(결정성)는 유지하면서 낭비만 제거. pulk=기획/오케스트레이션, ACR=실행 원칙 준수 — 실행모델(warm 세션/compact)은 ACR repo의 후속(②) 과제로 분리.
+
+### Impact
+- `packages/l5-core/src/functions/cto-design/dev-workflow-spec.ts`: classifyTask 콘텐츠 분기 + `progressNotePath`/`buildPhasePromptPacket` 신규 + TINY 문구 일반화. 시그니처 무변경(순수 additive export).
+- 라이브 반영: l5-core·agent-runtime dist 재빌드(@l5/core=dist 해석). dispatcher는 StartInterval로 fresh 로드.
+- ② 후속(ACR repo, 미착수): `lib/orchestration/auto-dispatcher.ts:85-112`의 raw [PRIOR PHASE CONTEXT] 블록을 progress-doc 참조로 경량화 + `finalize-phase-execution.ts`에 progress write.
+
+### Verify
+l5-core tsc 0 + jest dev-workflow-spec 60/60(신규 M9.8 5군 포함) GREEN, agent-runtime tsc 0. 라이브 단일 task 재실행으로 4→2 phase 축소·문서 연속성 실측은 ACR phase-runner 재기동 후 진행 예정.

@@ -4,25 +4,19 @@ import type { CmoGate } from '../_lib/types'
 // ── DecisionPanel ────────────────────────────────────────────────────────────
 export default function DecisionPanel({
   gates,
-  readyToAdvance,
   onDecide,
-  onAdvance,
   deciding,
-  advancing,
 }: {
   gates: CmoGate[]
-  readyToAdvance: boolean
   onDecide: (gateId: string, decision: 'approved' | 'needs_revision' | 'rejected', note?: string) => void
-  onAdvance: () => void
   deciding: string | null
-  advancing: boolean
 }) {
   const pending = gates.filter(g => g.status === 'pending')
 
-  if (pending.length === 0 && !readyToAdvance) {
+  if (pending.length === 0) {
     return (
       <div style={{ padding: 16, color: 'var(--ink-4)', fontSize: 13, textAlign: 'center' }}>
-        대기 중인 승인 항목이 없습니다.
+        대기 중인 승인 항목이 없습니다. 승인하면 자동으로 다음 단계가 진행됩니다.
       </div>
     )
   }
@@ -96,17 +90,6 @@ export default function DecisionPanel({
           </div>
         </div>
       ))}
-
-      {readyToAdvance && pending.length === 0 && (
-        <button
-          onClick={onAdvance}
-          disabled={advancing}
-          className="j-btn j-btn-primary"
-          style={{ width: '100%' }}
-        >
-          {advancing ? '진행 중...' : '다음 단계로 →'}
-        </button>
-      )}
     </div>
   )
 }

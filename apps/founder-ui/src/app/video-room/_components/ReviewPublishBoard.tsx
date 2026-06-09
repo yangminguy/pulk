@@ -219,18 +219,12 @@ export default function ReviewPublishBoard({
 // ── Review Approval Panel ────────────────────────────────────────────────────
 export function ReviewApprovalPanel({
   gates,
-  readyToAdvance,
   onDecide,
-  onAdvance,
   deciding,
-  advancing,
 }: {
   gates: CmoGate[]
-  readyToAdvance: boolean
   onDecide: (gateId: string, decision: 'approved' | 'needs_revision' | 'rejected') => void
-  onAdvance: () => void
   deciding: string | null
-  advancing: boolean
 }) {
   const reviewGates = gates.filter(g =>
     g.page === 'review_publish' ||
@@ -243,11 +237,8 @@ export function ReviewApprovalPanel({
       <div className="j-overline" style={{ marginBottom: 4 }}>Approval Panel</div>
       <DecisionPanel
         gates={reviewGates}
-        readyToAdvance={readyToAdvance}
         onDecide={onDecide}
-        onAdvance={onAdvance}
         deciding={deciding}
-        advancing={advancing}
       />
     </div>
   )
