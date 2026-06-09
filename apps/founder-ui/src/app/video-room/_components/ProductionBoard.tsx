@@ -38,8 +38,10 @@ export default function ProductionBoard({
   const [factoryErr, setFactoryErr] = useState<string | null>(null)
   const [factoryResult, setFactoryResult] = useState<{ job_path: string; validated: boolean } | null>(null)
 
-  // P0-2 fix: use backend stage keys
-  const productionStages = ['script_planning', 'script_draft', 'reading_script', 'voice_recording', 'slide_deck', 'rendering']
+  // P0-2 fix: use backend stage keys.
+  // script_planning/script_draft는 ScriptDraftPanel(자동초안 승인)이 전담 렌더하므로
+  // raw JSON 중복 표시를 막기 위해 여기 raw 목록에서 제외한다.
+  const productionStages = ['reading_script', 'voice_recording', 'slide_deck', 'rendering']
   const productionCards = cards.filter(c => productionStages.includes(c.stage))
 
   // Script beat data
