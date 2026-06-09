@@ -2917,3 +2917,15 @@ PRD `FINAL_pulk_cto_acr_kernel_harness_agent_team_prd.md` MVP **완료(PASS)**. 
 - 4계층 모두 dist 패치 반영(`dist/plugin.js` import/ACL/2액션 본문+helper 2개). node --check 통과.
 - 검증: l5-core tsc 0 / l5-core dist 재빌드 / factory-handoff·video-execution-brief jest 30 GREEN / 파이프라인 end-to-end node 검증(validation.valid=true→handoff valid/not_sent→sent) / founder-ui tsc 0 / plugin node --check OK.
 - 외부 factory 실엔드포인트(VIDEO_FACTORY_DIR/submitJob) 미설정 시 transport는 결정론 스텁으로 동작 — 실전송은 followup. factory_result_url은 VIDEO_FACTORY_RESULT_BASE_URL 환경변수 있을 때만 생성.
+
+## R1~R7 라이브 E2E 스모크 통과 (2026-06-09)
+
+API 스모크(`apps/founder-ui/e2e/smoke-r1-r7.mjs`)로 새 프로젝트를 상태머신 끝까지 주행 — **19/19 PASS**.
+흐름: createProject→키콘텐츠(후보3)→[gate]→R1풀링(후보5·확정)→[gate]→R4썸네일(후보3·확정)→[gate]→R4원고→R6 brief생성→R6 factory전송(sent)→[gates]→completed→R7 성과(인사이트7).
+
+스모크로 잡은 실버그 수정(이 커밋):
+- `approveStageGate` 액션 신설: 새 보드 흐름(R1/R4)은 승인 게이트 row를 만들지 않아 key_content_approval 등에서 막힘 → 사장님 권한으로 approved gate 생성+gateApproved 전이. (레거시 chatMessage 게이트 모델 불변)
+- dist `randomUUID` 미정의 → `import_crypto.randomUUID`.
+- R6 sendBriefToFactory: brief를 렌더용 submitJob에 넘겨 실패 → brief 핸드오프(video_execution_briefs 영속=sent)로 분리. 실 factory push는 followup.
+
+UI 버튼(approveStageGate)·런타임 클릭 검증은 다음 단계. dist는 gitignore라 로컬 패치+서버 반영 완료(src만 커밋).

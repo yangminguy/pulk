@@ -199,7 +199,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -2750,6 +2750,36 @@ function registerCmoResource(app: any, db: any) {
         await next();
       },
 
+      // POST /api/cmo:approveStageGate  { project_id }
+      // 새 보드 흐름(R1/R4 등)에서 승인 게이트 상태를 사장님 권한으로 통과시킨다.
+      // 레거시 chatMessage는 gate row를 만들지만 보드 흐름은 만들지 않으므로,
+      // 현재 상태가 승인 게이트면 approved gate row(감사용)를 만들고 gateApproved 전이한다.
+      approveStageGate: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const projRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const status = projRows[0].status;
+        if (!videoRoomRequiresApproval(status)) {
+          ctx.throw(400, `status ${status} is not an approval gate`);
+        }
+        // 감사용 approved gate row (gate_type == 현재 상태, GATE_BY_STATUS 매핑과 동일).
+        const gateId = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO video_room_gates (id, video_project_id, gate_type, page, title, status, decided_by, decided_at, "createdAt", "updatedAt")
+           VALUES ($1,$2,$3,$4,$5,'approved','founder', now(), now(), now())`,
+          { bind: [gateId, project_id, status, pageForStatus(status), `${status} 승인`] },
+        );
+        const newStatus = advanceVideoRoomStatus(status, { gateApproved: true });
+        await db.sequelize.query(
+          `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
+          { bind: [newStatus, pageForStatus(newStatus), project_id] },
+        );
+        ctx.body = { ok: true, data: { status: newStatus, gate_id: gateId } };
+        await next();
+      },
+
       // POST /api/cmo:approvePlan  { cmo_message_id }  — backward-compat with old cmoChatMessage flow
       approvePlan: async (ctx: ActionContext, next: () => Promise<void>) => {
         const v = getValues(ctx);
@@ -3378,19 +3408,13 @@ function registerCmoResource(app: any, db: any) {
           ctx.throw(400, 'invalid brief는 팩토리로 전송할 수 없습니다.');
         }
 
-        // 2) transport: 기존 video factory transport(submitJob) 재사용, 없으면 결정론 스텁.
+        // 2) transport: 브리프 핸드오프는 렌더 잡 제출(submitJob)과 다른 행위다.
+        // submitJob은 슬라이드덱→렌더 잡 전용이라 VideoExecutionBrief를 넘기면 검증 실패함(사용 금지).
+        // 외부 팩토리의 "브리프 인제스트" 엔드포인트가 아직 없으므로, brief를
+        // video_execution_briefs에 영속하는 것 자체를 핸드오프로 간주해 sent 처리한다.
+        // 실제 팩토리 push 연결은 followup(VIDEO_FACTORY 브리프 인제스트 계약 필요).
         const transport = {
-          async send(brief: any): Promise<{ ok: boolean }> {
-            const ft: any = _videoFactoryTransport;
-            if (ft && typeof ft.submitJob === 'function') {
-              try {
-                const r = await ft.submitJob(brief);
-                return { ok: !!r?.ok };
-              } catch {
-                return { ok: false };
-              }
-            }
-            // 외부 팩토리 미설정: 결정론 스텁(상태만 sent). followup으로 기록.
+          async send(_brief: any): Promise<{ ok: boolean }> {
             return { ok: true };
           },
         };
