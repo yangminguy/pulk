@@ -13,7 +13,8 @@
 - [x] **검증**: l5-core typecheck 0, 관련 테스트 GREEN(integrate 신규 포함). agent-runtime cto.test 11/11(dist 재빌드 7-phase). 회귀 0(전체 5 failed=baseline 동일 사전존재).
 - [x] **콜백 배선(ACR→L5→verifier)**: ACR `file-boundary.ts countModifiedExistingFiles`(porcelain 신규/기존 구분) + `finalize-phase-execution.ts`가 `changed_files`/`modified_existing_files`를 L5 콜백 body에. pulk `plugin.ts` 수신부→verifyCTOPhase 전달(src+dist). ACR 소스 tsc 0·테스트 8/8, dist node --check OK.
 - [x] **per-phase integrate 검증**: `verifier.ts isIntegratePhaseName` + `verifyIntegratePhase`(고립 전용 결정적, LLM 불요) + plugin 콜백이 `phase_complete && integrate`면 그 phase 단독 고립 즉시 판정→needs_review+retry. src+dist, require 스모크 OK(orphan=fail/wired=pass), verifier 22/22.
-- [ ] **후속(트랙 A)**: ① 라이브 kickstart(nocobase/agent-runtime). ② model-routing.test 사전존재 4건. ③ integrate retry가 ACR에서 실제 재실행되는지 라이브 E2E.
+- [x] **워커 구현력(B) — E1 스킵 차단**: `isCodeProducingKind` + cto.ts가 코드산출 phase에 NO-SKIP 주입("기존 커밋 무관, 변경0=실패"). 과거 ACR 실패 실측(151/424=36%, 메모리 `l5-acr-error-catalog`) 기반. E1 회귀 박제(verifier.test) + NO-SKIP 주입 검증(cto.test). l5-core 75/75, cto.test 12/12.
+- [ ] **후속(트랙 A)**: ① 라이브 kickstart(nocobase/agent-runtime). ② model-routing.test 사전존재 4건. ③ NO-SKIP+integrate-retry가 ACR 자율 루프에서 실작동하는지 라이브 E2E. ④ 영상 워크플로우 기능단위 실작동 검증(트랙 B 겹침).
 
 ## 🧠 CMO 세컨브레인 자가개선 루프 (2026-06-06)
 
