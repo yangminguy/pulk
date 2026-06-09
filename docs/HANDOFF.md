@@ -2909,3 +2909,11 @@ PRD `FINAL_pulk_cto_acr_kernel_harness_agent_team_prd.md` MVP **완료(PASS)**. 
 남은 작업: R4 콘텐츠 제작(제목/썸네일 상세·도입부30초·원고, 기존 자산 thumbnail-plan/intro-writer/script-factory 재활용) → R5 Viewtrap 자동화 → R6 전략패키지→Brief→Slide→렌더 → R7 성과 재학습.
 
 권장: R4 착수 전 founder-ui에서 R1 풀링 단계 + R2 알림을 실제 클릭 검증(런타임 E2E 미실행분).
+
+## R6 전략패키지→Brief→Factory 파이프라인 연결 + 버그수정 (2026-06-09, branch cmo/content-strategy-v3)
+
+- **버그수정 1** ✅ — plugin `generateVideoExecutionBrief`가 `buildVideoExecutionBrief`를 잘못된 시그니처(`{cardData,scriptData,...}`)로 호출하던 것을 정확한 `BuildVideoExecutionBriefInput`(content_card_id/content_type/title/strategy_brief/voice_matched_script/intro_30s)로 수정. `script_draft` 카드+프로젝트 메타에서 `buildStrategyBriefFromCards`(plugin helper)로 CmoVideoStrategyBrief 조립 → buildVideoExecutionBrief → validate → `prepareFactoryHandoff(brief,{id,created_at})`(시그니처도 수정). 응답 `{brief_id,brief,record}`.
+- **버그수정 2** ✅ — UI가 호출하나 핸들러 없던(404) `cmo:sendBriefToFactory` 액션 신설. video_execution_briefs 레코드(brief_id/content_card_id) 로드 → `sendToFactory(record,transport)`. transport는 기존 `_videoFactoryTransport.submitJob` 재사용, 미설정 시 결정론 스텁(상태만 sent). ACL에 sendBriefToFactory 추가.
+- 4계층 모두 dist 패치 반영(`dist/plugin.js` import/ACL/2액션 본문+helper 2개). node --check 통과.
+- 검증: l5-core tsc 0 / l5-core dist 재빌드 / factory-handoff·video-execution-brief jest 30 GREEN / 파이프라인 end-to-end node 검증(validation.valid=true→handoff valid/not_sent→sent) / founder-ui tsc 0 / plugin node --check OK.
+- 외부 factory 실엔드포인트(VIDEO_FACTORY_DIR/submitJob) 미설정 시 transport는 결정론 스텁으로 동작 — 실전송은 followup. factory_result_url은 VIDEO_FACTORY_RESULT_BASE_URL 환경변수 있을 때만 생성.

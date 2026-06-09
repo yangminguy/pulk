@@ -4,6 +4,8 @@ export * from './state-machine';
 export * from './business-pt-context';
 export * from './key-content';
 export * from './viewtrap-research';
+// R5 Viewtrap 자동화 이음새: 참조 소스 어댑터 인터페이스 + 수동 입력 폴백(실 스크래퍼 미주입).
+export * from './reference-adapters';
 export * from './reference-analysis';
 export * from './pulling-content';
 export * from './second-brain-merge';
@@ -104,3 +106,22 @@ export {
   findLongtailEvergreen,
 } from './viewtrap-tools';
 export * from './content-strategy-package';
+// R4 콘텐츠 제작: 확정 주제 → 썸네일 상세 후보 + 도입30초/원고/QA 초안.
+// 기존 도메인 함수(buildThumbnailPlan/buildIntro30s/...)를 그대로 호출하는 얇은 헬퍼.
+// ThumbnailCandidate는 thumbnail-plan barrel에서 이미 공개 → 신규 export만 선택 노출.
+export {
+  proposeThumbnailDraft,
+  proposeScriptDraft,
+  ThumbnailDraftInputSchema,
+  ScriptDraftInputSchema,
+} from './content-production';
+export type {
+  ThumbnailDraftInput,
+  ProposeThumbnailDraftResult,
+  ScriptDraftInput,
+  ProposeScriptDraftResult,
+  ContentProductionDeps,
+} from './content-production';
+// R7 성과 재학습 루프: 완료 영상 성과(수동 입력) → 인사이트 → 다음 기획 입력.
+export * from './performance-ingestion';
+export * from './completion-insight-extraction';

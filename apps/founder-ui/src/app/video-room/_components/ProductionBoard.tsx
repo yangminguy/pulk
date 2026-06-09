@@ -5,6 +5,7 @@ import { blockState } from '../_lib/phases'
 import type { CmoCard, CmoGate, ScriptBeat } from '../_lib/types'
 import { FactoryJobCard, CardShell } from './cards'
 import ScriptBeatEditor from './ScriptBeatEditor'
+import ScriptDraftPanel from './ScriptDraftPanel'
 import DecisionPanel from './DecisionPanel'
 import StageGate from './StageGate'
 
@@ -68,6 +69,11 @@ export default function ProductionBoard({
   return (
     <div>
       <div className="j-overline" style={{ marginBottom: 8 }}>Production Board</div>
+
+      {/* R4 원고 초안 — script_planning ~ script_approval (자동초안 → 승인/수정) */}
+      <StageGate title="원고 초안 (v3 · 자동초안 승인)" state={blockState({ from: 'script_planning', to: 'script_approval' }, currentStatus)}>
+        <ScriptDraftPanel projectId={projectId} cards={cards} onRefresh={onRefresh} />
+      </StageGate>
 
       {/* Script Beat Editor — 원고 단계 */}
       <StageGate title="원고 (장면 Beat)" state={blockState({ from: 'script_planning', to: 'script_approval' }, currentStatus)}>

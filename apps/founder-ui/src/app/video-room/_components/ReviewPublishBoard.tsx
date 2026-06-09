@@ -6,6 +6,7 @@ import type { CmoCard, CmoGate } from '../_lib/types'
 import { CardShell } from './cards'
 import DecisionPanel from './DecisionPanel'
 import StageGate from './StageGate'
+import PerformanceBoard from './PerformanceBoard'
 
 // ── Review & Publish Board ───────────────────────────────────────────────────
 export default function ReviewPublishBoard({
@@ -212,6 +213,9 @@ export default function ReviewPublishBoard({
           </div>
         </StageGate>
       </div>
+
+      {/* R7: 업로드 완료 후 성과 입력 → 인사이트 추출(다음 기획 입력으로 누적) */}
+      {currentStatus === 'completed' && <PerformanceBoard projectId={projectId} />}
     </div>
   )
 }

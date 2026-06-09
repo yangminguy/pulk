@@ -15,7 +15,7 @@
 - [ ] **R3. 속도 최적화** — 현재 218초(LLM 분석 6회 + 후보 1회 순차). 독립 스텝(예: Step2 기능 ∥ Step3 카테고리) 병렬화 + 모델/프롬프트 튜닝으로 단축. 품질 회귀 없이.
 - [ ] **R4. 콘텐츠 제작 단계** — 키/풀링 주제 확정 후, 선택 주제마다 **제목/썸네일 상세 · 도입부 30초 · 본문 원고**(기존 thumbnail-plan/intro-writer/script-* 자산 재활용 + 11스텝-순차 패턴). 사장님이 여기서 처음 상세 기획을 봄.
 - [ ] **R5. Viewtrap Playwright 자동화 (Phase 2)** — 현재 수동(검색축→사장님 검색). 로그인 1회(storageState) 저장 후 자동 검색·스크래핑 → buildViewtrapValidation 입력. 실패 시 수동 폴백. 키/풀링 단계에 통합.
-- [ ] **R6. 전략 패키지 → CMO Brief → Slide Factory → 영상 렌더** — 기존 도메인 함수(content-strategy-package/video-execution-brief/slide-deck-generator/factory-handoff) 흐름 연결. 말투 변환(founder-voice) 포함.
+- [~] **R6. 전략 패키지 → CMO Brief → Slide Factory → 영상 렌더** — (부분완료 2026-06-09) plugin `generateVideoExecutionBrief` 시그니처 버그 수정(script_draft+proj→buildStrategyBriefFromCards→buildVideoExecutionBrief→validate→prepareFactoryHandoff) + 누락된 `sendBriefToFactory` 액션 신설(sendToFactory; transport=video factory submitJob 재사용/결정론 스텁). ACL+dist 패치. 검증: l5-core tsc0 / jest30 GREEN / 파이프라인 node 검증 / founder-ui tsc0 / dist node--check OK. 남은: 외부 factory 실엔드포인트 연결, buildSlideDeck이 brief 직접 참조하도록 보강, getRenderJobStatus 폴링 액션.
 - [ ] **R7. 성과 재학습 루프** — cmo-strategy-watch 활용, 영상 성과 → 다음 기획 반영.
 
 **운영/정리(상시):**
@@ -1631,7 +1631,7 @@ L5 Business OS
   - 잔여: 런타임 E2E(nocobase 서버 가동 필요, 미실행). viewtrap_pulling_research→selection 진입은 기존 키콘텐츠와 대칭인 기존 흐름 책임.
 - [x] **R2 텔레그램 알림 실작동**: TELEGRAM_BOT_TOKEN/CHAT_ID를 `~/Library/LaunchAgents/com.l5.nocobase.plist` EnvironmentVariables에 주입(기존 hermes plist 토큰 재사용, PlistBuddy) → 서비스 재시작 → 실제 전송 검증(ok=True, 폰 도착). 풀링 초안 완료 알림(sendPullingDraftTelegram) 추가(plugin src+dist). 키콘텐츠/풀링 propose 완료 시 폰 알림.
 - [x] **R3 속도 최적화(부분)**: 실측 원인=6회 순차 claude CLI 콜드 스타트 spawn(선형 체인이라 병렬 여지 거의 없음). claude-cli 유지(사장님 결정). step3를 step2에서 디커플링(build는 step1만 사용) → step2‖step3 병렬(Promise.all), cold-spawn 1회 절감(~14%, 218→~185초). l5-core tsc 0 · 28 GREEN · dist 재빌드. 더 큰 단축은 API 백엔드/스텝 병합 필요(DECISIONS R3 참조, 보류).
-- [ ] **R4 콘텐츠 제작 단계**: 확정 주제마다 제목/썸네일 상세·도입부 30초·원고(기존 자산 재활용).
-- [ ] **R5 Viewtrap 자동화(Phase 2)**: Playwright 로그인 1회 → 자동 검색·스크래핑.
-- [ ] **R6 전략패키지→Brief→Slide Factory→렌더**: 기존 도메인 함수 연결.
-- [ ] **R7 성과 재학습 루프**: 영상 성과 → 다음 기획 반영.
+- [x] **R4 콘텐츠 제작 단계**: content-production.ts(proposeThumbnailDraft/proposeScriptDraft, 기존 buildThumbnailPlan/buildIntro30s/integrateScript/evaluateScriptQa 재활용) + plugin 4액션(proposeThumbnailPlanDraft/commitThumbnailPlan/proposeScriptDraft/commitScriptDraft)+ACL+dist + UI(ThumbnailPlanBoard/ScriptDraftPanel)+api. content-production 9 GREEN.
+- [~] **R5 Viewtrap 자동화(심만)**: reference-adapters.ts(ReferenceSourceAdapter 인터페이스 + manualInputAdapter 폴백 + createReferenceAdapter 선택형). 실 스크래퍼/세션영속/자격증명/Playwright는 외부 의존이라 미구현(followup). 수동 입력 흐름 보존. 5 GREEN.
+- [x] **R6 전략패키지→Brief→렌더(버그수정+연결)**: generateVideoExecutionBrief의 buildVideoExecutionBrief 잘못된 시그니처 호출 수정(validate 통과) + 누락된 sendBriefToFactory 액션 신설(404 해소)+ACL+dist. transport는 기존 재사용/미설정 시 결정론 스텁. factory-handoff+video-execution-brief 30 GREEN. (slide/render brief 참조 보강은 followup)
+- [x] **R7 성과 재학습 루프(구조)**: performance-ingestion.ts(recordVideoPerformance)+completion-insight-extraction.ts(extractCompletionInsight, 임계값 폴백) + plugin(video_performance_metrics 테이블, recordVideoPerformance/getCompletedVideoInsights)+ACL+dist + UI(PerformanceBoard, completed 단계)+api. 8 GREEN. 성과 데이터는 수동 입력(외부 분석 자동연동은 followup).
