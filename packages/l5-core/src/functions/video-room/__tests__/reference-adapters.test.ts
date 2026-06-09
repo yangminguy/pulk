@@ -1,6 +1,7 @@
 import {
   manualInputAdapter,
   createReferenceAdapter,
+  viewtrapScrapeAdapter,
   ReferenceSourceAdapter,
 } from '../reference-adapters';
 import type { ReferenceCandidate } from '../types';
@@ -62,5 +63,31 @@ describe('createReferenceAdapter', () => {
     const adapter = createReferenceAdapter();
     const result = await adapter.fetch('q');
     expect(result).toEqual([]);
+  });
+
+  it('viewtrapScrapeAdapter를 scraper로 주입하면 scrape 산출이 그대로 흐른다', async () => {
+    const scrapeOutput = [makeRecord(3), makeRecord(4)];
+    const adapter = createReferenceAdapter({ scraper: viewtrapScrapeAdapter(scrapeOutput) });
+    const result = await adapter.fetch('아무 쿼리');
+    expect(result).toEqual(scrapeOutput);
+  });
+});
+
+describe('viewtrapScrapeAdapter', () => {
+  it('scrape 산출 JSON을 query 무관하게 그대로 통과시킨다', async () => {
+    const scrapeOutput = [makeRecord(0), makeRecord(1)];
+    const adapter = viewtrapScrapeAdapter(scrapeOutput);
+    const result = await adapter.fetch('마케팅 대행사');
+    expect(result).toEqual(scrapeOutput);
+  });
+
+  it('반환값을 변형해도 원본 scrape 산출이 오염되지 않는다(얕은 복사)', async () => {
+    const scrapeOutput = [makeRecord(0)];
+    const adapter = viewtrapScrapeAdapter(scrapeOutput);
+    const result = await adapter.fetch('q');
+    result.push(makeRecord(99));
+    const again = await adapter.fetch('q');
+    expect(again).toHaveLength(1);
+    expect(scrapeOutput).toHaveLength(1);
   });
 });

@@ -58,3 +58,24 @@ export function createReferenceAdapter(
   }
   return manualInputAdapter(deps.manualRecords ?? []);
 }
+
+/**
+ * Viewtrap 스크래퍼 산출 어댑터(순수 변환).
+ *
+ * apps/founder-ui/e2e/viewtrap/scrape.mjs 가 헤드드 세션으로 Viewtrap을 긁어
+ * ReferenceCandidate[] JSON을 stdout/파일로 내보낸다. 이 함수는 그 JSON을 받아
+ * ReferenceSourceAdapter 로 감싼다 — 브라우저/세션/자격증명은 일절 다루지 않는다.
+ *
+ * 결정론: query 무관, 주어진 scrapeOutput을 그대로 통과(얕은 복사). 이렇게 하면
+ * createReferenceAdapter({ scraper: viewtrapScrapeAdapter(json) }) 형태로 주입 가능.
+ */
+export function viewtrapScrapeAdapter(
+  scrapeOutput: ReferenceCandidate[],
+): ReferenceSourceAdapter {
+  const snapshot = [...scrapeOutput];
+  return {
+    async fetch(_query: string): Promise<ReferenceCandidate[]> {
+      return [...snapshot];
+    },
+  };
+}
