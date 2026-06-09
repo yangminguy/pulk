@@ -1,5 +1,17 @@
 # DECISIONS — L5 Business OS
 
+## 2026-06-09 — CMO PRD v3 정본: video-room 도메인 유지 + orchestrator 얇은 레이어 (트랙 B)
+
+**컨텍스트**: CMO 콘텐츠 전략 시스템 v3(PRD `docs/prd/cmo-content-strategy-v3.md`, 10 Phase)를 ACR로 구현하다 "built-but-not-wired"로 멈춤. 코드 조사 결과 **두 갈래가 중복 병존**: 기존 `video-room/`(25단계 v3.1, 509테스트, thumbnail/intro/script/voice/brief 등 도메인 함수·타입 대부분 완비)와 신규 `cmo-orchestrator/`(PRD v3 재설계, 인프라 + PoC 스킬 2개만). Key Content 11스텝은 video-room에 구현됐으나 orchestrator에 미등록(고립), types 5/10. **정본을 안 정하면 트랙 B가 또 중복 생산.**
+
+**결정**: **정본 ① — `video-room/`을 CMO 도메인 정본으로 유지하고, `cmo-orchestrator/`는 스킬 선택·순서·승인게이트만 지휘하는 얇은 레이어로 둔다.** 각 AgentSkill = video-room 순수함수를 호출하는 5~15줄 어댑터. 사장님 방향("기존 자산 최대한 활용")에 정합. 대안 ②(orchestrator로 모든 로직 이전)는 509테스트 + NocoBase/UI 배선 전체 마이그레이션이라 위험·시간 과다로 배제. 대안 ③(두 구조 분리 유지)는 중복 영속이라 배제.
+
+**범위/실행**: 전체 10 Phase end-to-end 정렬. 진짜 신규는 P4(Pulling 12스텝)·P5(Viewtrap 풀링: 핫비디오/노출확률/롱테일)·P6(Content Strategy Package 조립)·P10(slide-deck LLM 생성부)뿐 — 타입은 types.ts에 이미 존재. 나머지는 기존 자산 재활용 + 얇은 스킬 래핑. sub-agent agent team + Workflow로 Stage1(도메인 병렬)→Stage2(스킬 병렬)→Stage3(직렬 통합 배선)→Stage4(검증). 공유 파일(배럴·registry·types.ts)은 Stage3 단일 agent 직렬 병합으로 충돌 방지. 트랙 A(CTO `cto-*`/agent-runtime)와 파일 경계 분리 병렬 — 같은 날 트랙 A가 신설한 `integrate` phase를 트랙 B는 Stage3로 수동 실행한 셈으로 정합.
+
+**검증**: l5-core typecheck 0, `jest video-room cmo-orchestrator slide-deck` 53 suites/692 tests GREEN(이전 509 → +183, 회귀 0). 구버전 `video-room/pulling-content.ts`(5세트 퍼널)는 신규 `pulling-content-planning.ts`(12스텝)와 병존 — 후속 정리 시 @deprecated 위임 명시 권장.
+
+**남은 것(라이브)**: NocoBase plugin-orchestration cmo 액션 노출 + founder-ui /video-room 연결 + 실 DB E2E(헤드리스 불가, 별도 세션). 미커밋.
+
 ## 2026-06-09 — CTO SOP에 integrate(통합·배선) phase 신설: "built but not wired" 차단
 
 **컨텍스트**: 사장님 — ACR 기반 자동 개발에서 산출물이 "절반에서 멈추고 연결 안 된" 채 흩어진다. 신규 `cmo-orchestrator/`가 phase 단위로 일부만 생기고 orchestrator·기존 자산에 배선되지 않은 채 멈췄는데 빌드는 GREEN(typecheck 0, key-content 59/59). 근본 원인 = CTO dev-workflow SOP(FEATURE: research→spec→test→implement→review→commit)에 "통합/배선" 단계가 1급으로 없다. implement 합격기준이 "테스트 green + 변경 범위 한정"뿐이라, 새 파일이 진입점에 등록되지 않아도 고립 완료로 처리된다. verifier도 `changed_files>0`면 pass라 고립을 못 잡는다. 방향: ACR 레일 유지 + CTO 파이프라인 개선(사장님 확정, 트랙 A). CMO PRD v3 재구축은 사장님이 직접(트랙 B, "기존 video-room 위에 v3 orchestrator 얇게 얹기").

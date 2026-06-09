@@ -38,3 +38,43 @@ export * from './factory-handoff';
 // v3 CMO Key Content Planning (Phase 1)
 export * from './key-content-planning.schemas';
 export * from './key-content-planning';
+// v3 CMO Content Strategy (Stage 1 domain) — pulling content set + viewtrap tools + strategy package.
+// Selective re-exports avoid name collisions with the established public surface:
+//   - PullingContentPlan: the per-item type in ./types stays the barrel-public one;
+//     the Stage1 12-step plan type is consumed via direct relative import only.
+//   - buildHotVideoStructureTemplate / buildViewtrapValidation / filterSalesViableCandidates:
+//     re-exported from their original home (pulling-content-planning / key-content-planning),
+//     so viewtrap-tools only contributes its net-new exports.
+export {
+  KeyReadyAudience,
+  PullingLogicalExpansionMap,
+  PullingProblemAxisMap,
+  KeyContentSalesLogicContext,
+  loadKeyContentSalesLogic,
+  buildKeyReadyAudience,
+  buildLogicalExpansionMap,
+  buildProblemAxisMap,
+  buildContentTypePortfolio,
+  PullingViewtrapValidation,
+  buildPullingViewtrapValidation,
+  buildHotVideoStructureTemplate,
+  buildExposureProbabilityCandidate,
+  sortByExposureProbability,
+  buildLongtailEvergreenCandidate,
+  enforceLongtailMustUse,
+  scorePullingTopic,
+  KeyConnectionSentenceInput,
+  buildKeyConnectionSentence,
+  assessConsumerJourneyCoverage,
+  buildApprovedPullingTopic,
+  assembleApprovedPullingContentSet,
+  assemblePullingContentPlan,
+} from './pulling-content-planning';
+export type { PullingContentPlan as PullingContentPlanV3 } from './pulling-content-planning';
+export {
+  validateKeyContentWithViewtrap,
+  assessExposureProbability,
+  LongtailCandidateInput,
+  findLongtailEvergreen,
+} from './viewtrap-tools';
+export * from './content-strategy-package';

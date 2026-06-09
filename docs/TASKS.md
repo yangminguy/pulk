@@ -3,6 +3,23 @@
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
 > 최종 업데이트: 2026-06-09 (CTO SOP integrate phase 신설 — 트랙 A). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
 
+## 🎬 CMO PRD v3 end-to-end 구현 (2026-06-09, 트랙 B)
+
+> 정본 ① video-room 도메인 유지 + orchestrator 얇은 레이어. 설계 = `docs/DECISIONS.md` 2026-06-09 + `docs/CMO_V3_ARCHITECTURE.html`. PRD = `docs/prd/cmo-content-strategy-v3.md`. sub-agent agent team + Workflow(`wf_96ca5a78-f83`)로 실행. 트랙 A와 파일 경계 분리 병렬.
+
+- [x] **P2 KeyContent 스킬화**: 기존 `key-content-planning.ts`(11스텝) → `skills/key-content.ts` 어댑터.
+- [x] **P3+P5 Viewtrap 도구**: `video-room/viewtrap-tools.ts` 신규 — 키검증 재노출 + 핫비디오/노출확률/롱테일(must_use) (17 tests). → `skills/viewtrap.ts`.
+- [x] **P4 Pulling 12스텝**: `video-room/pulling-content-planning.ts` 신규(PRD §4, 롱테일·키연결성·5단계 throw, 35 tests). → `skills/pulling-content.ts`.
+- [x] **P6 Content Strategy Package**: `video-room/content-strategy-package.ts` 신규(키+풀링 통합·cross-step 일관성 throw, 12 tests). → `skills/strategy-package.ts`.
+- [x] **P7~P9 기존 자산 스킬화**: thumbnail-plan→`title-thumbnail.ts`, intro/script/qa→`script.ts`, voice/brief→`voice-brief.ts`.
+- [x] **P10 Slide Factory**: `slide-deck-generator.ts` mock-only→llmComplete 주입 + retry + 결정론 폴백(하위호환, 9 tests). → `skills/factory.ts`.
+- [x] **P1 orchestrator 배선**: `cmo-skill-registry.ts`(10스킬 등록 + 위상정렬 fail-fast), index.ts 배럴 2곳, e2e `cmo-v3-e2e.test.ts`(등록·위상정렬·실행순서·D3 게이트).
+- [x] **검증**: l5-core typecheck 0, jest 53 suites/692 tests GREEN(509→+183, 회귀 0).
+- [x] **P5 중복 정리(검증 중 발견)**: 핫비디오/노출/롱테일이 `pulling-content-planning.ts`와 `viewtrap-tools.ts`에 중복 정의됨(`buildHotVideoStructureTemplate` 동일 2벌). viewtrap-tools를 P5 정본으로 통합 — pulling은 re-export로 이름 보존, 단건 longtail 빌더는 viewtrap-tools로 이동. `buildHotVideoStructureTemplate` 정의 1곳만 잔존. tsc 0, 692 GREEN 유지.
+- [~] **라이브 배선(코드 완료, 실 DB E2E만 잔여)**: plugin-orchestration `runContentStrategy` 액션(createCmoSkillRegistry+CmoOrchestrator로 v3 체인 실행) src+dist 패치 + ACL + founder-ui `api.ts` `cmoRunContentStrategy` 헬퍼. l5-core dist 빌드(cmo-orchestrator emit). founder-ui tsc 0, dist node --check OK.
+- [ ] **라이브 후속(헤드리스 불가, LLM=Claude CLI)**: ① orchestrator가 각 스킬에 입력(ids/brief/slide_deck_deps 등)을 공급하는 경로가 아직 없음 — 현재 `skill.run`은 `{task, context}`만 받아 factory/keycontent 등 caller-injected 입력 스킬은 실행 시 throw. 단계별 입력 공급(반자동 흐름) 설계 필요. ② 슬라이드 LLM은 **OpenAI 불필요** — `plugin.ts buildLLMClient`가 기본 Claude CLI(haiku); `slide_deck_deps.llmComplete = (p)=>buildLLMClient().complete({system:'',user:p})` 주입만 추가하면 됨(미주입 시 결정론 폴백). ③ NocoBase 기동 후 실 HTTP E2E.
+- [x] **후속 정리**: 구 `pulling-content.ts`(5세트 퍼널)에 `@deprecated` JSDoc 추가(코드·export 불변).
+
 ## 🛠️ CTO 파이프라인 개선 — integrate phase 신설 (2026-06-09, 트랙 A)
 
 > 사장님: ACR 산출물이 "절반에서 멈추고 연결 안 된" 채 흩어진다(고립 완료). 근본 = SOP에 통합 단계 부재. 방향 = ACR 레일 유지 + CTO 개선. CMO PRD v3(트랙 B, 사장님 직접)와 파일 경계 분리 병렬. 설계 = `docs/DECISIONS.md` 2026-06-09.

@@ -92,6 +92,12 @@ const {
   runCmoStrategyTurn,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cmo-strategy'));
 
+// CMO v3 orchestrator — skill-chain execution.
+const {
+  createCmoSkillRegistry,
+  CmoOrchestrator,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cmo-orchestrator'));
+
 const {
   advanceStatus: advanceVideoRoomStatus,
   requiresApproval: videoRoomRequiresApproval,
@@ -175,7 +181,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'runContentStrategy'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -3258,6 +3264,32 @@ function registerCmoResource(app: any, db: any) {
         );
 
         ctx.body = { ok: true, data: { id: record_id, brief: handoff } };
+        await next();
+      },
+
+      // POST /api/cmo:runContentStrategy  { project_id, task? }
+      // Runs the CMO v3 skill chain via CmoOrchestrator (keycontent → factory).
+      // D3+ skills pause and return pending_skills for founder approval.
+      runContentStrategy: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        const taskInput = v.task && typeof v.task === 'object' ? v.task as Record<string, unknown> : {};
+        const task = {
+          id: String(taskInput.id ?? randomUUID()),
+          title: String(taskInput.title ?? 'CMO content strategy'),
+          expected_output: String(taskInput.expected_output ?? 'Full content strategy skill chain output'),
+          rationale: String(taskInput.rationale ?? ''),
+          risk_level: (taskInput.risk_level as string) ?? 'D2',
+          source_ref: String(taskInput.source_ref ?? project_id),
+        };
+
+        const registry = createCmoSkillRegistry();
+        const orchestrator = new CmoOrchestrator({ registry, selection_strategy: 'rule' });
+        const result = await orchestrator.execute({ task, context: { project_id } });
+
+        ctx.body = { ok: true, data: result };
         await next();
       },
     },

@@ -663,6 +663,14 @@ export const api = {
       body: JSON.stringify(params),
     }).then(r => unwrap(r)),
 
+  // CMO v3 skill-chain execution — runs CmoOrchestrator with default rule-based selection.
+  // D3+ skills pause execution and return pending_skills for founder approval.
+  cmoRunContentStrategy: (project_id: string, task?: Record<string, unknown>) =>
+    request<{ data: { ok: boolean; data: { skill_results: unknown[]; handler_result: unknown; pending_skills: string[] } } }>('/api/cmo:runContentStrategy', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, ...(task ? { task } : {}) }),
+    }).then(r => unwrap(r)),
+
   closeInstruction: (id: string) =>
     request<{ data: unknown }>('/api/founder_instructions:update', {
       method: 'POST',
