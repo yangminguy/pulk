@@ -302,6 +302,20 @@ describe('runCTOAgent — deterministic phases (default)', () => {
     ]);
   });
 
+  // E1 regression: workers repeatedly skipped code phases as "이미 완료/clean
+  // branch" (execution-logs.json). Code-producing phases must carry a NO-SKIP
+  // directive; non-producing phases (read-only / commit) must not.
+  it('injects NO-SKIP into code-producing phases only', async () => {
+    const out = await runCTOAgent({ task: TASK }, { llm: null });
+    const byName = (n: string) => out.acr_intent.phases.find((p) => p.name === n)!;
+    for (const name of ['실패 테스트 작성', '구현', '통합·배선']) {
+      expect(byName(name).prompt_packet).toMatch(/NO-SKIP|변경이 0이면/);
+    }
+    for (const name of ['오픈소스 조사', '스펙 작성', '리뷰', '커밋']) {
+      expect(byName(name).prompt_packet).not.toMatch(/NO-SKIP/);
+    }
+  });
+
   it('classifies a single-component task as SMALL_FIX (4 phases) without the LLM', async () => {
     const llm = makeCountingLLM();
 

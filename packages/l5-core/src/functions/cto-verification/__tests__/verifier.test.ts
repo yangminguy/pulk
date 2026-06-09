@@ -104,6 +104,22 @@ describe('verifyCTOPhaseDeterministic', () => {
     expect(r.confidence).toBe('medium');
   });
 
+  // E1 regression (execution-logs.json): a worker skipped the implement phase,
+  // ticked every acceptance criterion ✅, and declared "이미 완료" — but changed
+  // nothing. The verifier must fail this disguised skip, not pass it.
+  it('E1 regression: skip disguised as done (AC ✅ but changed_files=0) fails', () => {
+    const r = verifyCTOPhaseDeterministic({
+      task_title: 'Key Content Agent 구현',
+      expected_output: 'key-content-agent.ts 구현',
+      exit_code: 0,
+      log_tail:
+        '| AC-5 | key-content.ts 미수정 | 변경 없음 (clean branch) ✅ |\n이 phase는 이전 커밋에서 이미 완료된 상태입니다.',
+      changed_files: 0,
+    });
+    expect(r.verdict).toBe('fail');
+    expect(r.retry_recommended).toBe(true);
+  });
+
   it('fails an integrate phase that changed nothing (unwired)', () => {
     const r = verifyCTOPhaseDeterministic({
       task_title: 'wire key-content agent',

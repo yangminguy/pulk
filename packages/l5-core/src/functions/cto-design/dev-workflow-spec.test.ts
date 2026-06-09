@@ -4,6 +4,7 @@ import {
   validateDevWorkflowPhases,
   buildDeterministicDevPhases,
   classifyTask,
+  isCodeProducingKind,
 } from './dev-workflow-spec';
 
 // ---------------------------------------------------------------------------
@@ -166,6 +167,15 @@ describe('DEV_WORKFLOW_TEMPLATES', () => {
     expect(byIdx[4].dependsOn).toEqual(['implement']); // integrate
     expect(byIdx[5].dependsOn).toEqual(['integrate']); // review
     expect(byIdx[6].dependsOn).toEqual(['review']);    // commit
+  });
+
+  it('isCodeProducingKind: code phases true, read-only/commit phases false', () => {
+    for (const k of ['implement', 'integrate', 'test', 'fix', 'refactor', 'repro'] as const) {
+      expect(isCodeProducingKind(k)).toBe(true);
+    }
+    for (const k of ['research', 'spec', 'review', 'commit', 'regress', 'rfc', 'backup', 'smoke'] as const) {
+      expect(isCodeProducingKind(k)).toBe(false);
+    }
   });
 
   it('FEATURE/BIG_CHANGE: integrate is a mutating claude phase between implement and review', () => {

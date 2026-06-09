@@ -655,6 +655,26 @@ const ALL_KINDS: DevPhaseKind[] = [
   'repro', 'fix', 'regress', 'research', 'rfc', 'refactor', 'backup', 'smoke',
 ];
 
+/**
+ * Phases that MUST produce file changes in the worktree. The CTO agent injects a
+ * NO-SKIP directive into these phases' prompts.
+ *
+ * Rationale (from execution-logs.json, 424 runs): ACR workers repeatedly skipped
+ * work as "이미 완료/이미 존재/clean branch" (~25 skip signatures; ≥10 of 33
+ * review_blocked) because the worktree's base already carried prior commits, so
+ * the agent judged there was "nothing to do" and ticked acceptance_criteria as
+ * met without changing anything. For these kinds, zero changes is a failure, not
+ * a no-op. `commit`/`smoke`/`backup`/read-only phases are excluded (they may
+ * legitimately produce no new source).
+ */
+const CODE_PRODUCING_KINDS: DevPhaseKind[] = [
+  'implement', 'integrate', 'test', 'fix', 'refactor', 'repro',
+];
+
+export function isCodeProducingKind(kind: DevPhaseKind): boolean {
+  return CODE_PRODUCING_KINDS.includes(kind);
+}
+
 function inferKind(phase: DevWorkflowPhaseLike): DevPhaseKind | null {
   if (typeof phase.kind === 'string') {
     const k = phase.kind.toLowerCase().trim();
