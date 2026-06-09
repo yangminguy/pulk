@@ -2929,3 +2929,19 @@ API 스모크(`apps/founder-ui/e2e/smoke-r1-r7.mjs`)로 새 프로젝트를 상�
 - R6 sendBriefToFactory: brief를 렌더용 submitJob에 넘겨 실패 → brief 핸드오프(video_execution_briefs 영속=sent)로 분리. 실 factory push는 followup.
 
 UI 버튼(approveStageGate)·런타임 클릭 검증은 다음 단계. dist는 gitignore라 로컬 패치+서버 반영 완료(src만 커밋).
+
+## R1~R7 자동 검증 완료 (2026-06-09)
+
+라이브 서버에서 자동 검증 + 막힌 화면 수정 완료:
+- **API E2E 스모크 19/19 PASS** (`e2e/smoke-r1-r7.mjs`): createProject→키콘텐츠→R1풀링→R4썸네일/원고→R6 brief/factory→completed→R7 성과.
+- **보드 렌더 검증** (`e2e/visual-r1-r7.mjs`, `e2e/check-pulling-render.mjs`): 4개 신규 보드 콘솔 에러 0. PullingPlanBoard 캐시 카드 ~2s 렌더 + 재생성 0회.
+- **founder-ui는 `next start`(프로덕션 빌드)** — 새 보드 반영하려면 `next build` 후 launchd 재기동 필요(이번에 수행). dev 아님 주의.
+
+수정한 실버그:
+- approveStageGate 액션 + UI 버튼: 새 보드 흐름이 승인 게이트 row를 안 만들어 막히던 문제.
+- dist randomUUID → import_crypto.randomUUID.
+- R6 sendBriefToFactory: brief를 렌더용 submitJob에 오용 → brief 핸드오프(sent) 분리.
+- ProductionBoard: script_draft raw JSON 중복 제거(ScriptDraftPanel 전담).
+
+남은 followup: 실 factory push 연결, R5 실 스크래퍼(자격증명/DOM), R7 외부 분석 자동연동, slide/render가 brief 직접 참조.
+커밋: 6cb2339·71b30bb·eb26d15·8e48cfb·6987561·b812402·67ca2a2 (branch cmo/content-strategy-v3).
