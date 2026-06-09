@@ -17,7 +17,9 @@
 
 **후속 완료(트랙 A, 2026-06-09)**: ACR runner가 phase 콜백에 `changed_files`/`modified_existing_files` 포함 — ACR repo `lib/runner/file-boundary.ts`에 `countModifiedExistingFiles`(porcelain status로 신규 vs 기존수정 구분, 스모크 검증), `finalize-phase-execution.ts`가 commit 전 계산해 L5 콜백 body에 실음. pulk `plugin.ts` 콜백 수신부가 destructure→verifyCTOPhase에 전달(src+dist 미러 패치, node --check OK). runner-finalize.test.ts mock에 새 함수 추가. ACR 소스 tsc 클린·테스트 8/8(tsc 2건은 무관 사전존재 테스트 드리프트).
 
-**남은 것(트랙 A)**: ① **per-phase integrate 검증** — 현재 verifier는 `status==='all_done'`에만 돈다(중간 phase가 task 전체 expected_output 대비 false-fail 나는 것 방지). 그래서 integrate **단독** 고립은 그 시점엔 직접 못 잡는다(누적 diff + task expected에 통합 키워드 적음). `modified_existing_files` 배선이 **완전 실효**하려면 integrate phase_complete 시점의 경량 고립 검증(phase 종류 기반, LLM/expected 불요)을 plugin 콜백 핸들러에 추가해야 함. 현재는 배선·verifier 함수·단위테스트까지 완성되어 그 분기만 추가하면 즉시 작동. ② 라이브 kickstart(nocobase/agent-runtime, 현재 빌드만). ③ model-routing.test.ts 사전존재 4건.
+**per-phase integrate 검증 완료(2026-06-09)**: verifier가 `all_done`에만 돌던 한계 해소. `verifier.ts`에 `isIntegratePhaseName`(phase 이름 식별) + `verifyIntegratePhase`(고립 전용 결정적 검사, expected 합성으로 기존 룰 재사용·LLM 불요) 추가. plugin 콜백 핸들러: `status==='phase_complete' && isIntegratePhaseName(phase)`면 `verifyIntegratePhase`로 그 phase 단독 고립을 즉시 판정(각 phase는 commit 후 콜백→worktree clean→그 phase 단독 diff). fail이면 기존 phase_complete 분기(원래 dead였음)가 needs_review+retry로 흘림. src+dist 미러, require 경로 스모크 OK(orphan=fail, wired=pass). verifier 22/22, l5-core 회귀 0.
+
+**남은 것(트랙 A)**: ① 라이브 kickstart(nocobase/agent-runtime, 현재 빌드만). ② model-routing.test.ts 사전존재 4건 정리. ③ (선택) integrate retry 루프가 ACR에서 실제로 재실행되는지 라이브 E2E 확인.
 
 ---
 

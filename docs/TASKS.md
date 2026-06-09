@@ -12,7 +12,8 @@
 - [x] **verifier 고립 룰**: `cto-verification/verifier.ts` — integrate 무변경=fail, `modified_existing_files=0`(새 파일만)=orphaned fail(graceful). `VerifyCTOPhaseInput`에 `modified_existing_files?` 추가.
 - [x] **검증**: l5-core typecheck 0, 관련 테스트 GREEN(integrate 신규 포함). agent-runtime cto.test 11/11(dist 재빌드 7-phase). 회귀 0(전체 5 failed=baseline 동일 사전존재).
 - [x] **콜백 배선(ACR→L5→verifier)**: ACR `file-boundary.ts countModifiedExistingFiles`(porcelain 신규/기존 구분) + `finalize-phase-execution.ts`가 `changed_files`/`modified_existing_files`를 L5 콜백 body에. pulk `plugin.ts` 수신부→verifyCTOPhase 전달(src+dist). ACR 소스 tsc 0·테스트 8/8, dist node --check OK.
-- [ ] **후속(트랙 A)**: ① per-phase integrate 검증(verifier가 all_done에만 도는 한계 → integrate phase_complete 시점 경량 고립 검증 분기 추가해야 modified_existing_files 완전 실효). ② 라이브 kickstart(nocobase/agent-runtime). ③ model-routing.test 사전존재 4건 정리.
+- [x] **per-phase integrate 검증**: `verifier.ts isIntegratePhaseName` + `verifyIntegratePhase`(고립 전용 결정적, LLM 불요) + plugin 콜백이 `phase_complete && integrate`면 그 phase 단독 고립 즉시 판정→needs_review+retry. src+dist, require 스모크 OK(orphan=fail/wired=pass), verifier 22/22.
+- [ ] **후속(트랙 A)**: ① 라이브 kickstart(nocobase/agent-runtime). ② model-routing.test 사전존재 4건. ③ integrate retry가 ACR에서 실제 재실행되는지 라이브 E2E.
 
 ## 🧠 CMO 세컨브레인 자가개선 루프 (2026-06-06)
 

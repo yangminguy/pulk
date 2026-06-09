@@ -48,6 +48,8 @@ const _videoFactoryTransport = makeVideoFactoryTransport();
 
 const {
   verifyCTOPhase,
+  verifyIntegratePhase,
+  isIntegratePhaseName,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cto-verification'));
 
 const {
@@ -1335,28 +1337,40 @@ function registerCrudResources(app: any) {
         // phases, then be judged). Intermediate phases just record progress and let
         // ACR's auto-dispatcher drain the next phase. all_done still gates quality.
         let verifierVerdict: any = null;
+        // integrate(통합·배선) phase는 중간(phase_complete) 시점에도 "고립" 전용
+        // 결정적 검사를 돈다. all_done 검증은 task 전체 expected 대비라 중간 phase에
+        // 돌리면 false-fail이지만, integrate 고립은 phase 종류 + 파일 카운트만으로
+        // 판정(LLM·expected 무관)하므로 그 phase 완료 즉시 잡는다. 각 phase는 commit
+        // 후 worktree가 clean이라 changed/modified_existing은 그 phase 단독 diff다.
+        const verifyIntegrateNow =
+          status === 'phase_complete' &&
+          task.assigned_agent === 'CTO' &&
+          isIntegratePhaseName(phase);
         const shouldVerify =
-          status === 'all_done' &&
-          task.assigned_agent === 'CTO';
+          (status === 'all_done' && task.assigned_agent === 'CTO') ||
+          verifyIntegrateNow;
         if (shouldVerify) {
           try {
-            const verifierLLM = buildLLMClient(task.title ?? '');
-            verifierVerdict = await verifyCTOPhase(
-              {
-                task_title: task.title,
-                expected_output: task.expected_output ?? '',
-                diff_summary: diff_summary ?? undefined,
-                log_tail: log_tail ?? undefined,
-                exit_code: typeof exit_code === 'number' ? exit_code : undefined,
-                changed_files:
-                  typeof changed_files === 'number' ? changed_files : undefined,
-                modified_existing_files:
-                  typeof modified_existing_files === 'number'
-                    ? modified_existing_files
-                    : undefined,
-              },
-              verifierLLM,
-            );
+            const verifierInput = {
+              task_title: task.title,
+              expected_output: task.expected_output ?? '',
+              diff_summary: diff_summary ?? undefined,
+              log_tail: log_tail ?? undefined,
+              exit_code: typeof exit_code === 'number' ? exit_code : undefined,
+              changed_files:
+                typeof changed_files === 'number' ? changed_files : undefined,
+              modified_existing_files:
+                typeof modified_existing_files === 'number'
+                  ? modified_existing_files
+                  : undefined,
+            };
+            if (verifyIntegrateNow) {
+              // 결정적만 — LLM이 task 전체를 평가해 중간 phase를 오판하지 않도록.
+              verifierVerdict = verifyIntegratePhase(verifierInput);
+            } else {
+              const verifierLLM = buildLLMClient(task.title ?? '');
+              verifierVerdict = await verifyCTOPhase(verifierInput, verifierLLM);
+            }
           } catch (err) {
             // eslint-disable-next-line no-console
             console.warn('[taskCallback] verifier threw:', err);

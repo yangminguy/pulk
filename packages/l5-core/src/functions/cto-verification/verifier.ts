@@ -45,6 +45,16 @@ const CODE_SIGNAL = /\b(implement|fix|refactor|test)\b|구현|수정|리팩터|�
 const INTEGRATION_SIGNAL =
   /\b(integrate|integration|wir(?:e|ing)|register|barrel|orchestrator)\b|통합|배선|등록|배럴|진입점/i;
 
+/**
+ * True when a phase *name* denotes an integrate/wiring phase. The callback
+ * handler uses this to run the orphan check on this phase's own completion
+ * (phase_complete) rather than only at all_done. Matches the SOP phase name
+ * "통합·배선" plus English/keyword variants.
+ */
+export function isIntegratePhaseName(phaseName?: string | null): boolean {
+  return typeof phaseName === 'string' && /통합|배선|integrate|wir(?:e|ing)/i.test(phaseName);
+}
+
 /** Files changed: explicit count if given, else parsed from a `git diff --stat` summary. */
 function countChangedFiles(input: VerifyCTOPhaseInput): number | undefined {
   if (typeof input.changed_files === 'number') return input.changed_files;
@@ -229,4 +239,21 @@ export async function verifyCTOPhase(
   } catch {
     return deterministic;
   }
+}
+
+/**
+ * Deterministic orphan check for an integrate phase at its OWN completion
+ * (phase_complete), not at all_done. Reuses verifyCTOPhaseDeterministic by
+ * forcing the integration signal on, so an integrate phase that changed nothing
+ * — or only added new files without touching an existing entry point — fails and
+ * is retried. No LLM: judging an intermediate phase against the task's full
+ * expected_output would false-fail; this judges only wiring, from the phase's own
+ * file-change counts. Because each phase commits before its callback, the
+ * changed_files/modified_existing_files reported here are this phase's diff alone.
+ */
+export function verifyIntegratePhase(input: VerifyCTOPhaseInput): VerifyCTOPhaseResult {
+  return verifyCTOPhaseDeterministic({
+    ...input,
+    expected_output: `[integrate] 통합·배선: 신규 산출물을 기존 진입점에 등록·연결한다. ${input.expected_output ?? ''}`,
+  });
 }

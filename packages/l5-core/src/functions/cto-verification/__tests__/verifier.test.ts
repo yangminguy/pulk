@@ -1,6 +1,8 @@
 import {
   verifyCTOPhase,
   verifyCTOPhaseDeterministic,
+  verifyIntegratePhase,
+  isIntegratePhaseName,
 } from '../verifier';
 import type { LLMClient } from '../../ceo-orchestration/types';
 
@@ -141,6 +143,65 @@ describe('verifyCTOPhaseDeterministic', () => {
       modified_existing_files: 1,
     });
     expect(r.verdict).toBe('pass');
+  });
+});
+
+describe('isIntegratePhaseName', () => {
+  it('matches the SOP phase name and variants', () => {
+    expect(isIntegratePhaseName('통합·배선')).toBe(true);
+    expect(isIntegratePhaseName('integrate')).toBe(true);
+    expect(isIntegratePhaseName('wiring into orchestrator')).toBe(true);
+  });
+  it('does not match other phases or empty input', () => {
+    expect(isIntegratePhaseName('구현')).toBe(false);
+    expect(isIntegratePhaseName('리뷰')).toBe(false);
+    expect(isIntegratePhaseName(undefined)).toBe(false);
+    expect(isIntegratePhaseName(null)).toBe(false);
+  });
+});
+
+describe('verifyIntegratePhase (phase_complete orphan check, no expected needed)', () => {
+  it('fails when only new files were added (orphaned), even with a non-integration expected', () => {
+    const r = verifyIntegratePhase({
+      task_title: 'wire key-content agent',
+      expected_output: 'whatever the task says', // not an integration signal
+      exit_code: 0,
+      diff_summary: 'src/agents/new.ts | 90 +++\n1 file changed',
+      changed_files: 1,
+      modified_existing_files: 0,
+    });
+    expect(r.verdict).toBe('fail');
+    expect(r.reason).toMatch(/orphaned/);
+  });
+  it('fails when nothing changed', () => {
+    const r = verifyIntegratePhase({
+      task_title: 'wire',
+      expected_output: '',
+      exit_code: 0,
+      changed_files: 0,
+    });
+    expect(r.verdict).toBe('fail');
+  });
+  it('passes when an existing entry point was modified', () => {
+    const r = verifyIntegratePhase({
+      task_title: 'wire',
+      expected_output: '',
+      exit_code: 0,
+      diff_summary: 'src/new.ts | 50 +\nsrc/index.ts | 3 +\n2 files changed',
+      changed_files: 2,
+      modified_existing_files: 1,
+    });
+    expect(r.verdict).toBe('pass');
+  });
+  it('fails on non-zero exit regardless of wiring', () => {
+    const r = verifyIntegratePhase({
+      task_title: 'wire',
+      expected_output: '',
+      exit_code: 1,
+      changed_files: 2,
+      modified_existing_files: 1,
+    });
+    expect(r.verdict).toBe('fail');
   });
 });
 
