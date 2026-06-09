@@ -1629,7 +1629,7 @@ L5 Business OS
   - plugin `@l5/plugin-orchestration`: `proposePullingCandidates`/`commitPullingPlan` 액션 + ACL + dist 패치(node --check 통과). 상태 advance는 `advanceStatus` 패턴(pulling_content_set_selection→approval).
   - UI: `PullingPlanBoard.tsx`(자동제안+진행률+후보 카드+세트 확정 단일 버튼) + `api.ts`(cmoProposePullingCandidates/cmoCommitPullingPlan + PullingCandidate 타입) + `StrategyBoard.tsx` StageGate 배선. founder-ui tsc 0.
   - 잔여: 런타임 E2E(nocobase 서버 가동 필요, 미실행). viewtrap_pulling_research→selection 진입은 기존 키콘텐츠와 대칭인 기존 흐름 책임.
-- [ ] **R2 텔레그램 알림 실작동**: TELEGRAM_BOT_TOKEN/CHAT_ID를 launchd에 주입(코드 준비됨) → 초안 완료 시 폰 알림.
+- [x] **R2 텔레그램 알림 실작동**: TELEGRAM_BOT_TOKEN/CHAT_ID를 `~/Library/LaunchAgents/com.l5.nocobase.plist` EnvironmentVariables에 주입(기존 hermes plist 토큰 재사용, PlistBuddy) → 서비스 재시작 → 실제 전송 검증(ok=True, 폰 도착). 풀링 초안 완료 알림(sendPullingDraftTelegram) 추가(plugin src+dist). 키콘텐츠/풀링 propose 완료 시 폰 알림.
 - [ ] **R3 속도 최적화**: 218초 → 독립 스텝 병렬화.
 - [ ] **R4 콘텐츠 제작 단계**: 확정 주제마다 제목/썸네일 상세·도입부 30초·원고(기존 자산 재활용).
 - [ ] **R5 Viewtrap 자동화(Phase 2)**: Playwright 로그인 1회 → 자동 검색·스크래핑.

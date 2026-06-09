@@ -3500,6 +3500,11 @@ function registerCmoResource(app: any, db: any) {
           { candidates },
         );
 
+        // 풀링 초안 완료 텔레그램 알림(best-effort — 알림 실패가 응답에 영향 없음).
+        sendPullingDraftTelegram(project_id, candidates.length).catch(() => {
+          /* graceful: 알림 실패는 무시 */
+        });
+
         ctx.body = { ok: true, data: { candidates } };
         await next();
       },
@@ -4233,6 +4238,34 @@ async function sendKeyContentDraftTelegram(projectId: string, candidateCount: nu
   const founderUIBase = process.env.FOUNDER_UI_BASE_URL ?? 'http://localhost:3002';
   const link = `${founderUIBase}/video-room`;
   const text = `ℹ️ *키콘텐츠 주제 후보 ${candidateCount}개 생성됨 — 확인하세요*\n\nproject_id: ${projectId}\n\n🔗 ${link}`;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+        disable_web_page_preview: false,
+      }),
+    });
+  } catch {
+    // Intentionally silent — notification failure must not affect task state.
+  }
+}
+
+// Best-effort Telegram notification when pulling topic candidates are ready.
+// Reads env vars TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, FOUNDER_UI_BASE_URL.
+// Silent skip if env vars are absent (no throw).
+async function sendPullingDraftTelegram(projectId: string, candidateCount: number): Promise<void> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!botToken || !chatId) return;
+
+  const founderUIBase = process.env.FOUNDER_UI_BASE_URL ?? 'http://localhost:3002';
+  const link = `${founderUIBase}/video-room`;
+  const text = `ℹ️ *풀링 주제 후보 ${candidateCount}개 생성됨 — 확인하세요*\n\nproject_id: ${projectId}\n\n🔗 ${link}`;
 
   try {
     await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
