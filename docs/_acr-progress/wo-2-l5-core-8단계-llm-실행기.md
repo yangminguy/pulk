@@ -270,3 +270,32 @@ Test Suites: 1 failed, 1 total
 - worktree pre-existing 미커밋: `docs/reports/videoqa_eval_result.{json,md}` — WO 무관, 불가침.
 - 소비자 배선(stage-script/plugin/agent-runtime)은 WO-2 범위 밖 — STAGE_SCRIPT 텍스트는 WO-1에서 이미 8단계 안내로 배선됨. 실행기 호출부 연결은 후속 WO.
 - eslint 바이너리는 이 worktree에 미설치(WO-1과 동일) — deps 설치된 환경에서 `pnpm lint` 1회 권장.
+
+---
+
+## Phase: integrate — 통합·배선
+
+### 한 일
+1. **CMO 스킬 신규 등록**: `cmo-orchestrator/skills/title-development.ts` — `createTitleDevelopmentSkill(overrides?, deps?)`, skill_id `cmo.title.development`(category content, D2, depends_on `['cmo.pulling.plan']`). WO-2 실행기 `runTitleDevelopmentWorkflow`로 위임하고 결과를 WO-1 `buildTitleDevelopmentProposal`(PRD §20.1/AC-14) 구조 + `insight=second_brain_summary` + `suggested_next=['cmo.script.write']`로 반환. 레퍼런스 <2 / pulling_topic 누락 / 조건 미달은 ok:false.
+2. **기존 진입점(레지스트리) 수정**: `cmo-skill-registry.ts` — `createCmoSkills`/`createCmoSkillRegistry`에 옵션 `{ title_development_deps?: TitleDevelopmentLLMDeps }` 추가(기본 무인자 호출 호환 유지) + 신규 스킬 등록(기본 10→11개). **플러그인(`plugin-orchestration/src/server/plugin.ts:96~99`)이 이미 `createCmoSkillRegistry`를 require로 소비**하므로 플러그인 코드 변경 없이 라이브 경로에 연결됨.
+3. **배럴 배선**: `cmo-orchestrator/index.ts`에 `export * from './skills/title-development'` 추가.
+4. **기존 테스트 정렬**: `cmo-v3-e2e.test.ts`의 기본 스킬 수 단언 10→11 + `cmo.title.development` 포함 단언.
+5. **통합 테스트 5개 추가**: `__tests__/title-development-skill.test.ts` — 레지스트리 등록·topo-sort(pulling.plan→title.development), registry deps 옵션으로 LLM 주입 시 실호출 확인, 결정론 폴백 proposal 생성(조합4/단계7/draft), AC-01/§25.3 거절 경로.
+
+### 중복 정렬 판단
+- 기존 `cmo.title.thumbnail`(buildThumbnailPlan, 썸네일 후보 생성)과는 **책임이 다름** — 병존이 맞다. 새 스킬 주석에 구분 명시. 대체/위임 대상 구버전 없음(8단계 디벨롭은 신규 능력).
+
+### 검증 결과 (2026-06-10)
+- `corepack pnpm typecheck` pass
+- cmo-orchestrator suite 13개 전체 pass (신규 5 포함), 신규 스킬 테스트 5/5
+- 전체 jest: **1778 pass / 4 fail** — 실패는 pre-existing `model-routing` 4건 그대로. 신규 회귀 0.
+
+### 이번 phase에서 내린 결정
+- spec S4의 "수정 금지: 플러그인"은 유지 — 통합 지점을 l5-core 내부의 `createCmoSkillRegistry`(플러그인이 이미 소비하는 registry 진입점)로 선택해 플러그인 무변경으로 라이브 경로 연결. 시그니처는 optional 파라미터라 기존 호출부 호환.
+- 스킬 run의 정적 반환 타입은 ToolResult(베이스)라 테스트에서 insight는 캐스트로 접근.
+
+### 다음 phase(review/commit)가 알아야 할 점
+- 변경 파일: 신규 2(`skills/title-development.ts`, `__tests__/title-development-skill.test.ts`) + 수정 3(`cmo-skill-registry.ts`, `cmo-orchestrator/index.ts`, `cmo-v3-e2e.test.ts`).
+- nocobase 플러그인은 l5-core **dist**를 require — 라이브 반영에는 l5-core 재빌드 + nocobase 재기동 필요(메모리: dist 함정). 소스 레벨 통합은 완료.
+- LLM 실주입은 플러그인/agent-runtime에서 `createCmoSkillRegistry({ title_development_deps: { llm } })` 호출만 하면 됨 — 후속 WO.
+- worktree pre-existing 미커밋: `docs/reports/videoqa_eval_result.{json,md}` — 불가침 유지.
