@@ -336,3 +336,23 @@ WO-2 diff 전체(커밋 cb129df 기준 worktree): `title-development-llm.ts`(신
 ### 다음 phase(commit)가 알아야 할 점
 - 리뷰 수정 1건(R5)은 import 순서뿐, 시그니처·테스트 계약 불변.
 - 미해결 항목 없음.
+
+---
+
+## Phase: commit — 커밋
+
+### 한 일
+- 직전 review phase 산출물과 검증 결과를 확인하고, commit phase 작업 기록을 진행 노트에 append.
+- 작업 범위는 WO-2 전체 산출물의 커밋 고정이며, 코드/테스트 계약 변경 없음.
+
+### 변경·생성 파일
+- 이번 phase 직접 변경: `docs/_acr-progress/wo-2-l5-core-8단계-llm-실행기.md`
+- WO-2 산출물(직전 phase까지): `packages/l5-core/src/functions/cmo-strategy/title-development-llm.ts`, `packages/l5-core/src/functions/cmo-strategy/__tests__/title-development-llm.test.ts`, `packages/l5-core/src/functions/cmo-orchestrator/skills/title-development.ts`, `packages/l5-core/src/functions/cmo-orchestrator/__tests__/title-development-skill.test.ts`, 관련 배럴/레지스트리/e2e 테스트.
+
+### 결정
+- 커밋 메시지는 요청 spec에 맞춰 `task: WO-2: l5-core 8단계 LLM 실행기`로 사용.
+- origin push는 별도 명시가 없고 현재 phase acceptance가 "필요 시"이므로, 로컬 단일 신규 커밋 검증까지만 수행.
+
+### 다음 phase가 알아야 할 점
+- 리뷰 phase에서 미해결 항목 0, typecheck pass, cmo-orchestrator 13 suite 55/55 pass.
+- 전체 jest의 `model-routing` 4건 실패는 pre-existing env 의존 이슈로 WO-2 신규 회귀가 아님.
