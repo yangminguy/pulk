@@ -66,3 +66,137 @@ WO-2가 필요로 하는 능력을 PRD와 WO-1 산출물에서 도출:
 3. LLM 호출 단위: 단계당 1콜(2~8단계 = 7콜) vs 묶음 호출 — 타임라인 UI(§22.2-E)가 단계별 입력/출력/이유를 요구하므로 **단계당 1콜** 기본. 캐시는 claude-cli-client의 LRU가 처리.
 4. WO-1 결정론 함수와의 접합: 35자 검사(`isTitleTooLong`)는 각 단계 출력 후처리로, 점수 합산·판정(`scoreFinalTitle`/`recommendFromScore`)은 §21.6 평가에서 LLM 항목점수를 받아 적용. `isAwkward`는 §21.4 LLM 점수에 적용.
 5. trace: 각 단계 호출에 `trace_name: 'title-dev-step-N'` 류 부여 (Rule 6).
+
+---
+
+## Phase: spec — 요구사항 명세
+
+### S1. 범위 정의
+
+WO-2는 **LLM 추론 실행기**만 다룬다. 결정론 함수·타입은 WO-1 산출물을 재사용하며 수정하지 않는다.
+
+| PRD §21 함수 | WO-2 포함 | 내용 |
+|---|---|---|
+| `judgeCombinationAwkwardness` (§21.4) | **포함** | 교차 조합 4개의 어색함을 LLM이 판단(§9.5 기준 5+1항목) → `awkwardness_score`/`awkwardness_reason`/`passed`/`selected_for_next_step` 채움. 임계 판정은 WO-1 `isAwkward` 재사용 |
+| `runTitleDevelopmentSteps` (§21.5) | **포함** | 통과 조합의 제목을 2~8단계(§10~§16) 순차 LLM 디벨롭 → `TitleDevelopmentStepResult[]` 7개 (AC-09, AC-10) |
+| `evaluateFinalTitles` (§21.6) | **포함** | 최종 후보별 6항목 점수를 LLM이 산정 → WO-1 `scoreFinalTitle`(클램프·합산)·`recommendFromScore`(85/70/69) 적용 → `FinalTitleEvaluation[]` |
+| 전체 파이프라인 합성 | **포함** (`runTitleDevelopmentWorkflow`) | 검증(WO-1)→조합(WO-1)→어색함→2~8단계→평가→베스트 선택을 잇는 합성 함수. `TitleDevelopmentWorkflowRun` 반환 |
+| UI(§22), proposal 저장 배선(§20), agent-runtime/플러그인 소비 | 제외 | 후속 WO. WO-2는 l5-core 내부까지만 |
+
+### S2. 설계 결정 (research 인계 확정)
+
+- **파일**: 신규 `title-development-llm.ts` — WO-1의 결정론 파일(`title-development.ts`)과 분리(LLM 의존 유무로 모듈 책임 분리, Rule 1).
+- **모델**: `export const TITLE_DEVELOPMENT_MODEL = 'claude-sonnet-4-6'` 상수 고정 (discovery-classification 컨벤션).
+- **deps 주입**: `interface TitleDevelopmentLLMDeps { llm?: LLMClient; maxRetries?: number }` — maxRetries 기본 1(총 2회 시도). `LLMClient`는 `ceo-orchestration/types` import.
+- **호출 단위**: 어색함 1콜 + 단계당 1콜(2~8 = 7콜) + 평가 1콜 = run당 총 9콜.
+- **trace**: `trace_name`: `'title-dev-awkwardness'` / `'title-dev-step-{2..8}'` / `'title-dev-final-eval'`. `trace_metadata`에 `pulling_topic` 포함.
+- **출력 파싱**: 응답에서 JSON 추출(코드펜스 허용) → zod `safeParse` → 실패 시 재시도 → 최종 실패 시 결정론 폴백. zod 스키마 3개: `AwkwardnessJudgementSchema`, `StepResultLLMSchema`, `FinalEvaluationLLMSchema`.
+- **결정론 폴백** (llm 미주입 또는 재시도 소진 — 전체 실패 금지):
+  - 어색함: `awkwardness_score=0`, `passed=true`, reason=`'어색함 판단 실패 — 수동 확인 필요'`, 기본 2종 조합만 `selected_for_next_step=true` (PRD §3.1).
+  - 단계: 입력 제목 pass-through(`output_titles=input_titles`), `method_explanation`에 폴백 사유 명기, `rejected_titles=[]`.
+  - 평가: 6항목 전부 배점의 70% 고정(= revise 구간) — 폴백이 자동 업로드 후보가 되지 않게 보수적으로.
+  - 폴백 발생 여부는 결과에 `fallback_count`로 노출.
+- **단계명 상수**: `STEP_NAMES: Record<2..8, string>` — §8 순서 그대로 (`'쉬운 단어로 전환'`, `'상위어로 전환'`, `'부정어/반대 구조로 전환'`, `'수식어 추가'`, `'답이 보이는 제목을 질문이 생기게 전환'`, `'핫비디오 구조로 갈아끼우기'`, `'강한 단어로 변경'`).
+- **프롬프트**: 단계별 system 프롬프트에 PRD §10~§16의 실행 방법·예시·실패 기준을 요약 주입(P0-8 "8단계 디벨롭 실행 프롬프트 구현"). 5단계 출력은 `isTitleTooLong` 후처리 — 35자 초과 후보는 rejected로 이동(사유: `'35자 초과'`).
+- **각 단계 입력**: 직전 단계의 `selected_titles_for_next_step` (2단계 입력은 어색함 통과 조합의 `title_draft`).
+
+### S3. 함수 시그니처 명세
+
+```ts
+// title-development-llm.ts
+export const TITLE_DEVELOPMENT_MODEL = 'claude-sonnet-4-6';
+export const TITLE_DEV_FALLBACK_REASON = '... 실패 — 수동 확인 필요'; // 함수별 한국어 사유
+
+export interface TitleDevelopmentLLMDeps {
+  llm?: LLMClient;
+  maxRetries?: number; // 기본 1 (총 2회 시도)
+}
+
+export interface TitleDevelopmentTopicContext {
+  pulling_topic: string;
+  target_audience: string;
+  business_goal?: string;
+}
+
+// §21.4 — 조합 어색함 판단 (1콜, 4조합 배치)
+export async function judgeCombinationAwkwardness(
+  combinations: TitleThumbnailCombination[],
+  context: TitleDevelopmentTopicContext,
+  deps?: TitleDevelopmentLLMDeps,
+): Promise<{ combinations: TitleThumbnailCombination[]; fallback_count: number }>;
+// 입력 배열은 불변(immutable) — 채워진 복사본 반환. passed = !isAwkward(score).
+
+// §21.5 — 2~8단계 순차 디벨롭 (단계당 1콜)
+export async function runTitleDevelopmentSteps(
+  initialTitles: string[],            // 어색함 통과 조합의 title_draft
+  context: TitleDevelopmentTopicContext,
+  deps?: TitleDevelopmentLLMDeps,
+): Promise<{ step_results: TitleDevelopmentStepResult[]; fallback_count: number }>;
+// step_results.length === 7 (step_number 2~8, 순서 보장). 어떤 단계가 폴백돼도 루프는 계속.
+
+// §21.6 — 최종 평가 (1콜, 후보 배치)
+export async function evaluateFinalTitles(
+  candidates: { title: string; thumbnail_direction: string }[],
+  context: TitleDevelopmentTopicContext & { script_summary?: string },
+  deps?: TitleDevelopmentLLMDeps,
+): Promise<{ evaluations: FinalTitleEvaluation[]; fallback_count: number }>;
+// total_score = scoreFinalTitle(LLM 항목점수), recommendation = recommendFromScore(total).
+
+// 합성 파이프라인 — 검증→조합→어색함→2~8단계→평가→베스트 선택
+export async function runTitleDevelopmentWorkflow(
+  input: {
+    video_project_id: string;
+    pulling_content_id: string;
+    pulling_topic: string;
+    target_audience: string;
+    business_goal?: string;
+    references: [TitleDevelopmentReference, TitleDevelopmentReference];
+    script_summary?: string;
+  },
+  deps?: TitleDevelopmentLLMDeps,
+): Promise<
+  | { ok: true; run: TitleDevelopmentWorkflowRun; fallback_count: number }
+  | { ok: false; next_action: 'request_more_references'; failed_references: { reference_id: string; reasons: string[] }[] }
+>;
+// 검증 실패 시 LLM 호출 0회로 조기 반환(AC-01~04). 성공 시 run에
+// search_terms(WO-1 generateTitleSearchTerms)·combinations·step_results·final_candidates·
+// selected_title(최고 total_score)·second_brain_summary(WO-1)·approval_status='draft' 채움(AC-13~15).
+```
+
+### S4. 영향 파일 목록
+
+| 파일 | 변경 | 내용 |
+|---|---|---|
+| `packages/l5-core/src/functions/cmo-strategy/title-development-llm.ts` | 신규 | S3 함수 4개 + 모델/단계명/폴백 상수 + zod 스키마 3개 + 프롬프트 빌더 |
+| `packages/l5-core/src/functions/cmo-strategy/__tests__/title-development-llm.test.ts` | 신규 | jest 단위테스트 (S5) — mock LLMClient 주입 |
+| `packages/l5-core/src/functions/cmo-strategy/index.ts` | 수정 | `export * from './title-development-llm'` 1줄 추가 |
+
+수정 금지: `title-development.ts`·`title-development-types.ts`(WO-1 계약 불변), `stage-script.ts`, `src/index.ts`(배럴 경유 자동), UI·플러그인·agent-runtime.
+
+### S5. 측정 가능한 acceptance_criteria
+
+모두 `corepack pnpm test`(jest, cwd: packages/l5-core) + `corepack pnpm typecheck`로 검증. LLM은 mock `LLMClient`로 대체(실모델 호출 없음).
+
+| # | 기준 | 측정 방법 |
+|---|---|---|
+| AC-L1 | S3 함수 4개·상수가 배럴(`src/index`)에서 import 가능, typecheck 통과 | typecheck exit 0 + import 테스트 |
+| AC-L2 | mock LLM이 유효 JSON 반환 시 `judgeCombinationAwkwardness`가 4조합의 score/reason/passed/selected를 채우고 `fallback_count=0`; score>0이면 `passed=false`(WO-1 `isAwkward` 일치) | jest |
+| AC-L3 | `judgeCombinationAwkwardness`는 입력 배열·원소를 변경하지 않는다(immutability) | jest — 입력 deep-freeze |
+| AC-L4 | `runTitleDevelopmentSteps` 결과는 항상 길이 7, `step_number` 2~8 순서, 각각 `step_name`이 S2 상수와 일치 (AC-09) | jest |
+| AC-L5 | 각 step_result에 input/output/method_explanation/cmo_reasoning/rejected/selected가 채워지고, N단계 input은 N-1단계 `selected_titles_for_next_step`과 일치 (AC-10) | jest — mock 호출 인자 검사 |
+| AC-L6 | LLM 1단계 호출이 2회(maxRetries=1) 모두 형식오류여도 throw하지 않고 해당 단계만 pass-through 폴백, `fallback_count` 증가, 이후 단계는 정상 진행 | jest — 단계 선택적 실패 mock |
+| AC-L7 | `llm` 미주입 시 세 함수 모두 LLM 0콜 + 전체 결정론 폴백 + 같은 입력→같은 출력 | jest |
+| AC-L8 | 5단계 출력 중 36자 제목은 `rejected_titles`(사유 '35자 초과')로 이동, 35자는 통과 | jest — mock이 35/36자 후보 반환 |
+| AC-L9 | `evaluateFinalTitles`: LLM 항목점수가 배점 초과면 클램프 후 합산(WO-1 `scoreFinalTitle`), recommendation 임계 85/70/69 (AC-11) — 만점·84·69 경계 테스트 | jest |
+| AC-L10 | 평가 폴백 시 total이 70~84 구간(revise) — 폴백이 upload_candidate가 되지 않음 | jest |
+| AC-L11 | `runTitleDevelopmentWorkflow`: §25.1 데이터(8만 Great/Good + 12만 Good/Great) → `ok:true`, combinations 4개·step_results 7개·final_candidates ≥1·selected_title은 최고 total_score 후보·`approval_status='draft'`·second_brain_summary 존재 (AC-13~15) | jest |
+| AC-L12 | `runTitleDevelopmentWorkflow`: 레퍼런스 중 1개 조회수 3만(§25.3) → `ok:false`, `next_action='request_more_references'`, LLM 호출 0회 (AC-01~04) | jest — mock 호출수 0 검증 |
+| AC-L13 | 모든 LLM 호출에 `trace_name` 전달: awkwardness/step-2..8/final-eval (Rule 6) | jest — mock 호출 인자 검사 |
+| AC-L14 | 신규 외부 의존성 0 (package.json 불변) | git diff에 package.json 없음 |
+| AC-L15 | WO-1 포함 기존 테스트 회귀 없음 (pre-existing model-routing 4건 제외 기준) | jest 전체 |
+
+### 다음 phase(test)에 넘기는 사항
+
+- mock LLMClient는 `complete` 호출 기록(system/user/trace_name)을 남기는 형태로 작성 — AC-L5/L12/L13이 호출 인자·횟수 검사를 요구.
+- LLM 출력 JSON 형태(스키마 3개의 필드 구성)는 test phase에서 mock 응답으로 계약 고정하고, implement는 그 계약을 따른다.
+- 환경 주의(WO-1 인계): `pnpm` 단독 없음 → `corepack pnpm`. jest는 `packages/l5-core`에서 실행. pre-existing 실패 4건(model-routing)은 무관.
