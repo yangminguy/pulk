@@ -279,3 +279,16 @@ WO-1 diff 전체(커밋 1e39268~f558270 + worktree): `title-development-types.ts
 ### 다음 phase가 알아야 할 점
 - 리뷰 수정 5건은 모두 `title-development.ts` 내부, 시그니처·테스트 계약 불변.
 - 미해결 항목 없음. pre-existing model-routing 4건 실패는 여전히 WO-1 무관.
+
+---
+
+## Phase: commit — 커밋
+
+### 한 일
+- 직전 review phase 기준으로 worktree가 clean임을 확인.
+- WO-1 작업의 최종 기록을 이 진행 노트에 append.
+- 단일 atomic commit 메시지: `task: WO-1: l5-core 타입 + 결정론 함수 일괄`
+
+### 다음 phase가 알아야 할 점
+- 코드 변경은 직전 phase 커밋들에 이미 포함되어 있었고, 이 phase의 파일 변경은 진행 노트 append뿐이다.
+- 검증 기준은 커밋 후 `git log`에서 신규 commit 1개와 메시지 일치 여부 확인.
