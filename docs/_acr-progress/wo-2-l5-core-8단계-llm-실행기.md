@@ -239,3 +239,34 @@ Test Suites: 1 failed, 1 total
 - 위 테스트를 계약으로 `title-development-llm.ts` 구현 + `cmo-strategy/index.ts`에 export 1줄 추가.
 - WO-1 함수 재사용: `generateCrossCombinations`/`isAwkward`/`isTitleTooLong`/`scoreFinalTitle`/`recommendFromScore`/`validateTitleReferences`/`generateTitleSearchTerms`/`buildSecondBrainSummary`.
 - 환경: `corepack pnpm` 사용(cwd: packages/l5-core). pre-existing 실패 4건(model-routing)은 무관.
+
+---
+
+## Phase: implement — 구현 (green)
+
+### 한 일
+- `packages/l5-core/src/functions/cmo-strategy/title-development-llm.ts` 신규 — spec S3 + 테스트 계약 그대로:
+  - 상수: `TITLE_DEVELOPMENT_MODEL='claude-sonnet-4-6'`, `STEP_NAMES`(§8 2~8단계), 폴백 사유 3종.
+  - 공통: `extractJson`(코드펜스 허용) + `completeJson`(LLM 1콜 + maxRetries 재시도 + zod safeParse, 소진 시 null), `baseSystemPrompt`.
+  - `judgeCombinationAwkwardness`: index 기반 배치 1콜, `passed=!isAwkward(score)`, 불변(복사본 반환). 폴백: score 0/passed true + 기본 2종만 선택.
+  - `runTitleDevelopmentSteps`: 2~8 순차 단계당 1콜, §10~§16 요약을 단계별 프롬프트 주입(`STEP_GUIDANCE`), N단계 입력=N-1 selected. 5단계만 `isTitleTooLong` 후처리('35자 초과' rejected). 단계별 폴백은 pass-through + 루프 계속. 빈 selected 가드.
+  - `evaluateFinalTitles`: index 기반 배치 1콜, 항목 개별 클램프(로컬 SCORE_CAPS) 후 WO-1 `scoreFinalTitle`/`recommendFromScore`. 폴백: 배점 70%(=revise).
+  - `runTitleDevelopmentWorkflow`: `validateTitleReferences` 실패 시 LLM 0콜 조기 반환 → 검색어(WO-1)→조합(WO-1)→어색함→7단계→평가→베스트(최고 total) 선택, `approval_status='draft'`, `buildSecondBrainSummary`(WO-1), fallback_count 합산.
+- `cmo-strategy/index.ts`에 `export * from './title-development-llm'` 1줄 추가. WO-1 파일·spec 범위 외 파일 미변경, 신규 의존성 0.
+
+### 검증 결과 (2026-06-10)
+- 신규 테스트: `jest .../title-development-llm.test.ts` → **16/16 pass (green)**
+- `corepack pnpm typecheck` → pass
+- 전체 `corepack pnpm test` → **1773 pass / 4 fail** — 실패 4건은 전부 pre-existing `cto-design/model-routing`(WO-1에서 stash로 확인된 env 의존, 이 WO 무관). 신규 회귀 0.
+- 변경 파일: 신규 1(`title-development-llm.ts`) + 수정 1(`cmo-strategy/index.ts`) — spec S4 범위 내. 테스트 파일은 직전 phase 커밋에 포함.
+
+### 이번 phase에서 내린 결정
+- `completeJson`은 `z.ZodType<T>` 대신 `<S extends z.ZodTypeAny>` 제네릭 — zod `.default()` 출력 타입 보존(typecheck 오류 수정).
+- SCORE_CAPS는 WO-1이 export하지 않아(수정 금지) 로컬 상수로 재선언 — 개별 항목 클램프 저장(테스트가 `target_fit=20` 클램프 값 저장을 요구) 때문에 필요.
+- LLM 응답에 누락 index가 있으면 부분 채움 대신 콜 전체 폴백(단순성 우선, 어색함/평가는 콜 1회뿐).
+- judge에서 `selected_for_next_step = passed && llm.selected` — 어색한 조합이 선택되는 모순 방지.
+
+### 다음 phase(integrate/review)가 알아야 할 점
+- worktree pre-existing 미커밋: `docs/reports/videoqa_eval_result.{json,md}` — WO 무관, 불가침.
+- 소비자 배선(stage-script/plugin/agent-runtime)은 WO-2 범위 밖 — STAGE_SCRIPT 텍스트는 WO-1에서 이미 8단계 안내로 배선됨. 실행기 호출부 연결은 후속 WO.
+- eslint 바이너리는 이 worktree에 미설치(WO-1과 동일) — deps 설치된 환경에서 `pnpm lint` 1회 권장.
