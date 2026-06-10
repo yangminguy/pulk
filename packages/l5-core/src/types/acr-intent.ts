@@ -15,6 +15,10 @@ export interface CTOPhase {
    * exhaustion — it waits for the designated (T1) agent to recover instead.
    * Set by the CTO from the model tier (T1 = locked). */
   model_locked?: boolean;
+  /** 같은 intent 내 선행 phase 이름들(Native 병렬 스케줄러 입력). 미지정 시 직전
+   * phase에 암묵 의존(배열순 순차 유지 — 기존 동작 불변). 명시한 phase만 병렬
+   * 후보가 된다. CTO Brain이 phase 분할 시 채운다. */
+  depends_on?: string[];
 }
 
 export interface ACRIntent {
@@ -48,4 +52,7 @@ export interface ACRIntent {
   blocked_files?: string[];
   /** Founder 승인이 필요한 작업인지 (risk D3+). */
   requires_approval?: boolean;
+  /** 이 작업이 속한 사업 id. 사업별 모니터 그룹핑·native_phase_runs 영속화 키로 쓰인다.
+   * 없으면 회사 공통(null 그룹)으로 취급. additive — 기존 dispatch와 하위호환. */
+  business_id?: string;
 }

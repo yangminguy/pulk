@@ -207,6 +207,49 @@ async function liveStatus(ctx: MonitorContext) {
   ctx.body = { ok: true, data: Array.from(groups.values()) };
 }
 
+// Native Orchestration(Claude Code 직접 phase 실행) 작업 내역을 사업별로 그룹.
+// native_phase_runs(데몬이 REST로 기록)를 business 필터 + l5_task_id 그룹으로 반환.
+async function nativePhaseRuns(ctx: MonitorContext) {
+  const db = ctx.db || ctx.app.db;
+  const scope = readBusinessScope(ctx);
+  let runs: any[] = [];
+  try {
+    runs = await db.getRepository('native_phase_runs').find({
+      filter: withBusinessFilter({}, scope),
+      sort: ['started_at'],
+    });
+  } catch {
+    runs = []; // 테이블 미생성 등 — graceful 빈 목록
+  }
+
+  const groups = new Map<string, any>();
+  for (const r of runs) {
+    const key = String(r.l5_task_id ?? '__none__');
+    if (!groups.has(key)) {
+      groups.set(key, {
+        l5_task_id: r.l5_task_id ?? null,
+        task_title: r.task_title ?? null,
+        business_id: r.business_id ?? null,
+        phases: [],
+      });
+    }
+    groups.get(key).phases.push({
+      id: r.id,
+      phase_name: r.phase_name,
+      agent: r.agent,
+      runtime: r.runtime,
+      status: r.status,
+      output: r.output ?? '',
+      diff_summary: r.diff_summary ?? null,
+      changed_files: r.changed_files ?? null,
+      verdict: r.verdict ?? null,
+      started_at: r.started_at ?? r.createdAt ?? null,
+      ended_at: r.ended_at ?? null,
+    });
+  }
+  ctx.body = { ok: true, data: Array.from(groups.values()) };
+}
+
 async function blockedTasks(ctx: MonitorContext) {
   const db = ctx.db || ctx.app.db;
   const scope = readBusinessScope(ctx);
@@ -1336,6 +1379,31 @@ function registerFounderMemoryCollection(db: any) {
   }));
 }
 
+// Native Orchestration phase 실행 내역 테이블. 데몬이 REST :create/:update로 기록하고
+// monitor:nativeRuns가 사업별로 조회한다. id는 서버 생성(uuid PK).
+function registerNativePhaseRunsCollection(db: any) {
+  db.collection(defineCollection({
+    name: 'native_phase_runs',
+    title: 'Native Phase Runs',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'business_id', type: 'string' },
+      { name: 'l5_task_id', type: 'string' },
+      { name: 'task_title', type: 'string' },
+      { name: 'phase_name', type: 'string' },
+      { name: 'agent', type: 'string' },        // claude-code | codex | antigravity
+      { name: 'runtime', type: 'string' },
+      { name: 'status', type: 'string' },        // merged | held | failed | waited
+      { name: 'output', type: 'text' },          // 에이전트 작업 보고서 전체 본문
+      { name: 'diff_summary', type: 'text' },
+      { name: 'changed_files', type: 'integer' },
+      { name: 'verdict', type: 'text' },
+      { name: 'started_at', type: 'date' },
+      { name: 'ended_at', type: 'date' },
+    ],
+  }));
+}
+
 // P3-2 — ensure the curation soft-delete columns exist on the existing table.
 // Additive, nullable, idempotent — safe to run on every boot.
 async function ensureCurationColumns(db: any) {
@@ -1361,6 +1429,7 @@ export default class PluginExecutiveMonitorServer extends Plugin {
   async load() {
     this.app.logger.info('PluginExecutiveMonitorServer loaded');
     registerFounderMemoryCollection(this.db);
+    registerNativePhaseRunsCollection(this.db);
     await ensureBusinessIdIndex(this.db);
     await ensureCurationColumns(this.db);
     startHermesScheduler(this.db, this.app.logger);
@@ -1415,6 +1484,10 @@ export default class PluginExecutiveMonitorServer extends Plugin {
         },
         liveStatus: async (ctx: MonitorContext, next: () => Promise<void>) => {
           await liveStatus(ctx);
+          await next();
+        },
+        nativeRuns: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await nativePhaseRuns(ctx);
           await next();
         },
         curate: async (ctx: MonitorContext, next: () => Promise<void>) => {
@@ -1494,6 +1567,7 @@ export default class PluginExecutiveMonitorServer extends Plugin {
     registerGetRoute(this.app, '/api/monitor/blockedTasks', blockedTasks);
     registerGetRoute(this.app, '/api/monitor/approvalQueue', approvalQueue);
     registerGetRoute(this.app, '/api/monitor/liveStatus', liveStatus);
+    registerGetRoute(this.app, '/api/monitor/nativeRuns', nativePhaseRuns);
     registerGetRoute(this.app, '/api/monitor/controlRoomTree', controlRoomTree);
 
     this.app.acl.allow('monitor', [
@@ -1512,11 +1586,14 @@ export default class PluginExecutiveMonitorServer extends Plugin {
       'curationSummary',
       'overrideCuration',
       'controlRoomTree',
+      'nativeRuns',
       'sendToCTO',
       'applySelfMod',
       'rollbackSelfMod',
       'retryRun',
     ], 'loggedIn');
+    // 데몬이 native_phase_runs를 표준 REST(:create/:update/:list)로 기록·조회.
+    this.app.acl.allow('native_phase_runs', ['create', 'update', 'list', 'get'], 'loggedIn');
     this.app.acl.allow('roadmap', ['list'], 'loggedIn');
     this.app.acl.allow('discovery', ['today'], 'loggedIn');
     this.app.acl.allow('bpr', ['currentPhase', 'requestTransition', 'transitionSummary'], 'loggedIn');

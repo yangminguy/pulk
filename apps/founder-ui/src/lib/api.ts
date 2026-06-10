@@ -203,6 +203,28 @@ export type ControlRoomBusiness = {
   projects: ControlRoomProject[]
 }
 
+// Native Orchestration — CTO가 나눈 phase를 claude/codex/agy CLI로 직접 실행한 내역.
+// native_phase_runs 테이블에 기록 → 사업별 task 그룹으로 조회(GET /api/monitor:nativeRuns).
+export type NativeRunRow = {
+  id: string
+  phase_name: string
+  agent: 'claude-code' | 'codex' | 'antigravity'   // 토큰 풀
+  runtime: string
+  status: 'merged' | 'held' | 'failed' | 'waited'
+  output: string          // 에이전트 작업 보고서 전체 본문(길 수 있음)
+  diff_summary?: string
+  changed_files?: number
+  verdict?: string
+  started_at: string
+  ended_at?: string
+}
+export type BusinessRunGroup = {
+  l5_task_id: string
+  task_title: string
+  business_id: string | null
+  phases: NativeRunRow[]   // started_at 오름차순
+}
+
 // P3-2 — curation summary
 export type CurationSummaryItem = {
   id: string
@@ -1057,6 +1079,19 @@ export const api = {
     )
       .then(r => unwrap(r) as LiveStatusGroup[])
       .catch(() => [] as LiveStatusGroup[])
+  },
+
+  // Native Orchestration — Claude Code/codex/agy phase 실행 내역을 사업별 task 그룹으로.
+  // businessId 규약은 liveStatus와 동일: 특정 id | null→'common' | undefined→생략(전체).
+  nativeRuns: (businessId?: string | null) => {
+    const params = new URLSearchParams()
+    if (businessId !== undefined) params.set('business_id', businessId ?? 'common')
+    const qs = params.toString()
+    return request<{ data: { ok: boolean; data: BusinessRunGroup[] } }>(
+      `/api/monitor:nativeRuns${qs ? `?${qs}` : ''}`
+    )
+      .then(r => unwrap(r) as BusinessRunGroup[])
+      .catch(() => [] as BusinessRunGroup[])
   },
 
   // P3-3 — control room tree (Business ▸ Project ▸ dev-task)

@@ -52,15 +52,20 @@ const MAX_SLEEP_MS = 60 * 60 * 1000; // recovery sleep 상한 1시간
 async function loadModules() {
   const distOrchestrator = join(RUNTIME_DIST, 'orchestrator', 'native-orchestrator.js');
   const distRecoveryLoop = join(RUNTIME_DIST, 'orchestrator', 'recovery-loop.js');
+  const require = createRequire(import.meta.url);
+
+  // 순수 budget/recovery 판단은 @l5/core dist에서 로드(둘 다 CJS).
+  const ctoNative = require('@l5/core/dist/functions/cto-native');
 
   if (existsSync(distOrchestrator) && existsSync(distRecoveryLoop)) {
     // 빌드된 dist를 createRequire로 로드(CJS 호환)
-    const require = createRequire(import.meta.url);
     const orchestratorMod = require(distOrchestrator);
     const recoveryLoopMod = require(distRecoveryLoop);
     return {
       dispatchToNativeOrchestrator: orchestratorMod.dispatchToNativeOrchestrator,
       planNextPoll: recoveryLoopMod.planNextPoll,
+      applyPoolOutcome: ctoNative.applyPoolOutcome,
+      decideRecovery: ctoNative.decideRecovery,
     };
   }
 
@@ -74,7 +79,79 @@ async function loadModules() {
   return {
     dispatchToNativeOrchestrator: orchMod.dispatchToNativeOrchestrator,
     planNextPoll: rlMod.planNextPoll,
+    applyPoolOutcome: ctoNative.applyPoolOutcome,
+    decideRecovery: ctoNative.decideRecovery,
   };
+}
+
+// ── native_phase_runs 영속화 싱크(NocoBase REST) ─────────────────────────────
+
+/** 사업별 모니터용 phase 실행 내역을 NocoBase native_phase_runs에 기록한다.
+ *  표준 REST :create/:update 사용. 인증/URL은 hermes와 동일 규약(NOCOBASE_URL/NOCOBASE_TOKEN).
+ *  모든 호출 graceful — 실패해도 실행 흐름을 막지 않는다(console.error 후 무시). */
+function makeNocoSink() {
+  const base = process.env.NOCOBASE_URL ?? 'http://localhost:13000';
+  const token = process.env.NOCOBASE_TOKEN ?? '';
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  return {
+    async start(rec) {
+      try {
+        const res = await fetch(`${base}/api/native_phase_runs:create`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ ...rec }),
+        });
+        const json = await res.json();
+        const id = json?.data?.id ?? json?.id;
+        return id !== undefined && id !== null ? String(id) : undefined;
+      } catch (err) {
+        console.error('[native-daemon] sink.start 실패(무시):', err?.message ?? err);
+        return undefined;
+      }
+    },
+    async finish(id, patch) {
+      if (id === undefined) return;
+      try {
+        await fetch(`${base}/api/native_phase_runs:update?filterByTk=${encodeURIComponent(id)}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ ...patch }),
+        });
+      } catch (err) {
+        console.error('[native-daemon] sink.finish 실패(무시):', err?.message ?? err);
+      }
+    },
+  };
+}
+
+// ── pool 상태 파일(~/.l5/native/pools.json) ──────────────────────────────────
+
+const POOLS_FILE = join(QUEUE_DIR, 'pools.json');
+const ALL_AVAILABLE_POOLS = [
+  { agent: 'claude-code', quotaStatus: 'available' },
+  { agent: 'codex', quotaStatus: 'available' },
+  { agent: 'antigravity', quotaStatus: 'available' },
+];
+
+async function readPools() {
+  try {
+    const raw = await readFile(POOLS_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length ? parsed : ALL_AVAILABLE_POOLS;
+  } catch {
+    return ALL_AVAILABLE_POOLS;
+  }
+}
+
+async function writePools(pools) {
+  try {
+    await writeFile(POOLS_FILE, JSON.stringify(pools, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[native-daemon] pools.json 쓰기 실패(무시):', err?.message ?? err);
+  }
 }
 
 // ── 큐 파일 읽기/쓰기 ─────────────────────────────────────────────────────────
@@ -103,54 +180,56 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// ── 회복 루프: wait 결정에서 sleepMs 계산 ────────────────────────────────────
+// ── 단일 intent 실행(budget 루프) ────────────────────────────────────────────
 
 /**
- * ALL-WAIT 상황: planNextPoll로 다음 재시도까지 대기 후 true를 반환.
- * 풀이 회복 추정치 없이 모두 소진된 경우 MAX_SLEEP_MS(1시간) 대기.
+ * intent를 실행하는 budget 루프.
+ *  1. pools.json을 읽어 dispatchToNativeOrchestrator(intent, {pools, nowIso, persist}) 실행.
+ *  2. 반환 NativeRunSummary의 exhaustedAgents를 applyPoolOutcome으로 pools에 반영(저장).
+ *  3. summary.waited(=풀 소진으로 보류된 phase 있음)면 decideRecovery+planNextPoll로
+ *     sleepMs 대기 후 재실행. 아니면 종료.
+ * dispatchToNativeOrchestrator는 phase 단위 graceful(throw 금지)이라 안전하다.
  */
-async function waitForRecovery(planNextPoll, decisions, label) {
-  const { sleepMs, readyTaskIds } = planNextPoll(decisions, new Date().toISOString());
-  if (readyTaskIds.length > 0) {
-    // ready가 생겼으면 즉시 재시도
-    return false;
-  }
-  const wait = Math.min(sleepMs || MAX_SLEEP_MS, MAX_SLEEP_MS);
-  console.error(
-    `[native-daemon] ${label}: 토큰 소진(all-wait) — ${Math.round(wait / 1000)}초 후 재시도.`,
-  );
-  await sleep(wait);
-  return true;
-}
-
-// ── 단일 intent 실행(토큰 소진 재시도 포함) ──────────────────────────────────
-
-/**
- * intent를 실행하고, 토큰 소진(dispatchToNativeOrchestrator 내부에서 all-wait 판단)이
- * 발생하면 planNextPoll의 sleepMs만큼 대기 후 재실행한다.
- *
- * dispatchToNativeOrchestrator 자체는 phase 단위로 graceful하므로 throw하지 않는다.
- * 데몬은 반드시 완료(done/failed)로 상태를 전환해야 다음 실행에서 중복 방지된다.
- */
-async function runIntent(intent, dispatchToNativeOrchestrator, planNextPoll, queue, setStatus) {
+async function runIntent(intent, mods) {
+  const { dispatchToNativeOrchestrator, planNextPoll, applyPoolOutcome, decideRecovery } = mods;
   const label = `intent ${intent.l5_task_id}`;
   const MAX_RETRIES = 5; // 연속 all-wait 재시도 한계(안전장치)
+  const persist = makeNocoSink();
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const nowIso = new Date().toISOString();
+    let pools = await readPools();
 
-    // 모든 에이전트를 exhausted로 가정한 기본 풀(데몬은 실제 풀 상태를 별도로 알 수 없음)
-    // → dispatchToNativeOrchestrator가 내부적으로 ALL_AVAILABLE을 기본으로 쓰므로 deps 생략
-    await dispatchToNativeOrchestrator(intent, { nowIso });
+    const summary = await dispatchToNativeOrchestrator(intent, { pools, nowIso, persist });
 
-    // dispatchToNativeOrchestrator는 phase 결과를 내부 console.warn으로 기록.
-    // 외부에서 "토큰 소진"을 확인할 신호가 없으므로, 재시도 여부는 attempt 기반으로 단순 처리.
-    // 실제 풀 상태가 필요한 경우 풀 추적기(AgentPoolState)를 별도 파일로 관리해 주입할 수 있다.
-    //
-    // 현재 정책: 1회 실행 후 done으로 표시(recovery는 phase 내부에서 처리됨).
-    // 데몬 재실행 시 done 항목은 건너뜀.
-    break;
+    // 소진 신호가 잡힌 에이전트는 exhausted로, 그 외 정상 실행자는 available로 갱신.
+    const exhausted = new Set(summary?.exhaustedAgents ?? []);
+    for (const agent of ['claude-code', 'codex', 'antigravity']) {
+      pools = applyPoolOutcome(pools, agent, exhausted.has(agent) ? 'exhausted' : 'ok', nowIso);
+    }
+    await writePools(pools);
+
+    if (!summary?.waited) {
+      console.error(`[native-daemon] ${label}: 완주(merged ${summary?.mergedPhases ?? 0}).`);
+      return;
+    }
+
+    // 풀 소진으로 보류된 phase가 있다 — 회복 추정 시각까지 대기 후 재시도.
+    const decisions = [...exhausted].map((agent) =>
+      decideRecovery({
+        task: { id: `${intent.l5_task_id}:retry`, taskKind: 'implementation', primaryAgent: agent, reason: 'budget exhausted' },
+        pools,
+        nowIso,
+      }),
+    );
+    const { sleepMs } = planNextPoll(decisions, nowIso);
+    const wait = Math.min(sleepMs || POLL_INTERVAL_MS, MAX_SLEEP_MS);
+    console.error(
+      `[native-daemon] ${label}: 풀 소진 보류 — ${Math.round(wait / 1000)}초 후 재시도(attempt ${attempt + 1}/${MAX_RETRIES}).`,
+    );
+    await sleep(wait);
   }
+  console.error(`[native-daemon] ${label}: 재시도 한계 도달 — 보류 종료.`);
 }
 
 // ── 메인 폴링 루프 ────────────────────────────────────────────────────────────
@@ -159,7 +238,7 @@ async function main() {
   console.error('[native-daemon] 시작.');
   await ensureQueueDir();
 
-  const { dispatchToNativeOrchestrator, planNextPoll } = await loadModules();
+  const mods = await loadModules();
   console.error('[native-daemon] 모듈 로드 완료. 큐 폴링 시작.');
 
   // SIGTERM/SIGINT — graceful exit(launchd KeepAlive가 재기동)
@@ -201,7 +280,7 @@ async function main() {
         console.error(`[native-daemon] ${label}: 실행 시작.`);
 
         try {
-          await runIntent(intent, dispatchToNativeOrchestrator, planNextPoll, current, null);
+          await runIntent(intent, mods);
 
           // 완료 — done으로 전환
           const after = await readQueue();

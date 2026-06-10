@@ -1098,3 +1098,13 @@ l5-core tsc 0 + jest dev-workflow-spec 60/60(신규 M9.8 5군 포함) GREEN, age
 **Impact**: 직렬+cold spawn 병목 제거(병렬+warm). 3개 토큰 풀(claude/codex/agy 구독세션) 동시 활용 + 토큰 소진 시 fallback 인계 + 회복 대기 재개. 별도 launchd 데몬·큐·409 정리 부담 소멸.
 
 **Verify**: cto-native jest 62/62, orchestrator jest 5/5, tsc 0. S0 PoC 월클락 2분30초(ACR 동급 ~6분48초 대비 단축). 라이브 스모크/ACR 동등성 확인 후 단계적 은퇴. 상세: `docs/cto/CTO_NATIVE_ORCHESTRATION_IMPL.md`.
+
+## Native Orchestration — 병렬 머지 직렬화 · budget 근사 · 사업별 모니터 (2026-06-11)
+
+**병렬 실행 + 머지 직렬화**: `CTOPhase.depends_on`(CTO 명시)로 `planPhaseLevels`가 위상 레벨을 만들고, 레벨 내 phase는 `Promise.all` 병렬, **merge는 레벨 종료 후 순차**다. 근거: 각 phase는 독립 worktree에서 작업 후 같은 base repo로 `git merge`하는데, 동시 머지는 index/내용 충돌을 낸다. 그래서 `runPhaseToVerdict`(worktree 작업·검증·커밋까지, 병렬 안전)와 `finalizePhase`(merge+영속화+정리, 순차)로 분리. 충돌은 throw 아닌 graceful 보류(`held`). `depends_on` 미지정 phase는 직전 phase에 암묵 의존 → 기존 완전 순차 동작을 비파괴로 보존.
+
+**budget 근사**: CLI는 토큰 수를 반환하지 않으므로 토큰 카운트를 지어내지 않는다. 대신 실행 결과 신호(`looksLikeTokenExhaustion`/비정상 종료)로 pool을 `exhausted`+백오프 처리(`applyPoolOutcome`, 순수). 데몬은 `pools.json`을 추적하고 `dispatchToNativeOrchestrator`의 `NativeRunSummary`(waited/exhaustedAgents)로 `planNextPoll` 실루프를 돌려 회복 추정 시각까지 대기 후 재시도.
+
+**사업별 모니터 = 신규 테이블**: 기존 `agent_tasks`(ACR 경로) 재사용 대신 `native_phase_runs` 전용 테이블 + `monitor:nativeRuns` 조회 액션 + founder-ui 전용 뷰. 근거: phase 단위 세밀도(풀·상태·전체 output·타이밍)는 task 단위 모델로 표현 불가. 오케스트레이터는 `PhaseRunSink` 콜백(NocoBase 비의존, 테스트 가능)으로만 영속화하고, 데몬이 표준 REST(:create/:update)로 기록 — 커스텀 쓰기 액션 불필요. 결과 본문 회수: phase 프롬프트에 "마지막 출력에 전체 보고서 본문" 지시 + spawn stdout 전체를 `output`에 보존.
+
+**ESM 디렉토리 임포트 수정**: dist `native-orchestrator.js`가 `@l5/core/dist/functions/cto-native`(디렉토리)를 value 임포트해 ESM 런타임에서 `ERR_UNSUPPORTED_DIR_IMPORT`로 데몬 기동 실패(jest는 CJS라 통과). `/index.js` 명시로 수정. 데몬 드라이런(빈 큐 기동→모듈 로드→폴링)이 잡은 잠복 버그 — 데몬이 실제 기동된 적이 없어 미발견이었다.

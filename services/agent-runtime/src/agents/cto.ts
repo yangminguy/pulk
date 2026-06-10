@@ -99,6 +99,15 @@ function resolveProjectPath(task: CTOAgentInput["task"]): string | undefined {
   );
 }
 
+/** 사업 id를 dispatch payload에서 해석(사업별 모니터·native_phase_runs 키). 타입에 없는
+ *  런타임 필드라 캐스팅해 읽는다(resolveProjectPath와 동일 패턴). 없으면 undefined. */
+function resolveBusinessId(task: CTOAgentInput["task"]): string | undefined {
+  const meta = task as unknown as { business_id?: string; l5_business_id?: string } | undefined;
+  return (
+    meta?.business_id ?? meta?.l5_business_id ?? process.env["L5_DEFAULT_BUSINESS_ID"] ?? undefined
+  );
+}
+
 /** M9.3 — 모델 tier → CLI(runtime) 배정. 모든 phase가 claude/codex/agy 셋에 분산된다. */
 function tierToRuntime(tier: ModelTier): RuntimeType {
   switch (tier) {
@@ -241,6 +250,8 @@ function buildDeterministicIntent(
   };
   const projectPath = resolveProjectPath(task);
   if (projectPath) intent.project_path = projectPath;
+  const businessId = resolveBusinessId(task);
+  if (businessId) intent.business_id = businessId;
   return intent;
 }
 
@@ -601,6 +612,7 @@ export async function runCTOAgent(
         // See buildDeterministicIntent: dispatcher only forwards approved tasks.
         l5_approved: true,
         ...(projectPath ? { project_path: projectPath } : {}),
+        ...(resolveBusinessId(input.task) ? { business_id: resolveBusinessId(input.task) } : {}),
       };
     }
   }

@@ -4,7 +4,7 @@ import AuthGate from '@/components/AuthGate'
 import AgentBadge, { EXECUTIVE_AGENTS } from '@/components/AgentBadge'
 import Icon from '@/components/Icon'
 import PageHeader from '@/components/PageHeader'
-import { api, type LiveStatusGroup, type LiveStatusAgent, type TaskItem } from '@/lib/api'
+import { api, type LiveStatusGroup, type LiveStatusAgent, type TaskItem, type BusinessRunGroup, type NativeRunRow } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
 import { AgentOutputDetail } from '@/components/AgentOutputDetail'
 
@@ -678,6 +678,9 @@ function MonitorContent() {
         <InstructionGroup key={g.instruction_id || '__none__'} group={g} onSelect={setDrillTaskId} />
       ))}
 
+      {/* Native Orchestration — Claude Code/codex/agy phase 실행 내역(같은 사업 스코프) */}
+      <NativeRunsSection scope={scope} />
+
       {drillTaskId && <TaskDrillDownModal taskId={drillTaskId} onClose={() => setDrillTaskId(null)} />}
     </div>
   )
@@ -769,6 +772,192 @@ function TaskDrillDownModal({ taskId, onClose }: { taskId: string; onClose: () =
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Native Orchestration — "Claude Code 작업 내역"
+// CTO가 나눈 phase를 claude/codex/agy CLI로 직접 실행한 기록(native_phase_runs).
+// 표시 전용: 토큰 풀 배지 + status 배지 + 상대시간 + 변경파일, 행 클릭 시 output 전체.
+// ---------------------------------------------------------------------------
+const POOL_META: Record<NativeRunRow['agent'], { label: string; bg: string; fg: string }> = {
+  'claude-code': { label: 'Claude Code', bg: 'var(--p-butter)', fg: 'var(--pi-butter)' },
+  codex:         { label: 'Codex',       bg: 'var(--p-sky)',    fg: 'var(--pi-sky)' },
+  antigravity:   { label: 'Antigravity', bg: 'var(--p-mint)',   fg: 'var(--pi-mint)' },
+}
+
+function PoolBadge({ agent }: { agent: string }) {
+  const m = POOL_META[agent as NativeRunRow['agent']]
+  const bg = m?.bg ?? 'var(--silver-1)'
+  const fg = m?.fg ?? 'var(--ink-2)'
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 999,
+      fontSize: 11, fontWeight: 600, lineHeight: 1.4, background: bg, color: fg,
+      fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', letterSpacing: '0.02em',
+    }}>
+      {m?.label ?? agent}
+    </span>
+  )
+}
+
+const NATIVE_STATUS_META: Record<NativeRunRow['status'], { label: string; badge: string }> = {
+  merged: { label: '완료', badge: 'j-badge j-badge-draft' },
+  held:   { label: '보류', badge: 'j-badge j-badge-review' },
+  failed: { label: '실패', badge: 'j-badge j-badge-blocked' },
+  waited: { label: '대기', badge: 'j-badge j-badge-neutral' },
+}
+
+function NativePhaseRow({ phase }: { phase: NativeRunRow }) {
+  const [open, setOpen] = useState(false)
+  const sm = NATIVE_STATUS_META[phase.status] ?? { label: phase.status, badge: 'j-badge j-badge-neutral' }
+  return (
+    <div style={{ border: '1px solid var(--silver-2)', borderRadius: 8, overflow: 'hidden', background: 'var(--paper-surface)' }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o) } }}
+        style={{ padding: '11px 14px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 6 }}
+      >
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          <PoolBadge agent={phase.agent} />
+          <span className={sm.badge}>{sm.label}</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--ink-1)', fontWeight: 600 }}>
+            {phase.phase_name}
+          </span>
+          <div style={{ flex: 1 }} />
+          {typeof phase.changed_files === 'number' && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>
+              파일 {phase.changed_files}
+            </span>
+          )}
+          {phase.started_at && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>
+              {relativeTime(phase.started_at)}
+            </span>
+          )}
+          <Icon name={open ? 'chevD' : 'arrowR'} size={13} stroke={1.6} />
+        </div>
+        {(phase.diff_summary || phase.verdict) && (
+          <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+            {phase.diff_summary}
+            {phase.diff_summary && phase.verdict ? ' · ' : ''}
+            {phase.verdict}
+          </div>
+        )}
+      </div>
+
+      {/* Drill-down — full agent work report */}
+      {open && (
+        <div style={{ borderTop: '1px solid var(--silver-1)', background: 'var(--paper-elevated)', padding: '12px 14px' }}>
+          {phase.output ? (
+            <pre style={{
+              margin: 0, fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.6,
+              color: 'var(--ink-1)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+            }}>
+              {phase.output}
+            </pre>
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--ink-4)' }}>작업 보고서 본문이 없습니다.</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NativeRunGroupCard({ group }: { group: BusinessRunGroup }) {
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+        <div style={{
+          fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 16,
+          color: 'var(--ink-1)', letterSpacing: '-0.01em', lineHeight: 1.3,
+        }}>
+          {group.task_title || '미지정 작업'}
+        </div>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>
+          phase {group.phases.length}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {group.phases.map(p => (
+          <NativePhaseRow key={p.id} phase={p} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function NativeRunsSection({ scope }: { scope: string | null }) {
+  const [groups, setGroups] = useState<BusinessRunGroup[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    try {
+      const data = await api.nativeRuns(scope)
+      setGroups(Array.isArray(data) ? data : [])
+    } catch {
+      setGroups([])
+    } finally {
+      setLoading(false)
+    }
+  }, [scope])
+
+  useEffect(() => {
+    setLoading(true)
+    load()
+  }, [scope, load])
+
+  return (
+    <div style={{ marginTop: 40, borderTop: '1px solid var(--silver-2)', paddingTop: 28 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{
+            fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-3)',
+            letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6,
+          }}>
+            Native Orchestration
+          </div>
+          <h2 style={{
+            fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 19,
+            color: 'var(--ink-1)', margin: 0, letterSpacing: '-0.01em',
+          }}>
+            Claude Code 작업 내역
+          </h2>
+        </div>
+        <button onClick={load} className="j-btn j-btn-secondary j-btn-sm" style={{ gap: 5 }}>
+          <Icon name="refresh" size={13} />
+          새로고침
+        </button>
+      </div>
+
+      {loading && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-4)', padding: '12px 0' }}>
+          로딩 중…
+        </div>
+      )}
+
+      {!loading && groups.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 12,
+            background: 'var(--silver-1)', color: 'var(--ink-3)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+          }}>
+            <Icon name="wrench" size={20} stroke={1.4} />
+          </div>
+          <div style={{ fontSize: 14, color: 'var(--ink-3)', fontFamily: 'var(--font-sans)' }}>
+            아직 Claude Code 작업 내역이 없습니다.
+          </div>
+        </div>
+      )}
+
+      {!loading && groups.map(g => (
+        <NativeRunGroupCard key={g.l5_task_id} group={g} />
+      ))}
     </div>
   )
 }

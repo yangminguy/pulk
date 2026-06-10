@@ -45,7 +45,12 @@ phase별 worktree 격리 + phase.runtime(claude/codex/antigravity) CLI를 직접
 - ✅ **handoff 인계 배선**: `native-orchestrator.ts`가 `decideRecovery`+`deps.pools` 연결 — (c-2) spawn 전 풀 소진이면 fallback 에이전트로 갈아탐, (e) 런타임 실패 후 1회 handoff 재시도. 살아있는 풀이 끌어감.
 - ✅ **상주 운전 코드**: `orchestrator/recovery-loop.ts`(`planNextPoll` 순수, 11 tests), `scripts/native-orchestrator-daemon.mjs`(큐 폴링+회복 대기), `launchd/com.l5.native-orchestrator.plist`(RunAtLoad+KeepAlive), `docs/cto/CTO_NATIVE_RESIDENT.md`(켜는 법). **launchctl 등록은 사장님 손에**(코드만 준비).
 - 🐞 라이브에서 실버그 1건 발견·수정(collectDiff): 신규 untracked 파일이 `git diff --stat`에 안 잡혀 모든 new-file phase가 조용히 머지 실패할 뻔 → `git add -N`(intent-to-add)로 수정. 정적검증으론 못 잡았을 버그.
-- ⚠️ 미검증/남음: 다중 phase **의존순·병렬**(`canParallelize`) 실제 적용, 데몬 **무인 장시간 가동**(launchctl 등록 후), 토큰 budget 루프, ACR 동등성 확인 후 `dispatchToACR` 은퇴.
+- ✅ (2026-06-11) **다중 phase 병렬 실적용**: `CTOPhase.depends_on` 추가 + `cto-native/parallelize.ts`(`planPhaseLevels` 위상정렬, 순환/미존재 graceful, 8 tests). `dispatchToNativeOrchestrator`가 레벨 단위 `Promise.all` 병렬 실행 + **merge는 레벨 종료 후 순차**(동시 머지 충돌 방지). `depends_on` 미지정 = 직전 phase 암묵 의존(기존 순차 보존).
+- ✅ (2026-06-11) **토큰 budget 루프**: `cto-native/budget.ts`(`applyPoolOutcome`, 소진 신호→exhausted+백오프, 6 tests). 데몬 `runIntent`가 1회-break 제거 → `pools.json` 추적 + `dispatchToNativeOrchestrator` 반환 `NativeRunSummary`(waited/exhaustedAgents)로 `applyPoolOutcome`+`planNextPoll` 실루프.
+- ✅ (2026-06-11) **사업별 모니터**: `ACRIntent.business_id` + `PhaseRunSink`(영속화 콜백, NocoBase 비의존) → 데몬이 `native_phase_runs`(plugin 신규 테이블/액션 `monitor:nativeRuns`)에 REST 기록 → founder-ui 모니터에 사업별 Claude Code 작업 뷰(phase별 풀/상태/전체 output drill-down).
+- ✅ (2026-06-11) **결과 회수**: phase 프롬프트에 "마지막 출력에 전체 보고서 본문" 지시 + spawn stdout 전체를 `native_phase_runs.output`으로 영속화.
+- 🐞 (2026-06-11) **데몬 드라이런이 잡은 실버그**: dist `native-orchestrator.js`의 `@l5/core/dist/functions/cto-native` **디렉토리 임포트**가 ESM 런타임에서 `ERR_UNSUPPORTED_DIR_IMPORT`로 데몬 기동 실패(jest는 CJS라 통과). `/index.js` 명시로 수정. 데몬이 한 번도 실기동 안 돼 미발견이던 버그.
+- ⚠️ 남음(사장님 손): **무인 장시간 가동** = NocoBase 재기동(패치된 plugin 로드) + plist에 `NATIVE_ORCHESTRATION`/`NOCOBASE_TOKEN` 주입(PlistBuddy) + `launchctl bootstrap` + TCC(`~/Desktop` 차단 → 레포 밖 복사본). 그 후 ACR 동등성 확인 → `dispatchToACR` 단계적 은퇴.
 
 ## 검증된 사실 (PoC + 환경)
 
@@ -54,7 +59,9 @@ phase별 worktree 격리 + phase.runtime(claude/codex/antigravity) CLI를 직접
 
 ## 남은 일 (다음 세션)
 
-1. **라이브 스모크 결과 반영** → orchestrator 실작동 확정.
-2. **S5 상주화**: Phase Orchestrator를 launchd(`com.l5.*`)로 무인 운전 + ScheduleWakeup 회복 루프 실배선.
-3. 다중 phase 병렬(`canParallelize`)·토큰 budget 루프·codex/agy 라이브 풀 통합.
+병렬·budget·사업별 모니터·결과 회수는 (2026-06-11) 완료·정적검증·데몬 드라이런 PASS. 남은 건 **라이브 활성화(사장님 손)**:
+
+1. **NocoBase 재기동** — 패치된 `plugin-executive-monitor`(native_phase_runs 테이블 + `monitor:nativeRuns`) 로드. `launchctl kickstart -k gui/501/com.l5.nocobase`.
+2. **데몬 plist env 주입 + 등록** — `NATIVE_ORCHESTRATION=on`, `NOCOBASE_URL`, `NOCOBASE_TOKEN`(시크릿 → PlistBuddy로 주입, 커밋 금지) → `~/Library/LaunchAgents/`로 복사 → `launchctl bootstrap gui/501 ...`. TCC: `~/Desktop` 접근 차단 가능 → 데몬+dist를 레포 밖(`~/.l5/`) 복사본으로 운전 검토(rule 50 CDP 선례).
+3. **라이브 스모크** — `~/.l5/native/queue.json`에 작은 intent 1건 → 데몬 실행 → `native_phase_runs` 행 + 모니터 사업별 표시 + phase output 전체 회수 확인.
 4. ACR 동등성 확인 후 `dispatchToACR` 경로 단계적 은퇴.

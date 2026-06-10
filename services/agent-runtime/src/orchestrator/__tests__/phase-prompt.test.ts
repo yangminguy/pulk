@@ -56,4 +56,10 @@ describe('buildPhaseExecutionPrompt', () => {
     expect(out).toContain('토큰 풀을 분산하라');
     expect(out).toContain('allowedFiles 밖 파일 수정 금지');
   });
+
+  it('instructs the agent to emit the full report body in the final output', () => {
+    const out = buildPhaseExecutionPrompt(makePhase(), { cwd: '/tmp/wt' });
+    expect(out).toContain('마지막 출력에 전체 작업 보고서 본문을 담아라');
+    expect(out).toContain('참조 금지');
+  });
 });

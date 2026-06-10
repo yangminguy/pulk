@@ -2,6 +2,10 @@
 export {
   dispatchToNativeOrchestrator,
   type NativeOrchestratorDeps,
+  type NativeRunSummary,
+  type PhaseRunSink,
+  type PhaseRunRecord,
+  type PhaseRunPatch,
 } from './native-orchestrator.js';
 export { runAgentCommand, type RunAgentResult, type RunAgentOptions } from './spawn-agent.js';
 export {
