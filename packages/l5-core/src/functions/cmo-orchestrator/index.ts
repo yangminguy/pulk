@@ -8,6 +8,7 @@ export * from './skills/key-content';
 export * from './skills/viewtrap';
 export * from './skills/pulling-content';
 export * from './skills/strategy-package';
+export * from './skills/title-development';
 export * from './skills/title-thumbnail';
 export * from './skills/script';
 export * from './skills/voice-brief';
