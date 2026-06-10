@@ -299,3 +299,40 @@ Test Suites: 1 failed, 1 total
 - nocobase 플러그인은 l5-core **dist**를 require — 라이브 반영에는 l5-core 재빌드 + nocobase 재기동 필요(메모리: dist 함정). 소스 레벨 통합은 완료.
 - LLM 실주입은 플러그인/agent-runtime에서 `createCmoSkillRegistry({ title_development_deps: { llm } })` 호출만 하면 됨 — 후속 WO.
 - worktree pre-existing 미커밋: `docs/reports/videoqa_eval_result.{json,md}` — 불가침 유지.
+
+---
+
+## Phase: review — 리뷰
+
+### 검토 범위
+WO-2 diff 전체(커밋 cb129df 기준 worktree): `title-development-llm.ts`(신규 603줄), `__tests__/title-development-llm.test.ts`(신규 506줄), `cmo-orchestrator/skills/title-development.ts`(신규 96줄), `__tests__/title-development-skill.test.ts`(신규 104줄), `cmo-skill-registry.ts`(수정), `cmo-orchestrator/index.ts`(+1줄), `cmo-v3-e2e.test.ts`(수정), `cmo-strategy/index.ts`(+1줄), 진행 노트.
+
+### 리뷰 코멘트 및 처리
+
+| # | 위치 | 심각도 | 내용 | 처리 |
+|---|---|---|---|---|
+| R1 | title-development-llm.ts:116-120 | minor | `extractJson`의 `Math.min(...[...].map())` — 배열 길이가 2라 성능 무관하지만, 두 char 모두 없으면 `Math.min(Infinity, Infinity)=Infinity`이고 `end=Math.max(-1,-1)=-1` → `end<=start` 가드가 잡으므로 **안전**. 동작 OK | 유지 |
+| R2 | title-development-llm.ts:72-80 | trivial | SCORE_CAPS가 WO-1 `title-development.ts:232`의 동일 상수와 중복. 진행 노트에 "WO-1 미export라 로컬 재선언" 근거가 기록돼 있고, WO-1 수정 금지 제약이라 **허용** | 유지 — WO-1이 export하면 소거 가능(후속 리팩터) |
+| R3 | title-development-llm.ts:353-365 | nit | 5단계 35자 후처리에서 `isTitleTooLong`을 `output_titles`와 `selected_titles_for_next_step` 양쪽에 2회 호출. 제목 수가 적어(~4개) 성능 무관, 로직 명확 | 유지 |
+| R4 | title-development-llm.ts:486 | nit | 폴백 점수 `SCORE_CAPS[key] * 0.7`가 소수(예: curiosity_gap 15*0.7=10.5). `scoreFinalTitle`(WO-1:243)은 `Math.max(0, Math.min(cap, score))`로 클램프하므로 10.5가 그대로 합산 → 총 70점. 테스트(AC-L10)는 70~84 범위를 검증하고 pass하므로 **의도대로 동작**. 단, 실 DB 저장 시 정수 기대면 `Math.round` 필요 | 유지 — l5-core는 JS 내 순수 로직이라 소수 허용. DB 직렬화 시점은 후속 WO |
+| R5 | cmo-skill-registry.ts:16-17 | trivial | `createTitleDevelopmentSkill` import가 `createTitleThumbnailSkill` 바로 뒤가 아닌 다음 줄에 있고, `TitleDevelopmentLLMDeps` import가 그 사이에 끼어 있어 그룹핑이 약간 어색 | **수정** → import를 기능 그룹으로 정렬 |
+| R6 | skills/title-development.ts:60 | nit | `ctx?.task_id`에서 ctx가 ToolRunContext인데 `task_id` 필드가 실제 타입에 없음(SkillExecutionContext에는 있음). 런타임에 undefined fallback으로 안전하고 테스트도 `as never`로 주입 중 | 유지 — 기존 스킬(title-thumbnail.ts:31)도 동일 패턴 |
+| R7 | cmo-v3-e2e.test.ts:100-106 | — | 스킬 수 10→11 업데이트 + `cmo.title.development` 포함 단언. 정확 | — |
+| R8 | 배럴(index.ts 양쪽) | — | cmo-strategy와 cmo-orchestrator 배럴에 export 추가. 기존 패턴 일치 | — |
+| R9 | 테스트 전체(llm.test.ts + skill.test.ts) | — | AC-L1~L13 + 스킬 통합 5건. mock 계약·경계값·폴백·불변성·trace·조기반환 전부 커버. 지적 없음 | — |
+| R10 | PRD/spec 정합 | — | §8 단계명·§9.5 어색함 기준·§10~§16 단계별 가이던스·§17.2 배점·§21.4~21.6 시그니처·§24 AC 전부 일치 | — |
+
+### R5 수정
+
+`cmo-skill-registry.ts` import 그룹핑 정리: skill factory import를 알파벳 순서(title-development → title-thumbnail → script)로 정렬하고 type import(`TitleDevelopmentLLMDeps`)를 마지막으로 이동.
+
+### 판정: **LGTM** (R5 수정 반영 완료)
+
+### 수정 후 재검증
+- `corepack pnpm typecheck` pass
+- cmo-orchestrator suite 13개 전체 55 pass
+- cmo-strategy suite 포함 기존 테스트 회귀 없음(pre-existing model-routing 4건 제외)
+
+### 다음 phase(commit)가 알아야 할 점
+- 리뷰 수정 1건(R5)은 import 순서뿐, 시그니처·테스트 계약 불변.
+- 미해결 항목 없음.

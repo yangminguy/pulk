@@ -12,10 +12,10 @@ import { createKeyContentSkill } from './skills/key-content';
 import { createViewtrapValidateSkill } from './skills/viewtrap';
 import { createPullingContentSkill } from './skills/pulling-content';
 import { createStrategyPackageSkill } from './skills/strategy-package';
-import { createTitleThumbnailSkill } from './skills/title-thumbnail';
 import { createTitleDevelopmentSkill } from './skills/title-development';
-import type { TitleDevelopmentLLMDeps } from '../cmo-strategy/title-development-llm';
+import { createTitleThumbnailSkill } from './skills/title-thumbnail';
 import { createScriptWriteSkill } from './skills/script';
+import type { TitleDevelopmentLLMDeps } from '../cmo-strategy/title-development-llm';
 import { createVoiceBriefSkill } from './skills/voice-brief';
 import { createFactoryHandoffSkill } from './skills/factory';
 
