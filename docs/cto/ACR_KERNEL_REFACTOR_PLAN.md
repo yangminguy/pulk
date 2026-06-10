@@ -159,7 +159,7 @@ PRD §30 Phase 1·2의 "기존 runner는 유지하고 adapter-first로 접근" �
 
 PRD §24 / §30 / §31의 1차 범위. **이 문서가 Phase 1의 산출물**이고, 이후 항목은 진입점만 명시한다.
 
-1. **(완료) 이 문서 작성** — `docs/ACR_KERNEL_REFACTOR_PLAN.md`: 원칙·현황·역할표·deprecated·adapter 전략·위험/rollback.
+1. **(완료) 이 문서 작성** — `docs/cto/ACR_KERNEL_REFACTOR_PLAN.md`: 원칙·현황·역할표·deprecated·adapter 전략·위험/rollback.
 2. **(완료, pulk 측) 타입·순수함수** — `cto-harness/*` (ExecutionRun, HarnessInput/Output, CommandGuard, complexityToHarnessMode, WorkPackage/TeamRun/TeamResultPacket, buildMainAgentPrompt, C0~C5 guardrail 테스트).
 3. **(ACR repo) `POST/GET /api/execution-runs` + `/result` thin adapter** — 기존 runner 위에 얹기.
 4. **(ACR repo) Worktree Sandbox** — run별 worktree, branch naming, diff 수집, cleanup.
