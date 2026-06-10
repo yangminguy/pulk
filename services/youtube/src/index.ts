@@ -82,7 +82,9 @@ export {
 } from './viewtrap/cdp.js';
 export {
   createViewtrapScraperAdapter,
+  createExtensionScraperAdapter,
   type ViewtrapReferenceAdapter,
+  type ExtensionMetricsAdapter,
   type CreateViewtrapScraperAdapterOptions,
 } from './viewtrap/adapter.js';
 

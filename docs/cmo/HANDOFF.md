@@ -3,6 +3,19 @@
 > 최종 업데이트: 2026-06-10. 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
 > 300줄 넘으면 오래된 항목을 `docs/archive/`로 이관하고 요약만 남긴다.
 
+## 🟢 2026-06-10 — 발굴 크롤러 raw CDP 정식 배선 + 2·3단계 라이브 실수신
+
+3단계 발굴 흐름(YouTube API → 확장 deepWalk → viewtrap 노출확률)을 `services/youtube`에 raw CDP로 정식 이식·라이브 검증. 상세 = [features/youtube-viewtrap-discovery](./features/youtube-viewtrap-discovery.md) "라이브 배선 완료".
+
+- **raw CDP**: `viewtrap/cdp.ts` `connectCdp()`를 page WebSocket + `Runtime.evaluate`로(크롬 149는 `connectOverCDP`가 `setDownloadBehavior` 거부 → playwright 폐기). 연결 직후 **모든 창 `-4000px`**(화면 점유 금지). 탭 0개면 `PUT /json/new`.
+- **2단계(라이브 OK)**: `scrapeYoutubeSearchExtension` deepWalk shadow DOM — "AI로 돈벌기" 15카드 Good+8, "릴스 편집" 11/11, "부동산 경매" 12·Good+3 실수신. 조회수 영문 로케일("6.5M views") 파싱 추가. `createExtensionScraperAdapter`.
+- **3단계(제약 실측)**: 노출확률 헤더 버튼 1회 클릭→모달 확인→~14s 다건 로드. 이미 로드돼 있으면 재클릭 안 함. **가상화로 상단 ~6행만 videoId 매칭**(텍스트 등급은 41행 전부, 썸네일/href는 viewport 6행분만). **프로그래밍 재검색 불가**(form 없음·trusted insertText/click/Enter 모두 무반응 — React/신용 게이트 추정) → 사장님 in-app 검색 후 `alreadyOnQuery`로 로드된 테이블만 읽음(재검색/새로고침/이동 금지).
+- **배선**: `discovery/deps.ts` `createLiveDiscoveryDeps`가 `scrapeMetrics`에 **2단계 extension(우선)+3단계 viewtrap exposure 보강** 병합 주입. l5-core `runDiscoveryPipeline` 무수정.
+- **라이브 통합**: `createLiveDiscoveryDeps`→`runDiscoveryPipeline`("부동산 경매") 1회 → provenance 전부 true, 10영상 분류, **최종후보 3건**(183K/1M/2.9M, 기여/성과 good 실측).
+- **검증**: `services/youtube` tsc 0 · jest **58/58**(신규 `discovery-deps.test.ts` + deepWalk 노이즈/영문조회수 케이스) · build OK.
+
+---
+
 ## 🟢 2026-06-10 — 후속3 완료: runDiscovery Sonnet 분류 서버 폴백 해소 (timeout 근본원인)
 
 M8의 ⚠️ "Sonnet 분류 서버 폴백"(`classified=false`, 10개 ambiguous 폴백)을 **launchd 서버 컨텍스트의 claude CLI cold-spawn 타임아웃**으로 규명·수정.

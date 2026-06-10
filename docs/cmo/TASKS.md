@@ -13,12 +13,13 @@
   - 검증: tsc + jest 10/10 + `scripts/verify-live.mjs` 실수신(검색 15건 → 5만+ 8건, 디립다 28일 조회 1395·시청 225분·구독+1).
   - **단, 노출수·CTR은 targeted Analytics API 미지원 실측 확인** → Reporting API reach report(`channel_reach_basic_a1`) 필요, API 활성화+job 생성은 M5로 이관. 상세: [features/youtube-viewtrap-discovery](./features/youtube-viewtrap-discovery.md).
 
-- [ ] **M1. Viewtrap/확장 크롤링 배선** *(지표 검증)*
-  - 오늘 `/tmp/cdp-*.mjs` 실증 코드를 `services/youtube/` 또는 `apps/founder-ui/e2e/viewtrap/`로 정식 이관.
-  - 흐름: 주제 추려지면 → Viewtrap 검색창 자동입력 → 제목행 노출확률 버튼 클릭 → 기여도·성과도·노출확률 다건 크롤링.
+- [x] **M1. Viewtrap/확장 크롤링 배선** *(지표 검증)* *(2026-06-10 라이브 완료)*
+  - `services/youtube/src/viewtrap/{cdp,parse,filters,transform,adapter}.ts` + `discovery/deps.ts`로 정식 이관. **raw CDP**(page WebSocket + Runtime.evaluate — 크롬149 connectOverCDP 폐기), 연결 직후 화면 밖(-4000px).
+  - 2단계 `scrapeYoutubeSearchExtension`(deepWalk) + 3단계 `scrapeVideoSearchTable`/`clickExposureProbability`(노출확률 다건). 어댑터 = `createExtensionScraperAdapter`·`createViewtrapScraperAdapter`.
   - 필터: 조회수 5만+ · 성과도 good·great · 기여도 good·great · 노출확률 normal·good·great.
-  - `l5-core/.../reference-adapters.ts`에 scraper 주입(심 → 실 어댑터). 키 콘텐츠 Step8(`buildViewtrapValidation`) 자동 채움.
-  - 전제: CDP 운전(로그인 크롬), 새로고침 금지. 실패 시 수동 폴백 유지.
+  - `createLiveDiscoveryDeps`가 `scrapeMetrics`에 2+3단계 병합 주입 → `runDiscoveryPipeline` deps(l5-core 무수정). 키 Step8 변환은 통합 항목 참조.
+  - **라이브 실수신**: 2단계 등급("부동산 경매" Good+3 등), 3단계 노출확률, 통합 후보 3건. tsc 0·jest 58/58.
+  - **실측 제약**: viewtrap 사이트는 가상화로 상단 ~6행만 videoId 매칭(2단계가 보완) · 프로그래밍 재검색 불가(사장님 in-app 검색 전제, `alreadyOnQuery`로 로드된 테이블 읽음). 상세 = features 문서.
 
 - [ ] **M3. Sonnet 의도 분류 엔진** *(핵심 "생각")*
   - 크롤링 결과를 **상품·타깃 컨텍스트**로 분류. 모델 = Claude Sonnet 고정.

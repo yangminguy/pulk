@@ -34,6 +34,31 @@ describe('normalizeGrade', () => {
     expect(normalizeGrade(null)).toBeNull();
     expect(normalizeGrade(undefined)).toBeNull();
   });
+  it('shadow DOM 추출 노이즈 접두(스파크라인/아이콘)가 붙어도 등급을 뽑는다', () => {
+    // deepWalk가 모은 shadowRoot 텍스트는 "기여도 ... Good" 처럼 노이즈가 섞임.
+    expect(normalizeGrade('기여도 Good')).toBe('good');
+    expect(normalizeGrade('▮▮▮ Great')).toBe('great');
+    expect(normalizeGrade('성과도\nNormal')).toBe('normal');
+  });
+});
+
+// ── parse: deepWalk(2단계) 확장 카드 — 노이즈 섞인 metrics 값 ────────────────
+
+describe('parseExtensionCard — deepWalk 노이즈 등급', () => {
+  it('shadow DOM에서 뽑은 노이즈 등급 문자열도 정규화한다', () => {
+    const card = parseExtensionCard({
+      href: 'https://www.youtube.com/watch?v=DEEP44444',
+      title: 'AI로 돈벌기',
+      metaText: '조회수 27만회',
+      // gradeFrom이 라벨 뒤 등급만 잡지만, 셀에 노이즈가 남는 케이스를 normalizeGrade가 흡수.
+      metrics: { 기여도: '▮▮ Good', 성과도: 'Great', 노출확률: '- Normal' },
+    })!;
+    expect(card.videoId).toBe('DEEP44444');
+    expect(card.views).toBe(270000);
+    expect(card.contribution).toBe('good');
+    expect(card.performance).toBe('great');
+    expect(card.exposure).toBe('normal');
+  });
 });
 
 describe('parseViews', () => {
@@ -42,6 +67,12 @@ describe('parseViews', () => {
     expect(parseViews('조회수 27만회')).toBe(270000);
     expect(parseViews('1.2천회')).toBe(1200);
     expect(parseViews('1.5만')).toBe(15000);
+  });
+  it('영문 로케일 K/M/B views 를 처리한다', () => {
+    expect(parseViews('6.5M views')).toBe(6_500_000);
+    expect(parseViews('1.2K views')).toBe(1_200);
+    expect(parseViews('2B views')).toBe(2_000_000_000);
+    expect(parseViews('272,415 views')).toBe(272_415);
   });
   it('파싱 불가는 null', () => {
     expect(parseViews('-')).toBeNull();
@@ -270,6 +301,9 @@ describe('createViewtrapScraperAdapter', () => {
       goto: async () => {},
       // scrapeVideoSearchTable 의 evaluate 는 인자 없는 fn 이지만, 우리가 원시행을 직접 돌려준다.
       evaluate: async () => rawRows as unknown,
+      // 새 경로: input value/행 수 폴링. fake 는 query 불일치(재검색) + 안정 행 수를 흉내낸다.
+      evalExpr: async (expr: string) =>
+        (/\.value/.test(expr) ? '' : rawRows.length) as unknown,
       locator: () => ({
         first() {
           return this;

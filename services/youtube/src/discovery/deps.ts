@@ -8,7 +8,10 @@
 // 순수성: 이 모듈은 조립만. I/O는 주입된 client/scraper에서만 발생.
 
 import { YouTubeClient } from '../client.js';
-import { type ViewtrapReferenceAdapter } from '../viewtrap/adapter.js';
+import {
+  type ViewtrapReferenceAdapter,
+  type ExtensionMetricsAdapter,
+} from '../viewtrap/adapter.js';
 
 // ── l5-core DiscoveryPipelineDeps 미러 (구조적 동일) ─────────────────────────
 // 원본: packages/l5-core/src/functions/video-room/discovery-pipeline.ts
@@ -73,8 +76,14 @@ export interface CreateLiveDiscoveryDepsOptions {
   /** 검색 옵션(maxResults 등). 기본 maxResults=25. */
   searchMaxResults?: number;
   /**
-   * Viewtrap CDP 크롤러 어댑터(옵션). 주입되면 scrapeMetrics가 활성화된다.
-   * 미주입 시 scrapeMetrics는 deps에 포함되지 않는다(stats만으로 분류).
+   * 2단계: YouTube 검색결과 확장(deepWalk) per-video 지표 어댑터(옵션).
+   * 주입되면 scrapeMetrics의 1차 소스가 된다 — 영상별 기여도/성과도/노출확률을
+   * shadow DOM에서 추출해 videoId로 병합한다. 대부분의 거름은 여기서 일어난다.
+   */
+  extensionAdapter?: ExtensionMetricsAdapter;
+  /**
+   * 3단계: Viewtrap 사이트 테이블(+노출확률 버튼) 크롤러 어댑터(옵션).
+   * 주입되면 extension에서 노출확률을 못 채운 영상의 exposure를 보강한다.
    * 주의: CDP 운전(로그인 크롬)이 전제 — 없으면 주입하지 않는다.
    */
   viewtrapAdapter?: ViewtrapReferenceAdapter;
@@ -120,7 +129,7 @@ function extractVideoIdFromUrl(url: string): string | null {
 export function createLiveDiscoveryDeps(
   options: CreateLiveDiscoveryDepsOptions,
 ): LiveDiscoveryDeps {
-  const { client, viewtrapAdapter, classify } = options;
+  const { client, extensionAdapter, viewtrapAdapter, classify } = options;
 
   const deps: LiveDiscoveryDeps = {
     async searchVideos(query: string): Promise<DiscoverySearchResultMirror[]> {
@@ -145,21 +154,50 @@ export function createLiveDiscoveryDeps(
     },
   };
 
-  if (viewtrapAdapter) {
+  // scrapeMetrics: 2단계(extension deepWalk) 우선 + 3단계(viewtrap 사이트 노출확률) 보강.
+  // 둘 중 하나라도 있으면 활성화한다(둘 다 없으면 키 자체를 빼서 단계 스킵).
+  if (extensionAdapter || viewtrapAdapter) {
     deps.scrapeMetrics = async (
       query: string,
       videoIds: string[],
     ): Promise<DiscoveryScrapedMetricsMirror[]> => {
-      const candidates = await viewtrapAdapter.fetch(query);
       const wanted = new Set(videoIds);
-      const out: DiscoveryScrapedMetricsMirror[] = [];
-      for (const c of candidates) {
-        const id = extractVideoIdFromUrl(c.url) ?? c.id.replace(/^viewtrap-/, '');
-        if (!wanted.has(id)) continue;
-        const parsed = parseMetricsFromReason(c.selection_reason ?? '');
-        out.push({ videoId: id, ...parsed });
+      // videoId → 부분 지표. extension(2단계)을 먼저 채우고 viewtrap(3단계) exposure로 보강.
+      const merged = new Map<string, DiscoveryScrapedMetricsMirror>();
+
+      // 2단계: 영상별 deepWalk 지표(기여도/성과도/노출확률).
+      if (extensionAdapter) {
+        const ext = await extensionAdapter.fetch(query);
+        for (const row of ext) {
+          if (!wanted.has(row.videoId)) continue;
+          const m: DiscoveryScrapedMetricsMirror = { videoId: row.videoId };
+          if (row.contribution !== null) m.contribution = row.contribution;
+          if (row.performance !== null) m.performance = row.performance;
+          if (row.exposure !== null) m.exposure = row.exposure;
+          merged.set(row.videoId, m);
+        }
       }
-      return out;
+
+      // 3단계: viewtrap 사이트 테이블 + 노출확률 버튼 → exposure 보강(미채워진 것만).
+      if (viewtrapAdapter) {
+        const candidates = await viewtrapAdapter.fetch(query);
+        for (const c of candidates) {
+          const id = extractVideoIdFromUrl(c.url) ?? c.id.replace(/^viewtrap-/, '');
+          if (!wanted.has(id)) continue;
+          const parsed = parseMetricsFromReason(c.selection_reason ?? '');
+          const existing = merged.get(id) ?? { videoId: id };
+          if (existing.contribution === undefined && parsed.contribution !== undefined)
+            existing.contribution = parsed.contribution;
+          if (existing.performance === undefined && parsed.performance !== undefined)
+            existing.performance = parsed.performance;
+          // 노출확률은 3단계가 권위(버튼 클릭으로 로드) — extension이 비웠으면 채운다.
+          if (existing.exposure === undefined && parsed.exposure !== undefined)
+            existing.exposure = parsed.exposure;
+          merged.set(id, existing);
+        }
+      }
+
+      return [...merged.values()];
     };
   }
 

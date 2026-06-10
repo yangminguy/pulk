@@ -18,21 +18,37 @@ const GRADE_WORDS: Record<string, ViewtrapGrade> = {
   worst: 'worst',
 };
 
-/** "Wow!" / "Great" / "good" 등 → 등급. 등급 아니면 null ("-" 포함). */
+/**
+ * "Wow!" / "Great" / "good" / ".... Good"(아이콘 접두 포함) → 등급. 등급 아니면 null.
+ * Viewtrap 테이블/확장 셀은 등급 앞에 스파크라인·아이콘 텍스트가 붙을 수 있어
+ * (실측: ".... Good"), 셀 어디든 등장하는 등급 단어를 마지막 매치로 뽑는다.
+ */
 export function normalizeGrade(text: string | null | undefined): ViewtrapGrade | null {
   if (!text) return null;
-  const key = text.replace(/!/g, '').trim().toLowerCase();
-  return GRADE_WORDS[key] ?? null;
+  const cleaned = text.replace(/!/g, ' ');
+  // 정확히 등급 한 단어면 그대로(빠른 경로).
+  const exact = GRADE_WORDS[cleaned.trim().toLowerCase()];
+  if (exact) return exact;
+  // 노이즈 섞인 셀: 마지막에 등장하는 등급 단어를 채택(경계 일치).
+  const matches = cleaned.match(/\b(wow|great|good|normal|bad|worst)\b/gi);
+  if (!matches || matches.length === 0) return null;
+  return GRADE_WORDS[matches[matches.length - 1].toLowerCase()] ?? null;
 }
 
-/** "272,415" · "조회수 27만회" · "1.2천회" → 숫자. 파싱 불가 시 null. */
+/** "272,415" · "조회수 27만회" · "1.2천회" · "6.5M views" · "1.2K views" → 숫자. 파싱 불가 시 null. */
 export function parseViews(text: string | null | undefined): number | null {
   if (!text) return null;
-  const t = text.replace(/조회수/g, '').trim();
+  const t = text.replace(/조회수/g, '').replace(/views?/gi, '').trim();
   const man = t.match(/([\d.]+)\s*만/);
   if (man) return Math.round(parseFloat(man[1]) * 10_000);
   const cheon = t.match(/([\d.]+)\s*천/);
   if (cheon) return Math.round(parseFloat(cheon[1]) * 1_000);
+  // 영문 로케일 K/M/B 접미사("6.5M" → 6,500,000).
+  const en = t.match(/([\d.]+)\s*([KMB])\b/i);
+  if (en) {
+    const mult = { k: 1_000, m: 1_000_000, b: 1_000_000_000 }[en[2].toLowerCase()] ?? 1;
+    return Math.round(parseFloat(en[1]) * mult);
+  }
   const plain = t.replace(/[,\s]/g, '').match(/^\d+/);
   return plain ? Number(plain[0]) : null;
 }
