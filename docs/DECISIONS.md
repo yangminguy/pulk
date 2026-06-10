@@ -1082,3 +1082,19 @@ l5-core tsc 0 + jest dev-workflow-spec 60/60(신규 M9.8 5군 포함) GREEN, age
 ## M4 — 렌더 상태는 파일 기반 프로토콜로 폴링 (2026-06-10)
 
 **결정**: factory(ai-slide-video-factory)에 잡 큐/상태 API가 없으므로, 렌더 상태는 별도 큐 없이 **파일 존재로 도출**한다 — jobs/<file>.json(=queued) → outputs/<job.slug>/ 생성(=rendering) → video.mp4(>0B)+render_report.json(=completed), render_error.txt(=failed, 옵션 마커). 관찰(파일 사실 수집)은 plugin transport(`getRenderJobStatus`), 판단은 l5-core(`deriveRenderJobStatus`/`reconcileRenderJob`/`evaluateRenderArtifacts`)로 분리(도메인=l5-core 원칙). 업로드는 `buildYoutubeUploadDraftFromBrief` 초안(private/pending)까지만 — 실제 업로드는 승인 게이트 뒤 수동.
+
+## 제목 디벨롭 8단계 — cmo-strategy 배치 + thumbnail_pattern_extraction 단계 내부 수행 (2026-06-10)
+
+**결정**: 제목 디벨롭(PRD cmo-title-development)은 (a) 신규 타입/로직을 `video-room/`이 아닌 `cmo-strategy/`에 둔다(video-room/types.ts가 이미 큼, PRD §27 권고. Viewtrap·ThumbnailPattern 타입은 배럴 import 재사용). (b) `VideoRoomStatus`에 새 상태를 추가하지 않고 기존 `thumbnail_pattern_extraction` 단계 내부에서 수행하고 산출 카드 stage=`title_development`(PRD §20.1 MVP — 상태머신 변경·회귀 부담 최소). 최종 제목/썸네일은 `hook_draft_approval`(승인3) 게이트에서 승인, `script_approval`(승인4)에서 확정 제목을 읽기 전용 노출해 원고 약속 회수를 검토. 8단계 LLM은 `key-content-draft.ts`의 "LLM 주입+retry+단계별 결정론 폴백" 패턴을 복제(전체 폴백 아님). 향후 별도 상태(`pulling_title_development`)는 PRD §20.2 v2로 보류.
+
+## CTO Native Orchestration — ACR 은퇴, Claude Code 직접 실행 (2026-06-10)
+
+**결정**: ACR(별도 Next.js 실행 앱)을 점진 은퇴시키고, CTO가 나눈 phase를 Claude Code(CLI/Workflow)가 직접 실행하는 Native Orchestration으로 전환한다. 근거: ACR의 지배 병목이 **단일 직렬 phase-runner + per-phase cold spawn**(`docs/cto/CTO_ACR_SPEED_IMPROVEMENT_PLAN.md`)인데, 이는 "ACR을 고쳐서"가 아니라 "ACR이 쓰던 자산(CLI 호출 규약·모델맵·fallback·recovery)을 Claude Code의 병렬 실행엔진으로 흡수"해 해결하는 게 구조적으로 옳다. ACR에 이미 순수 로직이 존재(직렬 runner에 묶이거나 dry-run이라 못 쓰던 것)하므로 **재작성이 아닌 이식**.
+
+**원칙 보존**: (1) CTO Brain(판단/분해)은 무변경 — `agents/cto.ts`의 `acrIntent`(이미 phase별 runtime/model/prompt_packet/allowed_files 포함)가 그대로 입력. (2) 역할분리 유지 — Native Orchestrator는 실행만, "planning brain으로 만들지 않는다". (3) 안전장치(verify/boundary/command-guard/승인)는 ACR에서 빼되 **버리지 않고** pulk 순수함수로 실행 단계에 이식(비병목: ms 순수판정). (4) 격리는 task→**phase 단위 worktree**로 격상.
+
+**구조**: 순수 로직 `packages/l5-core/.../cto-native/`(NocoBase 없이 테스트), 실행 레이어 `services/agent-runtime/src/orchestrator/`(child_process/git). dispatch 경계는 `NATIVE_ORCHESTRATION` env flag로 비파괴 A/B — off면 기존 `dispatchToACR` 불변.
+
+**Impact**: 직렬+cold spawn 병목 제거(병렬+warm). 3개 토큰 풀(claude/codex/agy 구독세션) 동시 활용 + 토큰 소진 시 fallback 인계 + 회복 대기 재개. 별도 launchd 데몬·큐·409 정리 부담 소멸.
+
+**Verify**: cto-native jest 62/62, orchestrator jest 5/5, tsc 0. S0 PoC 월클락 2분30초(ACR 동급 ~6분48초 대비 단축). 라이브 스모크/ACR 동등성 확인 후 단계적 은퇴. 상세: `docs/cto/CTO_NATIVE_ORCHESTRATION_IMPL.md`.

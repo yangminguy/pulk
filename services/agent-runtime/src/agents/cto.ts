@@ -48,6 +48,7 @@ import type {
   PlannedExecutionRun,
 } from "@l5/core";
 import { createExecutionRun } from "./acr-execution-client.js";
+import { dispatchToNativeOrchestrator } from "../orchestrator/index.js";
 import { readFileSync } from "node:fs";
 
 export type CTOAgentInput = AgentInput;
@@ -633,7 +634,15 @@ export async function runCTOAgent(
   });
 
   await registerWithACR(input.task);
-  await dispatchToACR(acrIntent);
+  if (process.env["NATIVE_ORCHESTRATION"] === "on") {
+    try {
+      await dispatchToNativeOrchestrator(acrIntent);
+    } catch {
+      // non-fatal: native orchestrator errors must not block CTO output
+    }
+  } else {
+    await dispatchToACR(acrIntent);
+  }
 
   // 추가 레일(비파괴): ACR_EXECUTION_RUNS=on 일 때만 execution-runs 로도 디스패치.
   // 기존 workbench dispatch 는 그대로 유지된다. 분해/팀런 판단은 team-orchestrator.
