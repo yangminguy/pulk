@@ -199,3 +199,30 @@ Test Suites: 1 failed, 1 total
 - 위 테스트를 계약으로 삼아 `title-development-types.ts`(§19 타입 9개) + `title-development.ts`(S3 함수 10개 + zod 스키마 1개) 구현.
 - `cmo-strategy/index.ts`에 export 2줄 추가 필요.
 - 환경 주의: 이 worktree에서 `pnpm` 단독 명령은 없음 → `corepack pnpm` 사용. jest는 l5-core 디렉토리에서 실행.
+
+---
+
+## Phase: implement — 구현 (green)
+
+### 한 일
+- `packages/l5-core/src/functions/cmo-strategy/title-development-types.ts` 신규 — PRD §19 타입 9개 그대로.
+- `packages/l5-core/src/functions/cmo-strategy/title-development.ts` 신규 — spec S3 함수 일괄:
+  `generateTitleSearchTerms`(결정론 baseline), `validateTitleReference`/`validateTitleReferences`,
+  `generateCrossCombinations`(4종, randomUUID id, 초기값 0/false/false),
+  `countTitleLength`/`isTitleTooLong`(grapheme, 기본 35), `isAwkward`(>0),
+  `scoreFinalTitle`(항목별 0~상한 클램프 후 합산), `recommendFromScore`(85/70 임계),
+  `buildSecondBrainSummary`(순수 템플릿), `TitleDevelopmentReferenceSchema`(zod, 외부 입력 경계).
+- `cmo-strategy/index.ts`에 export 2줄 추가. spec S4 범위 외 파일은 건드리지 않음. 신규 의존성 0.
+
+### 검증 결과 (2026-06-10)
+- 신규 테스트: `jest src/functions/cmo-strategy/__tests__/title-development.test.ts` → **31/31 pass (green)**
+- `corepack pnpm typecheck` → pass
+- 전체 `corepack pnpm test` → 1754 pass / 4 fail. 실패 4건은 전부 `cto-design/__tests__/model-routing.test.ts`(T2 기대, T1 반환) — **git stash로 내 변경 제거 후에도 동일하게 실패함을 확인한 pre-existing** (env 의존 추정, WO-1 범위 밖이라 미수정).
+- cmo-strategy 전체 suite 3개(50 케이스) pass — export 추가로 인한 충돌 없음.
+
+### 이번 phase에서 내린 결정
+- tsconfig lib가 ES2020이라 `Intl.Segmenter`(ES2022) 타입 부재 → **tsconfig 변경 대신** title-development.ts 안에서 로컬 인터페이스 캐스트로 보강 (변경 범위를 spec S4로 한정하기 위함).
+
+### 다음 phase(검증/통합)가 알아야 할 점
+- model-routing 4건 실패는 이 WO와 무관한 pre-existing. 전체 green 게이트가 필요하면 별도 이슈로 분리해야 함.
+- worktree에 pre-existing 미커밋 변경 있음: `docs/reports/videoqa_eval_result.{json,md}` — WO-1과 무관, 건드리지 말 것.
