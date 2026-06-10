@@ -38,13 +38,14 @@ phase별 worktree 격리 + phase.runtime(claude/codex/antigravity) CLI를 직접
 
 ## 검증 현황
 
-- ✅ `cto-native` jest **62/62**, `orchestrator` jest **5/5**, agent-runtime `tsc --noEmit` **0 errors**.
+- ✅ `cto-native` jest **62/62**, `orchestrator` jest **16/16**(phase-prompt 5 + recovery-loop 11), agent-runtime `tsc --noEmit` **0 errors**.
 - ✅ seam 비파괴 확인 (flag off = 기존 dispatchToACR).
-- ✅ **라이브 스모크 PASS** (2026-06-10): 더미 repo에서 1 phase end-to-end 작동 — worktree 생성(`~/.l5-worktrees/`)→claude CLI spawn→worktree 내부에 `greet.ts` 작성→결정론 verify pass→base 머지(commit f301dc3)→worktree+branch 정리. 전 단계 확인.
-- 🐞 **라이브에서 실버그 1건 발견·수정**(`native-orchestrator.ts` collectDiff): 신규 untracked 파일은 `git diff HEAD --stat`가 비어 diff_summary='' → verifier의 diff-empty 게이트가 inconclusive → **모든 new-file phase가 조용히 머지 실패**할 뻔. 수정: stat 전에 `git add -N -- .`(intent-to-add). 정적검증으론 안 잡혔을 버그 — 라이브 스모크의 가치 입증.
-- ⚠️ 미검증: 다중 phase 의존순/병렬, 실제 codex/agy 풀 라이브 호출(PoC에선 codex stdin EOF만 확인), 토큰 소진→handoff 실동작, ScheduleWakeup 회복 대기.
-
-> ⚠️ `services/agent-runtime/src/orchestrator/` 와 `cto-native/` 는 현재 **미커밋 working tree**(에이전트는 커밋 안 함 — commit ownership=human). 커밋은 사장님 결정.
+- ✅ **라이브 3풀 모두 PASS** (2026-06-10): 더미 repo에서 1 phase end-to-end(worktree→CLI spawn→파일작성→결정론 verify→base 머지→worktree 정리).
+  - claude 풀: `greet.ts` (commit f301dc3) · codex 풀: `~/l5-pool-codex` `add.ts` (6d55ca5) · agy 풀: `~/l5-pool-agy` `sub.ts` (4d6aa33).
+- ✅ **handoff 인계 배선**: `native-orchestrator.ts`가 `decideRecovery`+`deps.pools` 연결 — (c-2) spawn 전 풀 소진이면 fallback 에이전트로 갈아탐, (e) 런타임 실패 후 1회 handoff 재시도. 살아있는 풀이 끌어감.
+- ✅ **상주 운전 코드**: `orchestrator/recovery-loop.ts`(`planNextPoll` 순수, 11 tests), `scripts/native-orchestrator-daemon.mjs`(큐 폴링+회복 대기), `launchd/com.l5.native-orchestrator.plist`(RunAtLoad+KeepAlive), `docs/cto/CTO_NATIVE_RESIDENT.md`(켜는 법). **launchctl 등록은 사장님 손에**(코드만 준비).
+- 🐞 라이브에서 실버그 1건 발견·수정(collectDiff): 신규 untracked 파일이 `git diff --stat`에 안 잡혀 모든 new-file phase가 조용히 머지 실패할 뻔 → `git add -N`(intent-to-add)로 수정. 정적검증으론 못 잡았을 버그.
+- ⚠️ 미검증/남음: 다중 phase **의존순·병렬**(`canParallelize`) 실제 적용, 데몬 **무인 장시간 가동**(launchctl 등록 후), 토큰 budget 루프, ACR 동등성 확인 후 `dispatchToACR` 은퇴.
 
 ## 검증된 사실 (PoC + 환경)
 

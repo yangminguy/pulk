@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.l5.native-orchestrator</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/node</string>
+        <string>/Users/wonminyang/Desktop/pulk/services/agent-runtime/scripts/native-orchestrator-daemon.mjs</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/wonminyang/Desktop/pulk</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/Users/wonminyang/.npm-global/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>NODE_ENV</key>
+        <string>production</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/wonminyang/.l5/native/daemon.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/wonminyang/.l5/native/daemon.err.log</string>
+</dict>
+</plist>

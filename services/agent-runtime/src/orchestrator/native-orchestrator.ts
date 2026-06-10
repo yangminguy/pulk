@@ -20,6 +20,7 @@ import type {
   AgentPoolState,
   WaitingTask,
   TaskKind,
+  ModelId,
 } from '@l5/core/dist/functions/cto-native';
 
 import { runAgentCommand } from './spawn-agent.js';
@@ -151,7 +152,34 @@ async function runPhase(
     });
 
     // (c) runtime → MainAgent. model은 phase에 명시 없음 → undefined.
-    let agent = runtimeToAgent(phase.runtime);
+    const primaryAgent = runtimeToAgent(phase.runtime);
+    let agent = primaryAgent;
+    let model: ModelId | undefined;
+
+    // (c-2) 실행 전 풀 상태로 인계 판단(pools 배선). phase.runtime 풀이 소진/제한이면
+    //   spawn 전에 fallback 에이전트로 갈아탄다. 실패-후-handoff(e)는 그대로 유지(런타임 실패 대비).
+    {
+      const preTask: WaitingTask = {
+        id: `${intent.l5_task_id}:${phase.name}`,
+        taskKind: agentToTaskKind(primaryAgent),
+        primaryAgent,
+        reason: 'pre-dispatch pool check',
+      };
+      const preDecision = decideRecovery({ task: preTask, pools, nowIso });
+      if (preDecision.action === 'handoff') {
+        console.warn(
+          `[native-orchestrator] ${label}: ${primaryAgent} 풀 소진 — 실행 전 ${preDecision.agent}로 인계. ${preDecision.reason}`,
+        );
+        agent = preDecision.agent;
+        model = preDecision.model;
+      } else if (preDecision.action === 'wait') {
+        console.warn(
+          `[native-orchestrator] ${label}: 가용 풀 없음 — 보류(${preDecision.reason}).`,
+        );
+        return;
+      }
+    }
+
     const logBuf: string[] = [];
     const onLog = (line: string) => {
       logBuf.push(line);
@@ -160,7 +188,7 @@ async function runPhase(
 
     // (d) 실행.
     let result = await runAgentCommand(
-      buildAgentCommand({ agent, prompt, cwd }),
+      buildAgentCommand({ agent, prompt, cwd, model }),
       { timeoutMs: DEFAULT_TIMEOUT_MS, onLog },
     );
 
