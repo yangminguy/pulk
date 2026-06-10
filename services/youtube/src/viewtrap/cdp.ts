@@ -468,6 +468,48 @@ export interface ScrapeVideoSearchOptions {
   /** 검색 후 테이블 안정화 대기(ms). 기본 1500. */
   settleMs?: number;
   timeoutMs?: number;
+  /** 검색 결과 갱신 폴링 최대 대기(ms). 실측 ~20초 후 갱신 → 기본 30000. */
+  resultWaitMs?: number;
+}
+
+/** 첫 행(td:nth-child(4) = 제목 셀) 텍스트 미리보기. 검색 전/후 비교용. */
+const FIRST_ROW_EXPR =
+  '(()=>{const t=document.querySelector("table tbody tr td:nth-child(4)");return t?t.innerText.slice(0,40):"";})()';
+
+/**
+ * 검색 확인 모달("이용횟수가 차감되며 검색이 진행됩니다 ... 검색하시겠습니까?")의
+ * "확인" 버튼을 클릭한다. 모달 등장까지 잠깐 폴링. clickExposureProbability 의 확인 패턴 재사용.
+ * 클릭했으면 true, 모달이 끝내 안 뜨면 false(이미 검색이 시작됐거나 모달 없는 흐름).
+ */
+async function clickSearchConfirm(page: CdpPage, deadlineMs: number): Promise<boolean> {
+  const deadline = Date.now() + deadlineMs;
+  while (Date.now() < deadline) {
+    const confirmed = await page.evalExpr<string>(`(() => {
+      const up = /이용횟수가 차감|검색하시겠습니까/.test(document.body.innerText || '');
+      if (!up) return 'NO_MODAL';
+      const ok = [...document.querySelectorAll('button')].find((b) => (b.innerText || '').trim() === '확인');
+      if (!ok) return 'NO_OK';
+      ok.click();
+      return 'CONFIRMED';
+    })()`);
+    if (confirmed === 'CONFIRMED') return true;
+    await page.waitForTimeout(400);
+  }
+  return false;
+}
+
+/**
+ * 검색 결과 갱신 대기. 첫 행 텍스트가 before 와 달라지고 비어있지 않을 때까지 폴링.
+ * 실측: 확인 클릭 후 ~20초 뒤 결과 테이블 갱신. 최대 resultWaitMs(기본 30초).
+ */
+async function waitForResultChange(page: CdpPage, before: string, waitMs: number): Promise<boolean> {
+  const deadline = Date.now() + waitMs;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(1_000);
+    const cur = await page.evalExpr<string>(FIRST_ROW_EXPR);
+    if (cur && cur !== before) return true;
+  }
+  return false;
 }
 
 /**
@@ -531,8 +573,34 @@ export async function scrapeVideoSearchTable(
   const alreadyOnQuery = inputVal.trim() === query.trim() && existingRows > 0;
 
   if (!alreadyOnQuery) {
+    // 검색 전 첫 행을 기억(결과 갱신 감지용).
+    const beforeFirstRow = (await page.evalExpr<string>(FIRST_ROW_EXPR)) ?? '';
+
+    // ① query 입력(컨트롤드 input native setter + input/change 이벤트).
     await page.fill(SEARCH_INPUT, query);
+    await page.waitForTimeout(300);
+
+    // ② 검색 실행: Enter(trusted) → 안 먹으면 검색 버튼(bg-primary-300) 클릭.
     await page.press(SEARCH_INPUT, 'Enter');
+    await page.waitForTimeout(500);
+
+    // ③ 확인 모달 대기 → "확인" 클릭. 모달이 안 떴으면 검색 버튼을 눌러 다시 시도.
+    let confirmed = await clickSearchConfirm(page, 4_000);
+    if (!confirmed) {
+      const clickedBtn = await page.evalExpr<boolean>(`(() => {
+        const b = [...document.querySelectorAll('button')].find((x) =>
+          /bg-primary-300/.test((x.className && x.className.toString && x.className.toString()) || ''),
+        );
+        if (!b) return false;
+        b.click();
+        return true;
+      })()`);
+      if (clickedBtn) confirmed = await clickSearchConfirm(page, 4_000);
+    }
+
+    // ④ 결과 갱신 대기: 확인 후 ~20초 뒤 첫 행이 바뀜(최대 resultWaitMs). 모달이 없었어도(즉시 검색)
+    //    동일하게 첫 행 변화를 기다린다.
+    await waitForResultChange(page, beforeFirstRow, options.resultWaitMs ?? 30_000);
     await page.waitForSelector(TABLE_ROWS, { timeout });
   }
 

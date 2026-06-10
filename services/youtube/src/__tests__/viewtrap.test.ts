@@ -290,7 +290,9 @@ describe('toViewtrapValidationInput', () => {
 describe('createViewtrapScraperAdapter', () => {
   // CDP 없이 — cdp.ts 의 scrape 경로를 거치지 않도록, scrapeVideoSearchTable 이
   // 읽는 page.evaluate 를 fake page 로 흉내낸다.
-  function fakeSession(rawRows: RawTableRow[]) {
+  function fakeSession(rawRows: RawTableRow[], spy?: { confirmClicked?: boolean }) {
+    // 검색 흐름 단계 추적: 첫 행 텍스트가 검색 후 바뀌도록(결과 갱신 감지) 흉내낸다.
+    let firstRowReads = 0;
     const page = {
       url: () => 'https://app.viewtrap.com/video-search',
       bringToFront: async () => {},
@@ -301,9 +303,21 @@ describe('createViewtrapScraperAdapter', () => {
       goto: async () => {},
       // scrapeVideoSearchTable 의 evaluate 는 인자 없는 fn 이지만, 우리가 원시행을 직접 돌려준다.
       evaluate: async () => rawRows as unknown,
-      // 새 경로: input value/행 수 폴링. fake 는 query 불일치(재검색) + 안정 행 수를 흉내낸다.
-      evalExpr: async (expr: string) =>
-        (/\.value/.test(expr) ? '' : rawRows.length) as unknown,
+      // 새 경로: input value / 행 수 / 첫 행(td:nth-child(4)) / 확인 모달 폴링을 흉내낸다.
+      evalExpr: async (expr: string) => {
+        if (/\.value/.test(expr)) return '' as unknown; // input value(=재검색 유발)
+        if (/td:nth-child\(4\)/.test(expr)) {
+          // 첫 호출(검색 전)="" → 이후="changed-title" → waitForResultChange가 즉시 통과.
+          firstRowReads += 1;
+          return (firstRowReads <= 1 ? '' : 'changed-title') as unknown;
+        }
+        if (/검색하시겠습니까|이용횟수가 차감/.test(expr)) {
+          // 확인 모달 처리 흉내: 모달 떠있다고 보고 "확인" 클릭.
+          if (spy) spy.confirmClicked = true;
+          return 'CONFIRMED' as unknown;
+        }
+        return rawRows.length as unknown; // 행 수 폴링(stabilizeRowCount 등)
+      },
       locator: () => ({
         first() {
           return this;
@@ -340,6 +354,67 @@ describe('createViewtrapScraperAdapter', () => {
       transform: { researchSessionId: 's', consumerStage: '욕구', selectedFor: 'key_content' },
     });
     expect(await adapter.fetch('릴스')).toHaveLength(0);
+  });
+
+  it('검색 트리거 시 확인 모달의 "확인"을 클릭한다(이용횟수 차감 확인)', async () => {
+    const spy: { confirmClicked?: boolean } = {};
+    const adapter = createViewtrapScraperAdapter(fakeSession([TABLE_ROW_FULL], spy), {
+      transform: { researchSessionId: 's', consumerStage: '욕구', selectedFor: 'key_content' },
+    });
+    const out = await adapter.fetch('릴스');
+    expect(out).toHaveLength(1);
+    // 입력→검색→확인모달 클릭→결과대기 경로를 거쳤음.
+    expect(spy.confirmClicked).toBe(true);
+  });
+
+  it('이미 같은 query·테이블이 차 있으면 재검색하지 않는다(alreadyOnQuery 스킵)', async () => {
+    // input value 가 query 와 일치 + 행 존재 → fill/press/확인모달 호출 없이 기존 테이블만 파싱.
+    let filled = false;
+    let pressed = false;
+    let confirmProbed = false;
+    const page = {
+      url: () => 'https://app.viewtrap.com/video-search',
+      bringToFront: async () => {},
+      waitForTimeout: async () => {},
+      fill: async () => {
+        filled = true;
+      },
+      press: async () => {
+        pressed = true;
+      },
+      waitForSelector: async () => {},
+      goto: async () => {},
+      evaluate: async () => [TABLE_ROW_FULL] as unknown,
+      evalExpr: async (expr: string) => {
+        if (/\.value/.test(expr)) return '릴스' as unknown; // 이미 같은 query 입력됨
+        if (/검색하시겠습니까|이용횟수가 차감/.test(expr)) {
+          confirmProbed = true;
+          return 'NO_MODAL' as unknown;
+        }
+        if (/td:nth-child\(4\)/.test(expr)) return 'existing' as unknown;
+        return 1 as unknown; // 행 존재
+      },
+      locator: () => ({
+        first() {
+          return this;
+        },
+        count: async () => 0,
+        click: async () => {},
+        innerText: async () => '-',
+      }),
+    };
+    const session = {
+      browser: { contexts: () => [], close: async () => {} },
+      context: { pages: () => [page], newPage: async () => page },
+    } as never;
+    const adapter = createViewtrapScraperAdapter(session, {
+      transform: { researchSessionId: 's', consumerStage: '욕구', selectedFor: 'key_content' },
+    });
+    const out = await adapter.fetch('릴스');
+    expect(out).toHaveLength(1); // 기존 테이블 파싱됨
+    expect(filled).toBe(false);
+    expect(pressed).toBe(false);
+    expect(confirmProbed).toBe(false); // 검색 트리거 자체를 건너뜀
   });
 });
 
