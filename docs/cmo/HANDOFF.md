@@ -3,6 +3,21 @@
 > 최종 업데이트: 2026-06-10. 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
 > 300줄 넘으면 오래된 항목을 `docs/archive/`로 이관하고 요약만 남긴다.
 
+## 🟢 2026-06-10 — M8 완료 + M7 안정화: dist 재빌드·재기동·라이브 HTTP E2E·정리
+
+이번 세션으로 M1~M8 전부 구현·검증·라이브. NocoBase에 신규 cmo 액션이 실반영됐다.
+
+- **dist 재빌드 + 재기동**: `cd apps/nocobase-app && corepack yarn build @l5/plugin-orchestration`(pnpm/nocobase build는 packageManager=yarn 때문에 거부 — yarn 필수 함정). dist/plugin.js에 신규 심볼(runDiscovery 5·getRenderStatus 3·buildSlideDeckSpecFromBrief 2·submitRender 6·createUploadDraft 5) grep 확인 + `node --check` OK. `launchctl kickstart -k gui/$(id -u)/com.l5.nocobase` → `app:getInfo` **200** 즉시 복귀.
+- **라이브 HTTP E2E PASS** (스크립트=`apps/founder-ui/e2e/m8-live-http-e2e.mjs`, `auth:signIn` admin→Bearer. NocoBase는 액션 `{ok,data}`를 `{data:{...}}`로 한 번 더 감싸므로 실 payload=`json.data.data` — 함정):
+  - `cmo:sendBriefToFactory`(R6 경로) **200** → handoff_status=`sent`, stub=false, factory `briefs/1b0c2e9c….json` **실파일 생성 확인**.
+  - `cmo:runDiscovery` **200** → 실 YouTube 검색+stats 라이브(provenance searched/stats=true), **후보 3개**(최고 112,661회, verdict=fit), discovery 카드 저장.
+- **⚠️ Sonnet 분류 서버 폴백**: runDiscovery의 분류 스텝이 launchd 서버 컨텍스트에서 폴백(`classified=false`, "10개 영상 폴백(ambiguous)"). claude CLI cold-spawn/MCP-off 제약으로 추정. 셸 컨텍스트(`services/youtube/scripts/verify-live-discovery.mjs`)에서는 분류 라이브됨. 후보는 stats+폴백 verdict로 도출되어 200/후보 응답 자체는 정상. **후속: 서버 프로세스에서 claude CLI 분류 안정화 필요.**
+- **M7 플레이키 안정화**: `key-content-draft.test.ts` "실측: 병렬 구간…" 테스트가 wall-clock 절대비교(`elapsed < STEP_DELAY*5`)라 전체 jest 동시 실행 시 CPU 경합으로 간헐 실패 → **라운드 수 직접 관측**으로 교체(in-flight 0 복귀 사이를 한 라운드로 묶어 `rounds<5` + `maxConcurrency>=2`). 절대 시간 비교 제거, 의도(병렬<순차 라운드) 보존. `npx jest video-room` **2회 연속 738/738 GREEN**.
+- **정리**: `/tmp/cdp-*.mjs`+`oauth-token.json` 47개 → `/tmp/_archive/m8-cdp-tmp/`(핵심 로직 `services/youtube/src/{token,credentials,viewtrap/cdp}.ts` 이관 확인 후 — rm -rf 미사용, mv). M4 스모크 `jobs/l5-l5-m4-smoke.json`·`outputs/l5-m4-smoke/` 삭제. demo-3min 등 기존 산출물 보존 확인.
+- **남은 후속**: ① Reporting API(`channel_reach_basic_a1`) 노출수/CTR 노출. ② Viewtrap CDP 라이브 크롤링 서버 배선(현재 scrape 서버 미주입). ③ runDiscovery Sonnet 분류 서버 컨텍스트 안정화.
+
+---
+
 ## 🟢 2026-06-10 — M1~M3 통합 완료: 발굴→크롤링→분류 파이프라인 + 키/풀링 Step 변환
 
 키 Step8 + 풀링 Step5/8의 "viewtrap 검증·선정이유"를 LLM 추측/수동입력 → 실데이터 파이프라인으로 교체 가능하게 배선.

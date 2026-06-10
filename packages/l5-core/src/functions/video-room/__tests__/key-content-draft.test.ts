@@ -235,19 +235,41 @@ describe('runKeyContentWorkflow', () => {
     expect(a.step10_sales_logic.cta).toBe('CTA10');
   });
 
-  it('실측: 스텝당 인위 지연 시 병렬 구간이 wall-clock을 줄인다', async () => {
-    const STEP_DELAY = 30; // ms, 각 LLM 호출당 인위 지연.
+  it('실측: 병렬 구간 덕분에 LLM 호출 라운드 수가 순차보다 적다', async () => {
+    // 의도: step2‖step3, step6‖step10 두 쌍이 병렬 발사 → 6개 LLM 스텝이
+    // 6 라운드(완전 순차)가 아니라 4 라운드 안에 처리된다.
+    //
+    // 이전 버전은 wall-clock(elapsed < STEP_DELAY*5)을 비교했는데, 전체 jest
+    // 동시 실행 시 CPU 경합으로 setTimeout 타이밍이 늘어져 간헐 실패했다.
+    // 부하 비의존적으로 "라운드 수"를 직접 관측한다: 한 마이크로태스크 양보
+    // 동안 동시에 in-flight인 호출을 같은 라운드로 묶으면, 동시 발사된 쌍은
+    // 한 라운드로 카운트된다(절대 시간 비교 없음).
     const llm = routedLlm([]);
+    let inFlight = 0;
+    let maxConcurrent = 0;
+    let rounds = 0;
+    let roundOpen = false;
     const llmComplete = async (prompt: string) => {
-      await new Promise((r) => setTimeout(r, STEP_DELAY));
+      inFlight++;
+      maxConcurrent = Math.max(maxConcurrent, inFlight);
+      // 새 라운드 시작: 직전에 모두 settle된 뒤 처음 들어온 호출에서만 +1.
+      // 같은 tick에 동시 발사된 쌍은 roundOpen=true 상태라 한 라운드로 묶인다.
+      if (!roundOpen) {
+        roundOpen = true;
+        rounds++;
+      }
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight--;
+      if (inFlight === 0) roundOpen = false;
       return llm(prompt);
     };
-    const t0 = Date.now();
     await runKeyContentWorkflow({ product }, { llmComplete });
-    const elapsed = Date.now() - t0;
-    // LLM 스텝 6개(2,3,4,5,6,10). 완전 순차면 6*delay, 병렬 2쌍(2‖3, 6‖10)이면 4 라운드.
-    // 4 라운드 ≈ 4*delay. 여유를 둬 5 라운드 미만이면 병렬 효과 확인.
-    expect(elapsed).toBeLessThan(STEP_DELAY * 5);
+
+    // 병렬 쌍이 실제로 겹쳐 발사됐다(동시성 2 관측) — 부하와 무관.
+    expect(maxConcurrent).toBeGreaterThanOrEqual(2);
+    // 6개 LLM 스텝이 5 라운드 미만(=4 라운드)으로 처리됐다 = 병렬 효과.
+    // 완전 순차였다면 6 라운드가 필요하다.
+    expect(rounds).toBeLessThan(5);
   });
 });
 
