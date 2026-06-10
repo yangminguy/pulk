@@ -15,6 +15,19 @@ export {
   type VideoPerformanceCollection,
 } from './performance/collect.js';
 
+// ── CMO M5 후속 — Reporting API 노출수·CTR 수집 ──────────────────────────────
+export {
+  ReportingClient,
+  parseReachReport,
+  REACH_REPORT_TYPE,
+  type ReportingJob,
+  type Report,
+  type ListReportsOptions,
+  type ReachReportRow,
+  type ImpressionsCtrResult,
+  type CollectImpressionsCtrOptions,
+} from './reporting/client.js';
+
 // ── CMO M1 — Viewtrap CDP 크롤링 ─────────────────────────────────────────────
 export {
   type ViewtrapGrade,

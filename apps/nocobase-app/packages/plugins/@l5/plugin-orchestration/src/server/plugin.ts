@@ -4286,7 +4286,10 @@ function registerCmoResource(app: any, db: any) {
           const creds = yt.loadCredentials();
           const client = new yt.YouTubeClient(creds);
           // Sonnet 분류 함수 주입(모델 고정). classifyDiscoveredVideos를 감싼다.
-          const sonnet = createClaudeCLIClient({ model: 'sonnet' });
+          // 타임아웃 240s: launchd 서버 컨텍스트의 claude CLI cold-spawn은 셸보다 훨씬
+          // 느리다(실측 배치 1콜 47~125s). 기본 60s면 양 attempt 모두 타임아웃 →
+          // 배치 10개가 통째로 ambiguous 폴백(classified=false)되던 근본원인. (후속3 2026-06-10)
+          const sonnet = createClaudeCLIClient({ model: 'sonnet', timeoutMs: 240_000 });
           const classify = (videos: any[], m: 'key' | 'pulling') =>
             classifyDiscoveredVideos(
               {

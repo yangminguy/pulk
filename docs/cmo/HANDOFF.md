@@ -3,6 +3,28 @@
 > 최종 업데이트: 2026-06-10. 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
 > 300줄 넘으면 오래된 항목을 `docs/archive/`로 이관하고 요약만 남긴다.
 
+## 🟢 2026-06-10 — 후속3 완료: runDiscovery Sonnet 분류 서버 폴백 해소 (timeout 근본원인)
+
+M8의 ⚠️ "Sonnet 분류 서버 폴백"(`classified=false`, 10개 ambiguous 폴백)을 **launchd 서버 컨텍스트의 claude CLI cold-spawn 타임아웃**으로 규명·수정.
+
+- **진단(폐기된 가설 포함)**: PATH/ENOENT 아님 — launchd plist PATH(`/usr/local/bin:/Users/wonminyang/.npm-global/bin:...`)에 claude(`~/.npm-global/bin/claude`) 존재. 최소 launchd env(HOME 없음 포함)로 격리 spawn 시 4~15s 정상 작동. **실 라이브 HTTP runDiscovery 측정이 결정타**: 분류 콜이 47s·79s·**125s**까지 걸림(서버 busy + cold-spawn + 배치 순차). claude-cli-client 기본 timeout=60s → 한 배치(10개) 양 attempt(maxRetries=1) 모두 60s 타임아웃 → `classifyBatch`가 throw → `classifyDiscoveredVideos`가 그 배치만 ambiguous 폴백 → fallback_count=10 → `provenance.classified=false`. 이게 "10개 영상 폴백(ambiguous)"의 정체.
+- **수정(1줄, 호출부 한정)**: `plugin.ts` runDiscovery의 `createClaudeCLIClient({ model: 'sonnet' })` → `{ model: 'sonnet', timeoutMs: 240_000 }`. claude-cli-client.ts 기본 60s는 **불변**(다른 호출부 보호, 외과적). dist는 `corepack yarn build @l5/plugin-orchestration`로 재빌드(`timeoutMs: 24e4` 번들 확인) + `launchctl kickstart -k` 재기동(app:getInfo 200).
+- **검증 전후 비교**: 수정 전(M8 기록) classified=false/10개 폴백. 수정 후 라이브 HTTP 4개 쿼리 연속 — `인스타그램 릴스 만드는 방법`/`숏폼 편집 강의`/`유튜브 알고리즘`/`인스타 마케팅 전략` 전부 **status 200 · classified=true · notes=[] · fallback_count=0**(35~125s). `classified = (fallback_count===0)`이므로 전 영상이 실 LLM verdict 획득 = 폴백 0. claude-cli-client 단위테스트 8/8, l5-core tsc 0.
+- **메모**: candidates 0개는 분류 실패 아님 — candidate_basis(`verdict==='fit' && hasGoodPerformance`)를 만족한 영상이 없는 데이터 결과. 분류 자체는 라이브. 한 배치 양 attempt 최악 = 2×240s지만 5만+ 필터 후 통상 1배치(≤10) 1콜이라 실측 worst 125s로 여유. M8 ③ 후속 종료.
+
+---
+
+## 🟡 2026-06-10 — M5 후속 1: Reporting API 노출수·CTR 클라이언트 (리포트 대기중)
+
+남은 후속 ①(노출/CTR)의 클라이언트·M5 배선·검증 완료. 리포트는 구글 비동기 생성 대기중(정상).
+
+- **클라이언트**: `services/youtube/src/reporting/client.ts` `ReportingClient` — `listJobs`(GET /v1/jobs) · `listReports(jobId,{createdAfter})` · `downloadReport(url)`(Bearer CSV) · `collectImpressionsCtr(videoIds,{jobId?,createdAfter?})`(job 자동선택→최신 리포트→CSV 파싱→영상별 {impressions,impressionCtr}). `parseReachReport(csv)`는 channel_reach_basic_a1 CSV를 영상/날짜별 행으로(컬럼명 유연 매핑: video_id/date/impressions, CTR 직접컬럼 없으면 clicks/impressions 계산, 공식 스키마 기준 주석). `TokenManager` 재사용. index.ts에 export 추가(최소 diff).
+- **M5 연결(무회귀)**: `performance-auto-mapping.ts` `mapAnalyticsToPerformanceInput`에 optional `reach:{impressions,impression_ctr}` 추가. 있으면 ctr/impressions 채우고 metrics_note 갱신(0~1 클램프), 없으면 기존대로 null + `IMPRESSIONS_UNAVAILABLE_NOTE` 유지.
+- **검증**: reporting jest **10/10** + auto-mapping jest **9/9**(reach 케이스 3개 추가) + 양쪽 tsc 0. **라이브 listJobs로 job 확인**: `dee313e0-6d7e-4d61-92d8-8b5d00bd6558` type=`channel_reach_basic_a1` name=`l5-reach-basic`. **리포트 0건 — 구글 비동기 생성 대기중(정상, 실패 아님)**. 스크립트=`services/youtube/scripts/verify-live-reporting.mjs`.
+- **남은 것**: 리포트 백필(보통 다음날)되면 실 노출/CTR 수신값 확인 + plugin 액션에서 collectImpressionsCtr→map reach 배선(현재 도메인/클라이언트까지만).
+
+---
+
 ## 🟢 2026-06-10 — M8 완료 + M7 안정화: dist 재빌드·재기동·라이브 HTTP E2E·정리
 
 이번 세션으로 M1~M8 전부 구현·검증·라이브. NocoBase에 신규 cmo 액션이 실반영됐다.

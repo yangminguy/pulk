@@ -89,6 +89,42 @@ describe('mapAnalyticsToPerformanceInput → recordVideoPerformance (동일 inge
     expect(record.summary).toContain('완료율 미수집');
   });
 
+  it('reach(노출/CTR) 입력 있으면 ctr/impressions 채우고 사유 갱신', () => {
+    const [m] = parseVideoAnalyticsRecords(VIDEO_DIMENSION_RECORDS);
+    const input = mapAnalyticsToPerformanceInput({
+      project_id: 'p1',
+      metrics: m,
+      range: '2026-05-13..2026-06-10',
+      reach: { impressions: 5000, impression_ctr: 0.08 },
+    });
+    expect(input.impressions).toBe(5000);
+    expect(input.ctr).toBeCloseTo(0.08);
+    expect(input.metrics_note).toContain('Reporting API');
+    expect(input.metrics_note).not.toBe(IMPRESSIONS_UNAVAILABLE_NOTE);
+  });
+
+  it('reach CTR은 0~1로 클램프', () => {
+    const [m] = parseVideoAnalyticsRecords(VIDEO_DIMENSION_RECORDS);
+    const input = mapAnalyticsToPerformanceInput({
+      project_id: 'p1',
+      metrics: m,
+      reach: { impressions: 100, impression_ctr: 1.5 },
+    });
+    expect(input.ctr).toBe(1);
+  });
+
+  it('reach가 전부 null이면 기존대로 null + 미수집 사유(무회귀)', () => {
+    const [m] = parseVideoAnalyticsRecords(VIDEO_DIMENSION_RECORDS);
+    const input = mapAnalyticsToPerformanceInput({
+      project_id: 'p1',
+      metrics: m,
+      reach: { impressions: null, impression_ctr: null },
+    });
+    expect(input.impressions).toBeNull();
+    expect(input.ctr).toBeNull();
+    expect(input.metrics_note).toBe(IMPRESSIONS_UNAVAILABLE_NOTE);
+  });
+
   it('averageViewPercentage 100 초과는 1로 클램프, 음수 views는 0', () => {
     const input = mapAnalyticsToPerformanceInput({
       project_id: 'p1',

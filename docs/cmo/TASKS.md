@@ -46,7 +46,12 @@
 - [x] **M5. 성과 자동 수집** *(2026-06-10 완료)*
   - 수집 러너 `services/youtube/src/performance/collect.ts` `collectVideoPerformance`(video 디멘전→축소→채널합계 폴백) + l5-core 매핑 `performance-auto-mapping.ts`(`parseVideoAnalyticsRecords`/`mapAnalyticsToPerformanceInput`)로 자동 수집→기존 `recordVideoPerformance` ingest 연결. 수동 경로 폴백 유지.
   - 검증: auto-mapping jest 6/6 + collect jest 4/4 + 양쪽 tsc 0. **라이브 1회 실수신**(디립다 28일): scope=video, 영상 2건(조회 1391·완료율 30.18% 등), dist로 parse→map→ingest 체인 통과.
-  - **노출·CTR**: targeted API 미지원(M2 실측) → ctr/impressions=null + metrics_note 사유. Reporting API(`channel_reach_basic_a1`, `youtubereporting.googleapis.com` 활성화 + job + 비동기 ~48h)는 후속.
+  - **노출·CTR**: targeted API 미지원(M2 실측) → ctr/impressions=null + metrics_note 사유.
+- [~] **M5 후속 1. Reporting API 노출수·CTR** *(2026-06-10 클라이언트 완료, 리포트 대기중)*
+  - 클라이언트 `services/youtube/src/reporting/client.ts` `ReportingClient`(`listJobs`/`listReports(createdAfter)`/`downloadReport`/`collectImpressionsCtr`) + `parseReachReport`(channel_reach_basic_a1 CSV→영상/날짜별, 컬럼명 유연 매핑). TokenManager 재사용(Bearer).
+  - M5 연결: `performance-auto-mapping.ts` `mapAnalyticsToPerformanceInput`에 optional `reach` 입력 추가 — 노출/CTR 있으면 채우고(metrics_note 갱신), 없으면 기존대로 null+사유 유지(무회귀).
+  - 검증: reporting jest 10/10 + auto-mapping jest 9/9 + 양쪽 tsc 0. **라이브 listJobs로 job 확인**(`dee313e0-6d7e-4d61-92d8-8b5d00bd6558` type=channel_reach_basic_a1 name=l5-reach-basic). 리포트는 **0건 — 구글 비동기 생성 대기중(정상)**. 스크립트=`services/youtube/scripts/verify-live-reporting.mjs`.
+  - **남은 것**: 리포트 백필(보통 다음날)되면 다운로드·파싱해 실 노출/CTR 수신값 확인 + plugin 액션에서 collectImpressionsCtr→mapAnalyticsToPerformanceInput reach 배선.
 
 ## 🛠️ 운영·개선 (M6~M8, 병행)
 

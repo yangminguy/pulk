@@ -61,11 +61,23 @@ export function parseVideoAnalyticsRecords(
   });
 }
 
+/**
+ * Reporting API(channel_reach_basic_a1)에서 받은 영상별 노출/CTR.
+ * 있으면 ctr/impressions를 채운다(없으면 기존대로 null + metrics_note 유지 — 무회귀).
+ */
+export interface ReachMetrics {
+  impressions: number | null;
+  /** 노출 대비 클릭률 0~1. */
+  impression_ctr: number | null;
+}
+
 export interface MapAnalyticsToPerformanceInputArgs {
   project_id: string;
   metrics: VideoAnalyticsMetrics;
   /** 수집 범위 표기 (예: '2026-05-13..2026-06-10'). retention_notes에 포함. */
   range?: string;
+  /** Reporting API 노출/CTR. 미지정 시 노출/CTR = null + metrics_note 유지(무회귀). */
+  reach?: ReachMetrics;
 }
 
 /**
@@ -97,13 +109,26 @@ export function mapAnalyticsToPerformanceInput(
     noteParts.push(`구독 +${m.subscribers_gained}`);
   }
 
+  // 노출/CTR: Reporting API 데이터가 있으면 채우고, 없으면 기존대로 null + 사유(무회귀).
+  const hasReach =
+    args.reach != null &&
+    (args.reach.impressions != null || args.reach.impression_ctr != null);
+  const impressions = hasReach ? args.reach!.impressions : null;
+  const ctr =
+    hasReach && args.reach!.impression_ctr != null
+      ? Math.min(1, Math.max(0, args.reach!.impression_ctr))
+      : null;
+  const metrics_note = hasReach
+    ? `노출수·CTR: Reporting API(channel_reach_basic_a1) 수집${args.range ? ` ${args.range}` : ''}`
+    : IMPRESSIONS_UNAVAILABLE_NOTE;
+
   return {
     project_id: args.project_id,
     view_count: Math.max(0, Math.round(m.views)),
     completion_rate,
-    ctr: null,
-    impressions: null,
-    metrics_note: IMPRESSIONS_UNAVAILABLE_NOTE,
+    ctr,
+    impressions,
+    metrics_note,
     retention_notes: noteParts.join(' · '),
   };
 }
