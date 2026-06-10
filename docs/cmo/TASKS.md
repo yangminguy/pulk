@@ -27,7 +27,12 @@
   - 출력: 적합/모호/부적합. 적합+성과좋음 = 후보 근거.
   - 위치: `l5-core/cmo-strategy` 또는 `video-room` 신규.
 
-- [ ] **M1~M3 통합**: 키 Step8 + 풀링 Step5/8에 발굴→크롤링→분류 연결. 후보의 "viewtrap 선정이유"를 LLM 추측 → 실데이터로.
+- [x] **M1~M3 통합** *(2026-06-10 완료)*: 키 Step8 + 풀링 Step5/8에 발굴→크롤링→분류 연결. 후보의 "viewtrap 선정이유"를 LLM 추측 → 실데이터로.
+  - 도메인: `l5-core/video-room/discovery-pipeline.ts`(신규) — `runDiscoveryPipeline({query,product,target,mode}, deps)` 순수 오케스트레이터. ① searchVideos ② getVideoStats+5만+필터 ③ (옵션)scrapeMetrics 병합 ④ classify(M3 Sonnet) ⑤ fit+성과좋음 후보. **각 단계 실패는 그 단계만 폴백**, `provenance`에 실데이터 소스 기록.
+  - 변환: `toKeyViewtrapValidationInput`(키 Step8 buildViewtrapValidation 입력) · `toPullingViewtrapValidationInput`(풀링 Step5) · `toLongtailCandidateInputs`(풀링 Step8 findLongtailEvergreen) · `buildSelectionReason`(조회수·성과도·기여도·노출확률+분류사유 → 선정이유). growth_status='unknown'(추측 금지).
+  - 실어댑터: `services/youtube/src/discovery/deps.ts` `createLiveDiscoveryDeps({client, viewtrapAdapter?, classify})` — @l5/youtube 클라이언트로 search/stats, viewtrap 어댑터(옵션)로 scrapeMetrics, Sonnet classify 주입. @l5/youtube는 l5-core 비의존(미러 타입).
+  - 플러그인: `cmo:runDiscovery {project_id, query, mode?}` — @l5/youtube ESM dynamic import + Sonnet 분류로 파이프라인 실행 → discovery 카드 저장 + viewtrap_validation 초안 반환. ACL 추가. 함정: @l5/youtube는 ESM이라 require 불가 → `await import()`. dist 재빌드 = `cd apps/nocobase-app && corepack yarn build @l5/plugin-orchestration`.
+  - 검증: l5-core tsc 0 + discovery-pipeline jest **11/11** + youtube jest 40/40 + l5-core video-room 무회귀(737/738, 실패 1은 사전존재 wall-clock 타이밍 플레이키 — 격리 시 통과). **라이브 부분 파이프라인 1회 PASS**: 실 YouTube 검색 15→5만+ 8건→실 Sonnet 분류 8건 fit, 실데이터 선정이유 생성(`services/youtube/scripts/verify-live-discovery.mjs`). CDP scrapeMetrics는 서버 미주입(로그인 크롬 전제) — stats+Sonnet 부분 파이프라인까지 라이브 확인.
 
 ## 🎬 영상 산출 마감 (M4)
 

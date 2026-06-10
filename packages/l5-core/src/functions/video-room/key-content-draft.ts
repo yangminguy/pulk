@@ -477,17 +477,26 @@ function step6Prompt(input: DraftKeyContentInput, step5: KeyContentDraft['step5_
   ].join('\n');
 }
 
-function step10Prompt(input: DraftKeyContentInput, accumulated: KeyContentDraft): string {
+// R-M7: step10(설득 구조)은 step1~5만으로 충분 — buildSalesLogicMap은 cross-step 검증이
+// 없고(6개 문자열 자기검증만), 판매 논리 필드(문제→카테고리FB→필요성→아이템FB→제안→CTA)는
+// step1~5에서 도출된다. step6(진입 단계 라벨)은 퍼널 시퀀싱일 뿐 설득 콘텐츠와 직교 →
+// step10 프롬프트에서 제외해 step6과 병렬 실행한다. DECISIONS.md "R-M7" 참조.
+function step10Prompt(
+  input: DraftKeyContentInput,
+  ctx: Pick<
+    KeyContentDraft,
+    'step1_generalization' | 'step2_item_fb' | 'step3_category_fb' | 'step4_problems' | 'step5_funnel'
+  >,
+): string {
   return [
     '당신은 CMO다. PRD v3 Step 10: 설득 구조를 만들어라.',
     '순서: 문제 제시 → 카테고리 기능/특징/장점 → 카테고리 필요성 → 아이템 기능/특징/장점 → 아이템 제안 → CTA.',
     ctxHeader(input),
-    jsonBlock('누적 Step 1 (일반화)', accumulated.step1_generalization),
-    jsonBlock('누적 Step 2 (아이템 FB)', accumulated.step2_item_fb),
-    jsonBlock('누적 Step 3 (카테고리 FB)', accumulated.step3_category_fb),
-    jsonBlock('누적 Step 4 (문제)', accumulated.step4_problems),
-    jsonBlock('누적 Step 5 (퍼널)', accumulated.step5_funnel),
-    jsonBlock('누적 Step 6 (진입 단계)', accumulated.step6_entry_decision),
+    jsonBlock('누적 Step 1 (일반화)', ctx.step1_generalization),
+    jsonBlock('누적 Step 2 (아이템 FB)', ctx.step2_item_fb),
+    jsonBlock('누적 Step 3 (카테고리 FB)', ctx.step3_category_fb),
+    jsonBlock('누적 Step 4 (문제)', ctx.step4_problems),
+    jsonBlock('누적 Step 5 (퍼널)', ctx.step5_funnel),
     '아래 JSON만 출력:',
     JSON.stringify({ problem_statement: '', category_feature_benefit: '', category_need: '', item_feature_benefit: '', item_solution_statement: '', cta: '' }, null, 0),
   ].join('\n');
@@ -673,34 +682,55 @@ export async function runKeyContentWorkflow(
   const step5 = r5.value;
   progress++;
 
-  // Step 6 — LLM(step5).
-  const r6 = await runLlmStep({
-    llmComplete: deps.llmComplete,
-    attempts,
-    prompt: step6Prompt(input, step5),
-    build: (rawText) => {
-      const p = Step6Schema.parse(JSON.parse(extractJson(rawText)));
-      return decideKeyContentEntryStage({
-        funnel: step5,
-        selected_entry_stage: p.entry_stage,
-        rationale: p.entry_rationale,
-      });
-    },
-    fallback: () => fallbackStep6(step5),
-  });
-  const step6 = r6.value;
-  progress++;
-
-  // Step 7 — 결정론 (step1~4 기반, 항상 성공).
+  // Step 7 — 결정론 (step1~4 기반, 항상 성공). step6/step10에 의존하지 않으므로 먼저 계산.
   const step7 = generateSearchKeywords({
     generalization: step1,
     item_fb: step2,
     category_fb: step3,
     problems: step4,
   });
-  progress++;
 
-  const accumulated: KeyContentDraft = {
+  // Step 6 ‖ Step 10 — 둘 다 step5까지만 의존(서로 독립). step6은 step5 퍼널에서 진입 단계를
+  // 정하고, step10은 step1~5에서 설득 구조를 만든다. step10이 step6 산출물을 쓰지 않으므로
+  // (buildSalesLogicMap은 cross-step 검증 없음) 병렬 실행해 LLM 라운드 1회 절감. R-M7.
+  const step10Ctx = {
+    step1_generalization: step1,
+    step2_item_fb: step2,
+    step3_category_fb: step3,
+    step4_problems: step4,
+    step5_funnel: step5,
+  };
+  const [r6, r10] = await Promise.all([
+    runLlmStep({
+      llmComplete: deps.llmComplete,
+      attempts,
+      prompt: step6Prompt(input, step5),
+      build: (rawText) => {
+        const p = Step6Schema.parse(JSON.parse(extractJson(rawText)));
+        return decideKeyContentEntryStage({
+          funnel: step5,
+          selected_entry_stage: p.entry_stage,
+          rationale: p.entry_rationale,
+        });
+      },
+      fallback: () => fallbackStep6(step5),
+    }),
+    runLlmStep({
+      llmComplete: deps.llmComplete,
+      attempts,
+      prompt: step10Prompt(input, step10Ctx),
+      build: (rawText) => {
+        const p = Step10Schema.parse(JSON.parse(extractJson(rawText)));
+        return buildSalesLogicMap(p);
+      },
+      fallback: () => fallbackStep10(input, step4),
+    }),
+  ]);
+  const step6 = r6.value;
+  const step10 = r10.value;
+  progress += 3; // step6 + step7 + step10
+
+  const draft: KeyContentDraft = {
     step1_generalization: step1,
     step2_item_fb: step2,
     step3_category_fb: step3,
@@ -708,24 +738,8 @@ export async function runKeyContentWorkflow(
     step5_funnel: step5,
     step6_entry_decision: step6,
     step7_search_keywords: step7,
-    step10_sales_logic: undefined as unknown as KeyContentDraft['step10_sales_logic'],
+    step10_sales_logic: step10,
   };
-
-  // Step 10 — LLM(전체 누적).
-  const r10 = await runLlmStep({
-    llmComplete: deps.llmComplete,
-    attempts,
-    prompt: step10Prompt(input, accumulated),
-    build: (rawText) => {
-      const p = Step10Schema.parse(JSON.parse(extractJson(rawText)));
-      return buildSalesLogicMap(p);
-    },
-    fallback: () => fallbackStep10(input, step4),
-  });
-  const step10 = r10.value;
-  progress++;
-
-  const draft: KeyContentDraft = { ...accumulated, step10_sales_logic: step10 };
   return { steps: draft, progress, draft };
 }
 

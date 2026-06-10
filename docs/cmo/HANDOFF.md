@@ -3,6 +3,19 @@
 > 최종 업데이트: 2026-06-10. 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
 > 300줄 넘으면 오래된 항목을 `docs/archive/`로 이관하고 요약만 남긴다.
 
+## 🟢 2026-06-10 — M1~M3 통합 완료: 발굴→크롤링→분류 파이프라인 + 키/풀링 Step 변환
+
+키 Step8 + 풀링 Step5/8의 "viewtrap 검증·선정이유"를 LLM 추측/수동입력 → 실데이터 파이프라인으로 교체 가능하게 배선.
+
+- **도메인(순수, 어댑터 주입)**: `l5-core/video-room/discovery-pipeline.ts`(신규). `runDiscoveryPipeline(input, deps)` — ① searchVideos ② getVideoStats+5만+필터 ③ (옵션)scrapeMetrics 병합 ④ classify(M3 classifyDiscoveredVideos, Sonnet) ⑤ candidate_basis(fit+성과좋음) 후보. **단계별 실패 = 그 단계만 폴백**(search 실패만 빈 결과 종료), `provenance{searched,stats,scraped,classified,notes}`에 실데이터 소스 기록.
+- **변환(cross-step 규약 통과)**: `toKeyViewtrapValidationInput`→`buildViewtrapValidation`(키 Step8) · `toPullingViewtrapValidationInput`→`buildPullingViewtrapValidation`(풀링 Step5) · `toLongtailCandidateInputs`→`findLongtailEvergreen`(풀링 Step8 노다지) · `buildSelectionReason`(조회수·성과도·기여도·노출확률 실측 + 분류 사유). 등급은 6→3등급 환산(wow·great→great), growth_status='unknown'(테이블에 성장신호 없음 — 추측 금지).
+- **실어댑터 조립**: `services/youtube/src/discovery/deps.ts` `createLiveDiscoveryDeps({client, viewtrapAdapter?, classify})`. search/stats=YouTubeClient 위임, scrapeMetrics=viewtrap 어댑터 selection_reason 파싱(없으면 키 자체 생략), classify 주입. @l5/youtube는 l5-core 비의존 유지(미러 타입).
+- **플러그인 액션**: `cmo:runDiscovery {project_id, query, mode?='key'|'pulling', search_keyword?, validated_keywords?}` — @l5/youtube ESM **dynamic import**(require 불가 함정) + `createClaudeCLIClient({model:'sonnet'})` 분류 주입 → 파이프라인 실행 → `discovery` 카드 저장 + viewtrap_validation 초안/longtail 입력 반환. ACL 추가. CDP scrapeMetrics는 서버 미주입(로그인 크롬 전제).
+- **검증**: l5-core tsc 0 + discovery-pipeline jest **11/11** + youtube jest 40/40 + video-room 무회귀(737/738, 실패 1=사전존재 wall-clock 플레이키, 격리 시 통과). **라이브 부분 파이프라인 1회 PASS**: 실 검색 "인스타그램 릴스 만드는 방법" 15건→5만+ 8건→실 Sonnet 분류 8건 fit(최고 272,415회), 실데이터 선정이유 생성. 스크립트=`services/youtube/scripts/verify-live-discovery.mjs`.
+- **배포 메모**: l5-core dist + youtube dist + plugin dist(`corepack yarn build @l5/plugin-orchestration`) 재빌드 완료. **NocoBase 재기동 필요(미실행 — 오케스트레이터 일괄)**. dist 경로(`../../../../../../../`)는 `dist/plugin.js` 기준 repo root 해석 확인.
+
+---
+
 ## 🟢 2026-06-10 — M5 완료: 성과 자동 수집 (Analytics → 재학습 ingest)
 
 수동 성과 입력을 OAuth 자동 수집으로 대체. 수동 경로는 폴백으로 유지(동일 ingest 함수).

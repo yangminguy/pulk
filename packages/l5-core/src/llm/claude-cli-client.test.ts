@@ -101,6 +101,22 @@ describe('createClaudeCLIClient', () => {
     expect(calls[0].args).toContain('claude-opus-4-7');
   });
 
+  it('maps sonnet model alias to claude-sonnet-4-6', async () => {
+    const { calls, next } = installSpawnMock();
+    const child = new FakeChild();
+    next(child);
+
+    const client = createClaudeCLIClient({ model: 'sonnet' });
+    const promise = client.complete({ system: 's', user: 'u' });
+    setImmediate(() => {
+      child.stdout.emit('data', makeSuccessPayload('ok'));
+      child.emit('close', 0);
+    });
+
+    await promise;
+    expect(calls[0].args).toContain('claude-sonnet-4-6');
+  });
+
   it('throws claude-cli failed on non-zero exit', async () => {
     const { next } = installSpawnMock();
     const child = new FakeChild();

@@ -155,8 +155,10 @@ describe('runKeyContentWorkflow', () => {
     const step6Prompt = captured.find((p) => p.includes('Step 6:'))!;
     expect(step6Prompt).toContain('현상5'); // step5 산출물 포함
 
+    // R-M7: step10(설득 구조)은 step6(진입 단계)과 병렬 실행 → step6 산출물(rationale)을
+    // 컨텍스트로 받지 않는다. step1~5는 그대로 포함(설득 콘텐츠는 step1~5에서 도출).
     const step10Prompt = captured.find((p) => p.includes('Step 10:'))!;
-    expect(step10Prompt).toContain('욕구 단계 진입'); // step6 rationale 포함
+    expect(step10Prompt).not.toContain('욕구 단계 진입'); // step6 rationale 미포함(병렬)
     expect(step10Prompt).toContain('현상5'); // step5 포함
   });
 
@@ -200,6 +202,52 @@ describe('runKeyContentWorkflow', () => {
     expect(draft.step4_problems.item_problem_candidates[0].problem).toBe(customer_problem);
     expect(draft.step5_funnel.phenomenon[0].content).toContain(customer_problem);
     expect(draft.step10_sales_logic.problem_statement).toBe(customer_problem);
+  });
+
+  // R-M7 병렬화 검증 ────────────────────────────────────────────────────────
+  it('step6와 step10이 병렬 발사된다 (동시 in-flight)', async () => {
+    const captured: string[] = [];
+    const llm = routedLlm(captured);
+    let inFlight = 0;
+    let maxConcurrent = 0;
+    const llmComplete = async (prompt: string) => {
+      inFlight++;
+      maxConcurrent = Math.max(maxConcurrent, inFlight);
+      // 한 마이크로태스크 양보 → 동시 발사 시 둘 다 in-flight 상태가 겹친다.
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight--;
+      return llm(prompt);
+    };
+    await runKeyContentWorkflow({ product }, { llmComplete });
+    // step2‖step3, step6‖step10 → 최소 한 구간에서 동시성 2가 관측되어야 한다.
+    expect(maxConcurrent).toBeGreaterThanOrEqual(2);
+  });
+
+  it('병렬화해도 결과는 순차와 동일 (결정론 산출물 동일성)', async () => {
+    // 같은 라우터를 두 번 돌려도(스텝 순서·병렬 무관) draft가 동일해야 한다.
+    const capturedA: string[] = [];
+    const capturedB: string[] = [];
+    const { draft: a } = await runKeyContentWorkflow({ product }, { llmComplete: routedLlm(capturedA) });
+    const { draft: b } = await runKeyContentWorkflow({ product }, { llmComplete: routedLlm(capturedB) });
+    expect(a).toEqual(b);
+    // step6은 step10과 독립이므로 step10 컨텍스트에 step6 값이 새어들지 않는다.
+    expect(a.step6_entry_decision.selected_entry_stage).toBe('desire');
+    expect(a.step10_sales_logic.cta).toBe('CTA10');
+  });
+
+  it('실측: 스텝당 인위 지연 시 병렬 구간이 wall-clock을 줄인다', async () => {
+    const STEP_DELAY = 30; // ms, 각 LLM 호출당 인위 지연.
+    const llm = routedLlm([]);
+    const llmComplete = async (prompt: string) => {
+      await new Promise((r) => setTimeout(r, STEP_DELAY));
+      return llm(prompt);
+    };
+    const t0 = Date.now();
+    await runKeyContentWorkflow({ product }, { llmComplete });
+    const elapsed = Date.now() - t0;
+    // LLM 스텝 6개(2,3,4,5,6,10). 완전 순차면 6*delay, 병렬 2쌍(2‖3, 6‖10)이면 4 라운드.
+    // 4 라운드 ≈ 4*delay. 여유를 둬 5 라운드 미만이면 병렬 효과 확인.
+    expect(elapsed).toBeLessThan(STEP_DELAY * 5);
   });
 });
 

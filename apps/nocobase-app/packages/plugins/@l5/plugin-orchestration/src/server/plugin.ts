@@ -149,11 +149,23 @@ const {
   reconcileRenderJob,
   evaluateRenderArtifacts,
   buildYoutubeUploadDraftFromBrief,
+  // M1~M3 통합 발굴 파이프라인: 발굴→통계·필터→(옵션)크롤링→Sonnet 분류→후보 + 키/풀링 Step 변환
+  runDiscoveryPipeline,
+  classifyDiscoveredVideos,
+  toKeyViewtrapValidationInput,
+  toPullingViewtrapValidationInput,
+  toLongtailCandidateInputs,
+  buildSelectionReason,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/video-room'));
 
 const {
   createInMemoryVideoFactoryTransport,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/memory'));
+
+// M3 발굴 분류용 Sonnet 클라이언트(모델 고정). 발굴 액션에서만 사용.
+const {
+  createClaudeCLIClient,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/llm/claude-cli-client'));
 
 type ActionContext = {
   app?: any;
@@ -207,7 +219,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -4233,6 +4245,119 @@ function registerCmoResource(app: any, db: any) {
         }
 
         ctx.body = { ok: true, data: { validation } };
+        await next();
+      },
+
+      // POST /api/cmo:runDiscovery  { project_id, query, mode?, search_keyword?, validated_keywords? }
+      // M1~M3 통합: 발굴(YouTube) → 통계+5만+ 필터 → Sonnet 분류 → 후보 산출.
+      // 결과(후보 + viewtrap_validation 초안)를 discovery 카드에 저장하고 반환한다.
+      // CDP 크롤러는 서버에서 미주입(로그인 크롬 전제) → stats+Sonnet 부분 파이프라인.
+      runDiscovery: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const query = String(v.query ?? '').trim();
+        const mode = (String(v.mode ?? 'key').trim() === 'pulling' ? 'pulling' : 'key') as
+          | 'key'
+          | 'pulling';
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!query) ctx.throw(400, 'query is required');
+
+        const projRows = await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const proj = projRows[0];
+
+        const productStr = String(proj.product ?? '').trim();
+        const product = {
+          product_name: productStr || String(proj.title ?? '').trim(),
+          category: String((proj as any).category ?? '').trim() || productStr || '제품/서비스',
+          target_audience: String(proj.target_audience ?? '').trim(),
+          core_offer: String(proj.core_offer ?? productStr).trim() || productStr,
+          business_goal: String(proj.business_goal ?? 'brand_growth').trim(),
+        };
+        const target = product.target_audience || '타깃 미상';
+
+        // 실 발굴 deps 조립 — @l5/youtube는 ESM이라 dynamic import. 자격증명/모델
+        // 없으면 graceful 실패(파이프라인이 단계별 폴백하므로 후보 0개로 반환).
+        let deps: any;
+        try {
+          const yt: any = await import(
+            path.resolve(__dirname, '../../../../../../../services/youtube/dist/index.js')
+          );
+          const creds = yt.loadCredentials();
+          const client = new yt.YouTubeClient(creds);
+          // Sonnet 분류 함수 주입(모델 고정). classifyDiscoveredVideos를 감싼다.
+          const sonnet = createClaudeCLIClient({ model: 'sonnet' });
+          const classify = (videos: any[], m: 'key' | 'pulling') =>
+            classifyDiscoveredVideos(
+              {
+                product,
+                target,
+                videos,
+                mode: m,
+                ...(mode === 'pulling' && proj.key_content_context
+                  ? { key_content_context: String(proj.key_content_context) }
+                  : {}),
+              },
+              { llm: sonnet },
+            );
+          deps = yt.createLiveDiscoveryDeps({ client, searchMaxResults: 25, classify });
+        } catch (err: any) {
+          ctx.throw(400, `discovery deps unavailable: ${err?.message ?? String(err)}`);
+        }
+
+        let result: any;
+        try {
+          result = await runDiscoveryPipeline({ query, product, target, mode }, deps);
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        // 후보 → viewtrap_validation 초안(실데이터 기반 선정이유 포함).
+        const candidates = (result.candidates ?? []).map((c: any) => ({
+          videoId: c.videoId,
+          title: c.title,
+          channelTitle: c.channelTitle,
+          viewCount: c.viewCount,
+          metrics: c.metrics ?? null,
+          verdict: c.classification?.verdict ?? 'ambiguous',
+          selection_reason: buildSelectionReason(c),
+        }));
+
+        let viewtrap_validation_input: any = null;
+        if (result.candidates?.length) {
+          viewtrap_validation_input =
+            mode === 'pulling'
+              ? toPullingViewtrapValidationInput(result.candidates, {
+                  searchKeyword: String(v.search_keyword ?? query),
+                })
+              : toKeyViewtrapValidationInput(result.candidates, {
+                  validatedKeywords: Array.isArray(v.validated_keywords)
+                    ? v.validated_keywords.map((s: any) => String(s))
+                    : [query],
+                });
+        }
+        const longtail_inputs =
+          mode === 'pulling' && result.candidates?.length
+            ? toLongtailCandidateInputs(result.candidates)
+            : [];
+
+        const discoveryData = {
+          mode,
+          query,
+          provenance: result.provenance,
+          candidates,
+          viewtrap_validation_input,
+          longtail_inputs,
+        };
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'discovery',
+          `discovery (${mode}, 후보 ${candidates.length}개)`,
+          discoveryData,
+        );
+
+        ctx.body = { ok: true, data: discoveryData };
         await next();
       },
 

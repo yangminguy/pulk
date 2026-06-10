@@ -54,6 +54,11 @@ const LOW_VIEWS = 1000; // 조회수 1000 미만 → 풀링 노출 부족
 const LlmInsightSchema = InsightCandidateSchema.omit({ id: true });
 const LlmInsightArraySchema = z.array(LlmInsightSchema);
 
+/** null(미수집) 안전 비율 표기. */
+function fmtRate(v: number | null): string {
+  return v == null ? '미수집' : `${Math.round(v * 100)}%`;
+}
+
 function extractJsonArray(raw: string): string {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const body = fenced ? fenced[1] : raw;
@@ -72,9 +77,10 @@ function buildPrompt(input: ExtractCompletionInsightInput): string {
     '',
     `영상(키 콘텐츠): ${key_content_title}`,
     `조회수: ${p.view_count}`,
-    `완료율: ${Math.round(p.completion_rate * 100)}%`,
-    `CTR: ${Math.round(p.ctr * 100)}%`,
+    `완료율: ${fmtRate(p.completion_rate)}`,
+    `CTR: ${fmtRate(p.ctr)}`,
   ];
+  if (p.metrics_note) lines.push(`지표 메모: ${p.metrics_note}`);
   if (p.retention_notes) lines.push(`시청 유지 메모: ${p.retention_notes}`);
   if (p.feedback) lines.push(`정성 피드백: ${p.feedback}`);
   if (pulling_titles?.length) lines.push(`풀링 주제: ${pulling_titles.join(', ')}`);
@@ -98,7 +104,7 @@ function buildFallbackInsights(input: ExtractCompletionInsightInput): InsightCan
   const { performance: p, key_content_title } = input;
   const out: { insight: string; usage: InsightUsage }[] = [];
 
-  if (p.completion_rate < LOW_COMPLETION) {
+  if (p.completion_rate != null && p.completion_rate < LOW_COMPLETION) {
     out.push({
       insight: `완료율 ${Math.round(p.completion_rate * 100)}%로 낮음 → 도입 30초 훅 재검토 (이탈 구간 점검)`,
       usage: 'hook',
@@ -108,7 +114,7 @@ function buildFallbackInsights(input: ExtractCompletionInsightInput): InsightCan
       usage: 'intro',
     });
   }
-  if (p.ctr < LOW_CTR) {
+  if (p.ctr != null && p.ctr < LOW_CTR) {
     out.push({
       insight: `CTR ${Math.round(p.ctr * 100)}%로 낮음 → 썸네일 약속/제목 각도 재검토`,
       usage: 'topic',
@@ -123,9 +129,9 @@ function buildFallbackInsights(input: ExtractCompletionInsightInput): InsightCan
   if (out.length === 0) {
     // 모든 지표가 임계값 이상 → 성공 패턴을 다음 기획에 재사용.
     out.push({
-      insight: `"${key_content_title}"가 성과 양호 (완료율 ${Math.round(
-        p.completion_rate * 100,
-      )}%, CTR ${Math.round(p.ctr * 100)}%) → 동일 훅/주제 패턴 재사용`,
+      insight: `"${key_content_title}"가 성과 양호 (완료율 ${fmtRate(
+        p.completion_rate,
+      )}, CTR ${fmtRate(p.ctr)}) → 동일 훅/주제 패턴 재사용`,
       usage: 'topic',
     });
   }

@@ -72,3 +72,15 @@ export {
   type ViewtrapReferenceAdapter,
   type CreateViewtrapScraperAdapterOptions,
 } from './viewtrap/adapter.js';
+
+// ── CMO M1~M3 통합 — 실 발굴 deps 조립 ───────────────────────────────────────
+export {
+  createLiveDiscoveryDeps,
+  type LiveDiscoveryDeps,
+  type CreateLiveDiscoveryDepsOptions,
+  type DiscoverySearchResultMirror,
+  type DiscoveryVideoStatsMirror,
+  type DiscoveryScrapedMetricsMirror,
+  type DiscoveredVideoMirror,
+  type ClassificationResultMirror,
+} from './discovery/deps.js';

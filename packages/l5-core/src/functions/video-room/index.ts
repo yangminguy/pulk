@@ -129,5 +129,7 @@ export * from './performance-ingestion';
 export * from './completion-insight-extraction';
 // M3 발굴 의도 분류: 크롤링 결과 → 상품·타깃 적합/모호/부적합 (모델 = Claude Sonnet 고정).
 export * from './discovery-classification';
+// M1~M3 통합 발굴 파이프라인: 발굴→통계·필터→(옵션)크롤링→Sonnet 분류→후보 + 키/풀링 Step 변환.
+export * from './discovery-pipeline';
 // M5 성과 자동 수집: YouTube Analytics 응답 → 동일 ingest 입력 매핑(순수).
 export * from './performance-auto-mapping';
