@@ -38,11 +38,10 @@
 
 ## 🔁 재학습 무인화 (M5)
 
-- [ ] **M5. 성과 자동 수집** (R7 잔여)
-  - 현재 성과 입력 수동 → **오늘 발급한 OAuth로 디립다 채널 analytics 자동 수집** 가능.
-  - 업로드한 영상 성과(노출·CTR·시청지속) → `performance-ingestion.ts` → `completion-insight-extraction.ts` → 다음 기획 반영.
-  - M2 analytics 클라이언트 재사용. 조회·시청·구독은 targeted API로 즉시 가능.
-  - **노출·CTR 전제(M2 실측)**: GCP에 `youtubereporting.googleapis.com` 활성화 + `channel_reach_basic_a1` job 생성(데이터 비동기, 최대 ~48h). targeted API로는 불가.
+- [x] **M5. 성과 자동 수집** *(2026-06-10 완료)*
+  - 수집 러너 `services/youtube/src/performance/collect.ts` `collectVideoPerformance`(video 디멘전→축소→채널합계 폴백) + l5-core 매핑 `performance-auto-mapping.ts`(`parseVideoAnalyticsRecords`/`mapAnalyticsToPerformanceInput`)로 자동 수집→기존 `recordVideoPerformance` ingest 연결. 수동 경로 폴백 유지.
+  - 검증: auto-mapping jest 6/6 + collect jest 4/4 + 양쪽 tsc 0. **라이브 1회 실수신**(디립다 28일): scope=video, 영상 2건(조회 1391·완료율 30.18% 등), dist로 parse→map→ingest 체인 통과.
+  - **노출·CTR**: targeted API 미지원(M2 실측) → ctr/impressions=null + metrics_note 사유. Reporting API(`channel_reach_basic_a1`, `youtubereporting.googleapis.com` 활성화 + job + 비동기 ~48h)는 후속.
 
 ## 🛠️ 운영·개선 (M6~M8, 병행)
 

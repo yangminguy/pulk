@@ -3,6 +3,18 @@
 > 최종 업데이트: 2026-06-10. 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
 > 300줄 넘으면 오래된 항목을 `docs/archive/`로 이관하고 요약만 남긴다.
 
+## 🟢 2026-06-10 — M5 완료: 성과 자동 수집 (Analytics → 재학습 ingest)
+
+수동 성과 입력을 OAuth 자동 수집으로 대체. 수동 경로는 폴백으로 유지(동일 ingest 함수).
+
+- **수집 러너**: `services/youtube/src/performance/collect.ts` — `collectVideoPerformance(client, {startDate,endDate,videoIds?,maxResults?})`. Analytics v2 `dimensions=['video']`+`sort=-views`로 영상별 views/estimatedMinutesWatched/averageViewDuration/averageViewPercentage/subscribersGained 수집. 폴백 사다리: ①전체메트릭 ②핵심메트릭 축소(400 시) ③채널 합계(video 디멘전 실패 시 `scope='channel'`+사유). index.ts에 export 추가(최소 diff).
+- **매핑(l5-core 순수함수)**: `performance-auto-mapping.ts` — `parseVideoAnalyticsRecords(records)`→`VideoAnalyticsMetrics[]`, `mapAnalyticsToPerformanceInput({project_id,metrics,range})`→기존 `RecordVideoPerformanceInput`. completion_rate=averageViewPercentage/100(0~1 클램프), retention_notes에 `[자동수집:YouTube Analytics …]` 출처 표기. l5-core는 @l5/youtube 비의존(caller가 records 전달).
+- **노출/CTR 제약 반영(M2 실측)**: ctr/impressions=null 고정 + `metrics_note`에 사유(Reporting API `channel_reach_basic_a1` 활성화 후 채움). `performance-ingestion.ts` 스키마는 이미 nullable이라 수정 없음 — completion_rate/ctr `.nullable()`, summary는 null이면 '미수집' 표기.
+- **검증**: l5-core auto-mapping jest **6/6** + youtube collect jest **4/4** + 양쪽 tsc 0. **라이브 1회 실수신**(디립다 28일 2026-05-13..06-10): `scope=video`(폴백 불필요), 영상 2건 — `r87S8a0SclA` 조회 1391·시청 222분·평균21초·완료율 30.18%, `z8ZlhPym1SM` 조회 4·완료율 22.66%. 동일 records를 빌드된 dist로 parse→map→`recordVideoPerformance`까지 통과 확인(summary "조회수 1,391 · 완료율 30% · CTR 미수집", ctr/impressions=null+note set).
+- **메모**: 라이브 스크립트 = `services/youtube/scripts/verify-live-collect.mjs`(신규). l5-core dist는 이번 검증에 사용한 빌드 기준 최신. 폴백 사다리 ②③은 라이브 미발동(unit test로 커버).
+
+---
+
 ## 🟢 2026-06-10 — M4 완료: 영상 제작 파이프라인 마감 (렌더 이후 구간)
 
 Brief 전달(R6) 이후가 전부 연결됨. 도메인은 전부 `l5-core/src/functions/video-room/render-pipeline.ts`(신규), plugin은 배선만.

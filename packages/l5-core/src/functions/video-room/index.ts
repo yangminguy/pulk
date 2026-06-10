@@ -127,3 +127,7 @@ export type {
 // R7 성과 재학습 루프: 완료 영상 성과(수동 입력) → 인사이트 → 다음 기획 입력.
 export * from './performance-ingestion';
 export * from './completion-insight-extraction';
+// M3 발굴 의도 분류: 크롤링 결과 → 상품·타깃 적합/모호/부적합 (모델 = Claude Sonnet 고정).
+export * from './discovery-classification';
+// M5 성과 자동 수집: YouTube Analytics 응답 → 동일 ingest 입력 매핑(순수).
+export * from './performance-auto-mapping';
