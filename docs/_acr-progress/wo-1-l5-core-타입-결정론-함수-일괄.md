@@ -169,3 +169,33 @@ zod 스키마(외부 입력 경계): `TitleDevelopmentReferenceSchema` 1개만 �
 - S3 시그니처·S4 파일 위치 그대로 구현. PRD §21.2 의사코드와 한국어 사유 문구를 그대로 사용.
 - `generateCrossCombinations`의 thumbnail_direction은 source ref의 `thumbnail_structure` 기반 문자열로 채움. `awkwardness_score`는 0 초기화, `passed`/`selected_for_next_step`은 false 초기화(LLM 판정 전).
 - id는 `crypto.randomUUID()` (node:crypto).
+
+---
+
+## Phase: test — 실패 테스트 작성 (red)
+
+### 한 일
+- 신규 테스트 파일 생성: `packages/l5-core/src/functions/cmo-strategy/__tests__/title-development.test.ts`
+- spec S5의 AC-S2~S11 전부 + zod 스키마(`TitleDevelopmentReferenceSchema`) 테스트까지 12개 describe / 26 케이스 작성.
+  - 경계값 고정: 조회수 49,999/50,000 · 점수 100/84/85/70/69 · 글자수 35/36 · grapheme 14 · 조합 길이 4
+  - PRD §25.1(정상)·§25.2(레퍼런스 1개)·§25.3(조회수 3만 탈락) 시나리오 반영
+
+### red 실행 결과 (2026-06-10)
+```text
+$ corepack pnpm jest src/functions/cmo-strategy/__tests__/title-development.test.ts  (cwd: packages/l5-core)
+FAIL src/functions/cmo-strategy/__tests__/title-development.test.ts
+  ● Test suite failed to run
+    Cannot find module '../title-development' from 'src/functions/cmo-strategy/__tests__/title-development.test.ts'
+Test Suites: 1 failed, 1 total
+```
+구현 파일(`title-development.ts`, `title-development-types.ts`)이 아직 없어 import 단계에서 실패 — 의도된 red. 커밋 안 함.
+
+### 이번 phase에서 내린 결정
+- `isAwkward(score)`: PRD에 수치 임계가 없음 → **score > 0이면 어색** (PRD §9.6 초기값 0=정상 근거). 점수 스케일은 §9.5 감점 항목 누적으로 해석.
+- `validateTitleReferences`의 `failed_references[].reasons`는 `validateTitleReference`의 한국어 사유 문자열 그대로.
+- 조합 3·4번(`*_thumbnail_text_as_title_*`)은 `title_draft === source ref의 thumbnail_text` 를 테스트로 고정.
+
+### 다음 phase(구현)가 알아야 할 점
+- 위 테스트를 계약으로 삼아 `title-development-types.ts`(§19 타입 9개) + `title-development.ts`(S3 함수 10개 + zod 스키마 1개) 구현.
+- `cmo-strategy/index.ts`에 export 2줄 추가 필요.
+- 환경 주의: 이 worktree에서 `pnpm` 단독 명령은 없음 → `corepack pnpm` 사용. jest는 l5-core 디렉토리에서 실행.
