@@ -17,6 +17,12 @@
         <string>/usr/local/bin:/Users/wonminyang/.npm-global/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>NODE_ENV</key>
         <string>production</string>
+        <key>NATIVE_ORCHESTRATION</key>
+        <string>on</string>
+        <key>NOCOBASE_URL</key>
+        <string>http://localhost:13000</string>
+        <!-- NOCOBASE_TOKEN은 시크릿 → 커밋 금지. 배포 시 ~/Library/LaunchAgents 복사본에
+             PlistBuddy로 주입: /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:NOCOBASE_TOKEN string <TOKEN>" -->
     </dict>
     <key>RunAtLoad</key>
     <true/>

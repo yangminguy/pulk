@@ -1404,6 +1404,38 @@ function registerNativePhaseRunsCollection(db: any) {
   }));
 }
 
+// native_phase_runs 물리 테이블 보장(defineCollection은 모델만 등록 → DDL 필요).
+// 다른 L5 컬렉션과 동일 규약: CREATE TABLE IF NOT EXISTS + camelCase 타임스탬프. idempotent.
+async function ensureNativePhaseRunsTable(db: any) {
+  const dialect = db.sequelize?.getDialect?.();
+  if (dialect === 'sqlite') return;
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS native_phase_runs (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        business_id text,
+        l5_task_id text,
+        task_title text,
+        phase_name text,
+        agent text,
+        runtime text,
+        status text,
+        output text,
+        diff_summary text,
+        changed_files int,
+        verdict text,
+        started_at timestamptz,
+        ended_at timestamptz,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure native_phase_runs table: ${message}`);
+  }
+}
+
 // P3-2 — ensure the curation soft-delete columns exist on the existing table.
 // Additive, nullable, idempotent — safe to run on every boot.
 async function ensureCurationColumns(db: any) {
@@ -1430,6 +1462,7 @@ export default class PluginExecutiveMonitorServer extends Plugin {
     this.app.logger.info('PluginExecutiveMonitorServer loaded');
     registerFounderMemoryCollection(this.db);
     registerNativePhaseRunsCollection(this.db);
+    await ensureNativePhaseRunsTable(this.db);
     await ensureBusinessIdIndex(this.db);
     await ensureCurationColumns(this.db);
     startHermesScheduler(this.db, this.app.logger);
