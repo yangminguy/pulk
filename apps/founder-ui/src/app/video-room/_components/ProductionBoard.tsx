@@ -5,6 +5,7 @@ import { blockState } from '../_lib/phases'
 import type { CmoCard, CmoGate, ScriptBeat } from '../_lib/types'
 import { FactoryJobCard, CardShell } from './cards'
 import ScriptBeatEditor from './ScriptBeatEditor'
+import ScriptDraftPanel from './ScriptDraftPanel'
 import DecisionPanel from './DecisionPanel'
 import StageGate from './StageGate'
 
@@ -37,8 +38,10 @@ export default function ProductionBoard({
   const [factoryErr, setFactoryErr] = useState<string | null>(null)
   const [factoryResult, setFactoryResult] = useState<{ job_path: string; validated: boolean } | null>(null)
 
-  // P0-2 fix: use backend stage keys
-  const productionStages = ['script_planning', 'script_draft', 'reading_script', 'voice_recording', 'slide_deck', 'rendering']
+  // P0-2 fix: use backend stage keys.
+  // script_planning/script_draft는 ScriptDraftPanel(자동초안 승인)이 전담 렌더하므로
+  // raw JSON 중복 표시를 막기 위해 여기 raw 목록에서 제외한다.
+  const productionStages = ['reading_script', 'voice_recording', 'slide_deck', 'rendering']
   const productionCards = cards.filter(c => productionStages.includes(c.stage))
 
   // Script beat data
@@ -68,6 +71,11 @@ export default function ProductionBoard({
   return (
     <div>
       <div className="j-overline" style={{ marginBottom: 8 }}>Production Board</div>
+
+      {/* R4 원고 초안 — script_planning ~ script_approval (자동초안 → 승인/수정) */}
+      <StageGate title="원고 초안 (v3 · 자동초안 승인)" state={blockState({ from: 'script_planning', to: 'script_approval' }, currentStatus)}>
+        <ScriptDraftPanel projectId={projectId} cards={cards} onRefresh={onRefresh} />
+      </StageGate>
 
       {/* Script Beat Editor — 원고 단계 */}
       <StageGate title="원고 (장면 Beat)" state={blockState({ from: 'script_planning', to: 'script_approval' }, currentStatus)}>
@@ -290,21 +298,14 @@ export default function ProductionBoard({
 // ── Production Action Panel ───────────────────────────────────────────────────
 export function ProductionActionPanel({
   gates,
-  readyToAdvance,
   onDecide,
-  onAdvance,
   deciding,
-  advancing,
 }: {
   gates: CmoGate[]
-  readyToAdvance: boolean
   onDecide: (gateId: string, decision: 'approved' | 'needs_revision' | 'rejected') => void
-  onAdvance: () => void
   deciding: string | null
-  advancing: boolean
 }) {
   const productionGates = gates.filter(g => g.page === 'production' || g.gate_type === 'script_approval')
-  const hasPendingGates = productionGates.some(g => g.status === 'pending')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -312,11 +313,8 @@ export function ProductionActionPanel({
 
       <DecisionPanel
         gates={productionGates}
-        readyToAdvance={readyToAdvance && !hasPendingGates}
         onDecide={onDecide}
-        onAdvance={onAdvance}
         deciding={deciding}
-        advancing={advancing}
       />
     </div>
   )

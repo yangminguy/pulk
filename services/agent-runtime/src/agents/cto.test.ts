@@ -129,11 +129,23 @@ const VALID_LLM_PHASES = {
       risk_level: 'D2',
     },
     {
+      kind: 'integrate',
+      name: '통합·배선',
+      runtime: 'claude',
+      read_only: false,
+      dependsOn: ['implement'],
+      acceptance_criteria: ['진입점 등록', '고립 아님'],
+      verifier_hint: '신규 export가 진입점에서 import되는지 확인',
+      prompt_packet: 'wire into orchestrator',
+      expected_output: 'wired',
+      risk_level: 'D2',
+    },
+    {
       kind: 'review',
       name: '리뷰',
       runtime: 'claude',
       read_only: true,
-      dependsOn: ['implement'],
+      dependsOn: ['integrate'],
       acceptance_criteria: ['LGTM 또는 fix list'],
       verifier_hint: '리뷰 코멘트 명시',
       prompt_packet: 'review diff',
@@ -180,7 +192,7 @@ describe('runCTOAgent — dev workflow SOP enforcement (LLM planner)', () => {
     const out = await runCTOAgent({ task: TASK }, { llm });
 
     expect(out.clarifying_questions).toBeUndefined();
-    expect(out.acr_intent.phases).toHaveLength(6);
+    expect(out.acr_intent.phases).toHaveLength(7);
     // L5 single-approval: any intent reaching dispatch has cleared L5's gate
     // (the Hermes dispatcher only forwards approval_required=false tasks), so
     // ACR can clear its own manual_founder gate from this flag.
@@ -190,6 +202,7 @@ describe('runCTOAgent — dev workflow SOP enforcement (LLM planner)', () => {
       '스펙 작성',
       '실패 테스트',
       '구현',
+      '통합·배선',
       '리뷰',
       '커밋',
     ]);
@@ -201,13 +214,14 @@ describe('runCTOAgent — dev workflow SOP enforcement (LLM planner)', () => {
 
     const out = await runCTOAgent({ task: TASK }, { llm });
 
-    // Deterministic FEATURE fallback returns 6 phases.
-    expect(out.acr_intent.phases).toHaveLength(6);
+    // Deterministic FEATURE fallback returns 7 phases (incl. integrate).
+    expect(out.acr_intent.phases).toHaveLength(7);
     expect(out.acr_intent.phases.map((p) => p.name)).toEqual([
       '오픈소스 조사',
       '스펙 작성',
       '실패 테스트 작성',
       '구현',
+      '통합·배선',
       '리뷰',
       '커밋',
     ]);
@@ -218,25 +232,28 @@ describe('runCTOAgent — dev workflow SOP enforcement (LLM planner)', () => {
 
     const out = await runCTOAgent({ task: TASK }, { llm });
 
-    // TASK title "Add login validation" → FEATURE (6 phases)
-    expect(out.acr_intent.phases).toHaveLength(6);
+    // TASK title "Add login validation" → FEATURE (7 phases incl. integrate)
+    expect(out.acr_intent.phases).toHaveLength(7);
     expect(out.acr_intent.phases[0]!.name).toBe('오픈소스 조사');
-    expect(out.acr_intent.phases[5]!.name).toBe('커밋');
+    expect(out.acr_intent.phases[4]!.name).toBe('통합·배선');
+    expect(out.acr_intent.phases[6]!.name).toBe('커밋');
   });
 
   it('falls back to deterministic SOP when no LLM is available', async () => {
     const out = await runCTOAgent({ task: TASK }, { llm: null });
 
-    // TASK title "Add login validation" → FEATURE (6 phases)
-    expect(out.acr_intent.phases).toHaveLength(6);
-    // M9.3 tier→runtime: T1→claude, T2→codex, T3→antigravity. FEATURE phases map
-    // research/spec/review (T1)→claude, test/implement (T2)→codex, commit (T3)→
-    // antigravity — the verified-live claude3/codex2/agy1 distribution.
+    // TASK title "Add login validation" → FEATURE (7 phases incl. integrate).
+    expect(out.acr_intent.phases).toHaveLength(7);
+    // tier→runtime: T1→claude, T2→codex, T3→antigravity. Code/test/integrate
+    // phases are pinned to T1=claude (2026-06-07: codex ignored target paths when
+    // duplicate basenames existed; claude respects them). Only commit (T3) runs on
+    // antigravity.
     expect(out.acr_intent.phases.map((p) => p.runtime)).toEqual([
       'claude',      // research (T1)
       'claude',      // spec (T1)
-      'codex',       // test (T2)
-      'codex',       // implement (T2)
+      'claude',      // test (T1)
+      'claude',      // implement (T1)
+      'claude',      // integrate (T1)
       'claude',      // review (T1)
       'antigravity', // commit (T3)
     ]);
@@ -273,15 +290,30 @@ describe('runCTOAgent — deterministic phases (default)', () => {
 
     expect(llm.calls()).toBe(0); // model never invoked
     expect(out.clarifying_questions).toBeUndefined();
-    expect(out.acr_intent.phases).toHaveLength(6);
+    expect(out.acr_intent.phases).toHaveLength(7);
     expect(out.acr_intent.phases.map((p) => p.name)).toEqual([
       '오픈소스 조사',
       '스펙 작성',
       '실패 테스트 작성',
       '구현',
+      '통합·배선',
       '리뷰',
       '커밋',
     ]);
+  });
+
+  // E1 regression: workers repeatedly skipped code phases as "이미 완료/clean
+  // branch" (execution-logs.json). Code-producing phases must carry a NO-SKIP
+  // directive; non-producing phases (read-only / commit) must not.
+  it('injects NO-SKIP into code-producing phases only', async () => {
+    const out = await runCTOAgent({ task: TASK }, { llm: null });
+    const byName = (n: string) => out.acr_intent.phases.find((p) => p.name === n)!;
+    for (const name of ['실패 테스트 작성', '구현', '통합·배선']) {
+      expect(byName(name).prompt_packet).toMatch(/NO-SKIP|변경이 0이면/);
+    }
+    for (const name of ['오픈소스 조사', '스펙 작성', '리뷰', '커밋']) {
+      expect(byName(name).prompt_packet).not.toMatch(/NO-SKIP/);
+    }
   });
 
   it('classifies a single-component task as SMALL_FIX (4 phases) without the LLM', async () => {

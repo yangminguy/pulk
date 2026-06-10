@@ -451,8 +451,109 @@ export type CmoCreateProjectInput = {
   product: string
   target_audience: string
   business_goal: string
+  /** 고객이 겪는 핵심 문제 — 프로젝트 생성 시 1회 입력(키 콘텐츠 분석 입력). */
+  customer_problem?: string
+  /** 핵심 제안/기능 요약 — 프로젝트 생성 시 1회 입력. */
+  core_offer?: string
   business_id?: string | null
   project_type?: string | null
+}
+
+// CMO v3 키 콘텐츠 — 주제 후보 1개. 본문구조·도입방향·CTA 없음(제작 단계로).
+export type KeyContentCandidate = {
+  id: string
+  title: string
+  thumbnail_promise: string
+  selection_reasons: {
+    viewtrap: string
+    feature_benefit: string
+    customer_problem: string
+    funnel_application: string
+  }
+}
+// CMO v3 풀링 — 풀링 주제 후보 1개. 본문구조·도입방향·CTA 없음(제작 단계로).
+// shape는 l5-core PullingCandidate 도메인 계약과 동일.
+export type PullingCandidate = {
+  id: string
+  order: number
+  title: string
+  selection_reasons: {
+    consumer_stage: string
+    bridge_to_key: string
+    search_demand: string
+    problem_addressed: string
+  }
+}
+// CMO v3 R7 성과 재학습 — 완료 영상 성과(수동 입력) + 추출 인사이트.
+// shape는 l5-core PerformanceRecord / InsightCandidate 도메인 계약과 동일.
+export type VideoPerformanceRecord = {
+  project_id: string
+  view_count: number
+  completion_rate: number
+  ctr: number
+  retention_notes?: string
+  feedback?: string
+  summary: string
+}
+export type CompletionInsightCandidate = {
+  id: string
+  insight: string
+  usage: 'hook' | 'intro' | 'pulling' | 'topic'
+}
+// CMO v3 R4 제작 — 썸네일 후보 1개. shape는 l5-core ThumbnailCandidate 도메인 계약과 동일.
+export type ThumbnailCandidate = {
+  candidate_id: string
+  copy: string
+  visual_direction: string
+  click_logic: string
+  used_insights: string[]
+}
+export type ThumbnailPlanDraft = {
+  content_id: string
+  thumbnail_direction: string
+  candidates: ThumbnailCandidate[]
+  recommended: string
+  why_recommended: string
+  risk_notes: string[]
+}
+// CMO v3 R4 제작 — 원고 초안(도입30초 + 로직블록 + 통합원고 + QA).
+export type ScriptDraftResult = {
+  intro_30s: {
+    first_sentence: string
+    hook_type: string
+    tension: string
+    viewer_promise: string
+    script: string
+    used_materials: string[]
+    used_script_insights: string[]
+    why_it_works: string
+  }
+  logic_blocks: {
+    block_id: string
+    draft: string
+    used_materials: string[]
+    used_voc_lines: string[]
+    used_claims: string[]
+    transition_out: string
+    risk_notes: string[]
+  }[]
+  integrated_script: {
+    full_script: string
+    section_map: string[]
+    removed_repetition: string[]
+    added_transitions: string[]
+    strategy_alignment_notes: string[]
+  }
+  qa: {
+    strategy_fit_score: number
+    audience_fit_score: number
+    voice_fit_score: number
+    sales_logic_score: number
+    fact_safety_score: number
+    overall_pass: boolean
+    missing_parts: string[]
+    revision_requests: string[]
+  }
 }
 export type CmoSaveCardInput = {
   project_id: string
@@ -566,6 +667,13 @@ export const api = {
       body: JSON.stringify({ gate_id, decision, note }),
     }).then(r => unwrap(r)),
 
+  // 새 보드 흐름(R1/R4 등)의 승인 게이트 통과 — pending gate row가 없을 때 사장님 권한으로 전진.
+  cmoApproveStageGate: (project_id: string) =>
+    request<{ data: { ok: boolean; data: { status: string; gate_id: string } } }>('/api/cmo:approveStageGate', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)) as Promise<{ status: string; gate_id: string }>,
+
   cmoSaveCard: (input: CmoSaveCardInput) =>
     request<{ data: { ok: boolean; data: { card_id: string } } }>('/api/cmo:saveCard', {
       method: 'POST',
@@ -661,6 +769,130 @@ export const api = {
     request<{ data: { ok: boolean; data: { factory_result_url?: string } } }>('/api/cmo:sendBriefToFactory', {
       method: 'POST',
       body: JSON.stringify(params),
+    }).then(r => unwrap(r)),
+
+  // CMO v3 — stage guides: { [status]: { label, focus } } for StepProgressRail.
+  cmoGetStageGuides: () =>
+    request<{ data: { ok: boolean; data: { guides: Record<string, { label: string; focus: string }> } } }>('/api/cmo:getStageGuides', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }).then(r => unwrap(r)) as Promise<{ guides: Record<string, { label: string; focus: string }> }>,
+
+  // CMO v3 키 콘텐츠 — 자동분석 11스텝 → 서로 다른 주제 후보 3개 + 분석 진행률(0~8) 반환.
+  // 상품·고객문제는 프로젝트 생성 시 이미 받았으므로 인자 없이 호출 가능.
+  cmoProposeKeyContentDraft: (project_id: string) =>
+    request<{ data: { ok: boolean; data: { candidates: KeyContentCandidate[]; progress: number } } }>('/api/cmo:proposeKeyContentDraft', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)) as Promise<{ candidates: KeyContentCandidate[]; progress: number }>,
+
+  // CMO v3 키 콘텐츠 — 사장님이 후보 1개 선택 → 풀링 입력 확정 + 다음 단계 advance.
+  cmoSelectKeyContentCandidate: (project_id: string, candidate_id: string) =>
+    request<{ data: { ok: boolean; data: { choice: unknown; status: string | null } } }>('/api/cmo:selectKeyContentCandidate', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, candidate_id }),
+    }).then(r => unwrap(r)) as Promise<{ choice: unknown; status: string | null }>,
+
+  // CMO v3 키 콘텐츠 11스텝 — 사장님 편집본 저장.
+  cmoSaveKeyContentStep: (project_id: string, step: string, data: unknown) =>
+    request<{ data: { ok: boolean; data: unknown } }>('/api/cmo:saveKeyContentStep', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, step, data }),
+    }).then(r => unwrap(r)),
+
+  // CMO v3 키 콘텐츠 11스텝 — Step8 Viewtrap 검증 제출.
+  cmoSubmitViewtrapValidation: (project_id: string, payload: {
+    validated_keywords: string[]
+    candidate_titles: string[]
+    performance_score: 'normal' | 'good' | 'great'
+    contribution_score: 'normal' | 'good' | 'great'
+    growth_status: 'growing' | 'stalled' | 'unknown'
+    channel_value_risk: boolean
+    person_value_risk: boolean
+  }) =>
+    request<{ data: { ok: boolean; data: { validation: { verdict: 'use' | 'watch' | 'reject'; [key: string]: unknown } } } }>('/api/cmo:submitViewtrapValidation', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, payload }),
+    }).then(r => unwrap(r)) as Promise<{ validation: { verdict: 'use' | 'watch' | 'reject'; [key: string]: unknown } }>,
+
+  // CMO v3 키 콘텐츠 11스텝 — Step11 확정.
+  cmoCommitKeyContentPlan: (project_id: string, payload: {
+    title: string
+    thumbnail_promise: string
+    intro_direction: string
+    body_structure: string[]
+    cta: string
+  }) =>
+    request<{ data: { ok: boolean; data: { approved_topic: unknown } } }>('/api/cmo:commitKeyContentPlan', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, payload }),
+    }).then(r => unwrap(r)) as Promise<{ approved_topic: unknown }>,
+
+  // CMO v3 풀링 — 선택된 키 콘텐츠로 시청자를 끌어오는 풀링 주제 후보 N개 자동 제안.
+  // 키 콘텐츠는 이미 택1 확정됨 → 인자는 project_id만. pulling_candidates 카드 upsert.
+  cmoProposePullingCandidates: (project_id: string) =>
+    request<{ data: { ok: boolean; data: { candidates: PullingCandidate[]; progress?: number } } }>('/api/cmo:proposePullingCandidates', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)) as Promise<{ candidates: PullingCandidate[]; progress?: number }>,
+
+  // CMO v3 풀링 — 사장님이 풀링 세트를 통째로 승인 → pulling_plan 확정 + 다음(제작) 단계 advance.
+  cmoCommitPullingPlan: (project_id: string) =>
+    request<{ data: { ok: boolean; data: { key_topic_title: string; pulling_topics: PullingCandidate[] } } }>('/api/cmo:commitPullingPlan', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)) as Promise<{ key_topic_title: string; pulling_topics: PullingCandidate[] }>,
+
+  // CMO v3 R4 제작 — 확정 키콘텐츠 + 전략 컨텍스트 → 썸네일 후보 N개 자동 제안.
+  cmoProposeThumbnailPlanDraft: (project_id: string) =>
+    request<{ data: { ok: boolean; data: ThumbnailPlanDraft } }>('/api/cmo:proposeThumbnailPlanDraft', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)) as Promise<ThumbnailPlanDraft>,
+
+  // CMO v3 R4 제작 — 사장님이 썸네일 후보 1개 택1 → thumbnail_choice 확정 + 다음 단계 advance.
+  cmoCommitThumbnailPlan: (project_id: string, candidate_id: string) =>
+    request<{ data: { ok: boolean; data: { selected: ThumbnailCandidate; status: string | null } } }>('/api/cmo:commitThumbnailPlan', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, candidate_id }),
+    }).then(r => unwrap(r)) as Promise<{ selected: ThumbnailCandidate; status: string | null }>,
+
+  // CMO v3 R4 제작 — 전략 brief/자료 → 도입30초 + 로직블록 + 통합원고 + QA 초안 자동 생성.
+  cmoProposeScriptDraft: (project_id: string) =>
+    request<{ data: { ok: boolean; data: ScriptDraftResult } }>('/api/cmo:proposeScriptDraft', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)) as Promise<ScriptDraftResult>,
+
+  // CMO v3 R4 제작 — 사장님 원고 승인 → 다음 단계 advance(script_approval 게이트 전까지).
+  cmoCommitScriptDraft: (project_id: string) =>
+    request<{ data: { ok: boolean; data: { status: string | null } } }>('/api/cmo:commitScriptDraft', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)) as Promise<{ status: string | null }>,
+
+  // CMO v3 R7 성과 재학습 — 완료 영상 성과(수동 입력) 기록 + 인사이트 추출.
+  cmoRecordVideoPerformance: (
+    project_id: string,
+    performance_data: { view_count: number; completion_rate: number; ctr: number; retention_notes?: string; feedback?: string },
+  ) =>
+    request<{ data: { ok: boolean; data: { performance: VideoPerformanceRecord; insights: CompletionInsightCandidate[] } } }>('/api/cmo:recordVideoPerformance', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, performance_data }),
+    }).then(r => unwrap(r)) as Promise<{ performance: VideoPerformanceRecord; insights: CompletionInsightCandidate[] }>,
+
+  cmoGetCompletedVideoInsights: (project_id: string) =>
+    request<{ data: { ok: boolean; data: { insights: CompletionInsightCandidate[]; performance: VideoPerformanceRecord | null } } }>('/api/cmo:getCompletedVideoInsights', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)) as Promise<{ insights: CompletionInsightCandidate[]; performance: VideoPerformanceRecord | null }>,
+
+  // CMO v3 skill-chain execution — runs CmoOrchestrator with default rule-based selection.
+  // D3+ skills pause execution and return pending_skills for founder approval.
+  cmoRunContentStrategy: (project_id: string, task?: Record<string, unknown>) =>
+    request<{ data: { ok: boolean; data: { skill_results: unknown[]; handler_result: unknown; pending_skills: string[] } } }>('/api/cmo:runContentStrategy', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, ...(task ? { task } : {}) }),
     }).then(r => unwrap(r)),
 
   closeInstruction: (id: string) =>

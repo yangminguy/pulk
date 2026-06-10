@@ -1,5 +1,27 @@
 # DECISIONS — L5 Business OS
 
+## 2026-06-09 — CMO PRD v3 정본: video-room 도메인 유지 + orchestrator 얇은 레이어 (트랙 B)
+
+**컨텍스트**: CMO 콘텐츠 전략 시스템 v3(PRD `docs/prd/cmo-content-strategy-v3.md`, 10 Phase)를 ACR로 구현하다 "built-but-not-wired"로 멈춤. 코드 조사 결과 **두 갈래가 중복 병존**: 기존 `video-room/`(25단계 v3.1, 509테스트, thumbnail/intro/script/voice/brief 등 도메인 함수·타입 대부분 완비)와 신규 `cmo-orchestrator/`(PRD v3 재설계, 인프라 + PoC 스킬 2개만). Key Content 11스텝은 video-room에 구현됐으나 orchestrator에 미등록(고립), types 5/10. **정본을 안 정하면 트랙 B가 또 중복 생산.**
+
+**결정**: **정본 ① — `video-room/`을 CMO 도메인 정본으로 유지하고, `cmo-orchestrator/`는 스킬 선택·순서·승인게이트만 지휘하는 얇은 레이어로 둔다.** 각 AgentSkill = video-room 순수함수를 호출하는 5~15줄 어댑터. 사장님 방향("기존 자산 최대한 활용")에 정합. 대안 ②(orchestrator로 모든 로직 이전)는 509테스트 + NocoBase/UI 배선 전체 마이그레이션이라 위험·시간 과다로 배제. 대안 ③(두 구조 분리 유지)는 중복 영속이라 배제.
+
+**범위/실행**: 전체 10 Phase end-to-end 정렬. 진짜 신규는 P4(Pulling 12스텝)·P5(Viewtrap 풀링: 핫비디오/노출확률/롱테일)·P6(Content Strategy Package 조립)·P10(slide-deck LLM 생성부)뿐 — 타입은 types.ts에 이미 존재. 나머지는 기존 자산 재활용 + 얇은 스킬 래핑. sub-agent agent team + Workflow로 Stage1(도메인 병렬)→Stage2(스킬 병렬)→Stage3(직렬 통합 배선)→Stage4(검증). 공유 파일(배럴·registry·types.ts)은 Stage3 단일 agent 직렬 병합으로 충돌 방지. 트랙 A(CTO `cto-*`/agent-runtime)와 파일 경계 분리 병렬 — 같은 날 트랙 A가 신설한 `integrate` phase를 트랙 B는 Stage3로 수동 실행한 셈으로 정합.
+
+**검증**: l5-core typecheck 0, `jest video-room cmo-orchestrator slide-deck` 53 suites/692 tests GREEN(이전 509 → +183, 회귀 0). 구버전 `video-room/pulling-content.ts`(5세트 퍼널)는 신규 `pulling-content-planning.ts`(12스텝)와 병존 — 후속 정리 시 @deprecated 위임 명시 권장.
+
+**남은 것(라이브)**: NocoBase plugin-orchestration cmo 액션 노출 + founder-ui /video-room 연결 + 실 DB E2E(헤드리스 불가, 별도 세션). 미커밋.
+
+## 2026-06-09 — CTO SOP에 integrate(통합·배선) phase 신설: "built but not wired" 차단
+
+**컨텍스트**: 사장님 — ACR 기반 자동 개발에서 산출물이 "절반에서 멈추고 연결 안 된" 채 흩어진다. 신규 `cmo-orchestrator/`가 phase 단위로 일부만 생기고 orchestrator·기존 자산에 배선되지 않은 채 멈췄는데 빌드는 GREEN(typecheck 0, key-content 59/59). 근본 원인 = CTO dev-workflow SOP(FEATURE: research→spec→test→implement→review→commit)에 "통합/배선" 단계가 1급으로 없다. implement 합격기준이 "테스트 green + 변경 범위 한정"뿐이라, 새 파일이 진입점에 등록되지 않아도 고립 완료로 처리된다. verifier도 `changed_files>0`면 pass라 고립을 못 잡는다. 방향: ACR 레일 유지 + CTO 파이프라인 개선(사장님 확정, 트랙 A). CMO PRD v3 재구축은 사장님이 직접(트랙 B, "기존 video-room 위에 v3 orchestrator 얇게 얹기").
+
+**결정**: FEATURE/BIG_CHANGE SOP에 implement와 review 사이에 `integrate`(통합·배선) phase를 신설한다. read_only=false, tier=T1(claude — 진입점·등록처를 정확히 찾는 코드베이스 정합 판단). 합격기준 = ① 신규 산출물이 기존 진입점(orchestrator/registry/배럴/라우터)에 실제 등록·연결 ② 기존 자산과 중복 없이 정렬(구버전 병존 시 대체/위임 명시) ③ 기존 통합/E2E 경로에서 호출 가능 ④ 새 파일만 추가하고 기존 진입점 수정 0인 고립 금지. implement 합격기준에도 "동일 책임 기존 자산 우선 재활용·중복 구현 금지"를 추가. verifier에 integrate 고립 룰: 무변경=fail, (ACR가 `modified_existing_files` 제공 시) 새 파일만 추가=orphaned fail. SMALL_FIX/TINY는 단일 파일 가정으로 integrate 미적용.
+
+**배제/범위**: integrate의 "진짜 고립"(새 파일만, 기존 수정 0) 정밀 판정은 ACR runner가 phase 콜백에 `modified_existing_files`를 줘야 완성 → **2026-06-09 배선 완료**: ACR `file-boundary.ts countModifiedExistingFiles`(porcelain 신규/기존 구분) + `finalize-phase-execution.ts`가 콜백 body에 `changed_files`/`modified_existing_files` 적재, pulk `plugin.ts`(src+dist)가 verifyCTOPhase에 전달. verifier의 all_done 전용 한계도 같은 날 해소: `isIntegratePhaseName`+`verifyIntegratePhase`(고립 전용 결정적, LLM·task-expected 불요)를 추가하고, plugin 콜백이 `phase_complete && integrate`면 그 phase **단독** diff로 고립을 즉시 판정(각 phase가 commit 후 콜백→worktree clean이라 phase 단독). all_done은 기존 LLM 검증 유지. verifier는 입력 있으면 활용, 없으면 graceful. `model-routing.test.ts` 4건은 2026-06-07 implement T2→T1 전환 시 미갱신된 사전존재 드리프트(본 변경과 무관, 미수정). cto.test.ts의 `no LLM` runtime 단언은 그 드리프트로 사전 실패 상태였고, dist 재빌드로 7-phase가 반영되며 실제 라우팅(전부 claude, commit만 antigravity)으로 정정.
+
+**검증**: l5-core cto-design/cto-verification 관련 전부 GREEN(integrate 신규 테스트 포함), typecheck 0. agent-runtime cto.test 11/11(dist 재빌드로 7-phase 반영; deterministic/LLM-planner/fallback 경로 모두). 전체 회귀 0 — l5-core 5 failed는 baseline과 동일(사전존재: model-routing 4 + cmo-v3 미완 1). 미커밋, 라이브 반영은 nocobase/agent-runtime kickstart 시.
+
 ## 2026-06-06 — CMO 세컨브레인 자가개선 루프: 데이터층(자동) / 코드층(승인된 CTO) 분리
 
 **컨텍스트**: 사장님 — 비즈니스 PT 정보가 세컨브레인에 매주 쌓일 텐데, 그에 맞춰 CMO 작업 방식이 진화해야 한다. 제안: "하루 한 번 세컨브레인에 CMO 운영전략 업그레이드 거리가 있나 확인 → 있고 변경범위 크면 CTO에게 task → 종(🔔)알림에서 사장님이 승인/거절". 코드 조사 결과 인프라의 ~80%가 이미 존재(`self-learning.ts` 일일 diff+조용한 알림 패턴, `acr-client.ts` CTO 의뢰, founder 승인 게이트/알림벨). 단, 현 CMO 챗은 세컨브레인을 **특정 단계에서만** 조회(첫 대화 strategy_chat·원고·제작·발행 제외)했고, CMO 결과를 학습하지 않았다.
@@ -78,7 +100,7 @@
 
 3. **phase 분해는 작업 규모에 맞춘다**. 단일 컴포넌트/카드/모델/유틸을 6단계 FEATURE로 분해하면 조사/스펙/리뷰 등 no-op phase가 토큰·시간을 2~3배 낭비. → `classifyTask`가 단일 컴포넌트류를 SMALL_FIX(4단계)로 라우팅. SOP 자체(TINY 2/SMALL_FIX 4/FEATURE 6)는 유지.
 
-4. **오케스트레이션 락은 stale-release로 자가복구**. `planDrainLock`(인메모리)이 hung 드레인에 영구 점유돼 큐 전체가 정체하고 acr-web 재시작으로만 풀렸다 → 20분 경과 락 자동해제. **완전한 해결(inline-HTTP spawn → 파일/DB 잡 큐)은 v2**(리스크 큰 대공사, `docs/CMO_DEV_SPEED_STRATEGY.md`에 설계).
+4. **오케스트레이션 락은 stale-release로 자가복구**. `planDrainLock`(인메모리)이 hung 드레인에 영구 점유돼 큐 전체가 정체하고 acr-web 재시작으로만 풀렸다 → 20분 경과 락 자동해제. **완전한 해결(inline-HTTP spawn → 파일/DB 잡 큐)은 v2**(리스크 큰 대공사, `docs/cmo/CMO_DEV_SPEED_STRATEGY.md`에 설계).
 
 5. **JSON 스토어는 원자적 쓰기(temp+rename)**. 병렬 드레인 동시 쓰기가 `execution-logs.json`을 손상시켜 ACR 라우트 연쇄 실패 → 핫 스토어 원자적 쓰기로 손상 차단.
 
@@ -322,7 +344,7 @@ D3+ 승인 경로가 이원화돼 있었다. L5는 `executeTask`가 D3+ 태스�
 **Cron 2개 설치 (08:55 model-verify / 09:00 self-learning)**
 - 결정: hermes-runtime `dist`가 stale이라(`model-verify`/`self-learning` 미등록) **재빌드(`tsc`) 필수**였음. 재빌드 후 plist 설치.
 - plist는 `node` 직접 호출 + env에 `NOCOBASE_URL`/`NOCOBASE_TOKEN`(API Key)/`TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`(ACR `.env.local`에서 가져옴) 주입. `RunAtLoad=false`(예약 시각에만).
-- 검증: model-verify→roster clean·알림 silent(변경 없을 때 무알림); self-learning→claude changelog 변경 감지·`docs/cto-tool-catalog.md` 누적·Telegram 발송. 외부 changelog 일부(codex 403/antigravity 404) fetch 실패는 non-fatal 처리.
+- 검증: model-verify→roster clean·알림 silent(변경 없을 때 무알림); self-learning→claude changelog 변경 감지·`docs/cto/cto-tool-catalog.md` 누적·Telegram 발송. 외부 changelog 일부(codex 403/antigravity 404) fetch 실패는 non-fatal 처리.
 
 **business_id → repo 매핑**
 - 결정: 매핑을 **dispatch 시점에 동적 해석**(task에 저장 X). repo_path 변경이 다음 dispatch에 즉시 반영되고, agent_tasks 스키마 변경 불필요.
@@ -1025,4 +1047,38 @@ PRD대로 ACR을 planning brain에서 **execution kernel**로 축소하고, Exec
 - Dagu(§9)는 PRD Non-Goal로 보류.
 
 ### Verify
-ACR 124/124 + next build PASS, pulk l5-core 1414·agent-runtime 16/16·founder-ui build·control-room E2E PASS. 통합 단서 4건은 라이브 ACR 백엔드 기동 시 검증(정적 컨텍스트 한계). 상세 docs/CTO_ACR_PRD_COMPLETION.html.
+ACR 124/124 + next build PASS, pulk l5-core 1414·agent-runtime 16/16·founder-ui build·control-room E2E PASS. 통합 단서 4건은 라이브 ACR 백엔드 기동 시 검증(정적 컨텍스트 한계). 상세 docs/cto/CTO_ACR_PRD_COMPLETION.html.
+
+## M9.8 — 과분해 차단 + 개발문서 기반 phase 연속성 (2026-06-09)
+
+### Decision
+실측 실험(Instagram Reels PRD를 business 7=ai-slide-video-factory로 dispatch)에서 두 비효율 확인 → pulk(오케스트레이션) 측만 수정:
+1. **과분해 차단**: `classifyTask`에 콘텐츠 저작(.md/프롬프트/캡션/문서/라우팅 작성) 감지 분기 추가 → 기존 **TINY(implement→commit, 2-phase)** 로 라우팅. 단 `engine/generator/validator/schema/.ts/component` 등 **코드 신호가 있으면 제외**(과소분해 방지). escalation 신호 있으면 무력화.
+2. **문서 기반 연속성**: `buildDeterministicDevPhases`의 모든 phase prompt_packet에 (a) "작업 전 repo 개발문서(README/CLAUDE/AGENTS/docs/ARCHITECTURE/관련 docs·SKILL) 먼저 읽기" grounding, (b) mutating phase 한정 "진행을 `docs/_acr-progress/<slug>.md` 에 기록" 주입. read-only(D1) phase는 기록 제외(verifier 충돌 방지).
+
+### Why
+SKILL.md 마크다운 1개 작성이 repro→fix→regress→review 4 cold phase(~7분, Claude Code 직접이면 ~40초)로 돎. phase마다 codex cold spawn + `[PRIOR PHASE CONTEXT]` raw 재주입이 본질 낭비. 컨텍스트를 raw 재주입 대신 repo 문서로 이어가면 per-phase 격리(결정성)는 유지하면서 낭비만 제거. pulk=기획/오케스트레이션, ACR=실행 원칙 준수 — 실행모델(warm 세션/compact)은 ACR repo의 후속(②) 과제로 분리.
+
+### Impact
+- `packages/l5-core/src/functions/cto-design/dev-workflow-spec.ts`: classifyTask 콘텐츠 분기 + `progressNotePath`/`buildPhasePromptPacket` 신규 + TINY 문구 일반화. 시그니처 무변경(순수 additive export).
+- 라이브 반영: l5-core·agent-runtime dist 재빌드(@l5/core=dist 해석). dispatcher는 StartInterval로 fresh 로드.
+- ② 후속(ACR repo, 미착수): `lib/orchestration/auto-dispatcher.ts:85-112`의 raw [PRIOR PHASE CONTEXT] 블록을 progress-doc 참조로 경량화 + `finalize-phase-execution.ts`에 progress write.
+
+### Verify
+l5-core tsc 0 + jest dev-workflow-spec 60/60(신규 M9.8 5군 포함) GREEN, agent-runtime tsc 0. 라이브 단일 task 재실행으로 4→2 phase 축소·문서 연속성 실측은 ACR phase-runner 재기동 후 진행 예정.
+
+## R3 — 키 콘텐츠 워크플로우 속도: claude-cli 유지 + step2‖step3 병렬 (2026-06-09)
+
+**맥락**: `runKeyContentWorkflow` 1회가 ~218초. 실측 원인은 step 의존성이나 모델 속도가 아니라 **claude CLI를 호출마다 콜드 스타트로 spawn**(`llm/claude-cli-client.ts`)하는 것 — 6회 순차 spawn.
+
+**결정**:
+- LLM 백엔드는 **claude-cli 유지**(사장님 결정 — 구독 내 무료, Anthropic HTTP API 직접 호출은 비용/키 이유로 채택 안 함). 따라서 콜드 스타트 제거(API 전환)는 보류.
+- 워크플로우 스텝(step2→3→4→5→6→10)은 대부분 직전 산출물을 프롬프트 컨텍스트로 소비하는 **의도된 순차 체인**(원칙: 한방 LLM 금지). 유일한 예외가 step3.
+- **step3(카테고리 FB)는 build가 step1만 사용** → step2(아이템 FB) 컨텍스트 제거(디커플링). 카테고리 수준 FB는 아이템 FB에 의존할 필요 없음. 이로써 **step2‖step3 병렬 실행**(Promise.all) → cold-spawn 1회 절감(~14%, 218→~185초).
+- 테스트 `key-content-draft.test.ts`의 "step3 프롬프트가 step2 산출물 포함" 단언을 새 설계(미포함)로 갱신.
+
+**보류(향후)**: 더 큰 단축은 (a) Anthropic API 백엔드(콜드 스타트 제거, ~10x) 또는 (b) 스텝 병합(spawn 수 감소)이 필요하나 (a)는 비용, (b)는 stepwise 원칙·품질 트레이드오프로 현 시점 미채택.
+
+## M4 — 렌더 상태는 파일 기반 프로토콜로 폴링 (2026-06-10)
+
+**결정**: factory(ai-slide-video-factory)에 잡 큐/상태 API가 없으므로, 렌더 상태는 별도 큐 없이 **파일 존재로 도출**한다 — jobs/<file>.json(=queued) → outputs/<job.slug>/ 생성(=rendering) → video.mp4(>0B)+render_report.json(=completed), render_error.txt(=failed, 옵션 마커). 관찰(파일 사실 수집)은 plugin transport(`getRenderJobStatus`), 판단은 l5-core(`deriveRenderJobStatus`/`reconcileRenderJob`/`evaluateRenderArtifacts`)로 분리(도메인=l5-core 원칙). 업로드는 `buildYoutubeUploadDraftFromBrief` 초안(private/pending)까지만 — 실제 업로드는 승인 게이트 뒤 수동.

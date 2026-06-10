@@ -112,4 +112,83 @@ describe('SlideDeck Generation Logic', () => {
       expect(result.buffer.length).toBeGreaterThan(0);
     });
   });
+
+  describe('Injected LLM Pipeline', () => {
+    const input = {
+      topic: '작은 브랜드 콘텐츠 전략',
+      audience: '작은 브랜드 대표',
+      keyPoints: ['문제 정의', '판매 논리', 'CTA'],
+      author: '원민',
+    };
+
+    it('should generate a deck via injected llmComplete (success path)', async () => {
+      const validJson = JSON.stringify({
+        title: 'LLM Deck',
+        author: '원민',
+        slides: [
+          { title: 'Intro', content: 'LLM made this', layout: 'TITLE_SLIDE' },
+          { title: 'Body', content: 'Details', layout: 'CONTENT_SLIDE' },
+        ],
+      });
+      const llmComplete = jest.fn().mockResolvedValue('```json\n' + validJson + '\n```');
+
+      const result = await generateSlideDeckPipeline(input, { llmComplete });
+
+      expect(result.status).toBe('success');
+      if (result.status !== 'success') throw new Error(result.message);
+      expect(result.source).toBe('llm');
+      expect(result.spec.title).toBe('LLM Deck');
+      expect(result.buffer.length).toBeGreaterThan(0);
+      expect(llmComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it('should retry on malformed output then succeed (retry path)', async () => {
+      const validJson = JSON.stringify({
+        title: 'Recovered Deck',
+        slides: [{ title: 'Slide', content: 'ok', layout: 'CONTENT_SLIDE' }],
+      });
+      const llmComplete = jest
+        .fn()
+        .mockResolvedValueOnce('not json at all')
+        .mockResolvedValueOnce(JSON.stringify({ title: 'Bad', slides: [{ content: 'no title' }] })) // zod fail
+        .mockResolvedValueOnce(validJson);
+
+      const result = await generateSlideDeckPipeline(input, { llmComplete, maxRetries: 2 });
+
+      expect(result.status).toBe('success');
+      if (result.status !== 'success') throw new Error(result.message);
+      expect(result.source).toBe('llm');
+      expect(result.spec.title).toBe('Recovered Deck');
+      expect(llmComplete).toHaveBeenCalledTimes(3);
+    });
+
+    it('should fall back to deterministic spec when LLM keeps failing', async () => {
+      const llmComplete = jest.fn().mockResolvedValue('garbage non-json');
+
+      const result = await generateSlideDeckPipeline(input, { llmComplete, maxRetries: 1 });
+
+      expect(result.status).toBe('success');
+      if (result.status !== 'success') throw new Error(result.message);
+      expect(result.source).toBe('fallback');
+      expect(result.spec.title).toBe(input.topic);
+      expect(result.spec.slides.length).toBeGreaterThan(0);
+      expect(result.buffer.length).toBeGreaterThan(0);
+      expect(llmComplete).toHaveBeenCalledTimes(2); // 1 + maxRetries
+    });
+
+    it('should fall back deterministically when no llmComplete is injected', async () => {
+      const result = await generateSlideDeckPipeline(input);
+
+      expect(result.status).toBe('success');
+      if (result.status !== 'success') throw new Error(result.message);
+      expect(result.source).toBe('fallback');
+      expect(result.spec.title).toBe(input.topic);
+      expect(result.buffer.length).toBeGreaterThan(0);
+    });
+
+    it('should error when topic is missing', async () => {
+      const result = await generateSlideDeckPipeline({ topic: '' });
+      expect(result.status).toBe('error');
+    });
+  });
 });

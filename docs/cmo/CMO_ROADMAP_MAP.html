@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMO 콘텐츠 시스템 — 전체 로드맵 & 아키텍처</title>
+<style>
+  :root{
+    --done:#16a34a; --done-bg:#dcfce7; --done-br:#86efac;
+    --now:#d97706; --now-bg:#fef3c7; --now-br:#fcd34d;
+    --todo:#64748b; --todo-bg:#f1f5f9; --todo-br:#cbd5e1;
+    --part:#7c3aed; --part-bg:#ede9fe; --part-br:#c4b5fd;
+    --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f8fafc;
+    --card:#ffffff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",Segoe UI,sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.5;padding:32px 28px 80px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1280px;margin:0 auto}
+  h1{font-size:26px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px}
+  .meta{color:var(--sub);font-size:13px;margin-bottom:20px}
+  .meta b{color:var(--ink)}
+
+  .banner{background:linear-gradient(90deg,#dcfce7,#f0fdf4);border:1px solid var(--done-br);
+    border-radius:12px;padding:13px 18px;margin-bottom:22px;font-size:13.5px;color:#14532d}
+  .banner b{font-weight:800}
+
+  .legend{display:flex;gap:18px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;padding:12px 16px;margin-bottom:26px;font-size:13px;align-items:center}
+  .legend .lg{display:flex;align-items:center;gap:7px;font-weight:600}
+  .dot{width:13px;height:13px;border-radius:4px;border:1.5px solid}
+  .d-done{background:var(--done-bg);border-color:var(--done)}
+  .d-part{background:var(--part-bg);border-color:var(--part)}
+  .d-now{background:var(--now-bg);border-color:var(--now)}
+  .d-todo{background:var(--todo-bg);border-color:var(--todo)}
+  .legend .sep{flex:1}
+
+  .sec{font-size:15px;font-weight:800;letter-spacing:-.3px;margin:34px 0 14px;
+    display:flex;align-items:center;gap:9px}
+  .sec::before{content:"";width:4px;height:18px;background:var(--ink);border-radius:3px}
+  .sec .note{font-size:12px;font-weight:500;color:var(--sub)}
+
+  .pipe{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding-bottom:8px}
+  .stage{flex:1;min-width:170px;border-radius:12px;padding:13px 13px 14px;border:1.5px solid;position:relative}
+  .stage + .stage{margin-left:26px}
+  .stage::after{content:"▶";position:absolute;right:-22px;top:50%;transform:translateY(-50%);
+    color:var(--done-br);font-size:14px;z-index:2}
+  .stage:last-child::after{display:none}
+  .st-done{background:var(--done-bg);border-color:var(--done-br)}
+  .st-part{background:var(--part-bg);border-color:var(--part-br)}
+  .st-now{background:var(--now-bg);border-color:var(--now-br)}
+  .st-todo{background:var(--todo-bg);border-color:var(--todo-br)}
+  .stage .tag{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;padding:2px 7px;
+    border-radius:20px;display:inline-block;margin-bottom:7px}
+  .tag-done{background:var(--done);color:#fff}
+  .tag-part{background:var(--part);color:#fff}
+  .tag-now{background:var(--now);color:#fff}
+  .tag-todo{background:var(--todo);color:#fff}
+  .stage h4{font-size:13.5px;font-weight:800;margin-bottom:5px;letter-spacing:-.2px}
+  .stage ul{list-style:none;font-size:11.5px;color:var(--sub)}
+  .stage li{padding:1.5px 0 1.5px 11px;position:relative}
+  .stage li::before{content:"›";position:absolute;left:0;color:var(--done-br);font-weight:700}
+  .stage li.warn::before{content:"!";color:var(--part);font-weight:800}
+
+  .layer{background:var(--card);border:1px solid var(--line);border-radius:14px;margin-bottom:16px;overflow:hidden}
+  .layer-head{display:flex;align-items:center;gap:10px;padding:11px 16px;background:#0f172a;color:#fff}
+  .layer-head .ic{font-size:16px}
+  .layer-head .t{font-weight:800;font-size:13.5px}
+  .layer-head .s{font-size:11.5px;color:#94a3b8;font-weight:500}
+  .layer-body{padding:14px 16px;display:flex;gap:10px;flex-wrap:wrap}
+  .mod{border:1.5px solid;border-radius:9px;padding:9px 12px;min-width:150px;flex:1 1 auto;max-width:280px}
+  .mod .mt{font-weight:700;font-size:12.5px;display:flex;align-items:center;gap:6px;margin-bottom:3px}
+  .mod .mp{font-size:10.5px;color:var(--sub);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .mod .md{font-size:11px;color:var(--sub);margin-top:4px}
+  .m-done{background:var(--done-bg);border-color:var(--done-br)}
+  .m-part{background:var(--part-bg);border-color:var(--part-br)}
+  .m-now{background:var(--now-bg);border-color:var(--now-br)}
+  .m-todo{background:var(--todo-bg);border-color:var(--todo-br)}
+  .chip{font-size:9px;font-weight:800;padding:1px 6px;border-radius:10px;color:#fff;text-transform:uppercase;letter-spacing:.4px}
+  .c-done{background:var(--done)} .c-part{background:var(--part)} .c-now{background:var(--now)} .c-todo{background:var(--todo)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:13px}
+  .task{background:var(--card);border:1px solid var(--line);border-left-width:4px;border-radius:10px;padding:13px 15px}
+  .task.t-done{border-left-color:var(--done)}
+  .task.t-part{border-left-color:var(--part)}
+  .task.t-now{border-left-color:var(--now)}
+  .task.t-todo{border-left-color:var(--todo)}
+  .task .th{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .task .code{font-size:11px;font-weight:800;color:var(--sub);font-family:ui-monospace,monospace}
+  .task .ttl{font-weight:700;font-size:13px;flex:1}
+  .task .desc{font-size:11.5px;color:var(--sub)}
+  .task .desc b{color:var(--ink)}
+
+  .foot{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-size:12px;color:var(--sub)}
+  .flowline{text-align:center;color:var(--done-br);font-size:18px;margin:4px 0 2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>🎬 CMO 콘텐츠 시스템 — 전체 로드맵 &amp; 아키텍처</h1>
+  <div class="meta">
+    L5 Business OS · 트랙 B (CMO Video Room v3) · 기준일 <b>2026-06-10</b> ·
+    패턴 = <b>[최소입력 → 11스텝 순차 자동초안 → 후보/카드 → HTML 보고서 → 승인·선택]</b> ·
+    LLM = Claude CLI(haiku) · 정본 = <b>l5-core/video-room</b> 도메인
+  </div>
+
+  <div class="banner">
+    ✅ <b>파이프라인 전 구간 연결 완료.</b> 입력 → 키콘텐츠 → 풀링 → 콘텐츠 제작 → 전략패키지·Brief·<b>실 Factory 전달</b> → 성과까지
+    <b>R1~R7 전부 구현·커밋·E2E 통과</b>(<code>smoke-r1-r7.mjs 19/19 PASS</code>). Brief는 실제로
+    <code>~/ai-slide-video-factory/briefs/&lt;slug&gt;.json</code>에 기록됨(stub=false 라이브 검증).
+    남은 건 <b>실 외부연동 3건</b> — Viewtrap 실 스크래퍼 / 렌더 잡 실제 push·QA·업로드 / 성과 자동 수집.
+  </div>
+
+  <div class="legend">
+    <span class="lg"><span class="dot d-done"></span>완료 · 라이브/E2E 검증</span>
+    <span class="lg"><span class="dot d-part"></span>코드·E2E 완료 · 실 외부연동만 잔여</span>
+    <span class="lg"><span class="dot d-now"></span>다음 차례 · 권장</span>
+    <span class="lg"><span class="dot d-todo"></span>운영/후속</span>
+    <span class="sep"></span>
+    <span class="lg" style="color:var(--sub);font-weight:500">색 = 진행 상태 / 위치 = 워크플로우 순서</span>
+  </div>
+
+  <!-- ============ PIPELINE ============ -->
+  <div class="sec">콘텐츠 생산 파이프라인 <span class="note">— 사장님이 실제 거쳐가는 흐름 · 전 칸 API 주행 검증(19/19)</span></div>
+  <div class="pipe">
+
+    <div class="stage st-done">
+      <span class="tag tag-done">완료</span>
+      <h4>① 입력 (프로젝트 생성)</h4>
+      <ul>
+        <li>상품·타깃·목표</li>
+        <li>고객 핵심 문제</li>
+        <li>핵심 제안</li>
+        <li>1회 입력 → 이후 자동</li>
+      </ul>
+    </div>
+
+    <div class="stage st-done">
+      <span class="tag tag-done">완료 · 라이브</span>
+      <h4>② 키콘텐츠</h4>
+      <ul>
+        <li>분석 11스텝 순차</li>
+        <li>서로 다른 3주제 후보</li>
+        <li>선정이유 4종</li>
+        <li>HTML 보고서 → 1개 선택</li>
+      </ul>
+    </div>
+
+    <div class="stage st-done">
+      <span class="tag tag-done">완료 · R1</span>
+      <h4>③ 풀링</h4>
+      <ul>
+        <li>키 1개 기반 N주제 후보</li>
+        <li>롱테일·키연결성 강제</li>
+        <li>도메인 12스텝 + 배선</li>
+        <li>세트 확정 → 다음 칸</li>
+      </ul>
+    </div>
+
+    <div class="stage st-done">
+      <span class="tag tag-done">완료 · R4</span>
+      <h4>④ 콘텐츠 제작</h4>
+      <ul>
+        <li>제목 / 썸네일 상세 초안</li>
+        <li>도입부 + 본문 원고(beat)</li>
+        <li>기존 자산 재활용</li>
+        <li>보드 3종 + 4액션</li>
+      </ul>
+    </div>
+
+    <div class="stage st-part">
+      <span class="tag tag-part">코드완료 · R6</span>
+      <h4>⑤ 전략패키지 → Brief → Factory</h4>
+      <ul>
+        <li>패키지 조립 ✓</li>
+        <li>VideoExecutionBrief ✓</li>
+        <li><b>실 factory 인박스 전달 ✓</b></li>
+        <li class="warn">렌더 잡 push·QA·업로드 잔여</li>
+      </ul>
+    </div>
+
+    <div class="stage st-part">
+      <span class="tag tag-part">코드완료 · R7</span>
+      <h4>⑥ 성과 재학습</h4>
+      <ul>
+        <li>성과 수집 → 인사이트 추출</li>
+        <li>세컨브레인 반영</li>
+        <li>PerformanceBoard ✓</li>
+        <li class="warn">성과 입력 = 현재 수동</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <div class="flowline">▼ 각 단계는 아래 4개 레이어를 관통한다 ▼</div>
+
+  <!-- ============ ARCHITECTURE LAYERS ============ -->
+  <div class="sec">레이어드 아키텍처 <span class="note">— 각 단계가 관통하는 4계층 + 외부 연동</span></div>
+
+  <!-- UI -->
+  <div class="layer">
+    <div class="layer-head"><span class="ic">🖥️</span><span class="t">UI 레이어</span>
+      <span class="s">apps/founder-ui (Next.js) — /video-room · 진행률+승인만, 채팅 보조</span></div>
+    <div class="layer-body">
+      <div class="mod m-done"><div class="mt">StepProgressRail <span class="chip c-done">done</span></div>
+        <div class="mp">_components/StepProgressRail.tsx</div>
+        <div class="md">5 Phase 그룹 레일, 현재 단계 "왜 필요한지" focus</div></div>
+      <div class="mod m-done"><div class="mt">KeyContentPlanBoard <span class="chip c-done">done</span></div>
+        <div class="mp">_components/KeyContentPlanBoard.tsx</div>
+        <div class="md">필수입력 → 자동초안 → 3후보 → 선택</div></div>
+      <div class="mod m-done"><div class="mt">PullingBoard <span class="chip c-done">R1</span></div>
+        <div class="mp">_components/(풀링 보드)</div>
+        <div class="md">풀링 N후보 카드 — 키콘텐츠 패턴 복제</div></div>
+      <div class="mod m-done"><div class="mt">ThumbnailPlanBoard <span class="chip c-done">R4</span></div>
+        <div class="mp">_components/ThumbnailPlanBoard.tsx</div>
+        <div class="md">제목/썸네일 상세 초안 편집</div></div>
+      <div class="mod m-done"><div class="mt">ScriptDraftPanel <span class="chip c-done">R4</span></div>
+        <div class="mp">_components/ScriptDraftPanel.tsx</div>
+        <div class="md">도입부 + 본문 원고 beat 편집</div></div>
+      <div class="mod m-done"><div class="mt">PerformanceBoard <span class="chip c-done">R7</span></div>
+        <div class="mp">_components/PerformanceBoard.tsx</div>
+        <div class="md">성과 입력 → 인사이트 표시</div></div>
+      <div class="mod m-done"><div class="mt">HTML 보고서 + 보드 3종 <span class="chip c-done">done</span></div>
+        <div class="mp">_lib/keyContentReport.ts · *Board.tsx</div>
+        <div class="md">새창 보고서 · StageGate 일관(active/done/locked)</div></div>
+    </div>
+  </div>
+
+  <!-- PLUGIN -->
+  <div class="layer">
+    <div class="layer-head"><span class="ic">🔌</span><span class="t">플러그인 레이어 (Shell 배선)</span>
+      <span class="s">@l5/plugin-orchestration — NocoBase 액션, ACL, dist 패치</span></div>
+    <div class="layer-body">
+      <div class="mod m-done"><div class="mt">proposeKeyContentDraft <span class="chip c-done">done</span></div>
+        <div class="mp">cmo:proposeKeyContentDraft</div>
+        <div class="md">분석 11스텝 + 3후보 (Claude CLI 주입)</div></div>
+      <div class="mod m-done"><div class="mt">풀링 액션 (초안·세트확정) <span class="chip c-done">R1</span></div>
+        <div class="mp">cmo:propose/commit Pulling</div>
+        <div class="md">키콘텐츠 액션 미러 + 텔레그램 알림(R2)</div></div>
+      <div class="mod m-done"><div class="mt">제작 4액션 <span class="chip c-done">R4</span></div>
+        <div class="mp">proposeThumbnail/ScriptDraft 등</div>
+        <div class="md">content-production 도메인 호출</div></div>
+      <div class="mod m-done"><div class="mt">approveStageGate <span class="chip c-done">done</span></div>
+        <div class="mp">cmo:approveStageGate</div>
+        <div class="md">새 보드 흐름 게이트 row 생성·전이(막힘 해소)</div></div>
+      <div class="mod m-done"><div class="mt">generateVideoExecutionBrief <span class="chip c-done">done</span></div>
+        <div class="mp">script→brief→validate→handoff</div>
+        <div class="md">시그니처 버그 수정, validate 통과</div></div>
+      <div class="mod m-done"><div class="mt">sendBriefToFactory <span class="chip c-done">done · 실전달</span></div>
+        <div class="mp">video-factory-transport.submitBrief</div>
+        <div class="md">실 factory briefs/&lt;slug&gt;.json (stub=false)</div></div>
+      <div class="mod m-done"><div class="mt">재학습 액션 <span class="chip c-done">R7</span></div>
+        <div class="mp">performance / insight 액션</div>
+        <div class="md">성과 적재 → completion-insight 추출</div></div>
+      <div class="mod m-part"><div class="mt">텔레그램 알림 env <span class="chip c-part">운영</span></div>
+        <div class="mp">TELEGRAM_BOT_TOKEN / CHAT_ID</div>
+        <div class="md">코드 graceful 완료 · launchd env 주입만 잔여</div></div>
+    </div>
+  </div>
+
+  <!-- DOMAIN -->
+  <div class="layer">
+    <div class="layer-head"><span class="ic">🧠</span><span class="t">도메인 레이어 (핵심 판단 로직)</span>
+      <span class="s">packages/l5-core/src/functions/video-room + cmo-orchestrator — NocoBase 없이 테스트 가능 · video-room 683 GREEN</span></div>
+    <div class="layer-body">
+      <div class="mod m-done"><div class="mt">key-content-draft / candidates <span class="chip c-done">done</span></div>
+        <div class="mp">runKeyContentWorkflow · generateKeyContentCandidates</div>
+        <div class="md">11스텝 순차(LLM) + 3후보 + 선정이유4종</div></div>
+      <div class="mod m-done"><div class="mt">pulling-content-planning <span class="chip c-done">R1</span></div>
+        <div class="mp">video-room/pulling-content-planning.ts</div>
+        <div class="md">12스텝 · 롱테일·키연결성 throw 강제 · 35 tests · 풀 배선</div></div>
+      <div class="mod m-done"><div class="mt">content-production <span class="chip c-done">R4</span></div>
+        <div class="mp">video-room/content-production.ts</div>
+        <div class="md">proposeThumbnail/ScriptDraft · 기존 자산 재활용 · 107 tests</div></div>
+      <div class="mod m-done"><div class="mt">viewtrap-tools / strategy-package <span class="chip c-done">done</span></div>
+        <div class="mp">video-room/*.ts</div>
+        <div class="md">핫비디오·노출·롱테일 / 키+풀링 통합 조립</div></div>
+      <div class="mod m-done"><div class="mt">performance-ingestion <span class="chip c-done">R7</span></div>
+        <div class="mp">video-room/performance-ingestion.ts</div>
+        <div class="md">성과 적재 · completion-insight-extraction(161줄)</div></div>
+      <div class="mod m-part"><div class="mt">slide-deck-generator <span class="chip c-part">part</span></div>
+        <div class="mp">services/slide-deck-generator.ts</div>
+        <div class="md">llmComplete 주입+폴백 · brief 직접참조 잔여</div></div>
+      <div class="mod m-part"><div class="mt">reference-adapters (Viewtrap) <span class="chip c-part">심만</span></div>
+        <div class="mp">video-room/reference-adapters.ts</div>
+        <div class="md">어댑터 인터페이스만 · <b>실 스크래퍼 미구현</b> · 수동 폴백 보존</div></div>
+      <div class="mod m-done"><div class="mt">cmo-skill-registry (orchestrator) <span class="chip c-done">done</span></div>
+        <div class="mp">cmo-orchestrator/cmo-skill-registry.ts</div>
+        <div class="md">10스킬 등록 + 위상정렬 fail-fast (얇은 지휘)</div></div>
+    </div>
+  </div>
+
+  <!-- EXTERNAL -->
+  <div class="layer">
+    <div class="layer-head"><span class="ic">🌐</span><span class="t">외부 연동 레이어</span>
+      <span class="s">LLM · 검색 · 영상 팩토리 · 알림 · 세컨브레인</span></div>
+    <div class="layer-body">
+      <div class="mod m-done"><div class="mt">Claude CLI (LLM) <span class="chip c-done">done</span></div>
+        <div class="mp">buildLLMClient() · haiku</div>
+        <div class="md">MCP off spawn · 전 LLM 스텝 구동 (OpenAI 불필요)</div></div>
+      <div class="mod m-done"><div class="mt">ai-slide-video-factory (Brief 전달) <span class="chip c-done">done · 라이브</span></div>
+        <div class="mp">~/ai-slide-video-factory/briefs/</div>
+        <div class="md">brief JSON <b>실제 기록 + validate</b> 라이브 확인(stub=false)</div></div>
+      <div class="mod m-part"><div class="mt">렌더·QA·업로드 <span class="chip c-part">잔여</span></div>
+        <div class="mp">submitJob · getRenderJobStatus</div>
+        <div class="md">brief까지 전달됨 · <b>실 렌더 잡 push/QA/업로드는 followup</b></div></div>
+      <div class="mod m-part"><div class="mt">Viewtrap (검색·스크래핑) <span class="chip c-part">구조적 한계</span></div>
+        <div class="mp">run.mjs (Playwright)</div>
+        <div class="md">인메모리 인증+구글OAuth로 영구자동 불가 → 1세션 1클릭 로그인→자동검색 모델. 선택자 확정 잔여</div></div>
+      <div class="mod m-part"><div class="mt">텔레그램 봇 <span class="chip c-part">운영</span></div>
+        <div class="mp">TELEGRAM_BOT_TOKEN / CHAT_ID</div>
+        <div class="md">코드 완료 · launchd plist 주입 시 폰 알림 작동</div></div>
+      <div class="mod m-done"><div class="mt">세컨브레인 (brains/biz) <span class="chip c-done">done</span></div>
+        <div class="mp">brains/biz/memory/inventory.jsonl</div>
+        <div class="md">PT 인사이트 주입 · loadPTContext 3소스 강제</div></div>
+    </div>
+  </div>
+
+  <!-- ============ BACKLOG ============ -->
+  <div class="sec">남은 일 <span class="note">— R1~R7 코드·E2E 완료. 잔여 = 실 외부연동 + 운영</span></div>
+  <div class="grid">
+
+    <div class="task t-now">
+      <div class="th"><span class="code">F1</span><span class="ttl">렌더 잡 실제 push + QA + 업로드</span><span class="chip c-now">권장 다음</span></div>
+      <div class="desc"><b>가장 가치 큰 다음 칸.</b> Brief는 factory 인박스까지 실제 전달됨. 이제 <code>submitJob</code>으로 실 렌더 잡을 밀고 <code>getRenderJobStatus</code> 폴링 → QA → 업로드 초안까지 연결하면 영상이 실제로 나온다. buildSlideDeck이 brief 직접 참조하도록.</div>
+    </div>
+
+    <div class="task t-part">
+      <div class="th"><span class="code">F2</span><span class="ttl">Viewtrap 실 스크래퍼</span><span class="chip c-part">구조적 한계</span></div>
+      <div class="desc">현재 reference-adapters는 <b>어댑터 심만</b>(수동 폴백). Viewtrap이 인메모리 인증+구글 OAuth 차단으로 영구 자동화 불가 확인 → 현실 모델 = <b>run.mjs 1세션 1클릭 로그인 → 자동 검색·스크래핑</b>. 검색결과 DOM 선택자 확정 1건 남음. (지금은 보류, 수동 입력으로 충분.)</div>
+    </div>
+
+    <div class="task t-part">
+      <div class="th"><span class="code">F3</span><span class="ttl">성과 자동 수집</span><span class="chip c-part">현재 수동</span></div>
+      <div class="desc">R7 재학습 루프 코드·UI(PerformanceBoard)·인사이트 추출 완료. 단 <b>성과 입력은 현재 수동</b>. YouTube/외부 분석 API 연동으로 자동 수집하면 루프가 무인화된다.</div>
+    </div>
+
+    <div class="task t-todo">
+      <div class="th"><span class="code">F4</span><span class="ttl">텔레그램 env 주입</span><span class="chip c-todo">운영</span></div>
+      <div class="desc">코드 graceful 완료. <code>TELEGRAM_BOT_TOKEN/CHAT_ID</code>를 NocoBase launchd plist에 주입 + kickstart → 초안/풀링 완료 시 폰 알림 작동. (운영 설정 1회.)</div>
+    </div>
+
+    <div class="task t-todo">
+      <div class="th"><span class="code">F5</span><span class="ttl">속도 추가 최적화</span><span class="chip c-todo">개선</span></div>
+      <div class="desc">R3에서 step2‖step3 병렬화로 cold-spawn 1회 절감. 여전히 LLM 순차 다수 → 추가 독립 스텝 병렬 + 모델/프롬프트 튜닝 여지. 품질 회귀 없이.</div>
+    </div>
+
+    <div class="task t-todo">
+      <div class="th"><span class="code">OPS</span><span class="ttl">운영 정리</span><span class="chip c-todo">상시</span></div>
+      <div class="desc">라이브 HTTP E2E(적합 프로젝트 시), 데모 산출물 정리(live-demo-keycontent.mjs·smoke-r1-r7.mjs 임시, 라이브 DB 테스트 프로젝트), 미커밋 hunk 정리.</div>
+    </div>
+
+  </div>
+
+  <div class="foot">
+    <b>완료 요약 (R1~R7):</b> 입력 통합 · 키콘텐츠(11스텝+3후보+선정이유) · 풀링 v3 · 콘텐츠 제작(제목/썸네일/원고) ·
+    전략패키지·Brief·<b>실 Factory 전달</b> · 성과 재학습 루프. 전 구간 <code>smoke-r1-r7.mjs 19/19 PASS</code> · video-room 683 tests GREEN.<br>
+    <b>남은 핵심 3건 (실 외부연동):</b> ① 렌더 잡 push·QA·업로드(F1, 권장 다음) ② Viewtrap 실 스크래퍼(F2, 구조적 한계로 1클릭 모델) ③ 성과 자동 수집(F3). + 운영(텔레그램 env·속도·정리).<br>
+    <span style="color:var(--done-br)">생성: 2026-06-10 · 정본 = docs/TASKS.md · docs/HANDOFF.md · 최신 커밋 af7bc0a(R5) · 304ad73(R6 실 factory) · 8e48cfb(R4~R7) · 6987561(E2E 19/19)</span>
+  </div>
+
+</div>
+</body>
+</html>

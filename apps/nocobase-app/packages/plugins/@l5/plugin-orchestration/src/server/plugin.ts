@@ -48,6 +48,8 @@ const _videoFactoryTransport = makeVideoFactoryTransport();
 
 const {
   verifyCTOPhase,
+  verifyIntegratePhase,
+  isIntegratePhaseName,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cto-verification'));
 
 const {
@@ -90,6 +92,12 @@ const {
   runCmoStrategyTurn,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cmo-strategy'));
 
+// CMO v3 orchestrator — skill-chain execution.
+const {
+  createCmoSkillRegistry,
+  CmoOrchestrator,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cmo-orchestrator'));
+
 const {
   advanceStatus: advanceVideoRoomStatus,
   requiresApproval: videoRoomRequiresApproval,
@@ -115,11 +123,49 @@ const {
   buildVideoExecutionBrief,
   validateVideoExecutionBrief,
   prepareFactoryHandoff,
+  sendToFactory,
+  // v3 key-content planning
+  draftKeyContentPlan,
+  runKeyContentWorkflow,
+  finalizeKeyContentPlan,
+  buildViewtrapValidation,
+  // v3 key-content 재기획: 서로 다른 주제 후보 N개 생성 + 사장님 선택 확정
+  generateKeyContentCandidates,
+  finalizeKeyContentChoice,
+  // R1 풀링: 선택된 키 콘텐츠로 끌어오는 풀링 주제 후보 N개 생성 + 사장님 승인 확정
+  generatePullingCandidates,
+  finalizePullingPlan,
+  // R4 콘텐츠 제작: 확정 주제 → 썸네일 상세 후보 + 도입30초/원고/QA 초안
+  proposeThumbnailDraft,
+  proposeScriptDraft,
+  // R7 성과 재학습 루프: 완료 영상 성과(수동 입력) → 인사이트 → 다음 기획 입력
+  recordVideoPerformance,
+  extractCompletionInsight,
+  // M4 영상 제작 파이프라인 잔여: brief 직접참조 슬라이드덱 → 렌더 잡 → 상태 폴링 → QA → 업로드 초안
+  buildSlideDeckSpecFromBrief,
+  buildFactoryJobFromSlideDeck,
+  markRenderJobSubmitted,
+  deriveRenderJobStatus,
+  reconcileRenderJob,
+  evaluateRenderArtifacts,
+  buildYoutubeUploadDraftFromBrief,
+  // M1~M3 통합 발굴 파이프라인: 발굴→통계·필터→(옵션)크롤링→Sonnet 분류→후보 + 키/풀링 Step 변환
+  runDiscoveryPipeline,
+  classifyDiscoveredVideos,
+  toKeyViewtrapValidationInput,
+  toPullingViewtrapValidationInput,
+  toLongtailCandidateInputs,
+  buildSelectionReason,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/video-room'));
 
 const {
   createInMemoryVideoFactoryTransport,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/memory'));
+
+// M3 발굴 분류용 Sonnet 클라이언트(모델 고정). 발굴 액션에서만 사용.
+const {
+  createClaudeCLIClient,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/llm/claude-cli-client'));
 
 type ActionContext = {
   app?: any;
@@ -173,7 +219,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -357,6 +403,8 @@ async function ensureOrchestrationColumns(db: any) {
         product text,
         target_audience text,
         business_goal text,
+        customer_problem text,
+        core_offer text,
         project_type text,
         status text NOT NULL DEFAULT 'strategy_chat',
         current_page text NOT NULL DEFAULT 'strategy',
@@ -367,6 +415,19 @@ async function ensureOrchestrationColumns(db: any) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     db.logger?.warn?.(`Could not ensure video_room_projects table: ${message}`);
+  }
+
+  // CMO v3 key-content 재기획: 프로젝트 생성 시 1회 입력으로 받는
+  // customer_problem / core_offer 컬럼 보강(기존 테이블에도 적용).
+  try {
+    await db.sequelize.query(`
+      ALTER TABLE IF EXISTS video_room_projects
+        ADD COLUMN IF NOT EXISTS customer_problem text,
+        ADD COLUMN IF NOT EXISTS core_offer text;
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure video_room_projects key-content columns: ${message}`);
   }
 
   try {
@@ -384,6 +445,24 @@ async function ensureOrchestrationColumns(db: any) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     db.logger?.warn?.(`Could not ensure video_room_cards table: ${message}`);
+  }
+
+  // R7: 완료 영상 성과 지표(수동 입력) 보관. 인사이트는 video_room_cards('completion_insights')에 저장.
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS video_performance_metrics (
+        id text PRIMARY KEY,
+        video_project_id text NOT NULL,
+        metric_type text NOT NULL,
+        value numeric,
+        data jsonb,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure video_performance_metrics table: ${message}`);
   }
 
   try {
@@ -1293,6 +1372,9 @@ function registerCrudResources(app: any) {
           diff_summary,
           log_tail,
           exit_code,
+          // Phase 17: file-change counts for verifier orphan detection
+          changed_files,
+          modified_existing_files,
           branch,
           // Phase 18: clarification + risk reassessment fields
           questions,
@@ -1332,22 +1414,40 @@ function registerCrudResources(app: any) {
         // phases, then be judged). Intermediate phases just record progress and let
         // ACR's auto-dispatcher drain the next phase. all_done still gates quality.
         let verifierVerdict: any = null;
+        // integrate(통합·배선) phase는 중간(phase_complete) 시점에도 "고립" 전용
+        // 결정적 검사를 돈다. all_done 검증은 task 전체 expected 대비라 중간 phase에
+        // 돌리면 false-fail이지만, integrate 고립은 phase 종류 + 파일 카운트만으로
+        // 판정(LLM·expected 무관)하므로 그 phase 완료 즉시 잡는다. 각 phase는 commit
+        // 후 worktree가 clean이라 changed/modified_existing은 그 phase 단독 diff다.
+        const verifyIntegrateNow =
+          status === 'phase_complete' &&
+          task.assigned_agent === 'CTO' &&
+          isIntegratePhaseName(phase);
         const shouldVerify =
-          status === 'all_done' &&
-          task.assigned_agent === 'CTO';
+          (status === 'all_done' && task.assigned_agent === 'CTO') ||
+          verifyIntegrateNow;
         if (shouldVerify) {
           try {
-            const verifierLLM = buildLLMClient(task.title ?? '');
-            verifierVerdict = await verifyCTOPhase(
-              {
-                task_title: task.title,
-                expected_output: task.expected_output ?? '',
-                diff_summary: diff_summary ?? undefined,
-                log_tail: log_tail ?? undefined,
-                exit_code: typeof exit_code === 'number' ? exit_code : undefined,
-              },
-              verifierLLM,
-            );
+            const verifierInput = {
+              task_title: task.title,
+              expected_output: task.expected_output ?? '',
+              diff_summary: diff_summary ?? undefined,
+              log_tail: log_tail ?? undefined,
+              exit_code: typeof exit_code === 'number' ? exit_code : undefined,
+              changed_files:
+                typeof changed_files === 'number' ? changed_files : undefined,
+              modified_existing_files:
+                typeof modified_existing_files === 'number'
+                  ? modified_existing_files
+                  : undefined,
+            };
+            if (verifyIntegrateNow) {
+              // 결정적만 — LLM이 task 전체를 평가해 중간 phase를 오판하지 않도록.
+              verifierVerdict = verifyIntegratePhase(verifierInput);
+            } else {
+              const verifierLLM = buildLLMClient(task.title ?? '');
+              verifierVerdict = await verifyCTOPhase(verifierInput, verifierLLM);
+            }
           } catch (err) {
             // eslint-disable-next-line no-console
             console.warn('[taskCallback] verifier threw:', err);
@@ -2426,12 +2526,15 @@ function registerCmoResource(app: any, db: any) {
         const product = String(v.product ?? '');
         const target_audience = String(v.target_audience ?? '');
         const business_goal = String(v.business_goal ?? '');
+        // CMO v3: 키 콘텐츠 단계 입력을 프로젝트 생성 시 1회 받아 저장.
+        const customer_problem = String(v.customer_problem ?? '');
+        const core_offer = String(v.core_offer ?? '');
         const business_id = v.business_id != null ? String(v.business_id) : null;
         const project_type = String(v.project_type ?? 'single_video');
         await db.sequelize.query(
-          `INSERT INTO video_room_projects (id, title, business_id, product, target_audience, business_goal, project_type, status, current_page, "createdAt", "updatedAt")
-           VALUES ($1,$2,$3,$4,$5,$6,$7,'strategy_chat','strategy', now(), now())`,
-          { bind: [project_id, title, business_id, product, target_audience, business_goal, project_type] },
+          `INSERT INTO video_room_projects (id, title, business_id, product, target_audience, business_goal, customer_problem, core_offer, project_type, status, current_page, "createdAt", "updatedAt")
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'strategy_chat','strategy', now(), now())`,
+          { bind: [project_id, title, business_id, product, target_audience, business_goal, customer_problem, core_offer, project_type] },
         );
         ctx.body = { ok: true, data: { project_id, status: 'strategy_chat' } };
         await next();
@@ -2657,10 +2760,43 @@ function registerCmoResource(app: any, db: any) {
         const gateRows = await q(`SELECT * FROM video_room_gates WHERE id = $1`, [gate_id]);
         if (!gateRows[0]) ctx.throw(404, `gate ${gate_id} not found`);
         const gateRow = gateRows[0];
-        const newStatus = await approveGateForProject(gateRow.video_project_id, gate_id, decision);
+        // 승인=진행 원자화: approved면 approveGateForProject 내부에서
+        // advanceVideoRoomStatus(status, { gateApproved: true })까지 수행해
+        // 같은 호출에서 다음 status로 자동 전이한다. 별도 advanceStatus 호출 불필요.
+        const advancedStatus = await approveGateForProject(gateRow.video_project_id, gate_id, decision);
         const projRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [gateRow.video_project_id]);
-        const status = newStatus ?? projRows[0]?.status ?? null;
-        ctx.body = { ok: true, data: { gate_id, decision, status } };
+        const status = advancedStatus ?? projRows[0]?.status ?? null;
+        ctx.body = { ok: true, data: { gate_id, decision, status, advanced: decision === 'approved' && advancedStatus != null } };
+        await next();
+      },
+
+      // POST /api/cmo:approveStageGate  { project_id }
+      // 새 보드 흐름(R1/R4 등)에서 승인 게이트 상태를 사장님 권한으로 통과시킨다.
+      // 레거시 chatMessage는 gate row를 만들지만 보드 흐름은 만들지 않으므로,
+      // 현재 상태가 승인 게이트면 approved gate row(감사용)를 만들고 gateApproved 전이한다.
+      approveStageGate: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const projRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const status = projRows[0].status;
+        if (!videoRoomRequiresApproval(status)) {
+          ctx.throw(400, `status ${status} is not an approval gate`);
+        }
+        // 감사용 approved gate row (gate_type == 현재 상태, GATE_BY_STATUS 매핑과 동일).
+        const gateId = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO video_room_gates (id, video_project_id, gate_type, page, title, status, decided_by, decided_at, "createdAt", "updatedAt")
+           VALUES ($1,$2,$3,$4,$5,'approved','founder', now(), now(), now())`,
+          { bind: [gateId, project_id, status, pageForStatus(status), `${status} 승인`] },
+        );
+        const newStatus = advanceVideoRoomStatus(status, { gateApproved: true });
+        await db.sequelize.query(
+          `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
+          { bind: [newStatus, pageForStatus(newStatus), project_id] },
+        );
+        ctx.body = { ok: true, data: { status: newStatus, gate_id: gateId } };
         await next();
       },
 
@@ -2737,38 +2873,60 @@ function registerCmoResource(app: any, db: any) {
 
         const design_theme = String(v.design_theme ?? 'Pulk Clean Green Slide Deck');
 
-        // Build slide list: provided or synthesise one from latest script_draft card.
-        let slides: any[] = Array.isArray(v.slides) ? v.slides : [];
-        if (slides.length === 0) {
-          const scriptCardRows = await q(
-            `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'script_draft' ORDER BY "createdAt" DESC LIMIT 1`,
-            [project_id],
-          );
-          const cardData = scriptCardRows[0]?.data;
-          const parsed = typeof cardData === 'string' ? JSON.parse(cardData) : cardData;
-          const summary = parsed?.summary ?? parsed?.full_script ?? proj.title ?? '영상';
-          slides = [{
-            index: 0,
-            headline: String(proj.title ?? '영상'),
-            body: String(summary).slice(0, 200),
-            visual_type: 'text',
-            speaker_text: String(summary).slice(0, 300),
-          }];
-        }
-
         // Placeholder ids so buildSlideDeckSpec validates without real records.
         const spec_id = randomUUID();
         const placeholder_script_draft_id = randomUUID();
         const placeholder_voice_recording_id = randomUUID();
 
-        const spec = buildSlideDeckSpec({
-          id: spec_id,
-          video_project_id: project_id,
-          script_draft_id: placeholder_script_draft_id,
-          voice_recording_id: placeholder_voice_recording_id,
-          design_theme,
-          slides,
-        });
+        // M4: 슬라이드 명시 입력이 없으면 최신 VideoExecutionBrief를 직접 참조해
+        // 슬라이드덱을 만든다(인트로 + 논리블록별 + 브릿지). brief가 없을 때만
+        // 기존 script_draft 요약 1장 폴백.
+        let spec: any = null;
+        let source: 'slides' | 'brief' | 'script_draft' = 'slides';
+        let slides: any[] = Array.isArray(v.slides) ? v.slides : [];
+
+        if (slides.length === 0) {
+          const brief = await loadLatestBriefForProject(q, project_id);
+          if (brief?.script?.logic_blocks?.length) {
+            spec = buildSlideDeckSpecFromBrief(brief, {
+              id: spec_id,
+              video_project_id: project_id,
+              script_draft_id: placeholder_script_draft_id,
+              voice_recording_id: placeholder_voice_recording_id,
+              design_theme,
+            });
+            source = 'brief';
+          }
+        }
+
+        if (!spec) {
+          if (slides.length === 0) {
+            const scriptCardRows = await q(
+              `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'script_draft' ORDER BY "createdAt" DESC LIMIT 1`,
+              [project_id],
+            );
+            const cardData = scriptCardRows[0]?.data;
+            const parsed = typeof cardData === 'string' ? JSON.parse(cardData) : cardData;
+            const summary = parsed?.summary ?? parsed?.full_script ?? proj.title ?? '영상';
+            slides = [{
+              index: 0,
+              headline: String(proj.title ?? '영상'),
+              body: String(summary).slice(0, 200),
+              visual_type: 'text',
+              speaker_text: String(summary).slice(0, 300),
+            }];
+            source = 'script_draft';
+          }
+
+          spec = buildSlideDeckSpec({
+            id: spec_id,
+            video_project_id: project_id,
+            script_draft_id: placeholder_script_draft_id,
+            voice_recording_id: placeholder_voice_recording_id,
+            design_theme,
+            slides,
+          });
+        }
 
         const card_id = randomUUID();
         await db.sequelize.query(
@@ -2777,7 +2935,7 @@ function registerCmoResource(app: any, db: any) {
           { bind: [card_id, project_id, design_theme, JSON.stringify(spec)] },
         );
 
-        ctx.body = { ok: true, data: { slide_deck_spec_id: spec_id, spec } };
+        ctx.body = { ok: true, data: { slide_deck_spec_id: spec_id, spec, source } };
         await next();
       },
 
@@ -2806,18 +2964,106 @@ function registerCmoResource(app: any, db: any) {
           created_at: new Date().toISOString(),
         });
 
-        // Transport: real factory or in-memory fallback.
-        const transport = _videoFactoryTransport ?? createInMemoryVideoFactoryTransport();
-        job = await submitRenderJob(job, transport);
+        // M4: 실 factory(submitJob)가 있고 spec이 있으면, 슬라이드덱을 factory 렌더 잡으로
+        // 변환해 jobs/ 인박스에 실제 push(+validate)한다. 렌더 자체(remotion, 수 분)는
+        // factory 쪽에서 실행되고, 이후 진행은 cmo:getRenderStatus 폴링으로 본다.
+        let factory_slug: string | undefined;
+        let job_path: string | undefined;
+        if (spec && _videoFactoryTransport && typeof (_videoFactoryTransport as any).submitJob === 'function') {
+          const projRows = await q(`SELECT title FROM video_room_projects WHERE id = $1`, [project_id]);
+          const title = String(projRows[0]?.title ?? spec.slides?.[0]?.headline ?? '영상');
+          let factoryJob: any;
+          try {
+            factoryJob = buildFactoryJobFromSlideDeck(spec, { slug: slide_deck_spec_id, title });
+          } catch (err: any) {
+            ctx.throw(400, `buildFactoryJobFromSlideDeck 실패: ${err?.message ?? String(err)}`);
+          }
+          const result = await (_videoFactoryTransport as any).submitJob(factoryJob);
+          if (!result.ok) {
+            ctx.throw(400, `factory submitJob 실패: ${result.error ?? 'unknown'}`);
+          }
+          factory_slug = String(factoryJob.slug);
+          job_path = result.job_path;
+          job = markRenderJobSubmitted(job);
+        } else {
+          // 폴백: factory 미설정 시 기존 in-memory transport 경로(generate 심) 유지.
+          const transport = _videoFactoryTransport ?? createInMemoryVideoFactoryTransport();
+          job = await submitRenderJob(job, transport);
+        }
 
         const card_id = randomUUID();
         await db.sequelize.query(
           `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
            VALUES ($1,$2,'rendering',$3,$4, now(), now())`,
-          { bind: [card_id, project_id, `render job ${render_job_id}`, JSON.stringify({ job, payload })] },
+          { bind: [card_id, project_id, `render job ${render_job_id}`, JSON.stringify({ job, payload, factory_slug, job_path })] },
         );
 
-        ctx.body = { ok: true, data: { render_job_id, job } };
+        ctx.body = { ok: true, data: { render_job_id, job, factory_slug, job_path } };
+        await next();
+      },
+
+      // POST /api/cmo:getRenderStatus  { project_id, slug?, render_job_id? }
+      // M4: 파일 기반 렌더 상태 폴링. factory outputs/<slug>/ 산출물 존재로 상태를 도출하고
+      // (l5-core deriveRenderJobStatus), 완료 시 산출물 QA(evaluateRenderArtifacts)까지 반환.
+      getRenderStatus: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        // 최신 rendering 카드에서 job + factory_slug 회수.
+        const cardRows = await q(
+          `SELECT id, data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'rendering' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        const cardRow = cardRows[0] ?? null;
+        const cardData = cardRow
+          ? (typeof cardRow.data === 'string' ? JSON.parse(cardRow.data) : cardRow.data)
+          : null;
+
+        const render_job_id = String(v.render_job_id ?? cardData?.job?.id ?? '').trim();
+        const slug = String(v.slug ?? cardData?.factory_slug ?? '').trim();
+        if (!slug) {
+          ctx.throw(400, 'factory_slug를 알 수 없습니다. submitRender(실 factory)를 먼저 호출하거나 slug를 넘기세요.');
+        }
+        if (!_videoFactoryTransport || typeof (_videoFactoryTransport as any).getRenderJobStatus !== 'function') {
+          ctx.body = { ok: false, data: { error: '팩토리 디렉토리가 없어 상태를 조회할 수 없습니다 (VIDEO_FACTORY_DIR 미설정).' } };
+          await next();
+          return;
+        }
+
+        const res = await (_videoFactoryTransport as any).getRenderJobStatus(slug);
+        if (!res.ok) {
+          ctx.throw(400, `getRenderJobStatus 실패: ${res.error ?? 'unknown'}`);
+        }
+        const observation = res.observation;
+        const status = deriveRenderJobStatus(observation);
+
+        // 상태머신 반영 + 완료 시 산출물 QA.
+        let job = cardData?.job ?? null;
+        if (job) {
+          job = reconcileRenderJob(job, observation, new Date().toISOString());
+        }
+        const render_qa = status === 'completed'
+          ? evaluateRenderArtifacts(observation, {
+              format: observation?.render_report?.width === 1080 ? 'shorts_9_16' : 'youtube_16_9',
+            })
+          : null;
+
+        // 카드 데이터 갱신(있을 때만).
+        if (cardRow && job) {
+          await db.sequelize.query(
+            `UPDATE video_room_cards SET data = $1, summary = $2, "updatedAt" = now() WHERE id = $3`,
+            {
+              bind: [
+                JSON.stringify({ ...cardData, job, last_observation: observation, render_qa }),
+                `render ${status}`,
+                cardRow.id,
+              ],
+            },
+          );
+        }
+
+        ctx.body = { ok: true, data: { render_job_id, slug, status, job, observation, render_qa } };
         await next();
       },
 
@@ -2859,7 +3105,9 @@ function registerCmoResource(app: any, db: any) {
         await next();
       },
 
-      // POST /api/cmo:createUploadDraft  { project_id, render_job_id, title, description?, tags? }
+      // POST /api/cmo:createUploadDraft  { project_id, render_job_id, title?, description?, tags? }
+      // M4: title 미입력 시 최신 VideoExecutionBrief에서 업로드 "초안"(제목/설명/태그)을
+      // 자동 생성한다. 초안 생성까지만 — 실제 YouTube 업로드는 절대 하지 않는다(승인 게이트).
       createUploadDraft: async (ctx: ActionContext, next: () => Promise<void>) => {
         const v = getValues(ctx);
         const project_id = String(v.project_id ?? '').trim();
@@ -2867,23 +3115,35 @@ function registerCmoResource(app: any, db: any) {
         const title = String(v.title ?? '').trim();
         if (!project_id) ctx.throw(400, 'project_id is required');
         if (!render_job_id) ctx.throw(400, 'render_job_id is required');
-        if (!title) ctx.throw(400, 'title is required');
 
         const upload_draft_id = randomUUID();
-        const draft = createUploadDraft({
-          id: upload_draft_id,
-          video_project_id: project_id,
-          render_job_id,
-          title,
-          description: String(v.description ?? ''),
-          tags: Array.isArray(v.tags) ? v.tags.map(String) : [],
-        });
+        let draft: any;
+        if (title) {
+          draft = createUploadDraft({
+            id: upload_draft_id,
+            video_project_id: project_id,
+            render_job_id,
+            title,
+            description: String(v.description ?? ''),
+            tags: Array.isArray(v.tags) ? v.tags.map(String) : [],
+          });
+        } else {
+          const brief = await loadLatestBriefForProject(q, project_id);
+          if (!brief) {
+            ctx.throw(400, 'title이 없고 VideoExecutionBrief도 없습니다. title을 넘기거나 generateVideoExecutionBrief를 먼저 호출하세요.');
+          }
+          draft = buildYoutubeUploadDraftFromBrief(
+            brief,
+            { id: upload_draft_id, video_project_id: project_id, render_job_id },
+            v.thumbnail_ref ? { thumbnail_ref: String(v.thumbnail_ref) } : {},
+          );
+        }
 
         const card_id = randomUUID();
         await db.sequelize.query(
           `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
            VALUES ($1,$2,'upload_draft',$3,$4, now(), now())`,
-          { bind: [card_id, project_id, title, JSON.stringify(draft)] },
+          { bind: [card_id, project_id, String(draft.title ?? title), JSON.stringify(draft)] },
         );
 
         ctx.body = { ok: true, data: { upload_draft_id, draft } };
@@ -3180,31 +3440,44 @@ function registerCmoResource(app: any, db: any) {
         let brief: any = v.brief ?? null;
 
         if (!brief) {
-          // Load strategy artifact card
-          const strategyRows = await q(
-            `SELECT data FROM video_room_cards WHERE id = $1 AND video_project_id = $2 AND stage = 'strategy' ORDER BY "createdAt" DESC LIMIT 1`,
-            [card_id, project_id],
-          );
-          // Fall back to any card matching card_id if stage filter yields nothing
-          const cardRows = strategyRows.length > 0 ? strategyRows : await q(
-            `SELECT data FROM video_room_cards WHERE id = $1 AND video_project_id = $2 ORDER BY "createdAt" DESC LIMIT 1`,
-            [card_id, project_id],
-          );
-          if (!cardRows[0]) ctx.throw(404, `card ${card_id} not found for project ${project_id}`);
+          // 전략패키지→Brief 파이프라인: 승인된 키 콘텐츠(choice) + script_draft(원고/논리블록/도입)
+          // 카드를 읽어 CmoVideoStrategyBrief + VoiceMatchedScript + intro_30s를 조립한 뒤
+          // buildVideoExecutionBrief(정확한 시그니처)로 brief를 생성한다.
+          const scriptDraft = await loadScriptDraftForBrief(q, project_id, card_id);
+          if (!scriptDraft) {
+            ctx.throw(400, 'script_draft 카드가 없습니다. proposeScriptDraft를 먼저 호출하세요.');
+          }
 
-          // Load latest script card
-          const scriptRows = await q(
-            `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'script' ORDER BY "createdAt" DESC LIMIT 1`,
-            [project_id],
-          );
+          const proj = (await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]))[0] ?? {};
+          const strategyBrief = buildStrategyBriefFromCards(scriptDraft, proj, card_id);
 
-          const cardData = cardRows[0].data;
-          const parsedCard = typeof cardData === 'string' ? JSON.parse(cardData) : cardData;
-          const scriptData = scriptRows[0]?.data;
-          const parsedScript = scriptData ? (typeof scriptData === 'string' ? JSON.parse(scriptData) : scriptData) : null;
+          const fullScript: string =
+            scriptDraft.integrated_script?.full_script ??
+            scriptDraft.full_script ??
+            (Array.isArray(scriptDraft.logic_blocks)
+              ? scriptDraft.logic_blocks.map((b: any) => b.draft ?? '').filter(Boolean).join('\n\n')
+              : '');
+          const intro30s: string =
+            scriptDraft.intro_30s?.script ??
+            scriptDraft.intro_30s?.first_sentence ??
+            strategyBrief.intro_direction;
+
+          const voice_matched_script = {
+            full_script: fullScript,
+            voice_profile_used: {},
+            changed_phrases: [],
+            preserved_logic: true,
+          };
 
           try {
-            brief = buildVideoExecutionBrief({ cardData: parsedCard, scriptData: parsedScript, card_id, project_id });
+            brief = buildVideoExecutionBrief({
+              content_card_id: card_id,
+              content_type: strategyBrief.content_type,
+              title: strategyBrief.topic,
+              strategy_brief: strategyBrief,
+              voice_matched_script,
+              intro_30s: intro30s,
+            });
           } catch (err: any) {
             ctx.throw(400, `buildVideoExecutionBrief 실패: ${err?.message ?? String(err)}`);
           }
@@ -3215,14 +3488,14 @@ function registerCmoResource(app: any, db: any) {
           ctx.throw(400, `brief 검증 실패: ${(validation.errors ?? []).join(', ')}`);
         }
 
-        const handoff = prepareFactoryHandoff({ brief, project_id, content_card_id: card_id });
         const record_id = randomUUID();
         const now = new Date().toISOString();
+        const handoff = prepareFactoryHandoff(brief, { id: record_id, created_at: now });
 
         await db.sequelize.query(
           `INSERT INTO video_execution_briefs (id, content_card_id, project_id, schema_version, brief, validation_status, handoff_status, "createdAt", "updatedAt")
-           VALUES ($1,$2,$3,$4,$5,'valid','ready', now(), now())
-           ON CONFLICT (id) DO UPDATE SET brief=$5, validation_status='valid', handoff_status='ready', "updatedAt"=now()`,
+           VALUES ($1,$2,$3,$4,$5,$6,$7, now(), now())
+           ON CONFLICT (id) DO UPDATE SET brief=$5, validation_status=$6, handoff_status=$7, "updatedAt"=now()`,
           {
             bind: [
               record_id,
@@ -3230,11 +3503,954 @@ function registerCmoResource(app: any, db: any) {
               project_id,
               brief.schema_version ?? 'cmo_to_factory_v2',
               JSON.stringify(handoff),
+              handoff.validation_status,
+              handoff.handoff_status,
             ],
           },
         );
 
-        ctx.body = { ok: true, data: { id: record_id, brief: handoff } };
+        ctx.body = { ok: true, data: { brief_id: record_id, brief: handoff.brief, record: handoff } };
+        await next();
+      },
+
+      // POST /api/cmo:sendBriefToFactory  { project_id, content_card_id, brief_id?, brief? }
+      // 승인된 VideoExecutionBrief를 팩토리로 전송한다(prepareFactoryHandoff→sendToFactory).
+      // transport는 기존 video factory transport(submitJob)를 재사용하고, 미설정 시
+      // 최소 결정론 transport(상태만 sent)로 폴백한다.
+      sendBriefToFactory: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const card_id = String(v.content_card_id ?? v.card_id ?? '').trim();
+        const brief_id = v.brief_id ? String(v.brief_id).trim() : '';
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        // 1) 레코드 로드 우선순위: brief_id → content_card_id 최신 → body의 brief.
+        let row: any = null;
+        if (brief_id) {
+          row = (await q(`SELECT * FROM video_execution_briefs WHERE id = $1 AND project_id = $2`, [brief_id, project_id]))[0] ?? null;
+        }
+        if (!row && card_id) {
+          row = (await q(
+            `SELECT * FROM video_execution_briefs WHERE content_card_id = $1 AND project_id = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+            [card_id, project_id],
+          ))[0] ?? null;
+        }
+
+        let record: any;
+        if (row) {
+          const stored = typeof row.brief === 'string' ? JSON.parse(row.brief) : row.brief;
+          // stored는 prepareFactoryHandoff가 만든 VideoExecutionBriefRecord.
+          record = stored;
+        } else if (v.brief) {
+          const briefPayload = typeof v.brief === 'string' ? JSON.parse(v.brief) : v.brief;
+          record = prepareFactoryHandoff(briefPayload, { id: randomUUID(), created_at: new Date().toISOString() });
+        } else {
+          ctx.throw(400, 'video_execution_brief 레코드를 찾을 수 없습니다. generateVideoExecutionBrief를 먼저 호출하세요.');
+        }
+
+        if (record.validation_status === 'invalid') {
+          ctx.throw(400, 'invalid brief는 팩토리로 전송할 수 없습니다.');
+        }
+
+        // 2) transport: 브리프 핸드오프 = 외부 팩토리 인박스(briefs/)에 brief JSON 전달.
+        // submitJob은 슬라이드덱→렌더 잡 전용이라 VideoExecutionBrief를 넘기면 검증 실패함(사용 금지).
+        // _videoFactoryTransport.submitBrief가 briefs/<slug>.json을 쓰고 validate:brief로 검증한다.
+        // factory dir 미존재(=transport null)면 graceful stub로 sent 처리(brief는 DB에 영속).
+        let brief_path: string | undefined;
+        let usedStub = true;
+        const transport = {
+          async send(brief: any): Promise<{ ok: boolean }> {
+            if (_videoFactoryTransport && typeof (_videoFactoryTransport as any).submitBrief === 'function') {
+              usedStub = false;
+              const res = await (_videoFactoryTransport as any).submitBrief(brief);
+              brief_path = res?.data?.brief_path;
+              return { ok: !!res?.ok };
+            }
+            return { ok: true };
+          },
+        };
+
+        const sent = await sendToFactory(record, transport);
+
+        const factory_result_url =
+          (process.env.VIDEO_FACTORY_RESULT_BASE_URL
+            ? `${process.env.VIDEO_FACTORY_RESULT_BASE_URL}/${sent.id}`
+            : undefined);
+
+        // 3) 레코드 상태 갱신(있던 행만 update; body brief 경로는 신규 insert).
+        if (row) {
+          await db.sequelize.query(
+            `UPDATE video_execution_briefs SET brief=$1, handoff_status=$2, "updatedAt"=now() WHERE id=$3`,
+            { bind: [JSON.stringify(sent), sent.handoff_status, row.id] },
+          );
+        } else {
+          await db.sequelize.query(
+            `INSERT INTO video_execution_briefs (id, content_card_id, project_id, schema_version, brief, validation_status, handoff_status, "createdAt", "updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7, now(), now())
+             ON CONFLICT (id) DO UPDATE SET brief=$5, handoff_status=$7, "updatedAt"=now()`,
+            {
+              bind: [
+                sent.id,
+                sent.content_card_id,
+                project_id,
+                sent.schema_version,
+                JSON.stringify(sent),
+                sent.validation_status,
+                sent.handoff_status,
+              ],
+            },
+          );
+        }
+
+        if (sent.handoff_status !== 'sent') {
+          ctx.throw(400, `factory 전송 실패 (handoff_status=${sent.handoff_status})`);
+        }
+
+        ctx.body = { ok: true, data: { handoff_status: sent.handoff_status, factory_result_url, brief_path, stub: usedStub } };
+        await next();
+      },
+
+      // POST /api/cmo:proposeKeyContentDraft  { project_id }
+      // v3 Step1~7,10: LLM으로 키 콘텐츠 초안 생성 → key_content_draft 카드 upsert.
+      proposeKeyContentDraft: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        // Load project for product info.
+        const projRows = await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const proj = projRows[0];
+
+        // CMO v3: 키 콘텐츠 입력은 프로젝트 생성 시 1회 받은 값을 사용.
+        // 요청에 직접 넘어온 값이 있으면 우선(편집·재실행 호환).
+        const customer_problem =
+          (v.customer_problem ? String(v.customer_problem).trim() : '') ||
+          (proj.customer_problem ? String(proj.customer_problem).trim() : '') ||
+          undefined;
+        const core_offer =
+          (v.core_offer ? String(v.core_offer).trim() : '') ||
+          (proj.core_offer ? String(proj.core_offer).trim() : '') ||
+          undefined;
+
+        // ProductBrief shape (runKeyContentWorkflow/buildItemGeneralization 입력 계약).
+        // category는 createProject가 별도로 받지 않으므로 product 문자열로 폴백.
+        const productStr = String(proj.product ?? '').trim();
+        const product = {
+          product_name: productStr || String(proj.title ?? '').trim(),
+          category: String((proj as any).category ?? '').trim() || productStr || '제품/서비스',
+          target_audience: String(proj.target_audience ?? '').trim(),
+          core_offer: core_offer ?? productStr,
+          business_goal: String(proj.business_goal ?? 'brand_growth').trim(),
+        };
+
+        // Graceful second brain insight fetch.
+        let second_brain_insights: string[] = [];
+        if (_secondBrainTransport) {
+          try {
+            const sbHits = await _secondBrainTransport.query({ role: '키 콘텐츠 기획' as any, limit: 5 });
+            second_brain_insights = (sbHits ?? [])
+              .map((h: any) => String(h.content ?? h.text ?? h.insight ?? '').trim())
+              .filter((s: string) => s.length > 0);
+          } catch {
+            // graceful: leave empty
+          }
+        }
+
+        const llm = buildLLMClient('');
+        const llmComplete = (p: string) => llm.complete({ system: '', user: p });
+
+        // 11스텝 순차 워크플로우(Step1~7,10)로 초안 생성. 각 LLM 스텝은 이전 스텝
+        // 출력을 주입받아 추론·검증·누적하며, 실패 스텝만 결정론 fallback.
+        let result: any;
+        try {
+          result = await runKeyContentWorkflow({ product, customer_problem, second_brain_insights }, { llmComplete });
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        // 분석 초안(draft)으로 서로 다른 각도의 주제 후보 3개 생성.
+        // 동일 llmComplete 주입(미설정/실패 시 도메인 모듈이 결정론 폴백).
+        let candidates: any[];
+        try {
+          candidates = await generateKeyContentCandidates(result.draft, { llmComplete }, 3);
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        // key_content_draft 카드 upsert(분석 산출물 보존 — 후보/선택 단계가 참조).
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'key_content_draft',
+          `key_content_draft (progress: ${result.progress}/8)`,
+          result.draft,
+        );
+
+        // key_content_candidates 카드 upsert(후보 + progress).
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'key_content_candidates',
+          `key_content_candidates (${candidates.length}개 후보)`,
+          { candidates, progress: result.progress },
+        );
+
+        // 초안 완료 텔레그램 알림(best-effort — 알림 실패가 응답에 영향 없음).
+        sendKeyContentDraftTelegram(project_id, candidates.length).catch(() => {
+          /* graceful: 알림 실패는 무시 */
+        });
+
+        ctx.body = { ok: true, data: { candidates, progress: result.progress } };
+        await next();
+      },
+
+      // POST /api/cmo:selectKeyContentCandidate  { project_id, candidate_id }
+      // 사장님이 후보 1개 선택 → finalizeKeyContentChoice로 풀링 입력 확정 +
+      // key_content_choice 카드 저장 + 상태를 풀링 단계로 advance.
+      selectKeyContentCandidate: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const candidate_id = String(v.candidate_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!candidate_id) ctx.throw(400, 'candidate_id is required');
+
+        // 후보 카드 로드.
+        const candRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_candidates' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!candRows[0]) ctx.throw(404, 'key_content_candidates 카드가 없습니다. proposeKeyContentDraft를 먼저 호출하세요.');
+        const candData = typeof candRows[0].data === 'string' ? JSON.parse(candRows[0].data) : (candRows[0].data ?? {});
+        const candidate = (candData.candidates ?? []).find((c: any) => c.id === candidate_id);
+        if (!candidate) ctx.throw(404, `candidate ${candidate_id} not found`);
+
+        // 분석 초안 로드(entry_stage 계승용).
+        const draftRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_draft' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!draftRows[0]) ctx.throw(404, 'key_content_draft 카드가 없습니다.');
+        const draft = typeof draftRows[0].data === 'string' ? JSON.parse(draftRows[0].data) : (draftRows[0].data ?? {});
+
+        let choice: any;
+        try {
+          choice = finalizeKeyContentChoice({ candidate, draft });
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        // 확정 카드 저장.
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'key_content_choice',
+          `key_content_choice: ${choice.key_topic_title}`,
+          choice,
+        );
+
+        // 풀링 단계로 상태 진입.
+        const projRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [project_id]);
+        let newStatus: string | null = null;
+        if (projRows[0]) {
+          newStatus = advanceVideoRoomStatus(projRows[0].status);
+          const newPage = pageForStatus(newStatus);
+          await db.sequelize.query(
+            `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
+            { bind: [newStatus, newPage, project_id] },
+          );
+        }
+
+        ctx.body = { ok: true, data: { choice, status: newStatus } };
+        await next();
+      },
+
+      // POST /api/cmo:proposePullingCandidates  { project_id }
+      // R1 풀링: 선택된 키 콘텐츠(key_content_choice)와 분석 초안(key_content_draft)으로
+      // 끌어오는 풀링 주제 후보 N개 생성 → pulling_candidates 카드 upsert.
+      proposePullingCandidates: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        // 선택된 키 콘텐츠 로드(key_topic_title 입력).
+        const choiceRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_choice' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!choiceRows[0]) ctx.throw(404, 'key_content_choice 카드가 없습니다. selectKeyContentCandidate를 먼저 호출하세요.');
+        const choice = typeof choiceRows[0].data === 'string' ? JSON.parse(choiceRows[0].data) : (choiceRows[0].data ?? {});
+        const key_topic_title = String(choice.key_topic_title ?? '').trim();
+        if (!key_topic_title) ctx.throw(400, 'key_content_choice 카드에 key_topic_title이 없습니다.');
+
+        // 분석 초안 로드(draft 입력).
+        const draftRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_draft' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!draftRows[0]) ctx.throw(404, 'key_content_draft 카드가 없습니다. proposeKeyContentDraft를 먼저 호출하세요.');
+        const draft = typeof draftRows[0].data === 'string' ? JSON.parse(draftRows[0].data) : (draftRows[0].data ?? {});
+
+        const llm = buildLLMClient('');
+        const llmComplete = (p: string) => llm.complete({ system: '', user: p });
+
+        // 풀링 주제 후보 생성(미설정/실패 시 도메인 모듈이 결정론 폴백).
+        let candidates: any[];
+        try {
+          candidates = await generatePullingCandidates({ key_topic_title, draft }, { llmComplete });
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        // pulling_candidates 카드 upsert.
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'pulling_candidates',
+          `pulling_candidates (${candidates.length}개 후보)`,
+          { candidates },
+        );
+
+        // 풀링 초안 완료 텔레그램 알림(best-effort — 알림 실패가 응답에 영향 없음).
+        sendPullingDraftTelegram(project_id, candidates.length).catch(() => {
+          /* graceful: 알림 실패는 무시 */
+        });
+
+        ctx.body = { ok: true, data: { candidates } };
+        await next();
+      },
+
+      // POST /api/cmo:commitPullingPlan  { project_id }
+      // R1 풀링 확정: pulling_candidates + key_content_choice를 읽어 finalizePullingPlan →
+      // pulling_plan 카드 저장 + 상태를 다음(제작) 단계로 advance.
+      commitPullingPlan: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        // 풀링 후보 카드 로드.
+        const candRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'pulling_candidates' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!candRows[0]) ctx.throw(404, 'pulling_candidates 카드가 없습니다. proposePullingCandidates를 먼저 호출하세요.');
+        const candData = typeof candRows[0].data === 'string' ? JSON.parse(candRows[0].data) : (candRows[0].data ?? {});
+        const candidates = candData.candidates ?? [];
+
+        // 선택된 키 콘텐츠 로드(key_topic_title).
+        const choiceRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_choice' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!choiceRows[0]) ctx.throw(404, 'key_content_choice 카드가 없습니다.');
+        const choice = typeof choiceRows[0].data === 'string' ? JSON.parse(choiceRows[0].data) : (choiceRows[0].data ?? {});
+        const key_topic_title = String(choice.key_topic_title ?? '').trim();
+
+        let plan: any;
+        try {
+          plan = finalizePullingPlan({ key_topic_title, candidates });
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        // 확정 카드 저장.
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'pulling_plan',
+          `pulling_plan: ${plan.pulling_topics.length}개 주제`,
+          plan,
+        );
+
+        // 다음(제작) 단계로 상태 진입(selectKeyContentCandidate와 동일 패턴).
+        const projRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [project_id]);
+        let newStatus: string | null = null;
+        if (projRows[0]) {
+          newStatus = advanceVideoRoomStatus(projRows[0].status);
+          const newPage = pageForStatus(newStatus);
+          await db.sequelize.query(
+            `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
+            { bind: [newStatus, newPage, project_id] },
+          );
+        }
+
+        ctx.body = { ok: true, data: { key_topic_title: plan.key_topic_title, pulling_topics: plan.pulling_topics } };
+        await next();
+      },
+
+      // POST /api/cmo:proposeThumbnailPlanDraft  { project_id }
+      // R4 제작: 확정 키콘텐츠/풀링 + 전략 컨텍스트 → 썸네일 후보 카드 'thumbnail_plan' upsert.
+      // (상태 thumbnail_pattern_extraction 구간. advance는 commitThumbnailPlan이 수행.)
+      proposeThumbnailPlanDraft: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        // 확정 키 콘텐츠 로드(content_id/topic_title 입력).
+        const choiceRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_choice' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!choiceRows[0]) ctx.throw(404, 'key_content_choice 카드가 없습니다. selectKeyContentCandidate를 먼저 호출하세요.');
+        const choice = typeof choiceRows[0].data === 'string' ? JSON.parse(choiceRows[0].data) : (choiceRows[0].data ?? {});
+        const topic_title = String(choice.key_topic_title ?? choice.selected?.title ?? '').trim();
+        if (!topic_title) ctx.throw(400, 'key_content_choice 카드에 key_topic_title이 없습니다.');
+        const content_id = String(choice.selected?.id ?? 'key-content').trim();
+        const thumbnail_direction = String(choice.selected?.thumbnail_promise ?? '').trim();
+
+        // 전략 카드(있으면) 위험메모 컨텍스트.
+        const stratRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'strategy' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        const strat = stratRows[0]
+          ? (typeof stratRows[0].data === 'string' ? JSON.parse(stratRows[0].data) : (stratRows[0].data ?? {}))
+          : {};
+        const risk_notes = Array.isArray(strat.risk_notes) ? strat.risk_notes : [];
+
+        const llm = buildLLMClient('');
+        const llmComplete = (p: string) => llm.complete({ system: '', user: p });
+
+        let result: any;
+        try {
+          result = await proposeThumbnailDraft(
+            { content_id, topic_title, thumbnail_direction, risk_notes },
+            { llmComplete },
+            3,
+          );
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'thumbnail_plan',
+          `thumbnail_plan (${result.candidates.length}개 후보)`,
+          result,
+        );
+
+        ctx.body = { ok: true, data: result };
+        await next();
+      },
+
+      // POST /api/cmo:commitThumbnailPlan  { project_id, candidate_id }
+      // R4 제작: 사장님이 썸네일 후보 1개 택1 → 'thumbnail_choice' 저장 + 상태 advance.
+      commitThumbnailPlan: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const candidate_id = String(v.candidate_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!candidate_id) ctx.throw(400, 'candidate_id is required');
+
+        const planRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'thumbnail_plan' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!planRows[0]) ctx.throw(404, 'thumbnail_plan 카드가 없습니다. proposeThumbnailPlanDraft를 먼저 호출하세요.');
+        const plan = typeof planRows[0].data === 'string' ? JSON.parse(planRows[0].data) : (planRows[0].data ?? {});
+        const selected = (plan.candidates ?? []).find((c: any) => c.candidate_id === candidate_id);
+        if (!selected) ctx.throw(404, `thumbnail candidate ${candidate_id} not found`);
+
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'thumbnail_choice',
+          `thumbnail_choice: ${selected.click_logic}`,
+          { selected, thumbnail_direction: plan.thumbnail_direction },
+        );
+
+        // 다음 단계로 상태 advance(selectKeyContentCandidate와 동일 패턴).
+        const projRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [project_id]);
+        let newStatus: string | null = null;
+        if (projRows[0]) {
+          newStatus = advanceVideoRoomStatus(projRows[0].status);
+          const newPage = pageForStatus(newStatus);
+          await db.sequelize.query(
+            `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
+            { bind: [newStatus, newPage, project_id] },
+          );
+        }
+
+        ctx.body = { ok: true, data: { selected, status: newStatus } };
+        await next();
+      },
+
+      // POST /api/cmo:proposeScriptDraft  { project_id }
+      // R4 제작: 전략 brief/자료 → 도입30초 + 로직블록 + 통합원고 + QA 초안 → 'script_draft' 카드 upsert.
+      // (script_planning→script_draft 구간. advance는 commitScriptDraft가 수행.)
+      proposeScriptDraft: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        // 확정 키 콘텐츠(주제/콘텐츠 식별자) 로드.
+        const choiceRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_choice' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!choiceRows[0]) ctx.throw(404, 'key_content_choice 카드가 없습니다.');
+        const choice = typeof choiceRows[0].data === 'string' ? JSON.parse(choiceRows[0].data) : (choiceRows[0].data ?? {});
+        const topic_title = String(choice.key_topic_title ?? choice.selected?.title ?? '').trim();
+        if (!topic_title) ctx.throw(400, 'key_content_choice 카드에 key_topic_title이 없습니다.');
+        const content_id = String(choice.selected?.id ?? 'key-content').trim();
+
+        // 전략 카드(있으면) brief/자료 컨텍스트.
+        const stratRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'strategy' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        const strat = stratRows[0]
+          ? (typeof stratRows[0].data === 'string' ? JSON.parse(stratRows[0].data) : (stratRows[0].data ?? {}))
+          : {};
+
+        const llm = buildLLMClient('');
+        const llmComplete = (p: string) => llm.complete({ system: '', user: p });
+
+        let result: any;
+        try {
+          result = await proposeScriptDraft(
+            {
+              content_id,
+              content_type: 'key',
+              topic_title,
+              target_viewer: strat.target_viewer,
+              video_promise: strat.video_promise,
+              core_message: strat.core_message,
+              strategic_angle: strat.strategic_angle,
+              intro_direction: strat.intro_direction,
+              cta: strat.cta,
+              materials: Array.isArray(strat.materials) ? strat.materials : undefined,
+              voc_lines: Array.isArray(strat.voc_lines) ? strat.voc_lines : undefined,
+              safe_claims: Array.isArray(strat.safe_claims) ? strat.safe_claims : undefined,
+              proof_points: Array.isArray(strat.proof_points) ? strat.proof_points : undefined,
+              risk_notes: Array.isArray(strat.risk_notes) ? strat.risk_notes : undefined,
+            },
+            { llmComplete },
+          );
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'script_draft',
+          `script_draft (blocks: ${result.logic_blocks.length}, qa_pass: ${result.qa.overall_pass})`,
+          result,
+        );
+
+        // 초안 완료 텔레그램 알림(best-effort — 실패가 응답에 영향 없음).
+        sendPullingDraftTelegram(project_id, result.logic_blocks.length).catch(() => {
+          /* graceful: 알림 실패는 무시 */
+        });
+
+        ctx.body = { ok: true, data: result };
+        await next();
+      },
+
+      // POST /api/cmo:commitScriptDraft  { project_id }
+      // R4 제작: 사장님 원고 승인 → 상태 advance(script_approval 게이트 전까지).
+      commitScriptDraft: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        const draftRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'script_draft' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (!draftRows[0]) ctx.throw(404, 'script_draft 카드가 없습니다. proposeScriptDraft를 먼저 호출하세요.');
+
+        const projRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [project_id]);
+        let newStatus: string | null = null;
+        if (projRows[0]) {
+          newStatus = advanceVideoRoomStatus(projRows[0].status);
+          const newPage = pageForStatus(newStatus);
+          await db.sequelize.query(
+            `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
+            { bind: [newStatus, newPage, project_id] },
+          );
+        }
+
+        ctx.body = { ok: true, data: { status: newStatus } };
+        await next();
+      },
+
+      // POST /api/cmo:recordVideoPerformance  { project_id, performance_data }
+      // R7 성과 재학습: 업로드 완료 후 사장님이 입력한 성과 지표를 저장하고,
+      // 완료 인사이트를 추출해 'completion_insights' 카드에 저장한다(다음 기획 입력용).
+      // 데이터 소스는 수동 입력 — 외부 분석 자동연동은 followup.
+      recordVideoPerformance: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const pd = (v.performance_data ?? {}) as Record<string, any>;
+
+        // 1) 성과 지표 검증 (도메인).
+        let record: any;
+        try {
+          record = recordVideoPerformance({
+            project_id,
+            view_count: Number(pd.view_count ?? 0),
+            completion_rate: Number(pd.completion_rate ?? 0),
+            ctr: Number(pd.ctr ?? 0),
+            retention_notes: pd.retention_notes != null ? String(pd.retention_notes) : undefined,
+            feedback: pd.feedback != null ? String(pd.feedback) : undefined,
+          });
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        // 2) video_performance_metrics에 best-effort 저장(각 지표 1행).
+        try {
+          for (const mt of ['view_count', 'completion_rate', 'ctr'] as const) {
+            await db.sequelize.query(
+              `INSERT INTO video_performance_metrics (id, video_project_id, metric_type, value, data, "createdAt", "updatedAt")
+               VALUES ($1,$2,$3,$4,$5, now(), now())`,
+              { bind: [randomUUID(), project_id, mt, record[mt], JSON.stringify(record)] },
+            );
+          }
+        } catch {
+          // graceful: 저장 실패가 인사이트 추출/응답을 막지 않는다.
+        }
+
+        // 3) 확정 키 콘텐츠 제목 + 풀링 주제 로드(인사이트 컨텍스트).
+        const choiceRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_choice' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        const choice = choiceRows[0]
+          ? (typeof choiceRows[0].data === 'string' ? JSON.parse(choiceRows[0].data) : choiceRows[0].data ?? {})
+          : {};
+        const key_content_title = String(choice.key_topic_title ?? choice.selected?.title ?? '키 콘텐츠').trim();
+
+        const pullingRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'pulling_plan' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        const pulling = pullingRows[0]
+          ? (typeof pullingRows[0].data === 'string' ? JSON.parse(pullingRows[0].data) : pullingRows[0].data ?? {})
+          : {};
+        const pulling_titles: string[] = Array.isArray(pulling.pulling_topics)
+          ? pulling.pulling_topics.map((t: any) => String(t.title ?? '')).filter(Boolean)
+          : [];
+
+        // 4) 완료 인사이트 추출 (LLM 미설정/실패 시 도메인 결정론 폴백).
+        const llm = buildLLMClient('');
+        const llmComplete = (p: string) => llm.complete({ system: '', user: p });
+        let insights: any[];
+        try {
+          insights = await extractCompletionInsight(
+            { performance: record, key_content_title, pulling_titles },
+            { llmComplete },
+          );
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        // 5) completion_insights 카드 저장(누적 — getCompletedVideoInsights가 읽음).
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'completion_insights',
+          `completion_insights (${insights.length}개) · ${record.summary}`,
+          { performance: record, insights },
+        );
+
+        ctx.body = { ok: true, data: { performance: record, insights } };
+        await next();
+      },
+
+      // POST /api/cmo:getCompletedVideoInsights  { project_id }
+      // R7: 누적된 완료 인사이트를 반환(다음 기획 입력용). 카드 없으면 빈 배열.
+      getCompletedVideoInsights: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        const rows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'completion_insights' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        const data = rows[0]
+          ? (typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data ?? {})
+          : {};
+        ctx.body = {
+          ok: true,
+          data: { insights: data.insights ?? [], performance: data.performance ?? null },
+        };
+        await next();
+      },
+
+      // POST /api/cmo:saveKeyContentStep  { project_id, step, data }
+      // 사장님 편집: key_content_draft 카드의 특정 step 필드를 merge.
+      saveKeyContentStep: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const step = String(v.step ?? '').trim();
+        const stepData = (v.data && typeof v.data === 'object') ? v.data as Record<string, any> : {};
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!step) ctx.throw(400, 'step is required');
+
+        const cardRows = await q(
+          `SELECT id, data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_draft' LIMIT 1`,
+          [project_id],
+        );
+        if (!cardRows[0]) ctx.throw(404, 'key_content_draft 카드가 없습니다. proposeKeyContentDraft를 먼저 호출하세요.');
+
+        const existing = typeof cardRows[0].data === 'string' ? JSON.parse(cardRows[0].data) : (cardRows[0].data ?? {});
+        const merged = { ...existing, [step]: { ...(existing[step] ?? {}), ...stepData } };
+
+        await db.sequelize.query(
+          `UPDATE video_room_cards SET data = $1, "updatedAt" = now() WHERE id = $2`,
+          { bind: [JSON.stringify(merged), cardRows[0].id] },
+        );
+
+        ctx.body = { ok: true };
+        await next();
+      },
+
+      // POST /api/cmo:submitViewtrapValidation  { project_id, payload }
+      // Step8: buildViewtrapValidation(payload) → key_content_viewtrap 카드 upsert.
+      submitViewtrapValidation: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const payload = (v.payload && typeof v.payload === 'object') ? v.payload as Record<string, any> : {};
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        let validation: any;
+        try {
+          validation = buildViewtrapValidation(payload);
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        const existingRows = await q(
+          `SELECT id FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_viewtrap' LIMIT 1`,
+          [project_id],
+        );
+        if (existingRows[0]) {
+          await db.sequelize.query(
+            `UPDATE video_room_cards SET data = $1, "updatedAt" = now() WHERE id = $2`,
+            { bind: [JSON.stringify(validation), existingRows[0].id] },
+          );
+        } else {
+          const card_id = randomUUID();
+          await db.sequelize.query(
+            `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+             VALUES ($1,$2,'key_content_viewtrap',$3,$4, now(), now())`,
+            { bind: [card_id, project_id, 'key_content_viewtrap', JSON.stringify(validation)] },
+          );
+        }
+
+        ctx.body = { ok: true, data: { validation } };
+        await next();
+      },
+
+      // POST /api/cmo:runDiscovery  { project_id, query, mode?, search_keyword?, validated_keywords? }
+      // M1~M3 통합: 발굴(YouTube) → 통계+5만+ 필터 → Sonnet 분류 → 후보 산출.
+      // 결과(후보 + viewtrap_validation 초안)를 discovery 카드에 저장하고 반환한다.
+      // CDP 크롤러는 서버에서 미주입(로그인 크롬 전제) → stats+Sonnet 부분 파이프라인.
+      runDiscovery: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const query = String(v.query ?? '').trim();
+        const mode = (String(v.mode ?? 'key').trim() === 'pulling' ? 'pulling' : 'key') as
+          | 'key'
+          | 'pulling';
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!query) ctx.throw(400, 'query is required');
+
+        const projRows = await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const proj = projRows[0];
+
+        const productStr = String(proj.product ?? '').trim();
+        const product = {
+          product_name: productStr || String(proj.title ?? '').trim(),
+          category: String((proj as any).category ?? '').trim() || productStr || '제품/서비스',
+          target_audience: String(proj.target_audience ?? '').trim(),
+          core_offer: String(proj.core_offer ?? productStr).trim() || productStr,
+          business_goal: String(proj.business_goal ?? 'brand_growth').trim(),
+        };
+        const target = product.target_audience || '타깃 미상';
+
+        // 실 발굴 deps 조립 — @l5/youtube는 ESM이라 dynamic import. 자격증명/모델
+        // 없으면 graceful 실패(파이프라인이 단계별 폴백하므로 후보 0개로 반환).
+        let deps: any;
+        try {
+          const yt: any = await import(
+            path.resolve(__dirname, '../../../../../../../services/youtube/dist/index.js')
+          );
+          const creds = yt.loadCredentials();
+          const client = new yt.YouTubeClient(creds);
+          // Sonnet 분류 함수 주입(모델 고정). classifyDiscoveredVideos를 감싼다.
+          // 타임아웃 240s: launchd 서버 컨텍스트의 claude CLI cold-spawn은 셸보다 훨씬
+          // 느리다(실측 배치 1콜 47~125s). 기본 60s면 양 attempt 모두 타임아웃 →
+          // 배치 10개가 통째로 ambiguous 폴백(classified=false)되던 근본원인. (후속3 2026-06-10)
+          const sonnet = createClaudeCLIClient({ model: 'sonnet', timeoutMs: 240_000 });
+          const classify = (videos: any[], m: 'key' | 'pulling') =>
+            classifyDiscoveredVideos(
+              {
+                product,
+                target,
+                videos,
+                mode: m,
+                ...(mode === 'pulling' && proj.key_content_context
+                  ? { key_content_context: String(proj.key_content_context) }
+                  : {}),
+              },
+              { llm: sonnet },
+            );
+          deps = yt.createLiveDiscoveryDeps({ client, searchMaxResults: 25, classify });
+        } catch (err: any) {
+          ctx.throw(400, `discovery deps unavailable: ${err?.message ?? String(err)}`);
+        }
+
+        let result: any;
+        try {
+          result = await runDiscoveryPipeline({ query, product, target, mode }, deps);
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        // 후보 → viewtrap_validation 초안(실데이터 기반 선정이유 포함).
+        const candidates = (result.candidates ?? []).map((c: any) => ({
+          videoId: c.videoId,
+          title: c.title,
+          channelTitle: c.channelTitle,
+          viewCount: c.viewCount,
+          metrics: c.metrics ?? null,
+          verdict: c.classification?.verdict ?? 'ambiguous',
+          selection_reason: buildSelectionReason(c),
+        }));
+
+        let viewtrap_validation_input: any = null;
+        if (result.candidates?.length) {
+          viewtrap_validation_input =
+            mode === 'pulling'
+              ? toPullingViewtrapValidationInput(result.candidates, {
+                  searchKeyword: String(v.search_keyword ?? query),
+                })
+              : toKeyViewtrapValidationInput(result.candidates, {
+                  validatedKeywords: Array.isArray(v.validated_keywords)
+                    ? v.validated_keywords.map((s: any) => String(s))
+                    : [query],
+                });
+        }
+        const longtail_inputs =
+          mode === 'pulling' && result.candidates?.length
+            ? toLongtailCandidateInputs(result.candidates)
+            : [];
+
+        const discoveryData = {
+          mode,
+          query,
+          provenance: result.provenance,
+          candidates,
+          viewtrap_validation_input,
+          longtail_inputs,
+        };
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'discovery',
+          `discovery (${mode}, 후보 ${candidates.length}개)`,
+          discoveryData,
+        );
+
+        ctx.body = { ok: true, data: discoveryData };
+        await next();
+      },
+
+      // POST /api/cmo:commitKeyContentPlan  { project_id, payload: {title, thumbnail_promise, intro_direction, body_structure, cta} }
+      // Step11: draft + viewtrap + 사장님 승인 → finalizeKeyContentPlan → key_content 카드 저장.
+      commitKeyContentPlan: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const payload = (v.payload && typeof v.payload === 'object') ? v.payload as Record<string, any> : {};
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        // Load draft card.
+        const draftRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_draft' LIMIT 1`,
+          [project_id],
+        );
+        if (!draftRows[0]) ctx.throw(400, 'key_content_draft 카드가 없습니다.');
+        const draft = typeof draftRows[0].data === 'string' ? JSON.parse(draftRows[0].data) : draftRows[0].data;
+
+        // Load viewtrap card.
+        const vtRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'key_content_viewtrap' LIMIT 1`,
+          [project_id],
+        );
+        if (!vtRows[0]) ctx.throw(400, 'key_content_viewtrap 카드가 없습니다. submitViewtrapValidation을 먼저 호출하세요.');
+        const viewtrap_validation = typeof vtRows[0].data === 'string' ? JSON.parse(vtRows[0].data) : vtRows[0].data;
+
+        let plan: any;
+        try {
+          plan = finalizeKeyContentPlan({
+            draft,
+            viewtrap_validation,
+            approved: {
+              title: payload.title,
+              thumbnail_promise: payload.thumbnail_promise,
+              intro_direction: payload.intro_direction,
+              body_structure: Array.isArray(payload.body_structure) ? payload.body_structure : [],
+              cta: payload.cta,
+            },
+          });
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        const card_id = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+           VALUES ($1,$2,'key_content',$3,$4, now(), now())`,
+          { bind: [card_id, project_id, `key_content: ${plan.step11_approved_topic?.title ?? ''}`, JSON.stringify(plan)] },
+        );
+
+        ctx.body = { ok: true, data: { approved_topic: plan.step11_approved_topic } };
+        await next();
+      },
+
+      // GET /api/cmo:getStageGuides
+      // 단계 진행 레일용: STAGE_SCRIPT를 { [status]: { label, focus } } 형태로 반환.
+      getStageGuides: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const { STAGE_SCRIPT } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cmo-strategy'));
+        const guides: Record<string, { label: string; focus: string }> = {};
+        for (const [status, entry] of Object.entries(STAGE_SCRIPT as Record<string, { label: string; focus: string; prompt: string }>)) {
+          guides[status] = { label: entry.label, focus: entry.focus };
+        }
+        ctx.body = { ok: true, data: { guides } };
+        await next();
+      },
+
+      // POST /api/cmo:runContentStrategy  { project_id, task? }
+      // Runs the CMO v3 skill chain via CmoOrchestrator (keycontent → factory).
+      // D3+ skills pause and return pending_skills for founder approval.
+      runContentStrategy: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        const taskInput = v.task && typeof v.task === 'object' ? v.task as Record<string, unknown> : {};
+        const task = {
+          id: String(taskInput.id ?? randomUUID()),
+          title: String(taskInput.title ?? 'CMO content strategy'),
+          expected_output: String(taskInput.expected_output ?? 'Full content strategy skill chain output'),
+          rationale: String(taskInput.rationale ?? ''),
+          risk_level: (taskInput.risk_level as string) ?? 'D2',
+          source_ref: String(taskInput.source_ref ?? project_id),
+        };
+
+        const registry = createCmoSkillRegistry();
+        const orchestrator = new CmoOrchestrator({ registry, selection_strategy: 'rule' });
+        const result = await orchestrator.execute({ task, context: { project_id } });
+
+        ctx.body = { ok: true, data: result };
         await next();
       },
     },
@@ -3713,6 +4929,196 @@ function makeFounderMemoryInsightSource(ctx: ActionContext) {
       }
     },
   };
+}
+
+// Upsert a single video_room_card per (project, stage). data is JSON-serialized.
+// ── VideoExecutionBrief 조립 헬퍼 (R6 파이프라인) ───────────────────────────
+// script_draft 카드(proposeScriptDraft 산출물: integrated_script/intro_30s/logic_blocks)를
+// content_card_id 또는 프로젝트 최신본으로 로드. JSON 컬럼은 문자열일 수 있어 파싱.
+async function loadScriptDraftForBrief(
+  q: (sql: string, bind: any[]) => Promise<any[]>,
+  project_id: string,
+  card_id: string,
+): Promise<any | null> {
+  let rows = await q(
+    `SELECT data FROM video_room_cards WHERE id = $1 AND video_project_id = $2 AND stage = 'script_draft' ORDER BY "createdAt" DESC LIMIT 1`,
+    [card_id, project_id],
+  );
+  if (!rows[0]) {
+    rows = await q(
+      `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'script_draft' ORDER BY "createdAt" DESC LIMIT 1`,
+      [project_id],
+    );
+  }
+  if (!rows[0]) return null;
+  const data = rows[0].data;
+  return typeof data === 'string' ? JSON.parse(data) : data;
+}
+
+// M4: 프로젝트의 최신 VideoExecutionBrief(payload)를 video_execution_briefs에서 읽는다.
+// 저장 형태는 prepareFactoryHandoff가 만든 VideoExecutionBriefRecord({ brief: ... }) JSON.
+async function loadLatestBriefForProject(
+  q: (sql: string, bind: any[]) => Promise<any[]>,
+  project_id: string,
+): Promise<any | null> {
+  const rows = await q(
+    `SELECT brief FROM video_execution_briefs WHERE project_id = $1 ORDER BY "createdAt" DESC LIMIT 1`,
+    [project_id],
+  );
+  if (!rows[0]) return null;
+  const stored = typeof rows[0].brief === 'string' ? JSON.parse(rows[0].brief) : rows[0].brief;
+  return stored?.brief ?? stored ?? null;
+}
+
+// script_draft + 프로젝트 메타에서 CmoVideoStrategyBrief를 결정론적으로 조립한다.
+// buildVideoExecutionBrief가 요구하는 필드(core_message/logic_blocks/covered_stages(영문)/
+// channel_context/target_viewer)를 채운다. covered_stages는 logic_blocks에서 합산.
+function buildStrategyBriefFromCards(scriptDraft: any, proj: any, content_id: string): any {
+  const blocks: any[] = Array.isArray(scriptDraft?.logic_blocks) ? scriptDraft.logic_blocks : [];
+  const topic = String(proj?.title ?? scriptDraft?.topic ?? '콘텐츠').trim() || '콘텐츠';
+  const coreMessage =
+    String(scriptDraft?.qa?.logic_block_alignment?.[0] ?? '').trim() ||
+    String(blocks[0]?.main_claim ?? blocks[0]?.draft ?? '').trim() ||
+    topic;
+
+  // ScriptPart(block_id/draft) → LogicBlock 형태로 정규화.
+  const logic_blocks = (blocks.length > 0 ? blocks : [{}]).map((b: any, i: number) => ({
+    block_id: String(b?.block_id ?? `block-${i + 1}`),
+    role: String(b?.role ?? `논리 블록 ${i + 1}`),
+    covered_stages: Array.isArray(b?.covered_stages) && b.covered_stages.length > 0
+      ? b.covered_stages
+      : [(['phenomenon', 'desire', 'plan', 'action', 'reward'] as const)[i % 5]],
+    main_claim: String(b?.main_claim ?? b?.draft ?? coreMessage).trim() || coreMessage,
+    supporting_materials: Array.isArray(b?.supporting_materials) && b.supporting_materials.length > 0
+      ? b.supporting_materials
+      : Array.isArray(b?.used_materials) ? b.used_materials : [],
+    viewer_emotion: String(b?.viewer_emotion ?? '공감과 신뢰'),
+    transition_to_next_block: String(b?.transition_to_next_block ?? b?.transition_out ?? ''),
+  }));
+
+  const covered_stages = Array.from(
+    new Set(logic_blocks.flatMap((b: any) => b.covered_stages)),
+  );
+
+  return {
+    content_id,
+    content_type: 'key',
+    topic,
+    channel_context: {
+      current_position: '',
+      content_pillar: '',
+      role_in_content_set: '핵심(키) 콘텐츠',
+      bridge_from_previous_content: '',
+      bridge_to_next_content: '',
+    },
+    target_viewer: {
+      who: String(proj?.target_audience ?? '타깃 시청자').trim() || '타깃 시청자',
+      current_belief: '현재 문제를 충분히 인식하지 못함',
+      hidden_desire: String(scriptDraft?.intro_30s?.viewer_promise ?? coreMessage),
+      main_pain: String(proj?.customer_problem ?? coreMessage).trim() || coreMessage,
+      objection: '효과가 없을 것이다',
+      language_style: [],
+    },
+    consumer_desire_coverage: {
+      covered_stages,
+      primary_stage: covered_stages[0] ?? 'desire',
+      stage_explanation: coreMessage,
+    },
+    video_promise: String(scriptDraft?.intro_30s?.viewer_promise ?? coreMessage),
+    core_message: coreMessage,
+    strategic_angle: String(scriptDraft?.intro_30s?.hook_type ?? coreMessage),
+    logic_blocks,
+    intro_direction: String(scriptDraft?.intro_30s?.first_sentence ?? coreMessage),
+    thumbnail_direction: `${topic} 핵심 메시지를 시각화`,
+    script_tone_direction: '명확하고 신뢰감 있는 설명체',
+    cta: String(proj?.core_offer ?? '더 알고 싶다면 댓글로 질문해주세요').trim() || '더 알고 싶다면 댓글로 질문해주세요',
+    risk_notes: Array.isArray(scriptDraft?.qa?.revision_requests) && scriptDraft.qa.revision_requests.length > 0
+      ? scriptDraft.qa.revision_requests
+      : ['주장 근거 출처 명시 필요'],
+  };
+}
+
+async function upsertVideoRoomCard(
+  db: any,
+  projectId: string,
+  stage: string,
+  summary: string,
+  data: unknown,
+): Promise<void> {
+  const SELECT = db.sequelize.QueryTypes.SELECT;
+  const existing = await db.sequelize.query(
+    `SELECT id FROM video_room_cards WHERE video_project_id = $1 AND stage = $2 LIMIT 1`,
+    { bind: [projectId, stage], type: SELECT },
+  );
+  const payload = JSON.stringify(data);
+  if (existing[0]) {
+    await db.sequelize.query(
+      `UPDATE video_room_cards SET data = $1, summary = $2, "updatedAt" = now() WHERE id = $3`,
+      { bind: [payload, summary, existing[0].id] },
+    );
+  } else {
+    await db.sequelize.query(
+      `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt")
+       VALUES ($1,$2,$3,$4,$5, now(), now())`,
+      { bind: [randomUUID(), projectId, stage, summary, payload] },
+    );
+  }
+}
+
+// Best-effort Telegram notification when key-content topic candidates are ready.
+// Reads env vars TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, FOUNDER_UI_BASE_URL.
+// Silent skip if env vars are absent (no throw).
+async function sendKeyContentDraftTelegram(projectId: string, candidateCount: number): Promise<void> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!botToken || !chatId) return;
+
+  const founderUIBase = process.env.FOUNDER_UI_BASE_URL ?? 'http://localhost:3002';
+  const link = `${founderUIBase}/video-room`;
+  const text = `ℹ️ *키콘텐츠 주제 후보 ${candidateCount}개 생성됨 — 확인하세요*\n\nproject_id: ${projectId}\n\n🔗 ${link}`;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+        disable_web_page_preview: false,
+      }),
+    });
+  } catch {
+    // Intentionally silent — notification failure must not affect task state.
+  }
+}
+
+// Best-effort Telegram notification when pulling topic candidates are ready.
+// Reads env vars TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, FOUNDER_UI_BASE_URL.
+// Silent skip if env vars are absent (no throw).
+async function sendPullingDraftTelegram(projectId: string, candidateCount: number): Promise<void> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!botToken || !chatId) return;
+
+  const founderUIBase = process.env.FOUNDER_UI_BASE_URL ?? 'http://localhost:3002';
+  const link = `${founderUIBase}/video-room`;
+  const text = `ℹ️ *풀링 주제 후보 ${candidateCount}개 생성됨 — 확인하세요*\n\nproject_id: ${projectId}\n\n🔗 ${link}`;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+        disable_web_page_preview: false,
+      }),
+    });
+  } catch {
+    // Intentionally silent — notification failure must not affect task state.
+  }
 }
 
 // Best-effort Telegram notification for cycle completion.

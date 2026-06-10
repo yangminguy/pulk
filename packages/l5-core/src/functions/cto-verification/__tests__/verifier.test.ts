@@ -1,6 +1,8 @@
 import {
   verifyCTOPhase,
   verifyCTOPhaseDeterministic,
+  verifyIntegratePhase,
+  isIntegratePhaseName,
 } from '../verifier';
 import type { LLMClient } from '../../ceo-orchestration/types';
 
@@ -100,6 +102,122 @@ describe('verifyCTOPhaseDeterministic', () => {
     });
     expect(r.verdict).toBe('pass');
     expect(r.confidence).toBe('medium');
+  });
+
+  // E1 regression (execution-logs.json): a worker skipped the implement phase,
+  // ticked every acceptance criterion ✅, and declared "이미 완료" — but changed
+  // nothing. The verifier must fail this disguised skip, not pass it.
+  it('E1 regression: skip disguised as done (AC ✅ but changed_files=0) fails', () => {
+    const r = verifyCTOPhaseDeterministic({
+      task_title: 'Key Content Agent 구현',
+      expected_output: 'key-content-agent.ts 구현',
+      exit_code: 0,
+      log_tail:
+        '| AC-5 | key-content.ts 미수정 | 변경 없음 (clean branch) ✅ |\n이 phase는 이전 커밋에서 이미 완료된 상태입니다.',
+      changed_files: 0,
+    });
+    expect(r.verdict).toBe('fail');
+    expect(r.retry_recommended).toBe(true);
+  });
+
+  it('fails an integrate phase that changed nothing (unwired)', () => {
+    const r = verifyCTOPhaseDeterministic({
+      task_title: 'wire key-content agent',
+      expected_output: '신규 산출물을 orchestrator에 등록·연결한다',
+      exit_code: 0,
+      log_tail: '이미 충분함',
+      changed_files: 0,
+    });
+    expect(r.verdict).toBe('fail');
+    expect(r.reason).toMatch(/unwired/);
+    expect(r.retry_recommended).toBe(true);
+  });
+
+  it('fails an integrate phase that only added new files (orphaned)', () => {
+    const r = verifyCTOPhaseDeterministic({
+      task_title: 'integrate skill into registry',
+      expected_output: '신규 스킬을 registry에 등록하고 진입점에 배선한다',
+      exit_code: 0,
+      log_tail: 'created new file',
+      diff_summary: 'src/skills/new-skill.ts | 80 +++\n1 file changed',
+      changed_files: 1,
+      modified_existing_files: 0,
+    });
+    expect(r.verdict).toBe('fail');
+    expect(r.reason).toMatch(/orphaned/);
+    expect(r.retry_recommended).toBe(true);
+  });
+
+  it('passes an integrate phase that modified an existing entry point', () => {
+    const r = verifyCTOPhaseDeterministic({
+      task_title: 'integrate skill into registry',
+      expected_output: '신규 스킬을 registry에 등록하고 진입점에 배선한다',
+      exit_code: 0,
+      log_tail: 'registered',
+      diff_summary: 'src/skills/new-skill.ts | 80 +++\nsrc/registry.ts | 4 ++\n2 files changed',
+      changed_files: 2,
+      modified_existing_files: 1,
+    });
+    expect(r.verdict).toBe('pass');
+  });
+});
+
+describe('isIntegratePhaseName', () => {
+  it('matches the SOP phase name and variants', () => {
+    expect(isIntegratePhaseName('통합·배선')).toBe(true);
+    expect(isIntegratePhaseName('integrate')).toBe(true);
+    expect(isIntegratePhaseName('wiring into orchestrator')).toBe(true);
+  });
+  it('does not match other phases or empty input', () => {
+    expect(isIntegratePhaseName('구현')).toBe(false);
+    expect(isIntegratePhaseName('리뷰')).toBe(false);
+    expect(isIntegratePhaseName(undefined)).toBe(false);
+    expect(isIntegratePhaseName(null)).toBe(false);
+  });
+});
+
+describe('verifyIntegratePhase (phase_complete orphan check, no expected needed)', () => {
+  it('fails when only new files were added (orphaned), even with a non-integration expected', () => {
+    const r = verifyIntegratePhase({
+      task_title: 'wire key-content agent',
+      expected_output: 'whatever the task says', // not an integration signal
+      exit_code: 0,
+      diff_summary: 'src/agents/new.ts | 90 +++\n1 file changed',
+      changed_files: 1,
+      modified_existing_files: 0,
+    });
+    expect(r.verdict).toBe('fail');
+    expect(r.reason).toMatch(/orphaned/);
+  });
+  it('fails when nothing changed', () => {
+    const r = verifyIntegratePhase({
+      task_title: 'wire',
+      expected_output: '',
+      exit_code: 0,
+      changed_files: 0,
+    });
+    expect(r.verdict).toBe('fail');
+  });
+  it('passes when an existing entry point was modified', () => {
+    const r = verifyIntegratePhase({
+      task_title: 'wire',
+      expected_output: '',
+      exit_code: 0,
+      diff_summary: 'src/new.ts | 50 +\nsrc/index.ts | 3 +\n2 files changed',
+      changed_files: 2,
+      modified_existing_files: 1,
+    });
+    expect(r.verdict).toBe('pass');
+  });
+  it('fails on non-zero exit regardless of wiring', () => {
+    const r = verifyIntegratePhase({
+      task_title: 'wire',
+      expected_output: '',
+      exit_code: 1,
+      changed_files: 2,
+      modified_existing_files: 1,
+    });
+    expect(r.verdict).toBe('fail');
   });
 });
 

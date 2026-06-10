@@ -64,3 +64,6 @@ services/**/.claude/
 
 # 별도 GitHub repo를 pulk 폴더에 붙여넣은 것 — pulk 추적/정리 대상 아님 (보호)
 ai-slide-video-factory/
+
+# YouTube API 자격증명 (절대 커밋 금지)
+services/youtube/.credentials.json

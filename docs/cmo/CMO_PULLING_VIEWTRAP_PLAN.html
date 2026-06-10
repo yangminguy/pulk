@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>풀링 콘텐츠 × Viewtrap 활용 기획</title>
+<style>
+  :root{
+    --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f6f8fb; --card:#fff;
+    --good:#16a34a; --good-bg:#dcfce7; --bad:#dc2626; --bad-bg:#fee2e2;
+    --warn:#d97706; --warn-bg:#fef3c7; --key:#0ea5e9; --key-bg:#e0f2fe; --pull:#7c3aed; --pull-bg:#ede9fe;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.6;padding:32px 26px 80px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:25px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px}
+  .meta{color:var(--sub);font-size:13px;margin-bottom:24px}
+  .meta b{color:var(--ink)}
+  .sec{font-size:17px;font-weight:800;letter-spacing:-.3px;margin:32px 0 13px;display:flex;align-items:center;gap:9px}
+  .sec .num{background:var(--pull);color:#fff;width:25px;height:25px;border-radius:7px;display:inline-flex;
+    align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:18px 20px;margin-bottom:14px}
+  p{font-size:14px;margin-bottom:9px}
+  .lead{font-size:14.5px;color:var(--sub)}
+  b.hl{color:var(--ink)}
+  .quote{background:var(--pull-bg);border-left:4px solid var(--pull);border-radius:0 9px 9px 0;
+    padding:12px 16px;margin:14px 0;font-size:14px;color:#5b21b6}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f8fafc;font-weight:700;font-size:12px;color:var(--sub)}
+  .col-key{background:var(--key-bg)} .col-pull{background:var(--pull-bg)}
+  .pill{font-size:11px;font-weight:800;padding:2px 8px;border-radius:20px;white-space:nowrap;display:inline-block}
+  .p-good{background:var(--good-bg);color:var(--good)} .p-bad{background:var(--bad-bg);color:var(--bad)}
+  .p-warn{background:var(--warn-bg);color:var(--warn)} .p-key{background:var(--key-bg);color:#075985}
+
+  .flow{display:flex;flex-direction:column;gap:0;margin:8px 0}
+  .fstep{position:relative;padding:11px 0 11px 42px;border-left:2px solid var(--line);margin-left:14px}
+  .fstep:last-child{border-left-color:transparent}
+  .fstep .d{position:absolute;left:-12px;top:11px;width:26px;height:26px;border-radius:50%;background:var(--pull);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;border:3px solid #fff;box-shadow:0 0 0 1px var(--line)}
+  .fstep .ft{font-weight:700;font-size:14px}
+  .fstep .fd{font-size:12.5px;color:var(--sub);margin-top:2px}
+
+  .funnel{display:flex;flex-direction:column;gap:7px;margin:10px 0}
+  .frow{display:flex;align-items:center;gap:12px}
+  .fbar{height:38px;border-radius:8px;display:flex;align-items:center;padding:0 14px;font-size:12.5px;font-weight:700;color:#fff}
+  .frow .lbl{font-size:12px;color:var(--sub);width:120px;flex-shrink:0;text-align:right;font-weight:600}
+
+  .ex{background:#fffdf7;border:1px solid #fde68a;border-radius:11px;padding:16px 18px;margin-top:8px}
+  .ex h4{font-size:14px;margin-bottom:8px;color:#92400e}
+  .chip{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:7px;margin:3px 4px 3px 0}
+  .c-key{background:var(--key-bg);color:#075985} .c-pull{background:var(--pull-bg);color:#5b21b6}
+  .foot{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--sub)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>🧲 풀링 콘텐츠 × Viewtrap 활용 기획</h1>
+  <div class="meta">
+    L5 CMO · 키 콘텐츠 로직 기반 확장 · 기준 <b>2026-06-10</b> ·
+    분류 LLM = <b>Claude Sonnet</b> · 검색 = 문장 가능, 타깃 수식어 결합 안 함 · 분류는 크롤링 후 LLM
+  </div>
+
+  <!-- 0 -->
+  <div class="sec"><span class="num">0</span>먼저 — 키 vs 풀링, 뭐가 다른가</div>
+  <div class="card">
+    <p class="lead"><b class="hl">키 콘텐츠</b>는 "판매 논리가 직접 녹는" 콘텐츠다. <b class="hl">풀링 콘텐츠</b>는 그 키를 볼 시청자를 <b class="hl">채널로 끌어오는 입구</b>다. 둘 다 같은 타깃(예: 작은 브랜드 대표)을 보지만, 역할이 다르다.</p>
+    <table>
+      <tr><th style="width:120px">구분</th><th class="col-key">키 콘텐츠</th><th class="col-pull">풀링 콘텐츠</th></tr>
+      <tr><td><b>목적</b></td><td class="col-key">상품 판매 논리를 직접 녹임</td><td class="col-pull">시청자 유입 → 키로 브릿지</td></tr>
+      <tr><td><b>주제 범위</b></td><td class="col-key">내 아이템·문제 직결</td><td class="col-pull">더 넓은 인접 주제 + 롱테일</td></tr>
+      <tr><td><b>검색축</b></td><td class="col-key">문제 / 아이템명 / 카테고리 / FBB</td><td class="col-pull">키 주변 확장 주제 / 상위 고민 / 입문·방법(롱테일)</td></tr>
+      <tr><td><b>Viewtrap 핵심지표</b></td><td class="col-key">성과도·기여도 great + <b>조회수 5만+</b>(터짐)</td><td class="col-pull">성과도 + <b>노출확률</b> + 롱테일 <b>꾸준한 수요</b></td></tr>
+      <tr><td><b>LLM 분류 질문</b></td><td class="col-key">① 판매논리 녹는가 ② 타깃이 보는가</td><td class="col-pull">① 같은 타깃인가 ② <b>키로 브릿지되는가</b> ③ 꾸준 수요인가</td></tr>
+    </table>
+    <div class="quote">핵심 차이: 키는 "터진 직판 주제"를 찾고, 풀링은 "꾸준히 유입되는 <b>입구 주제</b>"를 찾는다. 그래서 풀링은 조회수 기준이 더 유연하고, <b>노출확률·롱테일 꾸준함</b>을 더 본다.</div>
+  </div>
+
+  <!-- 1 -->
+  <div class="sec"><span class="num">1</span>풀링 전체 프로세스</div>
+  <div class="card">
+    <div class="flow">
+      <div class="fstep"><div class="d">1</div><div class="ft">키 콘텐츠 확정 (이미 됨)</div>
+        <div class="fd">판매 논리 + 타깃 + 키 주제가 정해진 상태에서 시작.</div></div>
+      <div class="fstep"><div class="d">2</div><div class="ft">"키 보기 전에 뭘 볼까" 역설계</div>
+        <div class="fd">키를 볼 준비가 된 시청자가 그 전에 검색·시청하는 주제를 뽑는다. (상위 고민 · 인접 관심사 · 입문 방법)</div></div>
+      <div class="fstep"><div class="d">3</div><div class="ft">풀링 검색축 생성 (3종)</div>
+        <div class="fd">① 상위 문제 ② 인접 주제 ③ 롱테일 에버그린. 문장으로 검색 OK.</div></div>
+      <div class="fstep"><div class="d">4</div><div class="ft">Viewtrap 검색 + 필터</div>
+        <div class="fd">검색축마다 검색 → 성과도/노출확률 필터로 좁힘. (조회수 기준은 키보다 유연)</div></div>
+      <div class="fstep"><div class="d">5</div><div class="ft">크롤링 → Sonnet 분류 (3기준)</div>
+        <div class="fd">제목·채널·썸네일로 같은 타깃 / 키 브릿지 / 꾸준 수요 판정.</div></div>
+      <div class="fstep"><div class="d">6</div><div class="ft">풀링 주제 세트 산정</div>
+        <div class="fd">소비자 여정 5단계를 자연스럽게 덮도록 주제 묶음 구성.</div></div>
+      <div class="fstep"><div class="d">7</div><div class="ft">각 풀링 → 키 브릿지 1문장</div>
+        <div class="fd">"이 주제로 들어온 시청자를 키 콘텐츠로 어떻게 연결할지" 한 문장.</div></div>
+    </div>
+  </div>
+
+  <!-- 2 -->
+  <div class="sec"><span class="num">2</span>풀링 검색축 — 무엇을 검색하나 (키와 다른 점)</div>
+  <div class="card">
+    <p class="lead">키가 "내 아이템·문제 직결 5종"이라면, 풀링은 <b class="hl">시청자를 끌어오는 넓은 3종</b>이다.</p>
+    <table>
+      <tr><th style="width:140px">풀링 검색축</th><th>뜻</th><th>예 (인스타 자동화 툴 / 작은 브랜드 대표)</th></tr>
+      <tr><td><b>① 상위 문제</b></td><td>키 문제보다 한 단계 넓은 고민</td><td>"인스타 팔로워 안 늘어요", "브랜드 인지도 어떻게 올리지"</td></tr>
+      <tr><td><b>② 인접 주제</b></td><td>같은 타깃의 다른 관심사</td><td>"소상공인 마케팅", "브랜드 인스타 운영법"</td></tr>
+      <tr><td><b>③ 롱테일 에버그린</b></td><td>꾸준히 검색되는 입문·방법</td><td>"인스타 릴스 만드는 방법", "캔바로 게시물 만들기"</td></tr>
+    </table>
+    <p style="font-size:12.5px;color:var(--sub);margin-top:6px">→ ③ 롱테일은 조회수 폭발보다 <b>오래 꾸준히 유입되는</b> 입구라, 노출확률·게시일 분산을 본다(must_use = 노다지 규칙).</p>
+  </div>
+
+  <!-- 3 -->
+  <div class="sec"><span class="num">3</span>Viewtrap에서 무엇을 다르게 보나</div>
+  <div class="card">
+    <table>
+      <tr><th>지표</th><th>키 콘텐츠</th><th>풀링 콘텐츠</th></tr>
+      <tr><td><b>조회수</b></td><td><span class="pill p-key">5만+ 필수 (터짐)</span></td><td>유연 — 꾸준하면 중간 조회수도 OK</td></tr>
+      <tr><td><b>성과도</b></td><td>great (구독 대비 떡상)</td><td>good 이상 (입구로 충분)</td></tr>
+      <tr><td><b>기여도</b></td><td>높을수록 (주제 파워)</td><td>참고</td></tr>
+      <tr><td><b>노출확률</b></td><td>참고</td><td><span class="pill p-warn">중요 — 알고리즘 유입 입구</span></td></tr>
+      <tr><td><b>게시일</b></td><td>최근 트렌드</td><td>분산 — 오래된 영상도 꾸준하면 에버그린 신호</td></tr>
+    </table>
+  </div>
+
+  <!-- 4 -->
+  <div class="sec"><span class="num">4</span>Sonnet 분류 — 풀링 3기준</div>
+  <div class="card">
+    <p class="lead">크롤링한 각 영상을 Sonnet이 <b class="hl">내 상품·키 콘텐츠 컨텍스트</b>로 판정한다.</p>
+    <table>
+      <tr><th style="width:150px">기준</th><th>판단</th><th>탈락 예</th></tr>
+      <tr><td><b>① 같은 타깃인가</b></td><td>작은 브랜드 대표가 보는가 (쇼츠 수익화·일반 취미 제외)</td><td><span class="pill p-bad">"릴스로 부업 월500"</span> (수익화군)</td></tr>
+      <tr><td><b>② 키로 브릿지되는가</b></td><td>이 주제로 들어온 시청자가 키(릴스 자동화)로 자연 연결되는가</td><td><span class="pill p-bad">"인스타 감성사진 보정"</span> (자동화로 안 이어짐)</td></tr>
+      <tr><td><b>③ 꾸준한 수요인가</b></td><td>롱테일이면 일시 유행 아니라 지속 검색되는가</td><td><span class="pill p-bad">"이번주 릴스 챌린지"</span> (일회성)</td></tr>
+    </table>
+    <p style="font-size:13px;margin-top:9px"><b class="hl">통과 = </b> 같은 타깃 + 키로 브릿지 + (롱테일이면) 꾸준 수요 → 풀링 주제 후보. 제목·썸네일을 근거로 사장님이 최종 선택.</p>
+  </div>
+
+  <!-- 5 -->
+  <div class="sec"><span class="num">5</span>소비자 여정으로 묶기 — 풀링 세트의 완성</div>
+  <div class="card">
+    <p class="lead">개별 주제를 모으는 게 아니라, <b class="hl">시청자가 키까지 오는 여정 전체</b>를 덮도록 묶는다(Step11 커버리지 규칙).</p>
+    <div class="funnel">
+      <div class="frow"><span class="lbl">① 문제 인식</span><div class="fbar" style="background:#0ea5e9;width:42%">"팔로워가 안 늘어"</div></div>
+      <div class="frow"><span class="lbl">② 정보 탐색</span><div class="fbar" style="background:#3b82f6;width:54%">"브랜드 인스타 운영법"</div></div>
+      <div class="frow"><span class="lbl">③ 방법 학습</span><div class="fbar" style="background:#6366f1;width:66%">"릴스 만드는 방법"(롱테일)</div></div>
+      <div class="frow"><span class="lbl">④ 대안 비교</span><div class="fbar" style="background:#8b5cf6;width:78%">"직접 vs 자동화 도구"</div></div>
+      <div class="frow"><span class="lbl">⑤ 전환 (키)</span><div class="fbar" style="background:#a855f7;width:92%">"릴스 자동화로 다 해결" → 키 콘텐츠</div></div>
+    </div>
+    <p style="font-size:12.5px;color:var(--sub)">→ 각 단계에 풀링 주제 1~2개씩. 비어있는 단계가 있으면 세트 미완(throw). 마지막에 키로 수렴.</p>
+  </div>
+
+  <!-- 6 -->
+  <div class="sec"><span class="num">6</span>구체 예시 — 인스타 자동화 툴 (사장님 케이스)</div>
+  <div class="card">
+    <div class="ex">
+      <h4>🎬 키 콘텐츠 (확정됨)</h4>
+      <span class="chip c-key">"릴스 자동화"</span> <span style="font-size:12.5px;color:var(--sub)">→ 성과도·기여도 great, 조회수 5만+, 작은 브랜드 대표가 봄, 판매논리 녹음</span>
+    </div>
+    <div class="ex" style="margin-top:10px;background:#faf5ff;border-color:#d8b4fe">
+      <h4 style="color:#6b21a8">🧲 풀링 콘텐츠 (이 키로 끌어올 입구들)</h4>
+      <p style="font-size:13px;margin-bottom:6px">검색 → 크롤링 → Sonnet 분류 통과한 주제:</p>
+      <span class="chip c-pull">"인스타 팔로워 안 느는 진짜 이유"</span>
+      <span class="chip c-pull">"소상공인 SNS 마케팅 시작하기"</span>
+      <span class="chip c-pull">"릴스 기획부터 편집까지 한 번에"</span>
+      <span class="chip c-pull">"혼자 브랜드 운영하는 대표의 하루"</span>
+      <p style="font-size:12.5px;color:var(--sub);margin-top:8px">→ 모두 <b>작은 브랜드 대표</b>가 보고(①), <b>릴스 자동화(키)로 연결</b>되며(②), <b>꾸준히 검색</b>됨(③). 이 입구들로 유입 → 키에서 판매 논리로 전환.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    한 줄 요약: <b>키 = 터진 직판 주제(5만+·성과도 great), 풀링 = 꾸준한 입구 주제(노출확률·롱테일).</b>
+    둘 다 Sonnet이 "같은 타깃인가 + (키는)판매논리 녹는가 / (풀링은)키로 브릿지되는가"를 제목·채널·썸네일로 판정한다.<br>
+    <span style="color:#94a3b8">생성 2026-06-10 · 키 기획서 = docs/CMO_VIEWTRAP_PLAN.html · 정본 배선 = pulling-content-planning.ts (Step5 풀링 Viewtrap / Step8 롱테일)</span>
+  </div>
+
+</div>
+</body>
+</html>

@@ -69,8 +69,8 @@ ConsumerStage 영문 매핑: `현상=phenomenon, 욕구=desire, 계획=plan, 행
 **목표:** 갭을 코드 레벨로 확정하고, 계약 문서 2종을 만든다.
 **Agent team:** research-analyst(기존 코드 정밀 스캔) ×2, architect(통합 설계) ×1, technical-writer(문서) ×1.
 **산출물:**
-- `docs/CMO_SCRIPT_ROOM_PRD.md` — v3.1을 pulk 기준으로 정리 (정본)
-- `docs/CMO_TO_FACTORY_CONTRACT.md` — VideoExecutionBrief 필드별 계약 + 금지 필드(scene_type 등) 명세 (Factory PRD §5와 1:1)
+- `docs/cmo/CMO_SCRIPT_ROOM_PRD.md` — v3.1을 pulk 기준으로 정리 (정본)
+- `docs/cmo/CMO_TO_FACTORY_CONTRACT.md` — VideoExecutionBrief 필드별 계약 + 금지 필드(scene_type 등) 명세 (Factory PRD §5와 1:1)
 - 기존 video-room 심볼별 교체/추가/유지/폐기 표 (이 문서 §1 보강)
 **Verify:** 두 계약 문서가 Factory PRD §5 스키마와 필드 단위로 일치. scene_type 금지 규칙 명시.
 

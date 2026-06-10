@@ -69,4 +69,4 @@
 
 > 한 줄 결론: **느렸던 진짜 이유는 코딩이 아니라 (a) 과한 phase 분해, (b) 죽은 모델로 라우팅, (c) 게이트 오탐+고아, (d) 인메모리 락 정체** 였다. 이 넷을 처음부터 막으면 다음번은 몇 배 빠르다.
 
-관련: `docs/CMO_SPEED_OPTIMIZATION_PLAN.md`, 메모리 `l5-cmo-worktree-execution`.
+관련: `docs/cmo/CMO_SPEED_OPTIMIZATION_PLAN.md`, 메모리 `l5-cmo-worktree-execution`.

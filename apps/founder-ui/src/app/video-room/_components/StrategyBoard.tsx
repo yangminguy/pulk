@@ -5,17 +5,22 @@ import { blockState } from '../_lib/phases'
 import type { CmoCard } from '../_lib/types'
 import { Intro30sCard, CardShell } from './cards'
 import StageGate from './StageGate'
+import KeyContentPlanBoard from './KeyContentPlanBoard'
+import PullingPlanBoard from './PullingPlanBoard'
+import ThumbnailPlanBoard from './ThumbnailPlanBoard'
 
 // ── Strategy Board ───────────────────────────────────────────────────────────
 export default function StrategyBoard({
   cards,
   projectId,
   currentStatus,
+  product,
   onRefresh,
 }: {
   cards: CmoCard[]
   projectId: string
   currentStatus: string
+  product?: string
   onRefresh: () => void
 }) {
   const [refUrl, setRefUrl] = useState('')
@@ -60,12 +65,36 @@ export default function StrategyBoard({
         </p>
       )}
 
-      {strategyCards.map(card => {
-        if (card.stage === 'intro_30s') {
-          return <Intro30sCard key={card.id} card={card} />
-        }
-        return <CardShell key={card.id} card={card} />
-      })}
+      {strategyCards
+        // 키 콘텐츠 v3 카드는 raw JSON으로 노출하지 않는다 — 전용 보드(KeyContentPlanBoard)가 렌더.
+        .filter(card => !['key_content_draft', 'key_content_candidates', 'key_content_choice', 'key_content', 'pulling_candidates', 'pulling_plan', 'thumbnail_plan', 'thumbnail_choice'].includes(card.stage))
+        .map(card => {
+          if (card.stage === 'intro_30s') {
+            return <Intro30sCard key={card.id} card={card} />
+          }
+          return <CardShell key={card.id} card={card} />
+        })}
+
+      {/* 키 콘텐츠 11스텝 보드 — key_content_ideation/viewtrap_key_research/key_content_approval */}
+      <div style={{ marginTop: 16 }}>
+        <StageGate title="키 콘텐츠 기획 (v3 · 11스텝)" state={blockState({ from: 'key_content_ideation', to: 'key_content_approval' }, currentStatus)}>
+          <KeyContentPlanBoard projectId={projectId} product={product} cards={cards} onRefresh={onRefresh} />
+        </StageGate>
+      </div>
+
+      {/* 풀링 주제 기획 보드 — pulling_content_set_selection ~ pulling_content_set_approval */}
+      <div style={{ marginTop: 16 }}>
+        <StageGate title="풀링 주제 기획 (v3 · 세트 승인)" state={blockState({ from: 'pulling_content_set_selection', to: 'pulling_content_set_approval' }, currentStatus)}>
+          <PullingPlanBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
+        </StageGate>
+      </div>
+
+      {/* R4 썸네일 상세 기획 보드 — thumbnail_pattern_extraction ~ hook_draft_approval */}
+      <div style={{ marginTop: 16 }}>
+        <StageGate title="썸네일 상세 기획 (v3 · 후보 택1)" state={blockState({ from: 'thumbnail_pattern_extraction', to: 'hook_draft_approval' }, currentStatus)}>
+          <ThumbnailPlanBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
+        </StageGate>
+      </div>
 
       {/* Viewtrap 수동 입력 폼 — 리서치 단계 게이팅 */}
       <div style={{ marginTop: 16 }}>

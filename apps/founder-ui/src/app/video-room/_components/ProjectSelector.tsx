@@ -13,6 +13,8 @@ export default function ProjectSelector({ onSelect }: { onSelect: (id: string) =
   const [title, setTitle] = useState('')
   const [product, setProduct] = useState('')
   const [target, setTarget] = useState('')
+  const [customerProblem, setCustomerProblem] = useState('')
+  const [coreOffer, setCoreOffer] = useState('')
   const [goal, setGoal] = useState('brand_growth')
   const [err, setErr] = useState<string | null>(null)
 
@@ -39,6 +41,8 @@ export default function ProjectSelector({ onSelect }: { onSelect: (id: string) =
         title: title.trim(),
         product: product.trim(),
         target_audience: target.trim(),
+        customer_problem: customerProblem.trim(),
+        core_offer: coreOffer.trim(),
         business_goal: goal,
       })
       onSelect(res.project_id)
@@ -153,6 +157,29 @@ export default function ProjectSelector({ onSelect }: { onSelect: (id: string) =
                 placeholder="예: 마케팅팀을 둘 여력이 없는 작은 브랜드 대표"
                 value={target}
                 onChange={e => setTarget(e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)', display: 'block', marginBottom: 4 }}>고객 핵심 문제</label>
+              <textarea
+                className="j-input"
+                placeholder="예: 마케팅을 직접 해보려 해도 뭘 만들어야 할지 막막하다"
+                value={customerProblem}
+                onChange={e => setCustomerProblem(e.target.value)}
+                rows={3}
+                style={{ width: '100%', resize: 'vertical', fontFamily: 'var(--font-sans)', fontSize: 13 }}
+              />
+              <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 4 }}>
+                키 콘텐츠 분석에 사용됩니다. 프로젝트 생성 시 한 번만 입력합니다.
+              </div>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)', display: 'block', marginBottom: 4 }}>핵심 제안 / 기능 요약</label>
+              <input
+                className="j-input"
+                placeholder="예: AI가 영상 기획·대본·편집을 대신해주는 마케팅팀"
+                value={coreOffer}
+                onChange={e => setCoreOffer(e.target.value)}
               />
             </div>
             <div>

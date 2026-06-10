@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMO 콘텐츠 시스템 — 종합 기획서 (발굴 자동화 + 미구현 기능 전체)</title>
+<style>
+  :root{
+    --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f6f8fb; --card:#fff;
+    --done:#16a34a; --done-bg:#dcfce7; --done-br:#86efac;
+    --now:#d97706; --now-bg:#fef3c7; --now-br:#fcd34d;
+    --todo:#64748b; --todo-bg:#f1f5f9; --todo-br:#cbd5e1;
+    --yt:#dc2626; --yt-bg:#fee2e2; --vt:#0ea5e9; --vt-bg:#e0f2fe; --ai:#7c3aed; --ai-bg:#ede9fe;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.6;padding:32px 26px 90px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto}
+  h1{font-size:26px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px}
+  .meta{color:var(--sub);font-size:13px;margin-bottom:20px}
+  .meta b{color:var(--ink)}
+  .part{font-size:12px;font-weight:800;letter-spacing:1.5px;color:var(--sub);text-transform:uppercase;
+    margin:38px 0 6px;padding-bottom:6px;border-bottom:2px solid var(--ink)}
+  .sec{font-size:18px;font-weight:800;letter-spacing:-.3px;margin:22px 0 13px;display:flex;align-items:center;gap:9px}
+  .sec .ic{font-size:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:18px 20px;margin-bottom:14px}
+  p{font-size:14px;margin-bottom:9px}.lead{font-size:14.5px;color:var(--sub)}
+  b.hl{color:var(--ink)}
+  .banner{background:linear-gradient(90deg,#dcfce7,#f0fdf4);border:1px solid var(--done-br);
+    border-radius:12px;padding:14px 18px;margin-bottom:24px;font-size:14px;color:#14532d}
+  .banner b{font-weight:800}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f8fafc;font-weight:700;font-size:12px;color:var(--sub)}
+  .pill{font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;white-space:nowrap;display:inline-block}
+  .p-done{background:var(--done-bg);color:var(--done)} .p-now{background:var(--now-bg);color:var(--now)}
+  .p-todo{background:var(--todo-bg);color:var(--todo)} .p-yt{background:var(--yt-bg);color:var(--yt)}
+  .p-vt{background:var(--vt-bg);color:#075985} .p-ai{background:var(--ai-bg);color:#5b21b6}
+
+  /* 가로 파이프라인 */
+  .pipe{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:6px 0 10px}
+  .pstep{flex:1;min-width:150px;border-radius:11px;padding:12px;border:1.5px solid;position:relative}
+  .pstep+.pstep{margin-left:24px}
+  .pstep::after{content:"▶";position:absolute;right:-20px;top:50%;transform:translateY(-50%);color:var(--todo-br);font-size:13px}
+  .pstep:last-child::after{display:none}
+  .ps-yt{background:var(--yt-bg);border-color:#fca5a5} .ps-vt{background:var(--vt-bg);border-color:#7dd3fc}
+  .ps-ai{background:var(--ai-bg);border-color:#c4b5fd} .ps-done{background:var(--done-bg);border-color:var(--done-br)}
+  .pstep .tag{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:2px 6px;border-radius:12px;display:inline-block;margin-bottom:6px;color:#fff}
+  .tg-yt{background:var(--yt)} .tg-vt{background:var(--vt)} .tg-ai{background:var(--ai)} .tg-done{background:var(--done)}
+  .pstep h4{font-size:13px;font-weight:800;margin-bottom:4px}
+  .pstep ul{list-style:none;font-size:11px;color:var(--sub)}
+  .pstep li{padding:1px 0 1px 10px;position:relative}.pstep li::before{content:"›";position:absolute;left:0;color:var(--todo-br)}
+
+  /* 미구현 그리드 */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:13px}
+  .feat{background:var(--card);border:1px solid var(--line);border-left-width:4px;border-radius:10px;padding:14px 16px}
+  .feat.f-now{border-left-color:var(--now)} .feat.f-todo{border-left-color:var(--todo)} .feat.f-done{border-left-color:var(--done)}
+  .feat .fh{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .feat .code{font-size:11px;font-weight:800;color:var(--sub);font-family:ui-monospace,monospace}
+  .feat .ttl{font-weight:700;font-size:13.5px;flex:1}
+  .feat .desc{font-size:12px;color:var(--sub)}.feat .desc b{color:var(--ink)}
+  .feat .path{font-size:10.5px;color:#94a3b8;font-family:ui-monospace,monospace;margin-top:5px}
+
+  .foot{margin-top:38px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--sub)}
+  .num{background:var(--ink);color:#fff;width:23px;height:23px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>🏛️ CMO 콘텐츠 시스템 — 종합 기획서</h1>
+  <div class="meta">
+    L5 CMO · 콘텐츠 발굴 자동화 + 미구현 기능 전체 · 기준 <b>2026-06-10</b> ·
+    분류 LLM = <b>Claude Sonnet</b> · 발굴 = YouTube · 지표 검증 = Viewtrap
+  </div>
+
+  <div class="banner">
+    ✅ <b>오늘 실증:</b> 사장님 로그인 크롬을 CDP로 화면 밖에서 운전 → <b>Viewtrap 사이트 테이블 + YouTube 검색결과 확장 지표</b>(기여도·성과도) 크롤링 성공.
+    처음 "OAuth·인메모리로 불가"였던 게 <b>이미 로그인된 실제 프로필 운전</b>으로 뚫렸습니다.
+  </div>
+
+  <!-- ════════ PART A ════════ -->
+  <div class="part">Part A · 오늘 실증 완료</div>
+
+  <div class="sec"><span class="ic">🔓</span>무엇이 실제로 되는지 확인됨</div>
+  <div class="card">
+    <table>
+      <tr><th style="width:230px">검증 항목</th><th>결과</th><th>상태</th></tr>
+      <tr><td><b>CDP로 로그인 크롬 운전</b></td><td>양우나 프로필 복사 → 디버그 포트 → Playwright attach. 화면 밖(−4000px)에서 작동, 세션 유지.</td><td><span class="pill p-done">완료</span></td></tr>
+      <tr><td><b>Viewtrap 사이트 테이블 크롤링</b></td><td>제목·조회수·기여도·성과도·노출확률·게시일 + 썸네일 videoId. 5만+ 필터 동작.</td><td><span class="pill p-done">완료</span></td></tr>
+      <tr><td><b>YouTube 검색결과 확장 크롤링</b></td><td>shadow DOM의 <code>기여도/성과도</code> 영상별 추출(18건). 등급순 <code>Wow&gt;Great&gt;Good&gt;Normal&gt;Bad&gt;Worst</code>.</td><td><span class="pill p-done">완료</span></td></tr>
+      <tr><td><b>지표가 조회수를 이긴다 (인사이트)</b></td><td>57,000회=성과도 Worst vs 270,000회=Good. 조회수만으론 못 가리는 걸 지표가 가려줌.</td><td><span class="pill p-done">실증</span></td></tr>
+      <tr><td><b>노출확률</b></td><td>확장엔 없음. 뷰트랩 사이트 또는 watch 패널 버튼 필요 → <b>뷰트랩 검색 후 제목행 버튼이 다건 확인에 효율적</b>(정정).</td><td><span class="pill p-now">방식확정</span></td></tr>
+    </table>
+  </div>
+
+  <!-- ════════ PART B ════════ -->
+  <div class="part">Part B · 콘텐츠 발굴 워크플로우 (확정)</div>
+
+  <div class="sec"><span class="ic">🔍</span>발굴 = YouTube, 지표 검증 = Viewtrap</div>
+  <div class="card">
+    <p class="lead">Viewtrap은 검색 한도가 있다. 그래서 <b class="hl">발굴은 YouTube(무제한)에서, 지표 검증은 Viewtrap에서</b> 분담한다.</p>
+    <div class="pipe">
+      <div class="pstep ps-yt"><span class="tag tg-yt">YouTube</span><h4>① 발굴 검색</h4>
+        <ul><li>API로 키워드/문장 검색</li><li>한도 없음</li><li>제목·썸네일·조회수</li></ul></div>
+      <div class="pstep ps-vt"><span class="tag tg-vt">확장</span><h4>② 1차 스크리닝</h4>
+        <ul><li>검색결과 확장 지표</li><li>기여도·성과도</li><li>5만+ · Good+ 거름</li></ul></div>
+      <div class="pstep ps-ai"><span class="tag tg-ai">Sonnet</span><h4>③ 의도 분류</h4>
+        <ul><li>같은 타깃인가</li><li>판매논리 녹는가</li><li>(풀링)키 브릿지</li></ul></div>
+      <div class="pstep ps-vt"><span class="tag tg-vt">Viewtrap</span><h4>④ 노출확률 확인</h4>
+        <ul><li>추려진 주제만</li><li>뷰트랩 검색</li><li>제목행 버튼 → 다건</li></ul></div>
+      <div class="pstep ps-done"><span class="tag tg-done">산출</span><h4>⑤ 주제 후보</h4>
+        <ul><li>제목·썸네일 근거</li><li>지표 실데이터</li><li>사장님 선택</li></ul></div>
+    </div>
+    <p style="font-size:12.5px;color:var(--sub);margin-top:4px">
+      필터 기준: <b>조회수 5만+ · 성과도 good·great · 기여도 good·great · 노출확률 normal·good·great</b>.
+      노출확률은 ④에서 뷰트랩 제목행 버튼으로 여러 영상을 한 번에 확인(watch 페이지 1건씩보다 효율적).</p>
+  </div>
+
+  <div class="sec"><span class="ic">🧠</span>Sonnet이 판단하는 것 (분류 엔진)</div>
+  <div class="card">
+    <table>
+      <tr><th style="width:120px">콘텐츠</th><th>분류 질문</th></tr>
+      <tr><td><b>키 콘텐츠</b></td><td>① 진짜 타깃(예: 작은 브랜드 대표)이 볼 주제인가 ② <b>판매 논리</b>(문제→카테고리 FBB→카테고리→내 아이템 FBB로 해결→내 아이템)가 자연스럽게 녹는 주제인가</td></tr>
+      <tr><td><b>풀링 콘텐츠</b></td><td>① 같은 타깃인가 ② <b>키 콘텐츠로 브릿지</b>되는가 ③ (롱테일이면) 꾸준한 수요인가</td></tr>
+    </table>
+    <p style="font-size:12.5px;color:var(--sub);margin-top:6px">검색 키워드(키): ① 문제 ② 아이템명 ③ 카테고리명 ④ 아이템 FBB ⑤ 카테고리 FBB · 문장 검색 OK, 타깃 수식어 결합 안 함.</p>
+  </div>
+
+  <!-- ════════ PART C ════════ -->
+  <div class="part">Part C · 현재 미구현 기능 전체</div>
+
+  <div class="sec"><span class="ic">🚧</span>아직 안 된 것들 — 우선순위순</div>
+  <div class="grid">
+
+    <div class="feat f-now">
+      <div class="fh"><span class="code">M1</span><span class="ttl">Viewtrap/YouTube 발굴 배선</span><span class="pill p-now">핵심 다음</span></div>
+      <div class="desc">오늘 실증한 CDP 크롤링을 <b>키 콘텐츠 Step8(Viewtrap 검증)</b>에 실제 연결. 검색창 자동입력→확장 크롤링→노출확률 버튼→Sonnet 분류→Step8 데이터 자동 주입. 지금은 수동/심.</div>
+      <div class="path">l5-core/.../reference-adapters.ts · viewtrap-research.ts</div>
+    </div>
+
+    <div class="feat f-now">
+      <div class="fh"><span class="code">M2</span><span class="ttl">YouTube API 발굴</span><span class="pill p-now">키 대기</span></div>
+      <div class="desc">사장님이 줄 <b>YouTube Data API 키</b>로 검색·메타데이터 발굴 자동화. 확장 크롤링과 합쳐 무한 발굴. 5만 필터·제목·썸네일 정식 필드.</div>
+      <div class="path">신규 services/ 또는 l5-core adapter</div>
+    </div>
+
+    <div class="feat f-now">
+      <div class="fh"><span class="code">M3</span><span class="ttl">Sonnet 의도 분류 엔진</span><span class="pill p-ai">신규</span></div>
+      <div class="desc">크롤링 결과를 <b>상품·타깃 컨텍스트</b>로 분류(적합/모호/부적합). 키=판매논리, 풀링=브릿지 기준. 모델 = Claude Sonnet 고정.</div>
+      <div class="path">l5-core/cmo-strategy 또는 video-room 신규</div>
+    </div>
+
+    <div class="feat f-todo">
+      <div class="fh"><span class="code">M4</span><span class="ttl">영상 제작 파이프라인 잔여</span><span class="pill p-todo">R6 잔여</span></div>
+      <div class="desc">Brief는 실 factory 인박스까지 전달됨(완료). <b>잔여:</b> buildSlideDeck이 brief 직접참조 → <code>submitJob</code> 렌더 push → <code>getRenderJobStatus</code> 폴링 → 영상 QA → 업로드 초안.</div>
+      <div class="path">slide-deck-generator.ts · video-factory-transport.ts</div>
+    </div>
+
+    <div class="feat f-todo">
+      <div class="fh"><span class="code">M5</span><span class="ttl">성과 자동 수집 (재학습)</span><span class="pill p-todo">R7 잔여</span></div>
+      <div class="desc">재학습 루프 코드·UI 완료. <b>성과 입력이 현재 수동</b> → YouTube API/확장으로 업로드한 영상 성과 자동 수집 → 다음 기획 반영.</div>
+      <div class="path">performance-ingestion.ts · completion-insight-extraction.ts</div>
+    </div>
+
+    <div class="feat f-todo">
+      <div class="fh"><span class="code">M6</span><span class="ttl">텔레그램 알림 실작동</span><span class="pill p-todo">운영</span></div>
+      <div class="desc">코드 graceful 완료. <code>TELEGRAM_BOT_TOKEN/CHAT_ID</code>를 NocoBase launchd plist에 주입 → 초안/풀링 완료 시 폰 알림.</div>
+      <div class="path">plugin sendKeyContentDraftTelegram · launchd</div>
+    </div>
+
+    <div class="feat f-todo">
+      <div class="fh"><span class="code">M7</span><span class="ttl">속도 최적화</span><span class="pill p-todo">개선</span></div>
+      <div class="desc">키 콘텐츠 초안 LLM 다수 순차(~178~218초). step2‖step3 병렬은 됨. 추가 독립 스텝 병렬 + 모델/프롬프트 튜닝.</div>
+      <div class="path">key-content-draft.ts runKeyContentWorkflow</div>
+    </div>
+
+    <div class="feat f-todo">
+      <div class="fh"><span class="code">M8</span><span class="ttl">라이브 HTTP E2E + 정리</span><span class="pill p-todo">상시</span></div>
+      <div class="desc">NocoBase 실 HTTP E2E(generate→send→briefs/ 확인), 데모 산출물 정리, 미커밋 hunk 분리.</div>
+      <div class="path">apps/founder-ui/e2e · docs</div>
+    </div>
+
+  </div>
+
+  <!-- ════════ PART D ════════ -->
+  <div class="part">Part D · 구현 순서</div>
+  <div class="card">
+    <table>
+      <tr><th style="width:36px">#</th><th>작업</th><th>의존</th><th>비고</th></tr>
+      <tr><td><span class="num">1</span></td><td><b>M2</b> YouTube API 발굴</td><td>API 키</td><td>발굴의 기반</td></tr>
+      <tr><td><span class="num">2</span></td><td><b>M1</b> Viewtrap/확장 크롤링 배선 + 노출확률 버튼</td><td>오늘 실증</td><td>지표 검증</td></tr>
+      <tr><td><span class="num">3</span></td><td><b>M3</b> Sonnet 분류 엔진</td><td>M1·M2 데이터</td><td>핵심 "생각"</td></tr>
+      <tr><td><span class="num">4</span></td><td>키 Step8 + 풀링 Step5/8에 1~3 통합</td><td>M1~M3</td><td>발굴 자동화 완성</td></tr>
+      <tr><td><span class="num">5</span></td><td><b>M4</b> 영상 제작 파이프라인 마감</td><td>—</td><td>영상 실제 산출</td></tr>
+      <tr><td><span class="num">6</span></td><td><b>M5</b> 성과 자동수집 → 재학습 무인화</td><td>M2·M4</td><td>루프 완성</td></tr>
+      <tr><td><span class="num">7</span></td><td><b>M6·M7·M8</b> 운영·속도·정리</td><td>상시</td><td>병행</td></tr>
+    </table>
+  </div>
+
+  <div class="foot">
+    핵심 한 줄: <b>발굴=YouTube(무제한) · 1차거름=확장(기여도·성과도) · 생각=Sonnet(타깃/판매논리/브릿지) · 노출확률=뷰트랩 제목행 버튼(다건).</b>
+    오늘 크롤링 실증으로 가장 큰 장벽(Viewtrap 자동화)이 풀렸고, 남은 건 이걸 키/풀링 Step에 배선 + 영상제작 마감 + 재학습 무인화.<br>
+    <span style="color:#94a3b8">생성 2026-06-10 · 관련 = CMO_VIEWTRAP_PLAN.html(키) · CMO_PULLING_VIEWTRAP_PLAN.html(풀링) · CMO_ROADMAP_MAP.html · 실증 스크립트 /tmp/cdp-*.mjs</span>
+  </div>
+
+</div>
+</body>
+</html>

@@ -112,6 +112,50 @@ describe('runCmoStrategyTurn (LLM-driven)', () => {
     expect(r.gate!.options).toEqual(['승인', '보류']);
   });
 
+  it('strips a fenced JSON blob embedded in reply, keeping only natural language', async () => {
+    const llm = llmReturning({
+      reply:
+        '키 콘텐츠 후보 3개를 잡았습니다.\n```json\n{"candidates":["a","b","c"]}\n```\n확인해 주세요.',
+      ready_to_advance: false,
+      proposal: { summary: '후보 3개', data: { candidates: ['a', 'b', 'c'] } },
+      gate: null,
+    });
+    const r = await runCmoStrategyTurn([], '잡아줘', ctx(), { llm });
+    expect(r.reply).not.toContain('candidates');
+    expect(r.reply).not.toContain('```');
+    expect(r.reply).not.toContain('{');
+    expect(r.reply).toContain('키 콘텐츠 후보 3개를 잡았습니다.');
+    expect(r.reply).toContain('확인해 주세요.');
+    // structured data is preserved only in the proposal
+    expect(r.proposal!.data).toEqual({ candidates: ['a', 'b', 'c'] });
+  });
+
+  it('strips a bare object literal serialized into reply', async () => {
+    const llm = llmReturning({
+      reply: '추천안: {"title":"문제에서 시작","reason":"고객 문제"}',
+      ready_to_advance: false,
+      proposal: { summary: '추천', data: { title: '문제에서 시작' } },
+      gate: null,
+    });
+    const r = await runCmoStrategyTurn([], '?', ctx(), { llm });
+    expect(r.reply).not.toContain('{');
+    expect(r.reply).not.toContain('"title"');
+    expect(r.reply).toContain('추천안:');
+  });
+
+  it('falls back to the stage script when reply is entirely a JSON blob', async () => {
+    const llm = llmReturning({
+      reply: '{"candidates":["a","b"]}',
+      ready_to_advance: false,
+      proposal: { summary: '후보', data: { candidates: ['a', 'b'] } },
+      gate: null,
+    });
+    const r = await runCmoStrategyTurn([], '?', ctx(), { llm });
+    expect(r.reply).toBe(STAGE_SCRIPT.key_content_ideation.prompt);
+    // proposal still carries the structured data
+    expect(r.proposal!.data).toEqual({ candidates: ['a', 'b'] });
+  });
+
   it('falls back to the stage script when the model returns garbage', async () => {
     const llm: CmoLLM = { complete: async () => 'not json at all' };
     const r = await runCmoStrategyTurn([], '?', ctx(), { llm });

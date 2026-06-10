@@ -64,6 +64,9 @@ const PHASE_TIER_DEFAULTS: Record<DevPhaseKind, ModelTier> = {
   // 파일을 수정하는 문제가 반복 확인됨(2026-06-07). claude는 경로를 지킨다.
   test: 'T1',
   implement: 'T1',
+  // integrate(통합·배선)는 신규 산출물을 기존 진입점에 연결하므로 코드베이스 전반의
+  // 정합성 판단이 필요하다 → T1(claude). 경로/등록처를 정확히 찾아야 한다.
+  integrate: 'T1',
   fix: 'T1',
   refactor: 'T1',
   repro: 'T1',

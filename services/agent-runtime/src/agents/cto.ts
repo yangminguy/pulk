@@ -30,6 +30,7 @@ import {
   buildDevWorkflowSystemPrompt,
   validateDevWorkflowPhases,
   buildDeterministicDevPhases,
+  isCodeProducingKind,
   classifyTask,
   createDefaultLLMClient,
   resolveModel,
@@ -159,6 +160,22 @@ function toCTOPhase(
         .filter(Boolean)
         .join("\n")
     : "";
+  // NO-SKIP 강제(E1 재발 방지): 코드 산출 phase에서 워커가 worktree base의 기존
+  // 커밋을 보고 "이미 완료/이미 존재/clean branch"로 판단해 변경 0으로 끝내는 패턴이
+  // 반복됐다(execution-logs.json: ~25 스킵 시그니처, review_blocked 33 중 10+). 이
+  // phase에는 "기존 커밋과 무관하게 worktree에 실제 변경을 만들어라, 변경 0=실패"를
+  // 명시 주입한다. read_only/commit/smoke 등 비산출 phase에는 붙이지 않는다.
+  const antiSkipConstraint = isCodeProducingKind(kind)
+    ? [
+        "",
+        "[CRITICAL — 작업 강제 / NO-SKIP]",
+        "이 phase의 산출물을 이 worktree에 반드시 새로 생성하거나 수정하라.",
+        "git에 관련 커밋이 이미 있어도 '이미 완료/이미 존재/이미 구현됨/clean branch'로",
+        "판단해 작업을 건너뛰지 마라. 너의 임무는 이 worktree에 실제 파일 변경을 만드는 것이다.",
+        "변경이 0이면 이 phase는 실패로 간주된다.",
+        "acceptance_criteria를 '이미 충족됨'으로 체크만 하지 말고, 요구된 변경을 실제로 수행하라.",
+      ].join("\n")
+    : "";
   const promptPacket =
     (p.prompt_packet ??
       [
@@ -168,7 +185,7 @@ function toCTOPhase(
           ? (p.acceptance_criteria as string[]).map((c) => `- ${c}`)
           : []),
         `verifier_hint: ${typeof p.verifier_hint === "string" ? p.verifier_hint : ""}`,
-      ].join("\n")) + pathConstraint;
+      ].join("\n")) + pathConstraint + antiSkipConstraint;
 
   // T1 (top-tier reasoning, e.g. architecture/spec/research) phases are pinned to
   // their big model: ACR must wait for that agent to recover rather than downgrade.
@@ -557,7 +574,12 @@ export async function runCTOAgent(
 
   // CTO is the sole authority on task classification — the deterministic keyword
   // heuristic is authoritative and the LLM may NOT override it.
-  const inferredClass: TaskClass = classifyTask(taskTitle, taskRationale);
+  const inferredClass: TaskClass = classifyTask(
+    taskTitle,
+    taskRationale,
+    {},
+    input.task?.expected_output ?? "",
+  );
 
   let acrIntent: ACRIntent | null = null;
   let clarifyingQuestions: string[] | undefined;

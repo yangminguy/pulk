@@ -1,0 +1,31 @@
+{
+  "name": "@l5/youtube",
+  "version": "0.1.0",
+  "description": "L5 Business OS - YouTube Data/Analytics API discovery adapter (CMO M2)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --config jest.config.cjs",
+    "test:watch": "jest --config jest.config.cjs --watch"
+  },
+  "keywords": [
+    "l5",
+    "youtube",
+    "cmo",
+    "discovery"
+  ],
+  "author": "L5 Team",
+  "license": "AGPL-3.0-or-later",
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "catalog:",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "catalog:"
+  }
+}

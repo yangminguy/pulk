@@ -764,8 +764,8 @@ function parseAndValidateVideoExecutionBrief(
 ## 14. 참고
 
 - Factory PRD: `ai_slide_video_factory_v2_1_full.md`
-- CMO PRD: `docs/CMO_SCRIPT_ROOM_PRD.md`
-- Execution Plan: `docs/CMO_SCRIPT_ROOM_EXECUTION_PLAN.md`
+- CMO PRD: `docs/cmo/CMO_SCRIPT_ROOM_PRD.md`
+- Execution Plan: `docs/cmo/CMO_SCRIPT_ROOM_EXECUTION_PLAN.md`
 
 ---
 

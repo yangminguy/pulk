@@ -6,6 +6,7 @@ import type { CmoCard, CmoGate } from '../_lib/types'
 import { CardShell } from './cards'
 import DecisionPanel from './DecisionPanel'
 import StageGate from './StageGate'
+import PerformanceBoard from './PerformanceBoard'
 
 // ── Review & Publish Board ───────────────────────────────────────────────────
 export default function ReviewPublishBoard({
@@ -212,6 +213,9 @@ export default function ReviewPublishBoard({
           </div>
         </StageGate>
       </div>
+
+      {/* R7: 업로드 완료 후 성과 입력 → 인사이트 추출(다음 기획 입력으로 누적) */}
+      {currentStatus === 'completed' && <PerformanceBoard projectId={projectId} />}
     </div>
   )
 }
@@ -219,18 +223,12 @@ export default function ReviewPublishBoard({
 // ── Review Approval Panel ────────────────────────────────────────────────────
 export function ReviewApprovalPanel({
   gates,
-  readyToAdvance,
   onDecide,
-  onAdvance,
   deciding,
-  advancing,
 }: {
   gates: CmoGate[]
-  readyToAdvance: boolean
   onDecide: (gateId: string, decision: 'approved' | 'needs_revision' | 'rejected') => void
-  onAdvance: () => void
   deciding: string | null
-  advancing: boolean
 }) {
   const reviewGates = gates.filter(g =>
     g.page === 'review_publish' ||
@@ -243,11 +241,8 @@ export function ReviewApprovalPanel({
       <div className="j-overline" style={{ marginBottom: 4 }}>Approval Panel</div>
       <DecisionPanel
         gates={reviewGates}
-        readyToAdvance={readyToAdvance}
         onDecide={onDecide}
-        onAdvance={onAdvance}
         deciding={deciding}
-        advancing={advancing}
       />
     </div>
   )
