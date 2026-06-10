@@ -100,7 +100,7 @@
 
 3. **phase 분해는 작업 규모에 맞춘다**. 단일 컴포넌트/카드/모델/유틸을 6단계 FEATURE로 분해하면 조사/스펙/리뷰 등 no-op phase가 토큰·시간을 2~3배 낭비. → `classifyTask`가 단일 컴포넌트류를 SMALL_FIX(4단계)로 라우팅. SOP 자체(TINY 2/SMALL_FIX 4/FEATURE 6)는 유지.
 
-4. **오케스트레이션 락은 stale-release로 자가복구**. `planDrainLock`(인메모리)이 hung 드레인에 영구 점유돼 큐 전체가 정체하고 acr-web 재시작으로만 풀렸다 → 20분 경과 락 자동해제. **완전한 해결(inline-HTTP spawn → 파일/DB 잡 큐)은 v2**(리스크 큰 대공사, `docs/CMO_DEV_SPEED_STRATEGY.md`에 설계).
+4. **오케스트레이션 락은 stale-release로 자가복구**. `planDrainLock`(인메모리)이 hung 드레인에 영구 점유돼 큐 전체가 정체하고 acr-web 재시작으로만 풀렸다 → 20분 경과 락 자동해제. **완전한 해결(inline-HTTP spawn → 파일/DB 잡 큐)은 v2**(리스크 큰 대공사, `docs/cmo/CMO_DEV_SPEED_STRATEGY.md`에 설계).
 
 5. **JSON 스토어는 원자적 쓰기(temp+rename)**. 병렬 드레인 동시 쓰기가 `execution-logs.json`을 손상시켜 ACR 라우트 연쇄 실패 → 핫 스토어 원자적 쓰기로 손상 차단.
 
@@ -344,7 +344,7 @@ D3+ 승인 경로가 이원화돼 있었다. L5는 `executeTask`가 D3+ 태스�
 **Cron 2개 설치 (08:55 model-verify / 09:00 self-learning)**
 - 결정: hermes-runtime `dist`가 stale이라(`model-verify`/`self-learning` 미등록) **재빌드(`tsc`) 필수**였음. 재빌드 후 plist 설치.
 - plist는 `node` 직접 호출 + env에 `NOCOBASE_URL`/`NOCOBASE_TOKEN`(API Key)/`TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`(ACR `.env.local`에서 가져옴) 주입. `RunAtLoad=false`(예약 시각에만).
-- 검증: model-verify→roster clean·알림 silent(변경 없을 때 무알림); self-learning→claude changelog 변경 감지·`docs/cto-tool-catalog.md` 누적·Telegram 발송. 외부 changelog 일부(codex 403/antigravity 404) fetch 실패는 non-fatal 처리.
+- 검증: model-verify→roster clean·알림 silent(변경 없을 때 무알림); self-learning→claude changelog 변경 감지·`docs/cto/cto-tool-catalog.md` 누적·Telegram 발송. 외부 changelog 일부(codex 403/antigravity 404) fetch 실패는 non-fatal 처리.
 
 **business_id → repo 매핑**
 - 결정: 매핑을 **dispatch 시점에 동적 해석**(task에 저장 X). repo_path 변경이 다음 dispatch에 즉시 반영되고, agent_tasks 스키마 변경 불필요.
@@ -1047,7 +1047,7 @@ PRD대로 ACR을 planning brain에서 **execution kernel**로 축소하고, Exec
 - Dagu(§9)는 PRD Non-Goal로 보류.
 
 ### Verify
-ACR 124/124 + next build PASS, pulk l5-core 1414·agent-runtime 16/16·founder-ui build·control-room E2E PASS. 통합 단서 4건은 라이브 ACR 백엔드 기동 시 검증(정적 컨텍스트 한계). 상세 docs/CTO_ACR_PRD_COMPLETION.html.
+ACR 124/124 + next build PASS, pulk l5-core 1414·agent-runtime 16/16·founder-ui build·control-room E2E PASS. 통합 단서 4건은 라이브 ACR 백엔드 기동 시 검증(정적 컨텍스트 한계). 상세 docs/cto/CTO_ACR_PRD_COMPLETION.html.
 
 ## M9.8 — 과분해 차단 + 개발문서 기반 phase 연속성 (2026-06-09)
 
@@ -1078,3 +1078,7 @@ l5-core tsc 0 + jest dev-workflow-spec 60/60(신규 M9.8 5군 포함) GREEN, age
 - 테스트 `key-content-draft.test.ts`의 "step3 프롬프트가 step2 산출물 포함" 단언을 새 설계(미포함)로 갱신.
 
 **보류(향후)**: 더 큰 단축은 (a) Anthropic API 백엔드(콜드 스타트 제거, ~10x) 또는 (b) 스텝 병합(spawn 수 감소)이 필요하나 (a)는 비용, (b)는 stepwise 원칙·품질 트레이드오프로 현 시점 미채택.
+
+## M4 — 렌더 상태는 파일 기반 프로토콜로 폴링 (2026-06-10)
+
+**결정**: factory(ai-slide-video-factory)에 잡 큐/상태 API가 없으므로, 렌더 상태는 별도 큐 없이 **파일 존재로 도출**한다 — jobs/<file>.json(=queued) → outputs/<job.slug>/ 생성(=rendering) → video.mp4(>0B)+render_report.json(=completed), render_error.txt(=failed, 옵션 마커). 관찰(파일 사실 수집)은 plugin transport(`getRenderJobStatus`), 판단은 l5-core(`deriveRenderJobStatus`/`reconcileRenderJob`/`evaluateRenderArtifacts`)로 분리(도메인=l5-core 원칙). 업로드는 `buildYoutubeUploadDraftFromBrief` 초안(private/pending)까지만 — 실제 업로드는 승인 게이트 뒤 수동.

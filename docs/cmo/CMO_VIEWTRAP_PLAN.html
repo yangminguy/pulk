@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Viewtrap 활용 기획 — 키/풀링 콘텐츠 기획에 어떻게 쓸까</title>
+<style>
+  :root{
+    --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f6f8fb; --card:#fff;
+    --good:#16a34a; --good-bg:#dcfce7; --bad:#dc2626; --bad-bg:#fee2e2;
+    --warn:#d97706; --warn-bg:#fef3c7; --key:#0ea5e9; --key-bg:#e0f2fe; --pur:#7c3aed; --pur-bg:#ede9fe;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.6;padding:32px 26px 80px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:25px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px}
+  .meta{color:var(--sub);font-size:13px;margin-bottom:24px}
+  .meta b{color:var(--ink)}
+  .sec{font-size:17px;font-weight:800;letter-spacing:-.3px;margin:32px 0 13px;display:flex;align-items:center;gap:9px}
+  .sec .num{background:var(--ink);color:#fff;width:25px;height:25px;border-radius:7px;display:inline-flex;
+    align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:18px 20px;margin-bottom:14px}
+  p{font-size:14px;margin-bottom:9px}
+  .lead{font-size:14.5px;color:var(--sub)}
+  b.hl{color:var(--ink)}
+  .quote{background:var(--key-bg);border-left:4px solid var(--key);border-radius:0 9px 9px 0;
+    padding:12px 16px;margin:14px 0;font-size:14px;font-style:italic;color:#075985}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f8fafc;font-weight:700;font-size:12px;color:var(--sub)}
+  .pill{font-size:11px;font-weight:800;padding:2px 8px;border-radius:20px;white-space:nowrap;display:inline-block}
+  .p-good{background:var(--good-bg);color:var(--good)} .p-bad{background:var(--bad-bg);color:var(--bad)}
+  .p-warn{background:var(--warn-bg);color:var(--warn)}
+
+  .flow{display:flex;flex-direction:column;gap:0;margin:8px 0}
+  .fstep{position:relative;padding:11px 0 11px 42px;border-left:2px solid var(--line);margin-left:14px}
+  .fstep:last-child{border-left-color:transparent}
+  .fstep .d{position:absolute;left:-12px;top:11px;width:26px;height:26px;border-radius:50%;background:var(--pur);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;border:3px solid #fff;box-shadow:0 0 0 1px var(--line)}
+  .fstep .ft{font-weight:700;font-size:14px}
+  .fstep .fd{font-size:12.5px;color:var(--sub);margin-top:2px}
+  .fstep.live .d{background:var(--good)} .fstep.todo .d{background:var(--warn)}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .mini{border:1px solid var(--line);border-radius:10px;padding:13px 15px}
+  .mini.bad{background:var(--bad-bg);border-color:#fca5a5}
+  .mini.good{background:var(--good-bg);border-color:#86efac}
+  .mini h4{font-size:13.5px;margin-bottom:5px}
+  .mini .ex{font-size:12.5px;color:var(--sub)}
+  .keep{font-size:12px;color:var(--sub)}
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin:2px 3px 2px 0}
+  .t-use{background:var(--good-bg);color:var(--good)} .t-skip{background:#f1f5f9;color:#94a3b8}
+  .foot{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--sub)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>🎯 Viewtrap 활용 기획 — 콘텐츠 기획에 어떻게 쓸까</h1>
+  <div class="meta">
+    L5 CMO · 키 콘텐츠 &amp; 풀링 기획 통합 · 기준 <b>2026-06-10</b> ·
+    전제 = CDP로 사장님 로그인 크롬을 화면 밖에서 운전(실증 완료) · 검색→크롤링→분류 자동
+  </div>
+
+  <!-- 1 -->
+  <div class="sec"><span class="num">1</span>핵심 문제 — 검색 결과는 "의도"가 섞여 있다</div>
+  <div class="card">
+    <p class="lead">검색축(키워드)을 Viewtrap에 넣으면 조회수 높은 영상이 쏟아진다. 하지만 <b class="hl">조회수가 높다고 우리 상품을 살 시청자가 보는 주제는 아니다.</b> 같은 키워드 안에 전혀 다른 욕망을 가진 시청자가 섞여 있다.</p>
+    <div class="quote">"같은 '영상 자동화'여도, 쇼츠 수익화를 목적으로 하는 사람이 볼 주제가 있고, 실제 대표들이 자기 마케팅을 자동화하고 싶어서 보는 주제가 있다. 그걸 잘 분류해서 가져와야 한다."</div>
+    <div class="grid2" style="margin-top:6px">
+      <div class="mini bad">
+        <h4>❌ 부적합 — 쇼츠 수익화 시청자</h4>
+        <div class="ex">예: "쇼츠 100개 자동 생성해서 월 500 버는 법" · "AI로 떡상 쇼츠 양산"<br><br>→ 욕망 = <b>부업·수익화</b>. 우리 상품 구매자 아님. 조회수 높아도 버린다.</div>
+      </div>
+      <div class="mini good">
+        <h4>✅ 적합 — 대표/마케터 시청자</h4>
+        <div class="ex">예: "대표님 마케팅을 AI가 대신하게 만드는 법" · "1인 사업가 콘텐츠 자동화 시스템"<br><br>→ 욕망 = <b>내 사업 마케팅 자동화</b>. 우리 타깃. 이 주제를 키 콘텐츠로.</div>
+      </div>
+    </div>
+    <p style="margin-top:12px;font-size:13.5px"><b class="hl">결론:</b> 단순 "조회수 5만+ 필터"는 함정이다. <b class="hl">시청자 의도 분류가 먼저</b>, 그 다음 성과 검증이다.</p>
+  </div>
+
+  <!-- 2 -->
+  <div class="sec"><span class="num">2</span>그래서 Viewtrap을 쓰는 진짜 이유 3가지</div>
+  <div class="card">
+    <table>
+      <tr><th style="width:130px">목적</th><th>쓰는 지표/데이터</th><th>판단</th></tr>
+      <tr>
+        <td><b>① 타깃 적합성</b><br><span class="keep">(가장 중요)</span></td>
+        <td><b>제목 + 채널명</b></td>
+        <td>이 영상을 보는 시청자가 "우리 상품 구매자"인가? 쇼츠 수익화 vs 대표 마케팅 자동화를 제목·채널로 분류.</td>
+      </tr>
+      <tr>
+        <td><b>② 수요 검증</b></td>
+        <td><b>성과도</b> (구독자 대비 터짐) + 조회수</td>
+        <td>적합한 주제 중 "구독자 규모를 넘어 터진" 영상 = 그 주제에 <b>실수요</b>가 있다는 증거.</td>
+      </tr>
+      <tr>
+        <td><b>③ 주제 파워</b></td>
+        <td><b>기여도 · 노출확률</b></td>
+        <td>이 주제가 채널 성장에 기여하고 알고리즘 확산되는가 = 키 콘텐츠로 키울 가치.</td>
+      </tr>
+    </table>
+    <p class="keep" style="margin-top:8px">※ 기여도/성과도/노출확률의 Viewtrap 내부 정확 정의는 화면에 툴팁 없음 — 위는 일반적 유튜브 분석 해석. 실배선 전 1회 확정 필요(가이드 페이지 크롤링).</p>
+  </div>
+
+  <!-- 3 -->
+  <div class="sec"><span class="num">3</span>무엇을 검색하나 — 검색축 설계</div>
+  <div class="card">
+    <p class="lead">키 콘텐츠 워크플로우 <b>Step7(검색 키워드 생성)</b>의 산출물을 그대로 쓴다. 단 의도를 좁히는 게 핵심.</p>
+    <table>
+      <tr><th>검색축 종류</th><th>예시 (영상 자동화 상품 가정)</th><th>의도 좁히기</th></tr>
+      <tr><td>문제 키워드</td><td>"콘텐츠 만들 시간 없다", "마케팅 외주 비싸다"</td><td rowspan="2">타깃 수식어 결합:<br><b>"대표"·"사업"·"1인"·"마케팅"</b> 등을 붙여 쇼츠 수익화군과 분리</td></tr>
+      <tr><td>기능·장점 키워드</td><td>"AI 콘텐츠 자동화", "영상 자동 생성"</td></tr>
+    </table>
+    <p style="font-size:13px;color:var(--sub);margin-top:8px">→ 검색축마다 Viewtrap 자동 검색. 결과를 다음 단계(분류)로 넘긴다.</p>
+  </div>
+
+  <!-- 4 -->
+  <div class="sec"><span class="num">4</span>무엇을 크롤링하나 — 필요한 것만 (전체 340 ✗)</div>
+  <div class="card">
+    <p class="lead">전체를 다 가져오지 않는다. <b class="hl">분류와 검증에 필요한 필드만</b> 뽑는다.</p>
+    <div style="margin:8px 0">
+      <span class="tag t-use">✓ 제목</span><span class="tag t-use">✓ 채널명</span>
+      <span class="tag t-use">✓ 조회수</span><span class="tag t-use">✓ 성과도</span>
+      <span class="tag t-use">✓ 기여도</span><span class="tag t-use">✓ 노출확률</span>
+      <span class="tag t-use">✓ 게시일</span><span class="tag t-use">✓ 썸네일+videoId</span>
+      <span class="tag t-skip">✗ CC</span><span class="tag t-skip">✗ 구독자 절대수</span><span class="tag t-skip">✗ 총영상수</span>
+    </div>
+    <p style="font-size:13px;color:var(--sub)">수집 범위 = <b>성과도/기여도 신호가 좋은 상위</b> + 타깃 적합 후보. 가상 스크롤 끝까지 긁지 않고, 신호 기준으로 끊는다(과수집 방지).</p>
+  </div>
+
+  <!-- 5 -->
+  <div class="sec"><span class="num">5</span>어떻게 분류하나 — 시청자 의도 분류 (핵심 엔진)</div>
+  <div class="card">
+    <p class="lead">크롤링한 각 영상을 LLM이 <b class="hl">우리 상품·타깃 컨텍스트</b>로 3분류한다.</p>
+    <table>
+      <tr><th>입력</th><th>분류</th><th>처리</th></tr>
+      <tr><td>제목 + 채널명</td><td><span class="pill p-good">적합</span></td><td>우리 상품 구매자가 볼 주제 → 키 콘텐츠 후보 풀에 넣음</td></tr>
+      <tr><td>제목 + 채널명</td><td><span class="pill p-warn">모호</span></td><td>경계 주제 → 성과도 높으면 사장님 확인용으로 보류 표시</td></tr>
+      <tr><td>제목 + 채널명</td><td><span class="pill p-bad">부적합</span></td><td>다른 욕망(쇼츠 수익화 등) → 제외(조회수 무관)</td></tr>
+    </table>
+    <p style="font-size:13px;margin-top:10px"><b class="hl">분류 + 검증 결합:</b> [적합] 중 [성과도 Good]인 주제 = <b>"우리 타깃이 실제로 보고, 실제로 터진"</b> 주제. 이게 키 콘텐츠 후보의 가장 강한 근거다.</p>
+  </div>
+
+  <!-- 6 -->
+  <div class="sec"><span class="num">6</span>키 콘텐츠 워크플로우 통합 — Step7 → Step8 재설계</div>
+  <div class="card">
+    <div class="flow">
+      <div class="fstep live"><div class="d">7</div><div class="ft">검색 키워드 생성 <span class="keep">(기존, 결정론)</span></div>
+        <div class="fd">문제·기능 키워드 + 타깃 수식어 → 검색축.</div></div>
+      <div class="fstep todo"><div class="d">8a</div><div class="ft">Viewtrap 자동 검색 <span class="keep">(신규)</span></div>
+        <div class="fd">검색축을 화면 밖 크롬 검색창에 자동 입력 → 검색 실행.</div></div>
+      <div class="fstep todo"><div class="d">8b</div><div class="ft">필요 필드 크롤링 <span class="keep">(신규)</span></div>
+        <div class="fd">제목·채널·조회수·성과도·기여도·노출확률·썸네일 추출.</div></div>
+      <div class="fstep todo"><div class="d">8c</div><div class="ft">시청자 의도 분류 <span class="keep">(신규, LLM)</span></div>
+        <div class="fd">적합/모호/부적합 → 적합+성과 좋은 주제만 추림.</div></div>
+      <div class="fstep todo"><div class="d">8d</div><div class="ft">Step8 검증 데이터 자동 주입 <span class="keep">(기존 칸 채움)</span></div>
+        <div class="fd">지금 사장님 수동 입력 → 실데이터로 buildViewtrapValidation 자동 채움.</div></div>
+      <div class="fstep live"><div class="d">★</div><div class="ft">후보 3주제 "viewtrap 선정이유"에 실근거 <span class="keep">(개선)</span></div>
+        <div class="fd">지금은 LLM 추측 → "OO 주제는 △△채널서 구독자 5배 터짐" 실데이터로.</div></div>
+    </div>
+  </div>
+
+  <!-- 7 -->
+  <div class="sec"><span class="num">7</span>풀링 콘텐츠도 동일 적용</div>
+  <div class="card">
+    <p class="lead">풀링 워크플로우(Step 0~12)도 같은 엔진을 재사용한다.</p>
+    <ul style="font-size:13.5px;padding-left:20px;color:var(--sub)">
+      <li><b class="hl">Step5 풀링 Viewtrap 검증</b> + <b class="hl">Step8 롱테일 노다지</b>: 풀링 검색축(롱테일 포함)으로 자동 검색 → 같은 의도 분류.</li>
+      <li>풀링은 "키로 끌어오는" 주제라, 분류 기준에 <b>"키 콘텐츠로 브릿지되는가"</b>를 추가.</li>
+      <li>롱테일 에버그린(must_use)은 성과도보다 <b>꾸준한 검색 수요</b> 신호로 판정.</li>
+    </ul>
+  </div>
+
+  <!-- 8 -->
+  <div class="sec"><span class="num">8</span>구현 순서 (선택하신 범위)</div>
+  <div class="card">
+    <table>
+      <tr><th style="width:40px">#</th><th>작업</th><th>상태</th></tr>
+      <tr><td>0</td><td>CDP로 로그인 크롬 화면 밖 운전 + 결과 크롤링</td><td><span class="pill p-good">실증 완료</span></td></tr>
+      <tr><td>1</td><td>검색창 자동 입력 → 검색 실행 (Step8a)</td><td><span class="pill p-warn">다음</span></td></tr>
+      <tr><td>2</td><td>필요 필드만 크롤링 (성과도·기여도 포함, Step8b)</td><td><span class="pill p-warn">다음</span></td></tr>
+      <tr><td>3</td><td>의도 분류 엔진 — 상품 컨텍스트 LLM (Step8c)</td><td><span class="pill p-warn">핵심</span></td></tr>
+      <tr><td>4</td><td>l5-core reference-adapters에 scraper 주입 → Step8 자동화 배선</td><td><span class="pill p-warn">배선</span></td></tr>
+      <tr><td>5</td><td>지표 정의 1회 확정 (Viewtrap 가이드 크롤링)</td><td><span class="keep">보조</span></td></tr>
+    </table>
+  </div>
+
+  <div class="foot">
+    핵심 한 줄: <b>Viewtrap = "조회수 검증기"가 아니라 "타깃이 실제로 보고 실제로 터진 주제 발굴기"</b>다.
+    의도 분류(제목·채널) → 수요 검증(성과도) → 후보 근거(실데이터) 순으로 키/풀링 기획에 박는다.<br>
+    <span style="color:#94a3b8">생성 2026-06-10 · 실증 스크립트 = /tmp/cdp-*.mjs · 정본 배선 대상 = packages/l5-core/.../reference-adapters.ts · viewtrap-research.ts</span>
+  </div>
+
+</div>
+</body>
+</html>

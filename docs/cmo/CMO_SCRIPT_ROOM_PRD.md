@@ -2,7 +2,7 @@
 
 **최종 수정일:** 2026-06-06  
 **기준 문서:** `/Users/wonminyang/Downloads/pulk_cmo_script_room_prd_v3_1_full.md` (v3.1)  
-**통합 설계:** `docs/CMO_SCRIPT_ROOM_EXECUTION_PLAN.md`  
+**통합 설계:** `docs/cmo/CMO_SCRIPT_ROOM_EXECUTION_PLAN.md`  
 **구현 기준:** 기존 `packages/l5-core/src/functions/video-room/` 모듈에 통합
 
 ---
@@ -616,7 +616,7 @@ Second Brain에 저장된 사용자의 기존 원고와 문서를 기반으로 �
 ## 10. AI Slide Factory와의 계약
 
 Pulk가 AI Slide Factory에 넘기는 표준 산출물은 `VideoExecutionBrief`다.  
-자세한 필드별 계약은 `docs/CMO_TO_FACTORY_CONTRACT.md`를 참조.
+자세한 필드별 계약은 `docs/cmo/CMO_TO_FACTORY_CONTRACT.md`를 참조.
 
 ### 핵심 원칙
 
@@ -786,8 +786,8 @@ CMO / Script Room은 다음 조건을 만족할 때 완료로 본다.
 
 ## 15. 참고 문서
 
-- `docs/CMO_TO_FACTORY_CONTRACT.md` — VideoExecutionBrief 필드별 계약 + 금지 필드
-- `docs/CMO_SCRIPT_ROOM_EXECUTION_PLAN.md` — Phase별 구현 계획
+- `docs/cmo/CMO_TO_FACTORY_CONTRACT.md` — VideoExecutionBrief 필드별 계약 + 금지 필드
+- `docs/cmo/CMO_SCRIPT_ROOM_EXECUTION_PLAN.md` — Phase별 구현 계획
 - Factory PRD `ai_slide_video_factory_v2_1_full.md` — Scene Decision Engine, Timeline 생성
 
 ---
