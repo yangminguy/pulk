@@ -297,9 +297,15 @@ class RawCdpPage implements CdpPage {
     };
     const wid = win.result?.windowId;
     if (wid) {
+      // 화면 밖(-4000)으로 옮긴 뒤 최소화 — macOS는 -4000을 화면 경계로 클램프(40px 노출)하므로
+      // minimized로 데스크톱에서 완전히 숨긴다. 크롤링은 Runtime.evaluate(DOM)이라 minimized에서도 동작.
       await this.conn.send('Browser.setWindowBounds', {
         windowId: wid,
         bounds: { left: OFFSCREEN_LEFT, top: 0, width: 1280, height: 900, windowState: 'normal' },
+      });
+      await this.conn.send('Browser.setWindowBounds', {
+        windowId: wid,
+        bounds: { windowState: 'minimized' },
       });
     }
   }
