@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMO 워크플로우 가이드 — 자동화·승인·결과물</title>
+<style>
+  :root{
+    --bg:#0e1014; --card:#171a21; --card2:#1d212a; --line:#2a2f3a;
+    --txt:#e8ebf0; --sub:#98a2b3; --auto:#3ecf8e; --approve:#f5b950;
+    --result:#5b9cff; --purple:#b98cff; --pink:#ff7eb6; --red:#ff6b6b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--txt);font-family:'Apple SD Gothic Neo','Pretendard',-apple-system,sans-serif;line-height:1.65;padding:36px 22px;max-width:1180px;margin:0 auto;}
+  h1{font-size:28px;margin-bottom:4px;letter-spacing:-.5px;}
+  .sub{color:var(--sub);font-size:13.5px;margin-bottom:26px;}
+  h2{font-size:19px;margin:38px 0 16px;padding-bottom:9px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;}
+
+  /* 범례 */
+  .legend{display:flex;flex-wrap:wrap;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:8px;font-size:13px;}
+  .lg{display:flex;align-items:center;gap:7px;}
+  .dot{width:11px;height:11px;border-radius:3px;flex:none;}
+  .d-auto{background:var(--auto);} .d-approve{background:var(--approve);} .d-result{background:var(--result);}
+
+  /* 흐름 레일 */
+  .rail{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:8px;}
+  .rail .node{background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:9px 13px;font-size:12.5px;text-align:center;min-width:78px;}
+  .rail .node b{display:block;font-size:13px;}
+  .rail .node small{color:var(--sub);font-size:10.5px;}
+  .rail .gate{border-color:rgba(245,185,80,.6);background:rgba(245,185,80,.08);}
+  .rail .gate small{color:var(--approve);}
+  .rail .arr{color:var(--sub);font-size:13px;}
+
+  /* 단계 카드 */
+  .stage{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:16px;border-left:4px solid var(--auto);}
+  .stage .head{display:flex;align-items:center;gap:11px;margin-bottom:4px;}
+  .stage .num{width:30px;height:30px;line-height:30px;text-align:center;border-radius:9px;background:var(--auto);color:#0e1014;font-weight:800;font-size:15px;flex:none;}
+  .stage h3{font-size:17px;}
+  .stage .st-sub{color:var(--sub);font-size:12.5px;margin:2px 0 14px 41px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-left:41px;}
+  @media(max-width:720px){.grid{grid-template-columns:1fr;} .stage .st-sub{margin-left:0;} }
+  .box{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;}
+  .box h4{font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+  .box.auto h4{color:var(--auto);} .box.approve h4{color:var(--approve);} .box.result h4{color:var(--result);} .box.time h4{color:var(--sub);}
+  .box ul{margin:0 0 0 16px;font-size:13px;}
+  .box li{margin:4px 0;}
+  .box p{font-size:13px;}
+  .tag{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:99px;margin-left:7px;vertical-align:middle;}
+  .t-gate{background:rgba(245,185,80,.16);color:var(--approve);}
+  code{background:#10131a;border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-size:11.5px;font-family:'SF Mono',Menlo,monospace;color:#9fd0ff;}
+
+  /* 발굴 3단계 */
+  .disc{background:linear-gradient(180deg,#171a21,#1a1424);border:1px solid #3a2f4a;border-radius:14px;padding:20px 22px;margin-bottom:16px;}
+  .disc .step{display:flex;gap:13px;padding:12px 0;border-bottom:1px solid #2a2438;}
+  .disc .step:last-child{border-bottom:none;}
+  .disc .si{width:26px;height:26px;line-height:26px;text-align:center;border-radius:50%;background:var(--purple);color:#0e1014;font-weight:800;font-size:13px;flex:none;}
+  .disc .step b{font-size:14px;} .disc .step p{font-size:12.5px;color:var(--sub);margin-top:2px;}
+  .disc .free{color:var(--auto);font-weight:700;} .disc .paid{color:var(--pink);font-weight:700;}
+
+  /* 승인 요약 테이블 */
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px;}
+  th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top;}
+  th{background:var(--card2);color:var(--sub);font-weight:600;font-size:12px;}
+  td.gate{color:var(--approve);font-weight:700;white-space:nowrap;}
+
+  /* 인프라 */
+  .infra{display:grid;grid-template-columns:1fr 1fr;gap:13px;}
+  @media(max-width:720px){.infra{grid-template-columns:1fr;}}
+  .icard{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:14px 16px;}
+  .icard h4{font-size:13.5px;margin-bottom:6px;color:var(--result);}
+  .icard p{font-size:12.5px;color:var(--sub);}
+  .icard .ok{color:var(--auto);font-weight:700;}
+
+  .note{background:rgba(91,156,255,.07);border:1px solid rgba(91,156,255,.3);border-radius:10px;padding:13px 16px;font-size:13px;margin:8px 0;}
+  .footer{margin-top:36px;font-size:12px;color:var(--sub);border-top:1px solid var(--line);padding-top:14px;}
+</style>
+</head>
+<body>
+
+<h1>🎬 CMO 워크플로우 가이드</h1>
+<div class="sub">사장님이 보는 전체 그림 — 무엇이 자동으로 돌고, 어디서 승인하면 되고, 무엇을 받는지. · 기준 2026-06-10 · 정본 = <code>packages/l5-core/.../video-room/</code></div>
+
+<div class="legend">
+  <div class="lg"><span class="dot d-auto"></span><b>자동</b> — AI가 알아서 함 (사장님 개입 불필요)</div>
+  <div class="lg"><span class="dot d-approve"></span><b>승인</b> — 사장님이 확인하고 통과 버튼만</div>
+  <div class="lg"><span class="dot d-result"></span><b>결과물</b> — 이 단계에서 받는 것</div>
+</div>
+
+<h2>① 한눈에 보기 — 전체 흐름</h2>
+<div class="rail">
+  <div class="node"><b>전략·상품</b><small>입력</small></div><span class="arr">→</span>
+  <div class="node"><b>② 키 콘텐츠</b><small>11스텝 자동</small></div><span class="arr">→</span>
+  <div class="node gate"><b>승인 1</b><small>키 콘텐츠</small></div><span class="arr">→</span>
+  <div class="node"><b>③ 풀링</b><small>12스텝 자동</small></div><span class="arr">→</span>
+  <div class="node gate"><b>승인 2</b><small>풀링 세트</small></div><span class="arr">→</span>
+  <div class="node"><b>④ 제작</b><small>썸네일·원고</small></div><span class="arr">→</span>
+  <div class="node gate"><b>승인 3·4</b><small>훅·원고</small></div><span class="arr">→</span>
+  <div class="node"><b>⑤ 영상</b><small>렌더 자동</small></div><span class="arr">→</span>
+  <div class="node gate"><b>승인 5·6</b><small>QA·업로드</small></div><span class="arr">→</span>
+  <div class="node"><b>⑥ 성과</b><small>자동 수집</small></div>
+</div>
+<div class="note">최소 입력(상품·타깃)만 넣으면 AI가 각 단계 <b>초안을 끝까지 자동 생성</b>합니다. 사장님은 <b>6개 지점에서 확인·승인</b>만 하면 됩니다. 모든 발굴은 실제 YouTube·Viewtrap 데이터 기반입니다.</div>
+
+<h2>② 키 콘텐츠 기획</h2>
+<div class="stage">
+  <div class="head"><span class="num">2</span><h3>키 콘텐츠 — 우리 상품을 파는 핵심 영상 주제<span class="tag t-gate">승인 1</span></h3></div>
+  <div class="st-sub">상태: <code>key_content_ideation → viewtrap_key_research → key_content_approval</code></div>
+  <div class="grid">
+    <div class="box auto"><h4>● 자동으로 하는 일</h4><ul>
+      <li>11스텝 순차 자동초안: 상품 일반화 → 아이템 FBB맵 → 카테고리 FBB맵 → 문제맵 → 퍼널(현상→욕구→계획→행동→보상) → 진입단계 결정 → 검색키워드 → 판매논리</li>
+      <li><b>발굴</b>: YouTube에서 "타깃이 보는 주제" 찾고, Viewtrap 지표(성과도·기여도·노출확률)로 검증 — <a style="color:var(--purple)">아래 발굴 3단계</a></li>
+      <li>후보 3개 + 각 후보의 "선정이유" 4종(타깃적합·판매논리·성과데이터·노출확률)</li>
+    </ul></div>
+    <div class="box approve"><h4>● 사장님 승인</h4><p>후보 3개 중 <b>"이 주제로 선택"</b> 클릭 → 다듬을 게 있으면 수정 → <b>승인 게이트 통과</b> 버튼.<br><br>판단 근거: 실제 조회수·성과도·기여도가 후보 카드에 다 보입니다.</p></div>
+    <div class="box result"><h4>● 받는 결과물</h4><ul><li>키 콘텐츠 기획서(11스텝 전체)</li><li>Viewtrap 검증 리포트(실데이터)</li><li>HTML 보고서</li></ul></div>
+    <div class="box time"><h4>● 소요</h4><p>자동초안 ~3분(LLM). 발굴 포함 시 +수십 초.</p></div>
+  </div>
+</div>
+
+<h2>③ 풀링 콘텐츠 기획</h2>
+<div class="stage">
+  <div class="head"><span class="num">3</span><h3>풀링 — 사람을 끌어모으는 주변 주제들<span class="tag t-gate">승인 2</span></h3></div>
+  <div class="st-sub">상태: <code>viewtrap_pulling_research → pulling_content_set_selection → pulling_content_set_approval</code></div>
+  <div class="grid">
+    <div class="box auto"><h4>● 자동으로 하는 일</h4><ul>
+      <li>12스텝 자동초안 — 키 콘텐츠와 같은 타깃이면서 <b>키로 브릿지되는</b> 주제 발굴</li>
+      <li>롱테일(꾸준 수요) 주제 자동 표시</li>
+      <li>후보 N개(보통 5개) + 각 "선정이유" 4종 + 키 콘텐츠로 잇는 브릿지 아이디어</li>
+    </ul></div>
+    <div class="box approve"><h4>● 사장님 승인</h4><p>풀링 토픽 세트(5개)를 확인 → 빼거나 추가 → <b>승인 게이트 통과</b>. 커밋하면 토픽들이 제작 큐로.</p></div>
+    <div class="box result"><h4>● 받는 결과물</h4><ul><li>풀링 토픽 세트(브릿지 포함)</li><li>각 토픽의 Viewtrap 근거</li></ul></div>
+    <div class="box time"><h4>● 소요</h4><p>자동초안 ~3분/세트.</p></div>
+  </div>
+</div>
+
+<h2>④ 콘텐츠 제작 (제목·썸네일·원고)</h2>
+<div class="stage">
+  <div class="head"><span class="num">4</span><h3>제작 — 실제 만들 영상의 제목·썸네일·대본<span class="tag t-gate">승인 3</span><span class="tag t-gate">승인 4</span></h3></div>
+  <div class="st-sub">상태: <code>thumbnail_pattern_extraction → intro_30s_analysis → hook_draft_approval → script_planning → script_draft → script_approval</code></div>
+  <div class="grid">
+    <div class="box auto"><h4>● 자동으로 하는 일</h4><ul>
+      <li>썸네일 패턴 추출 → 썸네일 계획 후보 3개</li>
+      <li>인트로 30초(훅) 분석·초안</li>
+      <li>원고(대본) 자동 작성 → 영상 제작용 Brief 생성</li>
+    </ul></div>
+    <div class="box approve"><h4>● 사장님 승인 (2번)</h4><p><b>승인 3</b> — 훅(인트로 30초) 초안 확인.<br><b>승인 4</b> — 원고(대본) 확인.<br>각 단계 수정 후 통과.</p></div>
+    <div class="box result"><h4>● 받는 결과물</h4><ul><li>제목·썸네일 계획(3안)</li><li>훅 + 전체 원고</li><li>영상 제작 Brief(실 factory 인박스로 자동 전달)</li></ul></div>
+    <div class="box time"><h4>● 소요</h4><p>각 LLM 스텝 수십 초~수 분.</p></div>
+  </div>
+</div>
+
+<h2>⑤ 영상 제작 (렌더)</h2>
+<div class="stage">
+  <div class="head"><span class="num">5</span><h3>영상 — 슬라이드덱·렌더·QA·업로드 초안<span class="tag t-gate">승인 5</span><span class="tag t-gate">승인 6</span></h3></div>
+  <div class="st-sub">상태: <code>voice_recording → slide_deck → rendering → qa → video_qa_approval → upload_draft → upload_approval → completed</code></div>
+  <div class="grid">
+    <div class="box auto"><h4>● 자동으로 하는 일</h4><ul>
+      <li>Brief → 슬라이드덱 생성 → factory 렌더 잡 제출 → 상태 폴링</li>
+      <li>렌더 완료 영상 QA(파일·길이·해상도·메타 검증)</li>
+      <li>YouTube 업로드용 메타데이터(제목·설명·태그) 초안</li>
+    </ul></div>
+    <div class="box approve"><h4>● 사장님 승인 (2번)</h4><p><b>승인 5</b> — 렌더된 영상 QA 확인.<br><b>승인 6</b> — 업로드 초안 확인.<br><b style="color:var(--red)">실제 업로드는 자동 안 함</b> — 사장님 최종 승인이 외부 액션 게이트.</p></div>
+    <div class="box result"><h4>● 받는 결과물</h4><ul><li>렌더 완료 영상 파일</li><li>QA 리포트</li><li>업로드 메타데이터 초안</li></ul></div>
+    <div class="box time"><h4>● 소요</h4><p>렌더 수 분(영상 길이별). 잡 제출 후 폴링.</p></div>
+  </div>
+</div>
+
+<h2>⑥ 성과 재학습</h2>
+<div class="stage">
+  <div class="head"><span class="num">6</span><h3>성과 — 올린 영상 결과를 다음 기획에 자동 반영</h3></div>
+  <div class="st-sub">상태: <code>completed</code> → <code>recordVideoPerformance · getCompletedVideoInsights</code></div>
+  <div class="grid">
+    <div class="box auto"><h4>● 자동으로 하는 일</h4><ul>
+      <li>업로드 영상 성과 자동 수집 — 조회수·시청지속·구독증감(YouTube Analytics API)</li>
+      <li><b>노출수·CTR</b> — YouTube Reporting API(별도 job 등록 완료, 하루 뒤부터 데이터)</li>
+      <li>성과 → 인사이트 추출 → 다음 기획에 반영</li>
+    </ul></div>
+    <div class="box approve"><h4>● 사장님 개입</h4><p>없음 — 자동 수집·학습. (디립다 채널 OAuth 연동 완료)</p></div>
+    <div class="box result"><h4>● 받는 결과물</h4><ul><li>영상별 성과 대시보드</li><li>완성 인사이트(다음 기획 자동 반영)</li></ul></div>
+    <div class="box time"><h4>● 소요</h4><p>자동·상시.</p></div>
+  </div>
+</div>
+
+<h2>🔍 발굴 자동화 3단계 (키·풀링에서 사용)</h2>
+<div class="disc">
+  <p style="font-size:13px;color:var(--sub);margin-bottom:8px;">"타깃이 실제로 보고 실제로 터진 주제"를 찾는 방식. 무료(YouTube)에서 최대한 거르고, 차감되는 Viewtrap은 추린 소수만.</p>
+  <div class="step"><span class="si">1</span><div><b>YouTube API 키워드 스크리닝</b> <span class="free">무료·한도 없음</span><p>여러 키워드 검색 → 영상 많고 조회수 높은 키워드 선별. 예: "AI로 돈벌기" 14/20이 5만+, 중앙값 19.9만 → 유망.</p></div></div>
+  <div class="step"><span class="si">2</span><div><b>YouTube 브라우저 + Viewtrap 플러그인</b> <span class="free">무료</span><p>유망 키워드를 YouTube에서 검색 → 플러그인이 주입한 <b>성과도·기여도</b>를 자동 추출 → 5만+·Good+ 필터. <b>대부분 여기서 거름.</b></p></div></div>
+  <div class="step"><span class="si">3</span><div><b>Viewtrap 사이트 + 노출확률</b> <span class="paid">이용횟수 차감</span><p>추린 소수만 Viewtrap에 검색(확인 모달 자동 처리, ~20초) → <b>노출확률</b>까지 확인 → normal·good·great만 최종 후보. 기본은 꺼져 있고 명시적으로 켤 때만 차감.</p></div></div>
+</div>
+<div class="note">
+  <b>이 3단계는 서버 버튼 하나로 자동 실행됩니다.</b> 발굴 화면에서 키워드 입력 → 실행하면 1단계(YouTube API) + 2단계(플러그인 deepWalk)가 자동으로 돌고 AI 분류까지 끝납니다.
+  <b>3단계(Viewtrap 노출확률)는 "노출확률까지 확인" 옵션을 켤 때만</b> 추가로 돌아 이용횟수를 1회 차감합니다(기본 꺼짐). 크롬 세션이 죽어 있어도 에러 없이 가능한 단계까지만 진행하고 사유를 알려줍니다.
+</div>
+
+<h2>✅ 승인 게이트 — 사장님이 누르는 곳 (전부 6개)</h2>
+<table>
+  <tr><th>승인</th><th>단계</th><th>무엇을 확인</th><th>안 누르면</th></tr>
+  <tr><td class="gate">승인 1</td><td>키 콘텐츠</td><td>핵심 주제 + Viewtrap 근거</td><td>풀링으로 안 넘어감</td></tr>
+  <tr><td class="gate">승인 2</td><td>풀링 세트</td><td>주변 주제 5개</td><td>제작 큐로 안 감</td></tr>
+  <tr><td class="gate">승인 3</td><td>훅(인트로 30초)</td><td>도입부 초안</td><td>원고로 안 넘어감</td></tr>
+  <tr><td class="gate">승인 4</td><td>원고</td><td>전체 대본</td><td>음성·렌더로 안 감</td></tr>
+  <tr><td class="gate">승인 5</td><td>영상 QA</td><td>렌더된 영상 품질</td><td>업로드 초안으로 안 감</td></tr>
+  <tr><td class="gate">승인 6</td><td>업로드</td><td>업로드 메타 초안</td><td><b>업로드 안 됨(외부 액션 보호)</b></td></tr>
+</table>
+<div class="note">승인은 <b>"이 단계 승인하고 진행"</b> 버튼 하나입니다. 수정이 필요하면 그 단계에서 고친 뒤 통과시키면 됩니다. 승인 전엔 다음 단계로 절대 안 넘어가므로 안심하고 검토하셔도 됩니다.</div>
+
+<h2>⚙️ 뒤에서 도는 자동 인프라 (사장님이 신경 안 써도 되는 것)</h2>
+<div class="infra">
+  <div class="icard"><h4>CDP 크롬 자동 운영</h4><p><span class="ok">launchd 상시</span> — 재부팅·크롬 종료 시 자동 기동·부활(1~3초). 발굴 크롤링용 크롬이 항상 살아있습니다. 창은 <b>숨김(minimized)</b>이라 화면에 안 보입니다.</p></div>
+  <div class="icard"><h4>자동 로그인 유지</h4><p><span class="ok">구글 OAuth</span> — 구글 로그인이 프로필에 유지돼, 재부팅해도 Viewtrap이 자동 재로그인됩니다. 사장님이 한 번 로그인해두면 끝.</p></div>
+  <div class="icard"><h4>AI 의도 분류</h4><p><span class="ok">Claude Sonnet 고정</span> — 발굴한 영상이 "우리 타깃이 볼 주제인지, 판매논리가 녹는지"를 판단(적합/모호/부적합).</p></div>
+  <div class="icard"><h4>성과 자동 수집</h4><p><span class="ok">YouTube API</span> — 디립다 채널 OAuth 연동. 조회·시청·구독은 즉시, 노출·CTR은 Reporting API(하루 뒤 데이터).</p></div>
+</div>
+
+<h2>📦 한눈에 — 사장님이 받는 결과물</h2>
+<table>
+  <tr><th>단계</th><th>결과물</th></tr>
+  <tr><td>키 콘텐츠</td><td>11스텝 기획서 · 3후보(선정이유 4종) · Viewtrap 실데이터 검증 · HTML 보고서</td></tr>
+  <tr><td>풀링</td><td>풀링 토픽 세트(브릿지 포함) · 각 토픽 Viewtrap 근거</td></tr>
+  <tr><td>제작</td><td>제목·썸네일 3안 · 훅 · 전체 원고 · 영상 Brief</td></tr>
+  <tr><td>영상</td><td>렌더 완료 영상 · QA 리포트 · 업로드 메타 초안</td></tr>
+  <tr><td>성과</td><td>영상별 성과 대시보드 · 완성 인사이트(다음 기획 자동 반영)</td></tr>
+</table>
+
+<h2>🔌 부록 — 발굴 자동화 API (개발 참고)</h2>
+<table>
+  <tr><th>항목</th><th>내용</th></tr>
+  <tr><td>엔드포인트</td><td><code>POST /api/cmo:runDiscovery</code></td></tr>
+  <tr><td>요청</td><td><code>{ project_id, query, mode:'key'|'pulling', use_viewtrap?:false }</code></td></tr>
+  <tr><td>기본 동작 <span class="tag" style="background:rgba(62,207,142,.16);color:var(--auto)">무료</span></td><td>1단계 YouTube API + 2단계 플러그인 deepWalk + Sonnet 분류</td></tr>
+  <tr><td><code>use_viewtrap:true</code> <span class="tag" style="background:rgba(255,126,182,.16);color:var(--pink)">차감</span></td><td>+3단계 Viewtrap 노출확률 보강 (이용횟수 1회)</td></tr>
+  <tr><td>응답</td><td><code>{ provenance:{searched,stats,scraped,classified}, degraded, live_notes[], candidates[] }</code></td></tr>
+  <tr><td>안전장치</td><td>크롬 죽어도 <b>graceful</b>(가능한 단계까지 + 사유) · 동시 실행 시 두번째는 409(직렬화) · 창은 항상 숨김</td></tr>
+</table>
+<div class="note">라이브 검증(2026-06-10): 기본 2단계 200(후보 5, provenance 전부 true) · 3단계 옵션 200(후보 6, 노출확률 보강) · 동시성 409 직렬화 — 모두 통과.</div>
+
+<div class="footer">
+  정본 도메인 = <code>packages/l5-core/src/functions/video-room/</code> · 발굴 = <code>services/youtube/</code> · 서버 = <code>@l5/plugin-orchestration cmo:runDiscovery</code> · UI = <code>apps/founder-ui /video-room</code> ·
+  검증: API 스모크 19/19 · 브라우저 E2E 13/14 PASS · 발굴 3단계·검색·성과·서버 배선 라이브 확인 (2026-06-10).
+</div>
+
+</body>
+</html>

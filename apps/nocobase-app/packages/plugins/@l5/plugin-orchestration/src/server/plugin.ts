@@ -46,6 +46,10 @@ const _secondBrainTransport = makeSecondBrainTransport();
 // M5: build video-factory transport once at module load. null when env not set.
 const _videoFactoryTransport = makeVideoFactoryTransport();
 
+// CMO discovery: 같은 9222 CDP 크롬을 동시에 여러 runDiscovery가 운전하면 충돌하므로
+// in-process lock으로 직렬화한다. 라이브 발굴(2·3단계)이 진행 중이면 다음 호출은 409로 거절.
+let _discoveryInFlight = false;
+
 const {
   verifyCTOPhase,
   verifyIntegratePhase,
@@ -4248,10 +4252,14 @@ function registerCmoResource(app: any, db: any) {
         await next();
       },
 
-      // POST /api/cmo:runDiscovery  { project_id, query, mode?, search_keyword?, validated_keywords? }
-      // M1~M3 통합: 발굴(YouTube) → 통계+5만+ 필터 → Sonnet 분류 → 후보 산출.
-      // 결과(후보 + viewtrap_validation 초안)를 discovery 카드에 저장하고 반환한다.
-      // CDP 크롤러는 서버에서 미주입(로그인 크롬 전제) → stats+Sonnet 부분 파이프라인.
+      // POST /api/cmo:runDiscovery
+      //   { project_id, query, mode?, search_keyword?, validated_keywords?, use_viewtrap? }
+      // M1~M3 통합: 발굴(YouTube API) → 통계+5만+ 필터 → CDP 라이브 크롤(2·3단계) → Sonnet 분류 → 후보.
+      // 라이브 발굴: 서버가 launchd 상시 9222 CDP 크롬에 붙어
+      //   - 2단계(YouTube 플러그인 deepWalk, 무료): 기본 ON.
+      //   - 3단계(viewtrap 사이트 검색, 이용횟수 차감): use_viewtrap===true 일 때만 ON(기본 OFF).
+      // CDP 연결 실패/viewtrap 미로그인 시 → 1단계(YouTube API)+Sonnet만으로 graceful 진행.
+      // 응답 provenance + degraded note 로 어디까지 라이브였는지 명시한다. throw로 전체 실패시키지 않는다.
       runDiscovery: async (ctx: ActionContext, next: () => Promise<void>) => {
         const v = getValues(ctx);
         const project_id = String(v.project_id ?? '').trim();
@@ -4259,8 +4267,16 @@ function registerCmoResource(app: any, db: any) {
         const mode = (String(v.mode ?? 'key').trim() === 'pulling' ? 'pulling' : 'key') as
           | 'key'
           | 'pulling';
+        // 3단계(viewtrap 사이트 검색)는 이용횟수가 차감되므로 명시적으로 켤 때만.
+        const useViewtrap = v.use_viewtrap === true || String(v.use_viewtrap ?? '') === 'true';
         if (!project_id) ctx.throw(400, 'project_id is required');
         if (!query) ctx.throw(400, 'query is required');
+
+        // 같은 9222 크롬을 동시 운전하면 충돌 → in-process lock으로 직렬화(이미 실행 중이면 409).
+        if (_discoveryInFlight) {
+          ctx.throw(409, 'another runDiscovery is in flight (CDP chrome is single-tenant); retry shortly');
+        }
+        _discoveryInFlight = true;
 
         const projRows = await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]);
         if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
@@ -4276,43 +4292,102 @@ function registerCmoResource(app: any, db: any) {
         };
         const target = product.target_audience || '타깃 미상';
 
-        // 실 발굴 deps 조립 — @l5/youtube는 ESM이라 dynamic import. 자격증명/모델
-        // 없으면 graceful 실패(파이프라인이 단계별 폴백하므로 후보 0개로 반환).
-        let deps: any;
-        try {
-          const yt: any = await import(
-            path.resolve(__dirname, '../../../../../../../services/youtube/dist/index.js')
-          );
-          const creds = yt.loadCredentials();
-          const client = new yt.YouTubeClient(creds);
-          // Sonnet 분류 함수 주입(모델 고정). classifyDiscoveredVideos를 감싼다.
-          // 타임아웃 240s: launchd 서버 컨텍스트의 claude CLI cold-spawn은 셸보다 훨씬
-          // 느리다(실측 배치 1콜 47~125s). 기본 60s면 양 attempt 모두 타임아웃 →
-          // 배치 10개가 통째로 ambiguous 폴백(classified=false)되던 근본원인. (후속3 2026-06-10)
-          const sonnet = createClaudeCLIClient({ model: 'sonnet', timeoutMs: 240_000 });
-          const classify = (videos: any[], m: 'key' | 'pulling') =>
-            classifyDiscoveredVideos(
-              {
-                product,
-                target,
-                videos,
-                mode: m,
-                ...(mode === 'pulling' && proj.key_content_context
-                  ? { key_content_context: String(proj.key_content_context) }
-                  : {}),
-              },
-              { llm: sonnet },
-            );
-          deps = yt.createLiveDiscoveryDeps({ client, searchMaxResults: 25, classify });
-        } catch (err: any) {
-          ctx.throw(400, `discovery deps unavailable: ${err?.message ?? String(err)}`);
-        }
-
+        // 라이브 발굴 진행 중 어디까지 살아있었는지 기록(응답 note용). throw 금지 — 단계 실패는 폴백.
+        const liveNotes: string[] = [];
+        let cdpSession: any = null;
         let result: any;
         try {
-          result = await runDiscoveryPipeline({ query, product, target, mode }, deps);
+          // 실 발굴 deps 조립 — @l5/youtube는 ESM이라 dynamic import. 자격증명/모델
+          // 없으면 graceful 실패(파이프라인이 단계별 폴백하므로 후보 0개로 반환).
+          let deps: any;
+          try {
+            const yt: any = await import(
+              path.resolve(__dirname, '../../../../../../../services/youtube/dist/index.js')
+            );
+            const creds = yt.loadCredentials();
+            const client = new yt.YouTubeClient(creds);
+            // Sonnet 분류 함수 주입(모델 고정). classifyDiscoveredVideos를 감싼다.
+            // 타임아웃 240s: launchd 서버 컨텍스트의 claude CLI cold-spawn은 셸보다 훨씬
+            // 느리다(실측 배치 1콜 47~125s). 기본 60s면 양 attempt 모두 타임아웃 →
+            // 배치 10개가 통째로 ambiguous 폴백(classified=false)되던 근본원인. (후속3 2026-06-10)
+            const sonnet = createClaudeCLIClient({ model: 'sonnet', timeoutMs: 240_000 });
+            const classify = (videos: any[], m: 'key' | 'pulling') =>
+              classifyDiscoveredVideos(
+                {
+                  product,
+                  target,
+                  videos,
+                  mode: m,
+                  ...(mode === 'pulling' && proj.key_content_context
+                    ? { key_content_context: String(proj.key_content_context) }
+                    : {}),
+                },
+                { llm: sonnet },
+              );
+
+            // ── CDP 라이브 어댑터 조립(graceful) ────────────────────────────────
+            // 9222 CDP 크롬에 붙어 2단계(YouTube 플러그인) 어댑터를 만든다. 실패해도 throw하지 않고
+            // extension/viewtrap 미주입으로 1단계+분류만 진행한다.
+            let extensionAdapter: any;
+            let viewtrapAdapter: any;
+            try {
+              cdpSession = await yt.connectCdp({ endpoint: yt.DEFAULT_CDP_ENDPOINT });
+              // 2단계(무료): YouTube 검색결과 확장 deepWalk. 항상 시도.
+              extensionAdapter = yt.createExtensionScraperAdapter(cdpSession, {});
+              liveNotes.push('cdp connected; stage2 (youtube extension) live');
+              // 3단계(차감): viewtrap 사이트 검색 — use_viewtrap===true 일 때만. resolveExposure로
+              // 노출확률 다건 보강(extension이 못 채운 영상만 deps 병합 로직이 사용).
+              if (useViewtrap) {
+                viewtrapAdapter = yt.createViewtrapScraperAdapter(cdpSession, {
+                  transform: {
+                    researchSessionId: `discovery-${project_id}`,
+                    consumerStage: '현상',
+                    selectedFor: mode === 'pulling' ? 'pulling_content' : 'key_content',
+                  },
+                  resolveExposure: true,
+                });
+                liveNotes.push('stage3 (viewtrap site search) enabled — consumes usage credit');
+              } else {
+                liveNotes.push('stage3 (viewtrap) skipped — use_viewtrap not set (credit-saving default)');
+              }
+            } catch (cdpErr: any) {
+              // CDP 연결 실패(크롬 죽음/포트 닫힘) → 1단계+분류만. 절대 전체 실패시키지 않는다.
+              liveNotes.push(`cdp unavailable — falling back to youtube-api+classify only: ${cdpErr?.message ?? String(cdpErr)}`);
+              if (cdpSession) {
+                try { await cdpSession.browser.close(); } catch { /* ignore */ }
+                cdpSession = null;
+              }
+            }
+
+            deps = yt.createLiveDiscoveryDeps({
+              client,
+              searchMaxResults: 25,
+              classify,
+              ...(extensionAdapter ? { extensionAdapter } : {}),
+              ...(viewtrapAdapter ? { viewtrapAdapter } : {}),
+            });
+          } catch (err: any) {
+            ctx.throw(400, `discovery deps unavailable: ${err?.message ?? String(err)}`);
+          }
+
+          // 파이프라인 실행. scrapeMetrics(2·3단계)가 throw해도 결과를 못 만들면 안 되므로
+          // 라이브 크롤 실패는 폴백으로 흡수한다(1차 시도 후 deps에서 scrapeMetrics 제거하고 재시도).
+          try {
+            result = await runDiscoveryPipeline({ query, product, target, mode }, deps);
+          } catch (pipeErr: any) {
+            liveNotes.push(`live scrape failed — retrying without cdp metrics: ${pipeErr?.message ?? String(pipeErr)}`);
+            const fallbackDeps = { ...deps };
+            delete fallbackDeps.scrapeMetrics;
+            result = await runDiscoveryPipeline({ query, product, target, mode }, fallbackDeps);
+          }
         } catch (err: any) {
           ctx.throw(400, err?.message ?? String(err));
+        } finally {
+          // CDP 세션은 연결만 해제(크롬은 launchd가 유지). lock도 항상 해제.
+          if (cdpSession) {
+            try { await cdpSession.browser.close(); } catch { /* ignore */ }
+          }
+          _discoveryInFlight = false;
         }
 
         // 후보 → viewtrap_validation 초안(실데이터 기반 선정이유 포함).
@@ -4344,10 +4419,16 @@ function registerCmoResource(app: any, db: any) {
             ? toLongtailCandidateInputs(result.candidates)
             : [];
 
+        // 라이브 발굴이 부분만 됐으면(스크래핑/분류 누락) degraded=true. note로 사유 명시.
+        const prov = result.provenance ?? {};
+        const degraded = !prov.scraped || !prov.classified;
         const discoveryData = {
           mode,
           query,
+          use_viewtrap: useViewtrap,
           provenance: result.provenance,
+          degraded,
+          live_notes: liveNotes,
           candidates,
           viewtrap_validation_input,
           longtail_inputs,

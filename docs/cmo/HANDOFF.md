@@ -3,6 +3,17 @@
 > 최종 업데이트: 2026-06-10. 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
 > 300줄 넘으면 오래된 항목을 `docs/archive/`로 이관하고 요약만 남긴다.
 
+## 🟢 2026-06-10 — runDiscovery 서버 CDP 라이브 발굴 정식 주입 (2단계 기본·3단계 옵션)
+
+NocoBase `cmo:runDiscovery`가 launchd 상시 9222 CDP 크롬에 서버에서 직접 붙어 2·3단계 라이브 발굴을 돌린다. 이전엔 client(YouTube API)+classify(Sonnet)만 주입했고 CDP 어댑터는 미주입이었다.
+
+- **배선**(`plugin-orchestration/src/server/plugin.ts` `runDiscovery`): 핸들러에서 `yt.connectCdp(9222)` 시도 → 성공 시 `createExtensionScraperAdapter`(2단계)·(옵션)`createViewtrapScraperAdapter`(3단계, `resolveExposure:true`)를 만들어 `createLiveDiscoveryDeps`에 주입. 사용 후 `cdpSession.browser.close()`(연결만 해제, 크롬은 launchd 유지).
+- **이용횟수 보호**: 신규 요청 옵션 `use_viewtrap`(불리언). **기본 OFF** → 2단계(YouTube 플러그인, 무료)까지만 라이브. 3단계(viewtrap 사이트 검색, 이용횟수 차감)는 `use_viewtrap===true`일 때만. extension이 이미 채운 노출확률 영상은 deps 병합이 재검색 스킵.
+- **graceful**: CDP 연결 실패/viewtrap 미로그인 시 throw 없이 1단계(YouTube API)+classify로 폴백. 파이프라인 scrapeMetrics가 throw하면 scrapeMetrics 제거 후 1회 재시도. 응답에 `provenance`(searched/stats/scraped/classified) + `degraded` + `live_notes`(사유) 명시.
+- **동시성**: 모듈 레벨 `_discoveryInFlight` lock으로 직렬화 — 실행 중 호출은 **409**("another runDiscovery is in flight"). finally에서 항상 해제.
+- **검증**: youtube/l5-core tsc 0 · youtube jest **60/60** 무회귀 · `yarn build @l5/plugin-orchestration` OK(dist에 connectCdp/createExtensionScraperAdapter/createViewtrapScraperAdapter/_discoveryInFlight/use_viewtrap/live_notes grep 1+) · NocoBase 재기동 `app:getInfo` 200. **라이브 HTTP E2E**(port 13000, admin): (a) 기본 2단계 → `provenance` 전부 true(scraped=true=extension·classified=true), degraded=false, 후보 5건, viewtrap 스킵 note. (b) `use_viewtrap=true` → 3단계 enabled note, scraped+classified true, 후보 6건(기여/성과 등급 실측), **이용횟수 1회만 차감**. (c) 동시 2콜 → 1×200 + 1×409 확인.
+- **메모**: (b)에서 일부 후보 exposure 미병합 — viewtrap 사이트 검색 결과 테이블의 videoId 집합이 YouTube API 검색 집합과 교집합이 적어 exposure 보강 대상이 없었던 것(정상 graceful, 실패 아님).
+
 ## 🟢 2026-06-10 — viewtrap 검색 코드 트리거 정식 배선 (제약2 해결: 확인 모달)
 
 이전 "프로그래밍 재검색 불가"는 **오판**이었다. 실제 원인 = **검색 확인 모달을 안 눌렀던 것**.
