@@ -3,6 +3,18 @@
 > 최종 업데이트: 2026-06-10. 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
 > 300줄 넘으면 오래된 항목을 `docs/archive/`로 이관하고 요약만 남긴다.
 
+## 🟢 2026-06-10 — 제목 디벨롭 8단계 워크플로우 풀스택 완성 (PRD cmo-title-development §19~24)
+
+감으로 만들던 제목을 **Viewtrap 검증 레퍼런스 2개 → 4종 교차 조합 → 어색함 판단 → 2~8단계 디벨롭 → 100점 평가 게이트 → Founder 승인** 파이프라인으로 전환. ACR로 WO-1·WO-2(도메인) 완료 후 WO-3(배선)·WO-4(UI)는 직접 마무리. 정본 기능 문서 = [features/title-development-workflow](./features/title-development-workflow.md).
+
+- **l5-core 도메인** (`cmo-strategy/title-development{,-types,-llm}.ts`): 결정론 함수(검증·4교차조합·점수합산·임계) + 8단계 LLM 실행기(단계당 1콜, 실패 시 그 단계만 결정론 폴백). AC-01~15 전부 매핑. jest 59/59.
+- **오케스트레이터 통합**: 스킬 `cmo.title.development`(depends_on `cmo.pulling.plan` → suggested_next `cmo.script.write`). `cmo-skill-registry`에 LLM deps 주입 옵션과 함께 등록. e2e 체인 통과(pulling→title→script).
+- **배럴 배선(WO-3)**: `cmo-strategy/index.ts`가 title-development 재export(루트 `@l5/core`에서 호출 가능). `stage-script.ts`의 `thumbnail_pattern_extraction` focus/prompt에 8단계·레퍼런스2개·조회수5만·교차조합 안내 주입.
+- **라이브 액션(WO-3)**: `cmo:proposeTitleDevelopment`(plugin.ts src + **dist/plugin.js 직접 패치** + ACL). 레퍼런스 2개+풀링주제 받아 `runTitleDevelopmentWorkflow`(Claude CLI 주입) → `title_development` 카드 upsert. 검증 실패 시 `failed_references` 반환.
+- **founder-ui(WO-4)**: `TitleDevelopmentBoard.tsx`(레퍼런스 2개 입력→4조합→8단계 타임라인→평가 패널, 도메인 로직 없이 표시 전용). StrategyBoard의 `thumbnail_pattern_extraction~hook_draft_approval` 블록(=**승인3**)에 배선. ProductionBoard 원고 영역(=**승인4**) 상단에 확정 제목/썸네일 방향 읽기 전용 노출.
+- **검증**: l5-core 회귀 68 suites/865 tests 0실패 · tsc 0 · founder-ui `next build` 0 · dist `node --check` OK · 런타임 export 실재 확인.
+- **⚠ 활성화 1단계 남음**: NocoBase가 dev 프로세스(PID 42679, launchd 아님)로 가동 중 → 패치된 dist 로드하려면 **재기동 필요**. 재기동 후 라이브 HTTP smoke(thumbnail 단계 프로젝트로 `cmo:proposeTitleDevelopment`) + Playwright smoke 권장.
+
 ## 🟢 2026-06-10 — runDiscovery 서버 CDP 라이브 발굴 정식 주입 (2단계 기본·3단계 옵션)
 
 NocoBase `cmo:runDiscovery`가 launchd 상시 9222 CDP 크롬에 서버에서 직접 붙어 2·3단계 라이브 발굴을 돌린다. 이전엔 client(YouTube API)+classify(Sonnet)만 주입했고 CDP 어댑터는 미주입이었다.

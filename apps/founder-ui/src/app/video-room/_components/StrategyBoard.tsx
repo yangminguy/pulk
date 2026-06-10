@@ -8,6 +8,7 @@ import StageGate from './StageGate'
 import KeyContentPlanBoard from './KeyContentPlanBoard'
 import PullingPlanBoard from './PullingPlanBoard'
 import ThumbnailPlanBoard from './ThumbnailPlanBoard'
+import TitleDevelopmentBoard from './TitleDevelopmentBoard'
 
 // ── Strategy Board ───────────────────────────────────────────────────────────
 export default function StrategyBoard({
@@ -67,7 +68,7 @@ export default function StrategyBoard({
 
       {strategyCards
         // 키 콘텐츠 v3 카드는 raw JSON으로 노출하지 않는다 — 전용 보드(KeyContentPlanBoard)가 렌더.
-        .filter(card => !['key_content_draft', 'key_content_candidates', 'key_content_choice', 'key_content', 'pulling_candidates', 'pulling_plan', 'thumbnail_plan', 'thumbnail_choice'].includes(card.stage))
+        .filter(card => !['key_content_draft', 'key_content_candidates', 'key_content_choice', 'key_content', 'pulling_candidates', 'pulling_plan', 'thumbnail_plan', 'thumbnail_choice', 'title_development'].includes(card.stage))
         .map(card => {
           if (card.stage === 'intro_30s') {
             return <Intro30sCard key={card.id} card={card} />
@@ -93,6 +94,13 @@ export default function StrategyBoard({
       <div style={{ marginTop: 16 }}>
         <StageGate title="썸네일 상세 기획 (v3 · 후보 택1)" state={blockState({ from: 'thumbnail_pattern_extraction', to: 'hook_draft_approval' }, currentStatus)}>
           <ThumbnailPlanBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
+        </StageGate>
+      </div>
+
+      {/* 제목 디벨롭 8단계 보드 — thumbnail_pattern_extraction ~ hook_draft_approval (승인3에서 함께 확인) */}
+      <div style={{ marginTop: 16 }}>
+        <StageGate title="제목 디벨롭 (8단계 · Viewtrap 레퍼런스 2개)" state={blockState({ from: 'thumbnail_pattern_extraction', to: 'hook_draft_approval' }, currentStatus)}>
+          <TitleDevelopmentBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
         </StageGate>
       </div>
 

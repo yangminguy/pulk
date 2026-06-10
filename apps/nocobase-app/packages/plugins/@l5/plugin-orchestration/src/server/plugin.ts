@@ -94,6 +94,9 @@ const {
 // CMO Video Room — strategy turn + state machine.
 const {
   runCmoStrategyTurn,
+  // 제목 디벨롭 8단계 (PRD cmo-title-development §19~21): Viewtrap 레퍼런스 2개 → 교차조합 → 2~8단계 → 평가
+  runTitleDevelopmentWorkflow,
+  buildTitleDevelopmentProposal,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cmo-strategy'));
 
 // CMO v3 orchestrator — skill-chain execution.
@@ -223,7 +226,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeTitleDevelopment', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -3977,6 +3980,90 @@ function registerCmoResource(app: any, db: any) {
         }
 
         ctx.body = { ok: true, data: { selected, status: newStatus } };
+        await next();
+      },
+
+      // POST /api/cmo:proposeTitleDevelopment  { project_id, references:[ref1,ref2], pulling_topic?, pulling_content_id?, target_audience?, business_goal?, script_summary? }
+      // 제목 디벨롭 8단계 (PRD cmo-title-development §20.1): thumbnail_pattern_extraction 단계 내부에서
+      // Viewtrap 검증 레퍼런스 2개 → 교차조합 → 어색함판단 → 2~8단계 디벨롭 → 최종평가 → 'title_development' 카드 upsert.
+      // 도메인 로직은 l5-core(runTitleDevelopmentWorkflow). 결과는 hook_draft_approval(승인3)·script_approval(승인4)에서 노출.
+      proposeTitleDevelopment: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const references = Array.isArray(v.references) ? v.references : [];
+        if (references.length < 2) ctx.throw(400, '레퍼런스 2개가 필요합니다 (AC-01).');
+
+        // 프로젝트(타겟/목표) 로드.
+        const projRows = await q(
+          `SELECT target_audience, business_goal FROM video_room_projects WHERE id = $1`,
+          [project_id],
+        );
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const target_audience =
+          String(v.target_audience ?? projRows[0].target_audience ?? '작은 브랜드 대표').trim();
+        const business_goal = v.business_goal ?? projRows[0].business_goal ?? undefined;
+
+        // 풀링 주제: 명시 입력 우선, 없으면 pulling_plan 카드 첫 주제.
+        let pulling_topic = String(v.pulling_topic ?? '').trim();
+        let pulling_content_id = String(v.pulling_content_id ?? '').trim();
+        if (!pulling_topic) {
+          const planRows = await q(
+            `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'pulling_plan' ORDER BY "createdAt" DESC LIMIT 1`,
+            [project_id],
+          );
+          const plan = planRows[0]
+            ? (typeof planRows[0].data === 'string' ? JSON.parse(planRows[0].data) : (planRows[0].data ?? {}))
+            : {};
+          const topics = Array.isArray(plan.pulling_topics) ? plan.pulling_topics : [];
+          const first = topics[0];
+          pulling_topic = String(first?.title ?? first?.topic ?? plan.key_topic_title ?? '').trim();
+        }
+        if (!pulling_topic) {
+          ctx.throw(400, 'pulling_topic이 필요합니다. 풀링 플랜을 먼저 확정하거나 pulling_topic을 입력하세요.');
+        }
+        if (!pulling_content_id) pulling_content_id = 'pulling-content-1';
+
+        const llm = buildLLMClient('');
+
+        let result: any;
+        try {
+          result = await runTitleDevelopmentWorkflow(
+            {
+              video_project_id: project_id,
+              pulling_content_id,
+              pulling_topic,
+              target_audience,
+              business_goal,
+              references: [references[0], references[1]],
+              script_summary: v.script_summary,
+            },
+            { llm },
+          );
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        // 레퍼런스 검증 실패 (AC-01~04): 추가 레퍼런스 요청.
+        if (!result.ok) {
+          ctx.body = {
+            ok: false,
+            data: { next_action: result.next_action, failed_references: result.failed_references },
+          };
+          await next();
+          return;
+        }
+
+        const proposal = buildTitleDevelopmentProposal(result.run);
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'title_development',
+          proposal.summary,
+          result.run,
+        );
+
+        ctx.body = { ok: true, data: { run: result.run, fallback_count: result.fallback_count } };
         await next();
       },
 

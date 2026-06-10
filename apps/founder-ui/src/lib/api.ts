@@ -516,6 +516,75 @@ export type ThumbnailPlanDraft = {
   why_recommended: string
   risk_notes: string[]
 }
+// CMO 제목 디벨롭 8단계 (PRD cmo-title-development §19) — UI 표시 전용 타입(도메인 로직 없음).
+export type TitleDevelopmentReferenceInput = {
+  id: string
+  research_session_id: string
+  source: 'viewtrap' | 'youtube' | 'manual'
+  url?: string
+  title: string
+  thumbnail_text: string
+  thumbnail_structure: string
+  topic: string
+  view_count: number
+  performance_grade: 'Good' | 'Great'
+  contribution_grade: 'Good' | 'Great'
+  topic_similarity: 'exact' | 'expanded_same_meaning'
+  similarity_reason: string
+  selected_reason: string
+}
+export type TitleCombination = {
+  id: string
+  combination_type: string
+  title_draft: string
+  thumbnail_text_draft: string
+  thumbnail_direction: string
+  awkwardness_score: number
+  awkwardness_reason?: string
+  passed: boolean
+  selected_for_next_step: boolean
+}
+export type TitleStepResult = {
+  step_number: number
+  step_name: string
+  input_titles: string[]
+  output_titles: string[]
+  method_explanation: string
+  cmo_reasoning: string
+  rejected_titles: { title: string; reason: string }[]
+  selected_titles_for_next_step: string[]
+}
+export type FinalTitleEvaluation = {
+  title: string
+  thumbnail_direction: string
+  target_fit: number
+  desire_clarity: number
+  problem_sharpness: number
+  curiosity_gap: number
+  script_match: number
+  thumbnail_fit: number
+  total_score: number
+  recommendation: 'upload_candidate' | 'revise' | 'rerun_reference_search'
+  reason: string
+  risks: string[]
+  required_script_additions?: string[]
+}
+export type TitleDevelopmentRun = {
+  id: string
+  pulling_topic: string
+  target_audience: string
+  combinations: TitleCombination[]
+  step_results: TitleStepResult[]
+  final_candidates: FinalTitleEvaluation[]
+  selected_title: string
+  selected_thumbnail_direction: string
+  approval_status: 'draft' | 'approved' | 'needs_revision'
+  second_brain_summary?: string
+}
+export type TitleDevelopmentResult =
+  | { ok: true; run: TitleDevelopmentRun; fallback_count: number }
+  | { ok: false; next_action: string; failed_references: { reference_id: string; reasons: string[] }[] }
+
 // CMO v3 R4 제작 — 원고 초안(도입30초 + 로직블록 + 통합원고 + QA).
 export type ScriptDraftResult = {
   intro_30s: {
@@ -856,6 +925,18 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ project_id, candidate_id }),
     }).then(r => unwrap(r)) as Promise<{ selected: ThumbnailCandidate; status: string | null }>,
+
+  // CMO 제목 디벨롭 8단계 — Viewtrap 레퍼런스 2개 입력 → 교차조합 → 2~8단계 → 평가 → title_development 카드.
+  // 레퍼런스 검증 실패 시 { ok:false, failed_references } 반환(추가 레퍼런스 요청). 도메인 로직은 서버(l5-core).
+  cmoProposeTitleDevelopment: (
+    project_id: string,
+    references: TitleDevelopmentReferenceInput[],
+    opts?: { pulling_topic?: string; pulling_content_id?: string; target_audience?: string; business_goal?: string; script_summary?: string },
+  ) =>
+    request<{ data: TitleDevelopmentResult }>('/api/cmo:proposeTitleDevelopment', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, references, ...(opts ?? {}) }),
+    }).then(r => unwrap(r)) as Promise<TitleDevelopmentResult>,
 
   // CMO v3 R4 제작 — 전략 brief/자료 → 도입30초 + 로직블록 + 통합원고 + QA 초안 자동 생성.
   cmoProposeScriptDraft: (project_id: string) =>

@@ -68,9 +68,24 @@ export default function ProductionBoard({
     }
   }
 
+  // 승인4(원고 확인) 컨텍스트: 제목 디벨롭에서 확정된 제목/썸네일 방향을 읽기 전용으로 함께 노출.
+  const titleDevCard = cards.find(c => c.stage === 'title_development')
+  const titleDev = titleDevCard?.data as { selected_title?: string; selected_thumbnail_direction?: string } | undefined
+
   return (
     <div>
       <div className="j-overline" style={{ marginBottom: 8 }}>Production Board</div>
+
+      {titleDev?.selected_title && (
+        <div style={{ border: '1px solid var(--silver-2)', borderLeft: '4px solid var(--green)', borderRadius: 8, padding: '12px 14px', background: 'var(--paper-surface)', marginBottom: 16 }}>
+          <div className="j-overline" style={{ marginBottom: 4 }}>확정 제목 (제목 디벨롭 8단계)</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink-1)' }}>{titleDev.selected_title}</div>
+          {titleDev.selected_thumbnail_direction && (
+            <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 4 }}>썸네일 방향: {titleDev.selected_thumbnail_direction}</div>
+          )}
+          <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginTop: 4 }}>원고가 이 제목의 약속을 회수하는지 확인하세요.</div>
+        </div>
+      )}
 
       {/* R4 원고 초안 — script_planning ~ script_approval (자동초안 → 승인/수정) */}
       <StageGate title="원고 초안 (v3 · 자동초안 승인)" state={blockState({ from: 'script_planning', to: 'script_approval' }, currentStatus)}>

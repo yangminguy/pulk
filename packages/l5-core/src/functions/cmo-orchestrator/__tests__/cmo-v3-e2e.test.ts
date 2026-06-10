@@ -97,13 +97,14 @@ describe('CMO v3 e2e — content-strategy chain', () => {
     const registry = createCmoSkillRegistry();
     const ids = registry.all().map((s) => s.skill_id);
 
-    // 10 default skills total: 8 content-strategy chain skills + viewtrap +
-    // the 2 independent research/positioning roots.
+    // 11 default skills total: 8 content-strategy chain skills + viewtrap +
+    // title-development (WO-2) + the 2 independent research/positioning roots.
     for (const id of CHAIN_IDS) {
       expect(ids).toContain(id);
     }
     expect(ids).toContain('cmo.viewtrap.validate');
-    expect(createCmoSkills()).toHaveLength(10);
+    expect(ids).toContain('cmo.title.development');
+    expect(createCmoSkills()).toHaveLength(11);
   });
 
   it('topo-sorts cmo.factory.handoff into keycontent..factory order', () => {

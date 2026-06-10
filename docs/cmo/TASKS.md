@@ -35,6 +35,14 @@
   - 플러그인: `cmo:runDiscovery {project_id, query, mode?}` — @l5/youtube ESM dynamic import + Sonnet 분류로 파이프라인 실행 → discovery 카드 저장 + viewtrap_validation 초안 반환. ACL 추가. 함정: @l5/youtube는 ESM이라 require 불가 → `await import()`. dist 재빌드 = `cd apps/nocobase-app && corepack yarn build @l5/plugin-orchestration`.
   - 검증: l5-core tsc 0 + discovery-pipeline jest **11/11** + youtube jest 40/40 + l5-core video-room 무회귀(737/738, 실패 1은 사전존재 wall-clock 타이밍 플레이키 — 격리 시 통과). **라이브 부분 파이프라인 1회 PASS**: 실 YouTube 검색 15→5만+ 8건→실 Sonnet 분류 8건 fit, 실데이터 선정이유 생성(`services/youtube/scripts/verify-live-discovery.mjs`). CDP scrapeMetrics는 서버 미주입(로그인 크롬 전제) — stats+Sonnet 부분 파이프라인까지 라이브 확인.
 
+## ✍️ 제목/썸네일 기획 (Phase 7)
+
+- [x] **제목 디벨롭 8단계 워크플로우** *(2026-06-10 완성)*: PRD = `docs/prd/cmo-title-development.md`. 기능 문서 = [features/title-development-workflow](./features/title-development-workflow.md).
+  - 도메인 = `l5-core/cmo-strategy/title-development{,-types,-llm}.ts`(레퍼런스 검증→4교차조합→어색함→2~8단계→100점 평가). AC-01~15 매핑, jest 59/59.
+  - 오케스트레이터 스킬 `cmo.title.development`(pulling→title→script 체인) + `cmo-skill-registry` 등록(e2e 통과).
+  - 라이브 액션 `cmo:proposeTitleDevelopment`(plugin src+dist+ACL) → `title_development` 카드. founder-ui `TitleDevelopmentBoard`(승인3=hook_draft) + ProductionBoard 확정제목 노출(승인4=script).
+  - 검증: 회귀 68 suites/865 tests 0실패 · tsc 0 · `next build` 0 · dist node --check OK. **활성화 = NocoBase 재기동(dev 프로세스)** → 라이브 HTTP/Playwright smoke 후속.
+
 ## 🎬 영상 산출 마감 (M4)
 
 - [x] **M4. 영상 제작 파이프라인 잔여** (2026-06-10): 도메인 = `l5-core/video-room/render-pipeline.ts`(신규).
