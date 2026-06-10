@@ -200,3 +200,42 @@ export async function runTitleDevelopmentWorkflow(
 - mock LLMClient는 `complete` 호출 기록(system/user/trace_name)을 남기는 형태로 작성 — AC-L5/L12/L13이 호출 인자·횟수 검사를 요구.
 - LLM 출력 JSON 형태(스키마 3개의 필드 구성)는 test phase에서 mock 응답으로 계약 고정하고, implement는 그 계약을 따른다.
 - 환경 주의(WO-1 인계): `pnpm` 단독 없음 → `corepack pnpm`. jest는 `packages/l5-core`에서 실행. pre-existing 실패 4건(model-routing)은 무관.
+
+---
+
+## Phase: test — 실패 테스트 작성 (red)
+
+### 한 일
+- 신규 테스트 파일 생성: `packages/l5-core/src/functions/cmo-strategy/__tests__/title-development-llm.test.ts`
+- spec S5의 AC-L1~L13 전부 커버: 12 describe / 15 케이스.
+  - 호출 기록형 mock LLMClient(`makeMockLLM`) — system/user/trace_name/trace_metadata 기록 + trace_name 라우팅 기본 핸들러(`defaultHandler`).
+  - 경계값 고정: 점수 100(클램프)/84/69 · 글자수 35/36 · 단계 7개(2~8) · run당 9콜 · step-4 실패 시 2회 시도(총 8콜).
+  - §25.1(정상)·§25.3(조회수 3만 → ok:false + LLM 0콜) 시나리오 반영.
+
+### red 실행 결과 (2026-06-10)
+```text
+$ corepack pnpm jest src/functions/cmo-strategy/__tests__/title-development-llm.test.ts  (cwd: packages/l5-core)
+FAIL src/functions/cmo-strategy/__tests__/title-development-llm.test.ts
+  ● Test suite failed to run
+    Cannot find module '../title-development-llm' from 'src/functions/cmo-strategy/__tests__/title-development-llm.test.ts'
+Test Suites: 1 failed, 1 total
+```
+구현 파일(`title-development-llm.ts`)이 아직 없어 import 단계에서 실패 — 의도된 red. 커밋 안 함.
+
+### 이번 phase에서 확정한 LLM 출력 JSON 계약 (구현이 따라야 함)
+- **awkwardness** (`trace_name='title-dev-awkwardness'`): `[{ index, awkwardness_score, awkwardness_reason, selected_for_next_step }]` — index는 입력 combinations 배열 0-based 순서 (id 추출 불필요하게 index 기반으로 확정).
+- **step** (`title-dev-step-{2..8}`): `{ output_titles, method_explanation, cmo_reasoning, rejected_titles:[{title,reason}], selected_titles_for_next_step }` — 단일 객체.
+- **final-eval** (`title-dev-final-eval`): `[{ index, target_fit, desire_clarity, problem_sharpness, curiosity_gap, script_match, thumbnail_fit, reason, risks, required_script_additions? }]` — index는 candidates 순서.
+- trace_metadata에 `pulling_topic` 필수.
+
+### 테스트가 고정한 세부 동작
+- `judgeCombinationAwkwardness`: 불변성(입력 deep-freeze에서 동작, 복사본 반환), `passed = !isAwkward(score)`. 폴백 시 score=0/passed=true + `ref1_thumbnail_ref2_title`·`ref1_title_ref2_thumbnail` 2종만 selected.
+- `runTitleDevelopmentSteps`: 2단계 입력=initialTitles, N단계 입력=N-1단계 selected. 단계 폴백 시 output=selected=input, rejected=[], method_explanation에 '실패' 포함. llm 미주입 시 fallback_count=7 + 결정론(같은 입력→같은 출력).
+- 5단계만 35자 후처리: 36자 → output/selected에서 제거 + rejected `{title, reason:'35자 초과'}`.
+- `evaluateFinalTitles` 폴백: 후보별 total 70~84 + recommendation='revise'.
+- `runTitleDevelopmentWorkflow`: 성공 시 calls 9개(어색함1+단계7+평가1), selected_title='최고 total_score 후보', approval_status='draft', second_brain_summary에 선택 제목 포함. 검증 실패 시 `{ok:false, next_action:'request_more_references', failed_references}` + LLM 0콜.
+
+### 다음 phase(구현)가 알아야 할 점
+- 위 테스트를 계약으로 `title-development-llm.ts` 구현 + `cmo-strategy/index.ts`에 export 1줄 추가.
+- WO-1 함수 재사용: `generateCrossCombinations`/`isAwkward`/`isTitleTooLong`/`scoreFinalTitle`/`recommendFromScore`/`validateTitleReferences`/`generateTitleSearchTerms`/`buildSecondBrainSummary`.
+- 환경: `corepack pnpm` 사용(cwd: packages/l5-core). pre-existing 실패 4건(model-routing)은 무관.
