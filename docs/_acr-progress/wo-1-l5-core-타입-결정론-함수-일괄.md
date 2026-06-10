@@ -249,3 +249,33 @@ Test Suites: 1 failed, 1 total
 - 변경 파일 총계: 신규 3(types, 함수, 테스트) + 수정 2(`cmo-strategy/index.ts`, `stage-script.ts`).
 - nocobase 플러그인이 dist를 쓰는 경우 l5-core 재빌드 필요할 수 있음(메모리: dist 재빌드+재기동 함정). WO-1은 소스 레벨까지만.
 - docs/TASKS.md·docs/HANDOFF.md 갱신은 마지막 phase에서 일괄 권장.
+
+---
+
+## Phase: review — 리뷰
+
+### 검토 범위
+WO-1 diff 전체(커밋 1e39268~f558270 + worktree): `title-development-types.ts`(신규), `title-development.ts`(신규), `__tests__/title-development.test.ts`(신규), `cmo-strategy/index.ts`(+2줄), `stage-script.ts`(thumbnail_pattern_extraction), 진행 노트.
+
+### 리뷰 코멘트 및 처리
+
+| # | 위치 | 심각도 | 내용 | 처리 |
+|---|---|---|---|---|
+| R1 | title-development.ts:65 | minor | `${topic} 자동화 도구` — topic에 "자동화" 포함 시 단어 중복("릴스 자동화 자동화 도구") | **수정** → `${topic} 도구` |
+| R2 | title-development.ts:258-264 | trivial | §21.7 섹션 헤더가 §20 섹션과 분리돼 빈 채 중복 | **수정** → 헤더를 buildSecondBrainSummary 위로 이동 |
+| R3 | title-development.ts:299 | minor | 미평가 시 `"미평가점"` 어색한 출력 | **수정** → `88점` / `미평가` 분기 |
+| R4 | title-development.ts:32 | minor | 외부 입력 경계 zod가 음수/소수 view_count 허용 | **수정** → `.int().nonnegative()` |
+| R5 | title-development.ts:204 | nit | `for (const _ of …)` 미사용 변수 | **수정** → spread `[...segment()].length` |
+| R6 | 테스트 통합 describe | nit | `require` 혼용 (import와 공존) | 유지 — 순환 import 회피 목적, 동작 정상 |
+| R7 | stage-script.ts / index.ts / types.ts | — | PRD §27.3·§19와 일치, 지적 없음 | — |
+
+### 판정: **LGTM** (R1~R5 수정 반영 완료 후)
+
+### 수정 후 재검증
+- `corepack pnpm typecheck` pass
+- cmo-strategy suite 53/53 pass (수정이 테스트 계약 불변임을 확인)
+- eslint는 이 worktree에 바이너리 미설치(`npx eslint` not found)로 실행 불가 — 다음 phase가 deps 설치된 환경에서 `pnpm lint` 1회 권장.
+
+### 다음 phase가 알아야 할 점
+- 리뷰 수정 5건은 모두 `title-development.ts` 내부, 시그니처·테스트 계약 불변.
+- 미해결 항목 없음. pre-existing model-routing 4건 실패는 여전히 WO-1 무관.

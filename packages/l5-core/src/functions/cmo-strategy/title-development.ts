@@ -29,7 +29,7 @@ export const TitleDevelopmentReferenceSchema = z.object({
   thumbnail_structure: z.string(),
   topic: z.string(),
 
-  view_count: z.number(),
+  view_count: z.number().int().nonnegative(),
   performance_grade: z.enum(['Good', 'Great']),
   contribution_grade: z.enum(['Good', 'Great']),
 
@@ -62,7 +62,7 @@ export function generateTitleSearchTerms(input: TitleSearchTermsInput): TitleSea
     expanded_search_terms: [
       `${topic} 사례`,
       `${input.target_audience.trim()} ${topic}`,
-      `${topic} 자동화 도구`,
+      `${topic} 도구`,
     ],
     forbidden_search_terms: ['브랜딩 일반론', '동기부여', '마인드셋'],
     reasoning:
@@ -200,9 +200,7 @@ const graphemeSegmenter: GraphemeSegmenter = new (
 ).Segmenter('ko', { granularity: 'grapheme' });
 
 export function countTitleLength(title: string): number {
-  let count = 0;
-  for (const _ of graphemeSegmenter.segment(title)) count += 1;
-  return count;
+  return [...graphemeSegmenter.segment(title)].length;
 }
 
 export function isTitleTooLong(title: string, max: number = TITLE_MAX_LENGTH): boolean {
@@ -256,10 +254,6 @@ export function recommendFromScore(
 }
 
 // ---------------------------------------------------------------------------
-// §21.7 buildSecondBrainSummary — 순수 템플릿
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // §20 상태머신 접목 — proposal.data 구조 (AC-14)
 // ---------------------------------------------------------------------------
 
@@ -287,6 +281,10 @@ export function buildTitleDevelopmentProposal(
   };
 }
 
+// ---------------------------------------------------------------------------
+// §21.7 buildSecondBrainSummary — 순수 템플릿
+// ---------------------------------------------------------------------------
+
 export function buildSecondBrainSummary(run: TitleDevelopmentWorkflowRun): string {
   const selected = run.final_candidates.find((c) => c.title === run.selected_title);
   const [ref1, ref2] = run.references;
@@ -296,7 +294,7 @@ export function buildSecondBrainSummary(run: TitleDevelopmentWorkflowRun): strin
     '',
     `- 타겟: ${run.target_audience}`,
     `- 최종 제목: ${run.selected_title}`,
-    `- 최종 점수: ${selected ? selected.total_score : '미평가'}점`,
+    `- 최종 점수: ${selected ? `${selected.total_score}점` : '미평가'}`,
     `- 썸네일 방향: ${run.selected_thumbnail_direction}`,
     '',
     '## 레퍼런스',
