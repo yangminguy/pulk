@@ -314,6 +314,41 @@ describe('generateTitleSearchTerms (AC-S11)', () => {
   });
 });
 
+describe('통합 배선 (integrate)', () => {
+  it('STAGE_SCRIPT.thumbnail_pattern_extraction이 제목 디벨롭 8단계를 안내한다 (PRD §27.3)', () => {
+    // stage-script는 LLM 프롬프트 주입 + deterministic fallback 양쪽에 쓰이는 라이브 진입점이다.
+    const { STAGE_SCRIPT } = require('../stage-script');
+    const stage = STAGE_SCRIPT.thumbnail_pattern_extraction;
+    expect(stage.focus).toContain('8단계');
+    expect(stage.focus).toContain('레퍼런스 2개');
+    expect(stage.prompt).toContain('조회수 5만 이상');
+    expect(stage.prompt).toContain('교차 조합');
+  });
+
+  it('buildTitleDevelopmentProposal이 PRD §20.1 proposal 구조를 만든다 (AC-14)', () => {
+    const { buildTitleDevelopmentProposal } = require('../title-development');
+    const run = {
+      id: 'run-1',
+      pulling_topic: '릴스 자동화',
+      selected_title: '제목',
+    } as never;
+    const proposal = buildTitleDevelopmentProposal(run);
+    expect(proposal.stage).toBe('thumbnail_pattern_extraction');
+    expect(proposal.summary).toBe('풀링 콘텐츠 제목 디벨롭 8단계 결과');
+    expect(proposal.data.title_development_workflow).toBe(run);
+  });
+
+  it('패키지 루트 배럴(src/index)에서 신규 함수가 호출 가능하다', () => {
+    // 소비자(plugin-orchestration, agent-runtime)는 @l5/core 루트에서 import한다.
+    const core = require('../../../index');
+    expect(typeof core.validateTitleReferences).toBe('function');
+    expect(typeof core.generateCrossCombinations).toBe('function');
+    expect(typeof core.buildTitleDevelopmentProposal).toBe('function');
+    expect(typeof core.recommendFromScore).toBe('function');
+    expect(core.recommendFromScore(90)).toBe('upload_candidate');
+  });
+});
+
 describe('TitleDevelopmentReferenceSchema (외부 입력 경계 zod)', () => {
   it('정상 레퍼런스는 parse를 통과한다', () => {
     expect(() => TitleDevelopmentReferenceSchema.parse(makeRef())).not.toThrow();

@@ -259,6 +259,34 @@ export function recommendFromScore(
 // §21.7 buildSecondBrainSummary — 순수 템플릿
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// §20 상태머신 접목 — proposal.data 구조 (AC-14)
+// ---------------------------------------------------------------------------
+
+/**
+ * 제목 디벨롭 결과를 CMO 전략 턴의 proposal 카드로 변환한다.
+ * MVP는 새 상태 없이 thumbnail_pattern_extraction 단계 안에서 수행한다 (PRD §20.1).
+ */
+export interface TitleDevelopmentProposal {
+  stage: 'thumbnail_pattern_extraction';
+  summary: string;
+  data: {
+    title_development_workflow: TitleDevelopmentWorkflowRun;
+  };
+}
+
+export function buildTitleDevelopmentProposal(
+  run: TitleDevelopmentWorkflowRun,
+): TitleDevelopmentProposal {
+  return {
+    stage: 'thumbnail_pattern_extraction',
+    summary: '풀링 콘텐츠 제목 디벨롭 8단계 결과',
+    data: {
+      title_development_workflow: run,
+    },
+  };
+}
+
 export function buildSecondBrainSummary(run: TitleDevelopmentWorkflowRun): string {
   const selected = run.final_candidates.find((c) => c.title === run.selected_title);
   const [ref1, ref2] = run.references;

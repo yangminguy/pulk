@@ -226,3 +226,26 @@ Test Suites: 1 failed, 1 total
 ### 다음 phase(검증/통합)가 알아야 할 점
 - model-routing 4건 실패는 이 WO와 무관한 pre-existing. 전체 green 게이트가 필요하면 별도 이슈로 분리해야 함.
 - worktree에 pre-existing 미커밋 변경 있음: `docs/reports/videoqa_eval_result.{json,md}` — WO-1과 무관, 건드리지 말 것.
+
+---
+
+## Phase: integrate — 통합·배선
+
+### 한 일
+1. **stage-script 배선 (PRD §27.3)**: `cmo-strategy/stage-script.ts`의 `thumbnail_pattern_extraction` focus/prompt를 제목 디벨롭 8단계 안내로 교체. STAGE_SCRIPT는 LLM 프롬프트 주입 + deterministic fallback + 라이브 플러그인(`plugin-orchestration/src/server/plugin.ts`)이 소비하는 실제 진입점 — 이로써 CMO 전략 턴 경로에서 기능이 호출된다.
+2. **proposal 빌더 추가 (PRD §20.1, AC-14)**: `title-development.ts`에 `buildTitleDevelopmentProposal(run)` + `TitleDevelopmentProposal` 타입 추가 — WorkflowRun → `proposal.data.title_development_workflow` 변환. 배럴(index.ts) 경유로 자동 export.
+3. **통합 테스트 3개 추가**: ① STAGE_SCRIPT 문구 배선 검증, ② proposal 구조 검증, ③ 패키지 루트 배럴(`src/index`)에서 신규 함수 호출 가능 검증(소비자 import 경로).
+
+### 검증 결과
+- `corepack pnpm typecheck` pass
+- cmo-strategy suite: 53/53 pass (기존 50 + 신규 3)
+- 전체: 1757 pass / 4 fail — 실패는 implement phase에서 stash로 확인한 pre-existing `model-routing` 4건 그대로. 신규 회귀 0.
+
+### 결정
+- spec S4의 "stage-script 수정 금지"는 implement phase 범위 한정이었고, integrate phase에서 PRD §27.3이 명시한 진입점 배선으로 supersede. 텍스트(focus/prompt)만 변경, 구조 변경 없음. plan-turn.test.ts는 key_content_ideation 문구만 참조하므로 영향 없음(사전 확인).
+- 플러그인/agent-runtime 코드는 STAGE_SCRIPT를 그대로 소비하므로 추가 수정 불필요 — l5-core 밖 변경 0 유지(WO-1 범위).
+
+### 다음 phase(verify/docs)가 알아야 할 점
+- 변경 파일 총계: 신규 3(types, 함수, 테스트) + 수정 2(`cmo-strategy/index.ts`, `stage-script.ts`).
+- nocobase 플러그인이 dist를 쓰는 경우 l5-core 재빌드 필요할 수 있음(메모리: dist 재빌드+재기동 함정). WO-1은 소스 레벨까지만.
+- docs/TASKS.md·docs/HANDOFF.md 갱신은 마지막 phase에서 일괄 권장.
