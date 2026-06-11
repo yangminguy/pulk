@@ -116,6 +116,9 @@ describe('runKeyContentReport (deps 주입 통합)', () => {
       async fetchTranscript() {
         return { available: true, text: '현상 욕구 계획 행동 보상 대본' };
       },
+      async getComments() {
+        return ['사장인데 너무 도움됐어요', '우리 회사에 바로 적용했습니다'];
+      },
       async llmComplete(prompt) {
         if (prompt.includes('targetFit')) {
           return JSON.stringify([
@@ -169,6 +172,7 @@ describe('runKeyContentReport (deps 주입 통합)', () => {
     expect(report.applied_sales_logic?.action_to_our_product).toBe('상담신청');
     expect(report.recommended_video_id).toBe('v1');
     expect(report.provenance.transcripts_fetched).toBe(3);
+    expect(report.provenance.notes.some((n) => n.includes('댓글 확보'))).toBe(true);
     expect(report.approval_request).toContain('확정해도 될까요');
   });
 

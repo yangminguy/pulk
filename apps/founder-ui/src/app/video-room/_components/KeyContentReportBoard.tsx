@@ -35,6 +35,9 @@ type Report = {
   provenance?: { keywords_analyzed?: number; keywords_advanced?: number; candidates_selected?: number; transcripts_fetched?: number; notes?: string[] }
 }
 
+// 승인 게이트 상태(approveStageGate로 통과) — page.tsx APPROVAL_GATE_STATES와 동일.
+const GATE_STATES = ['key_content_approval', 'pulling_content_set_approval', 'hook_draft_approval', 'script_approval', 'video_qa_approval', 'upload_approval']
+
 const fmt = (n?: number) => (typeof n === 'number' ? n.toLocaleString() : '—')
 const pct = (r?: number) => (typeof r === 'number' ? `${Math.round(r * 100)}%` : '—')
 
@@ -97,11 +100,27 @@ export default function KeyContentReportBoard({ projectId, cards, currentStatus,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card, currentStatus])
 
+  // 키 콘텐츠 확정 → 풀링 주제 기획 화면까지 한 번에 전진.
+  // 게이트 상태(key_content_approval 등)는 approveStageGate로 통과(advanceStatus는
+  // 'approval gate must be cleared' 400), 비게이트(viewtrap_pulling_research 등)는
+  // advanceStatus로 넘긴다. pulling_content_set_selection 도달 시 PullingPlanBoard 활성.
   const approve = async () => {
     if (approving) return
     setApproving(true); setError(null)
-    try { await api.cmoAdvanceStatus(projectId); onRefresh() }
-    catch (e) { setError(e instanceof Error ? e.message : '승인 실패'); setApproving(false) }
+    try {
+      let status: string = currentStatus
+      for (let i = 0; i < 8 && status && status !== 'pulling_content_set_selection'; i++) {
+        const res = GATE_STATES.includes(status)
+          ? await api.cmoApproveStageGate(projectId)
+          : await api.cmoAdvanceStatus(projectId)
+        const next = (res as { status?: string })?.status
+        if (!next || next === status) break
+        status = next
+      }
+      onRefresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '승인 실패'); setApproving(false)
+    }
   }
 
   const box: React.CSSProperties = { border: '1px solid var(--silver-2)', borderRadius: 10, background: 'var(--paper-surface)', padding: 20 }
@@ -301,7 +320,11 @@ export default function KeyContentReportBoard({ projectId, cards, currentStatus,
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="j-btn j-btn-primary" onClick={approve} disabled={approving} style={{ flex: 1 }}>
-            {approving ? '진행 중…' : '이대로 확정 → 다음 단계'}
+            {approving
+              ? '진행 중…'
+              : currentStatus === 'key_content_approval'
+                ? '키 콘텐츠 승인 → 풀링 기획 시작'
+                : '이대로 확정 → 다음 단계'}
           </button>
           <button className="j-btn j-btn-ghost" onClick={propose} disabled={loading || approving}>
             {loading ? '생성 중…' : '다시 생성'}

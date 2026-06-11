@@ -47,6 +47,8 @@ export interface KeyContentReportDeps {
   getDurations(videoIds: string[]): Promise<VideoDurationInfo[]>;
   /** videoId → 자막 평문(판매논리 분석용). */
   fetchTranscript(videoId: string): Promise<TranscriptInfo>;
+  /** videoId → 인기순 상위 댓글 평문(시청자 정체성 판단 근거). 미주입/실패 시 제목 기반으로만 판단. */
+  getComments?(videoId: string): Promise<string[]>;
   /** LLM(JSON 응답 기대). */
   llmComplete: (prompt: string) => Promise<string>;
   /** 최근성 기준 현재시각(ms). 테스트 주입용. */
@@ -289,22 +291,25 @@ JSON 배열로만 출력:
 function selectPrompt(
   p: ReportProduct,
   pool: { keyword: string; videoId: string; title: string; channelTitle: string; viewCount: number; performance: string | null; contribution: string | null }[],
+  commentsMap: Map<string, string[]>,
 ): string {
   const list = pool
-    .map(
-      (c, i) =>
-        `${i}. [${c.keyword}] "${c.title}" — ${c.channelTitle}, 조회수 ${c.viewCount}, 성과도 ${c.performance ?? '-'}, 기여도 ${c.contribution ?? '-'} (videoId=${c.videoId})`,
-    )
+    .map((c, i) => {
+      const head = `${i}. [${c.keyword}] "${c.title}" — ${c.channelTitle}, 조회수 ${c.viewCount}, 성과도 ${c.performance ?? '-'}, 기여도 ${c.contribution ?? '-'} (videoId=${c.videoId})`;
+      const cm = (commentsMap.get(c.videoId) ?? []).slice(0, 6).map((t) => `     · ${t.replace(/\s+/g, ' ').slice(0, 120)}`);
+      return cm.length ? `${head}\n   [상위 댓글]\n${cm.join('\n')}` : head;
+    })
     .join('\n');
   return `${productHeader(p)}
 
 [우리 핵심 타깃] ${p.target_audience}
 
-아래는 시장성 통과 키워드들에서 모은 후보 영상이다(롱폼·성과·조회수 우수 — 이미 전제).
+아래는 시장성 통과 키워드들에서 모은 후보 영상이다(롱폼·성과·조회수 우수 — 이미 전제). 각 영상에 상위 댓글을 함께 붙였다.
 ${list}
 
 ★★ 최우선 기준 — 시청자 정체성 정합성 ★★
-각 영상의 제목·주제가 실제로 끌어당기는 "시청자의 정체성·자기인식 레벨"이 우리 핵심 타깃과 같은지 먼저 판단하라.
+각 영상의 "시청자의 정체성·자기인식 레벨"이 우리 핵심 타깃과 같은지 먼저 판단하라.
+- **댓글은 실제로 누가 이 영상을 보고 반응했는지 보여주는 직접 증거다.** 제목(제작자 의도)과 댓글(실제 시청자)을 함께 보고 시청자 정체성을 판단하라. 댓글에 실무 디테일(편집·툴 사용법 질문 등)이 많으면 실무자 정체성, 사업·매출·운영 관점 반응이 많으면 대표/사업가 정체성 신호다.
 - 주제가 마케팅/카테고리상 관련 있어도, 그 영상을 클릭·시청할 사람이 우리 타깃보다 낮은 작업·실무 단위 정체성이면 정체성 불일치(mismatch)다.
   예: 우리 타깃이 '마케팅 팀 없는 대표/사업가'인데, 영상이 'SNS 글쓰기를 자동화하고 싶은 실무자'를 끌어당긴다면 — 대표는 'SNS 글쓰기'를 자기 일로 인식하지 않으므로 mismatch.
   반대로 '팀 없이도 마케팅을 직접 굴릴 수 있겠다'고 대표가 판단하게 만드는 영상은 match.
@@ -469,6 +474,27 @@ export async function runKeyContentReport(
     }
   }
 
+  // 시청자 정체성 판단 근거 — 풀 영상별 인기순 상위 댓글(병렬 수집, 실패는 빈배열).
+  const commentsMap = new Map<string, string[]>();
+  if (deps.getComments && pool.length > 0) {
+    const uniqIds = [...new Set(pool.map((c) => c.videoId))];
+    const fetched = await Promise.all(
+      uniqIds.map(async (id) => {
+        try {
+          return [id, await deps.getComments!(id)] as const;
+        } catch {
+          return [id, [] as string[]] as const;
+        }
+      }),
+    );
+    let withComments = 0;
+    for (const [id, cs] of fetched) {
+      commentsMap.set(id, cs);
+      if (cs.length) withComments += 1;
+    }
+    notes.push(`시청자 정체성: 후보 ${uniqIds.length}개 중 ${withComments}개 영상 댓글 확보(정체성 판단 근거)`);
+  }
+
   let finalCandidates: ReportCandidate[] = [];
   if (pool.length > 0) {
     let selection: Array<{
@@ -476,7 +502,7 @@ export async function runKeyContentReport(
       viewer_identity?: string; identity_match?: string; identity_reason?: string;
     }> = [];
     try {
-      const raw = await deps.llmComplete(selectPrompt(p, pool));
+      const raw = await deps.llmComplete(selectPrompt(p, pool, commentsMap));
       selection = parseJson<typeof selection>(raw, []);
     } catch (e) {
       notes.push(`final select 실패: ${e instanceof Error ? e.message : String(e)}`);

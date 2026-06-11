@@ -94,6 +94,14 @@ interface RawDurationsResponse {
   }[];
 }
 
+interface RawCommentThreadsResponse {
+  items?: {
+    snippet?: {
+      topLevelComment?: { snippet?: { textDisplay?: string } };
+    };
+  }[];
+}
+
 interface RawAnalyticsResponse {
   columnHeaders?: { name: string; columnType: string; dataType: string }[];
   rows?: (string | number)[][];
@@ -191,6 +199,30 @@ export class YouTubeClient {
       }
     }
     return results;
+  }
+
+  /**
+   * commentThreads.list (API key) — 영상의 인기순(relevance) 상위 댓글 평문.
+   * 시청자 정체성 판단 근거용. 댓글 비활성/오류는 throw하지 않고 [] 반환(graceful).
+   */
+  async getTopComments(videoId: string, maxResults = 8): Promise<string[]> {
+    const params = new URLSearchParams({
+      part: 'snippet',
+      videoId,
+      order: 'relevance',
+      maxResults: String(maxResults),
+      textFormat: 'plainText',
+      key: this.creds.api_key,
+    });
+    try {
+      const data = (await this.getJson(`${DATA_API}/commentThreads?${params}`)) as RawCommentThreadsResponse;
+      return (data.items ?? [])
+        .map((it) => it.snippet?.topLevelComment?.snippet?.textDisplay?.trim() ?? '')
+        .filter((t) => t.length > 0);
+    } catch {
+      // 댓글 비활성(403 commentsDisabled) 등 — 정체성 판단은 메타데이터로 폴백.
+      return [];
+    }
   }
 
   /** Analytics v2 reports (OAuth Bearer) — private channel metrics incl. impressions/CTR. */

@@ -3,12 +3,20 @@
 > 최종 업데이트: 2026-06-11. 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
 > 300줄 넘으면 오래된 항목을 `docs/archive/`로 이관하고 요약만 남긴다.
 
+## 🔴→🟢 2026-06-11 — 보고서 승인→풀링 진입 흐름 2개 버그 수정 (게이트 분기 + 풀링 입력 배선)
+
+사장님이 보고서 "이대로 확정 → 다음 단계" 눌렀더니 `400 approval gate must be cleared`. 점검 결과 흐름에 2개 갭:
+1. **게이트 상태에서 advanceStatus 호출** — `key_content_approval`은 승인 게이트라 `advanceStatus`가 막힘(approveStageGate 필요). `KeyContentReportBoard.approve`를 **게이트/비게이트 자동 처리 루프**로 교체: `GATE_STATES`면 `cmoApproveStageGate`, 아니면 `cmoAdvanceStatus`로 `pulling_content_set_selection`까지 한 번에 전진(최대 8스텝). 버튼 텍스트도 approval일 때 "키 콘텐츠 승인 → 풀링 기획 시작". 점검: `key_content_approval`→(approveStageGate)→`viewtrap_pulling_research`→(advanceStatus)→`pulling_content_set_selection` 도달 확인.
+2. **풀링 입력 배선 누락** — `proposePullingCandidates`는 `key_content_choice`(key_topic_title) + `key_content_draft`(draft) 카드를 요구하는데, 새 보고서 흐름은 `selectKeyContentCandidate`를 안 거쳐 그 카드들이 없음 → 풀링 보드 404. `proposeKeyContentReport`가 보고서 저장 직후 **`key_content_choice`(=applied_sales_logic.content_topic) + `key_content_draft`(=product_definition draft)를 자동 커밋**하도록 추가. 기존 진행 프로젝트(4f35e802)는 psql 백필.
+- 검증: founder-ui tsc/build 0 · plugin build 0(node check) · 재기동 · 전진 흐름 풀링 도달 · proposePullingCandidates 호출 검증(진행). **남은 함정**: viewtrap_key_research/viewtrap_pulling_research는 비게이트라 그냥 전진(수동 Viewtrap 입력은 별도 보드).
+
 ## 🟢 2026-06-11 — 후보 선별에 "시청자 정체성 정합성" 1순위 판단 추가 (키+풀링)
 
 사장님 지적: 보고서가 고른 "Make로 SNS 글쓰기 자동화" 류는 조회수·성과는 좋아도 **시청자 정체성**이 우리 타깃과 다름. 그 영상을 볼 사람은 "SNS 글쓰기를 자동화하려는 실무자"지 "마케팅 팀 없는 대표/사업가"가 아님 → 대표는 SNS 글쓰기를 자기 일로 인식 안 함. **선별 기준 = 마케팅 주제 매칭이 아니라 "이 영상 시청자의 정체성·자기인식 레벨이 우리 타깃과 같은가"가 1순위**(성과/기여/조회수는 전제). 키+풀링 공통.
 - `key-content-report.ts`: `selectPrompt` 정체성 1순위 재작성 + `marketJudgePrompt`의 targetFit를 정체성 의미로. `ReportCandidate`에 `viewer_identity`/`identity_match`(match·partial·mismatch)/`identity_reason`. **mismatch는 조회수 높아도 후보 제외**(note에 기록). jest 18/18(+정체성 제외 테스트).
 - `discovery-classification.ts`(키/풀링 공통 발굴 분류): ① 기준을 "시청자 정체성이 같은가(최우선)"로 강화 — 주제 관련 있어도 시청자가 낮은 작업·실무 정체성이면 unfit.
 - `pulling-candidates.ts`: 풀링 주제 생성도 "키와 동일한 시청자 정체성" 제약 추가.
+- **댓글 근거 추가**: 정체성 판단을 제목/메타 추측에서 끝내지 않고 **인기순 상위 댓글(YouTube `commentThreads.list` order=relevance)**을 selectPrompt에 첨부 — "댓글=실제 시청자가 누군지의 직접 증거"(실무 디테일 질문↑=실무자 / 사업·매출 반응↑=대표). `client.getTopComments` + report deps `getComments`(선별 풀 전체, 병렬). 댓글 비활성 영상은 [] graceful.
 - UI `KeyContentReportBoard`: 후보 카드에 정체성 일치 배지(녹/갈/적) + 시청자/근거 표시. 시장성 표 헤더 '타깃 적합'→'타깃 정체성'. 검증: l5 jest 91/91·빌드 0, founder-ui tsc/build 0, 재기동.
 
 ## 🟢 2026-06-11 — 키 콘텐츠 "상품 정의 승인 → 실검색 보고서" 2단계 승인 풀스택 신설

@@ -3923,6 +3923,37 @@ function registerCmoResource(app: any, db: any) {
           report,
         );
 
+        // 풀링 입력 배선 — 보고서 흐름은 selectKeyContentCandidate를 거치지 않으므로,
+        // 풀링(proposePullingCandidates)이 요구하는 key_content_choice + key_content_draft 카드를
+        // 보고서 추천(applied 주제) + 상품정의 draft로 여기서 커밋한다.
+        const keyTopic =
+          String(report.applied_sales_logic?.content_topic ?? '').trim() ||
+          String((report.candidates ?? []).find((c: any) => c.topPick)?.title ?? '').trim() ||
+          String((report.candidates ?? [])[0]?.title ?? '').trim();
+        if (keyTopic) {
+          await upsertVideoRoomCard(
+            db,
+            project_id,
+            'key_content_choice',
+            `key_content_choice: ${keyTopic}`,
+            {
+              key_topic_title: keyTopic,
+              source: 'key_content_report',
+              recommended_video_id: report.recommended_video_id ?? null,
+              applied_sales_logic: report.applied_sales_logic ?? null,
+            },
+          );
+        }
+        if (cardData.draft) {
+          await upsertVideoRoomCard(
+            db,
+            project_id,
+            'key_content_draft',
+            'key_content_draft (from product_definition)',
+            cardData.draft,
+          );
+        }
+
         ctx.body = { ok: true, data: report };
         await next();
       },
