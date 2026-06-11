@@ -42,6 +42,17 @@ export interface RawSignal {
   pii_level?: PIILevel;
   /** 원본 위치(로그라인/task id/제보 id). */
   ref?: string;
+  /**
+   * 구조화 메트릭(어댑터가 줄 수 있으면). phase 실행기/도구 로그가 kind를 달고 와도
+   * 실제 내용이 정상(경고 없음 + 실패 0)일 수 있다. 이 값으로 정상 신호를 가려낸다.
+   * 없으면(undefined) 기존 동작과 동일(텍스트 신호로 취급).
+   */
+  metrics?: {
+    /** 경고 목록. 빈 배열이면 경고 없음. */
+    warnings?: unknown[];
+    /** 실패 건수. 0이면 실패 없음. */
+    fail_count?: number;
+  };
 }
 
 export interface CollectBottlenecksInput {
@@ -136,6 +147,29 @@ export function normalizeMessage(message: string): string {
     .replace(/\b\d+\b/g, '<n>') // 잔여 숫자
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * 정상 신호 판별(오탐 방지). phase 실행기/도구 로그가 kind를 달고 와도 구조화 메트릭이
+ * "경고 없음 + 실패 0"이면 병목이 아니라 정상이다 → 후보에서 제외한다.
+ *
+ * 규칙(보수적): metrics가 없으면 false(기존 텍스트 신호로 취급, 동작 불변).
+ *   metrics가 있고, 경고가 없거나 빈 배열이며, 실패 건수가 없거나 0일 때만 정상으로 본다.
+ *   (warnings/fail_count가 둘 다 미제공이면 판단 근거가 없으므로 정상으로 보지 않는다.)
+ */
+export function isHealthySignal(signal: RawSignal): boolean {
+  const m = signal.metrics;
+  if (!m) return false;
+
+  const { warnings, fail_count } = m;
+  // 메트릭 객체는 있으나 두 지표 모두 미제공 → 판단 보류(정상 단정 금지).
+  if (warnings === undefined && fail_count === undefined) return false;
+
+  const noWarnings =
+    warnings === undefined || (Array.isArray(warnings) && warnings.length === 0);
+  const noFailures = fail_count === undefined || fail_count === 0;
+
+  return noWarnings && noFailures;
 }
 
 function fingerprintOf(signal: RawSignal): string {
@@ -307,6 +341,8 @@ export function collectBottlenecks(
 
   for (const s of allSignals) {
     if (!s || typeof s.message !== 'string') continue;
+    // 정상 신호(빈 warnings + fail_count 0) 오탐 방지: 후보 집계에서 제외.
+    if (isHealthySignal(s)) continue;
     const fp = fingerprintOf(s);
     const occurredAt = typeof s.occurred_at === 'string' ? s.occurred_at : now;
     const pii: PIILevel = s.pii_level ?? 'none';

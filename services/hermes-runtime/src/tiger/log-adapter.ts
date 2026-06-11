@@ -47,6 +47,7 @@ function lineToSignal(
   let kind: RawSignal['kind'] = 'error';
   let occurred_at = new Date().toISOString();
   let detail: string | undefined;
+  let metrics: RawSignal['metrics'];
 
   // jsonl 시도.
   if (trimmed.startsWith('{')) {
@@ -63,6 +64,14 @@ function lineToSignal(
       detail = typeof obj.stack === 'string' ? obj.stack : undefined;
       if (typeof obj.time === 'string') occurred_at = obj.time;
       else if (typeof obj.timestamp === 'string') occurred_at = obj.timestamp;
+      // 구조화 메트릭 전달: collector가 정상 신호(빈 warnings + fail_count 0)를 가려낸다.
+      const failCount = obj.fail_count ?? obj.failCount;
+      if (Array.isArray(obj.warnings) || typeof failCount === 'number') {
+        metrics = {
+          warnings: Array.isArray(obj.warnings) ? obj.warnings : undefined,
+          fail_count: typeof failCount === 'number' ? failCount : undefined,
+        };
+      }
     } catch {
       // 평문으로 폴백.
       if (!/error|fail|exception|warn|timeout/i.test(trimmed)) return null;
@@ -89,6 +98,7 @@ function lineToSignal(
     occurred_at,
     ref: `${file}:${lineNo}`,
     pii_level: 'none',
+    metrics,
   };
 }
 

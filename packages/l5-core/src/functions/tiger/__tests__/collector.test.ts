@@ -1,6 +1,7 @@
 import type { AgentTask } from '../../../types/orchestration';
 import {
   collectBottlenecks,
+  isHealthySignal,
   normalizeMessage,
   type RawSignal,
   type CollectBottlenecksInput,
@@ -80,6 +81,66 @@ describe('collectBottlenecks — never-throw / 빈입력', () => {
       now: NOW,
     });
     // 깨진 2건은 무시, total_signals은 합본 길이지만 candidate는 유효 1건만
+    expect(r.candidates.length).toBe(1);
+  });
+});
+
+describe('isHealthySignal — 정상 신호 판별', () => {
+  it('metrics 없으면 정상으로 보지 않는다(기존 텍스트 신호)', () => {
+    expect(isHealthySignal(signal())).toBe(false);
+  });
+
+  it('빈 warnings + fail_count 0 → 정상', () => {
+    expect(isHealthySignal(signal({ metrics: { warnings: [], fail_count: 0 } }))).toBe(true);
+  });
+
+  it('경고가 있으면 정상 아님', () => {
+    expect(
+      isHealthySignal(signal({ metrics: { warnings: ['slow render'], fail_count: 0 } })),
+    ).toBe(false);
+  });
+
+  it('실패 건수가 있으면 정상 아님', () => {
+    expect(isHealthySignal(signal({ metrics: { warnings: [], fail_count: 2 } }))).toBe(false);
+  });
+
+  it('한 지표만 있어도(warnings 빈 배열) 정상으로 판별', () => {
+    expect(isHealthySignal(signal({ metrics: { warnings: [] } }))).toBe(true);
+    expect(isHealthySignal(signal({ metrics: { fail_count: 0 } }))).toBe(true);
+  });
+
+  it('metrics 객체가 비어(두 지표 모두 미제공) 있으면 판단 보류 → 정상 아님', () => {
+    expect(isHealthySignal(signal({ metrics: {} }))).toBe(false);
+  });
+});
+
+describe('collectBottlenecks — 정상 신호 오탐 방지', () => {
+  it('빈 warnings/fail_count 0 신호는 후보에서 제외', () => {
+    const r = collectBottlenecks(
+      input({
+        signals: [
+          signal({ tool_id: 'ok', message: 'phase done', metrics: { warnings: [], fail_count: 0 } }),
+        ],
+      }),
+    );
+    expect(r.candidates.length).toBe(0);
+  });
+
+  it('정상 신호는 거르고 진짜 병목만 남긴다', () => {
+    const r = collectBottlenecks(
+      input({
+        signals: [
+          signal({ tool_id: 'ok', message: 'phase done', metrics: { warnings: [], fail_count: 0 } }),
+          signal({ tool_id: 'bad', message: 'render crashed', metrics: { warnings: ['x'], fail_count: 3 } }),
+        ],
+      }),
+    );
+    expect(r.candidates.length).toBe(1);
+    expect(r.candidates[0].tool_id).toBe('bad');
+  });
+
+  it('metrics 없는 기존 신호는 영향 없음(후보 유지)', () => {
+    const r = collectBottlenecks(input({ signals: [signal()] }));
     expect(r.candidates.length).toBe(1);
   });
 });
