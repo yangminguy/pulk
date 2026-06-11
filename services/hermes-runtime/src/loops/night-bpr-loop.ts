@@ -41,7 +41,9 @@ import {
   createBPRLog,
   createWorkflowImprovementProposal,
   createMemoryEntry,
+  fetchAgentTasks,
 } from "../api/nocobase-client.js";
+import { runTigerCollector } from "../tiger/index.js";
 import { createTelegramClient } from "../notifier/telegram.js";
 import type { TelegramClient } from "../notifier/telegram.js";
 import type { LoopContext, LoopResult } from "./types.js";
@@ -278,6 +280,13 @@ export async function runNightBPRLoop(
   context: LoopContext,
 ): Promise<LoopResult> {
   void context;
+  // 무인 자율: 분석 전에 수집기를 먼저 돌려 tiger-candidates.json을 생성한다.
+  // (collector가 없으면 candidates 파일이 없어 분석이 항상 skip된다.) graceful.
+  try {
+    await runTigerCollector({ fetchAgentTasks });
+  } catch (cErr) {
+    console.log("[night-bpr-loop] collector graceful skip:", (cErr as Error).message);
+  }
   let result: TigerAnalysisResult;
   try {
     result = await runTigerAnalysis({
