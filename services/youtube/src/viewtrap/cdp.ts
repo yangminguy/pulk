@@ -819,3 +819,206 @@ export async function scrapeYoutubeSearchExtension(
   });
   return parseExtensionCards(raws);
 }
+
+// ── 자막(대본) 추출 — 로그인 CDP 브라우저 in-page fetch ────────────────────────
+
+export interface CdpTranscriptResult {
+  videoId: string;
+  available: boolean;
+  text: string;
+  languageCode?: string;
+  note?: string;
+}
+
+export interface ScrapeTranscriptOptions {
+  preferredLanguages?: string[];
+  /** 평문 최대 길이(LLM 비용 보호). 기본 12000자. */
+  maxChars?: number;
+  /** watch 페이지 로드 후 ytInitialPlayerResponse 안착 대기(ms). 기본 1500. */
+  settleMs?: number;
+  timeoutMs?: number;
+}
+
+/**
+ * youtube.com 탭을 watch?v=ID로 이동시켜 ytInitialPlayerResponse.captionTracks의 baseUrl을
+ * **브라우저 컨텍스트 fetch**(쿠키·origin 보유)로 받아 자막 평문을 환원한다.
+ * 서버 raw fetch는 빈 본문/토큰요구로 막히지만(transcript/fetch.ts), 로그인 브라우저 in-page
+ * fetch는 통과한다. 자막 없음/실패는 throw하지 않고 available=false.
+ *
+ * 주의: 키워드 발굴(확장 스크래핑)이 모두 끝난 뒤 호출할 것 — 같은 탭을 watch로 이동시키므로
+ * 검색결과 페이지 상태를 덮어쓴다.
+ */
+export async function scrapeTranscriptViaCdp(
+  session: CdpSession,
+  videoId: string,
+  options: ScrapeTranscriptOptions = {},
+): Promise<CdpTranscriptResult> {
+  const timeout = options.timeoutMs ?? 20_000;
+  const preferred = options.preferredLanguages ?? ['ko', 'en'];
+  let page = findPage(session.context, 'youtube.com');
+  if (!page) page = await session.context.newPage();
+
+  try {
+    await page.goto(`https://www.youtube.com/watch?v=${videoId}&hl=ko`, {
+      waitUntil: 'domcontentloaded',
+      timeout,
+    });
+  } catch (e) {
+    return { videoId, available: false, text: '', note: `goto: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  await page.waitForTimeout(options.settleMs ?? 1_500);
+
+  const prefJson = JSON.stringify(preferred);
+  // 현 YouTube는 captionTracks baseUrl 직접 fetch(빈 본문/pot) · InnerTube get_transcript 직접 POST
+  // (FAILED_PRECONDITION) 둘 다 막힌다. → YouTube **자체 JS가 호출하도록** "Show transcript" 버튼을
+  // 클릭해 패널을 열고 ytd-transcript-segment-renderer DOM 세그먼트를 긁는다(가장 안정적).
+  const expr = `(async () => {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    function clickByText(re) {
+      const nodes = [...document.querySelectorAll('button, ytd-button-renderer, yt-button-shape, a')];
+      for (const n of nodes) {
+        const t = (n.innerText || n.getAttribute('aria-label') || '').trim();
+        if (t && re.test(t)) {
+          const btn = n.querySelector('button') || n;
+          try { btn.click(); return true; } catch (e) {}
+        }
+      }
+      return false;
+    }
+    // 설명 더보기 펼치기(자막 섹션 노출).
+    const exp = document.querySelector('#description-inline-expander #expand, tp-yt-paper-button#expand, #expand');
+    if (exp) { try { exp.click(); } catch (e) {} await sleep(900); }
+    // "Show transcript" / "스크립트 표시" 버튼 클릭.
+    let opened = clickByText(/스크립트 표시|Show transcript|^Transcript$|자막 표시/i);
+    if (!opened) {
+      // 설명 섹션 transcript 버튼 직접 클릭.
+      const sec = document.querySelector('ytd-video-description-transcript-section-renderer button, ytd-video-description-transcript-section-renderer ytd-button-renderer');
+      if (sec) { try { (sec.querySelector('button') || sec).click(); opened = true; } catch (e) {} }
+    }
+    if (opened) {
+      // 패널 세그먼트 렌더 대기(최대 9초).
+      const deadline = Date.now() + 9000;
+      while (Date.now() < deadline) {
+        if (document.querySelectorAll('ytd-transcript-segment-renderer').length > 0) break;
+        await sleep(500);
+      }
+      const segs = [...document.querySelectorAll('ytd-transcript-segment-renderer')];
+      if (segs.length) {
+        const text = segs
+          .map(s => {
+            const el = s.querySelector('.segment-text, yt-formatted-string.segment-text') || s;
+            return (el.innerText || el.textContent || '').trim();
+          })
+          .filter(Boolean)
+          .join(' ')
+          .replace(/\\s+/g, ' ')
+          .trim();
+        if (text) return { available: true, text: text, languageCode: 'panel' };
+      }
+    }
+    return await (async () => {
+    const preferred = ${prefJson};
+    function deepFind(obj, key, depth) {
+      if (!obj || depth > 12) return null;
+      if (typeof obj !== 'object') return null;
+      if (obj[key] !== undefined) return obj[key];
+      for (const k in obj) {
+        const v = deepFind(obj[k], key, depth + 1);
+        if (v !== null && v !== undefined) return v;
+      }
+      return null;
+    }
+    function flattenTranscript(json) {
+      const groups = deepFind(json, 'initialSegments', 0)
+        || (deepFind(json, 'transcriptSegmentListRenderer', 0) || {}).initialSegments
+        || [];
+      let segs = groups;
+      if (!segs || !segs.length) {
+        // 다른 셰이프: cueGroups
+        const cues = deepFind(json, 'transcriptCueGroupRenderer', 0);
+        if (cues) segs = deepFind(json, 'cueGroups', 0) || [];
+      }
+      const out = [];
+      (segs || []).forEach(s => {
+        const r = s.transcriptSegmentRenderer || s.transcriptSectionHeaderRenderer
+          || (s.transcriptCueGroupRenderer && s.transcriptCueGroupRenderer.cues && s.transcriptCueGroupRenderer.cues[0] && s.transcriptCueGroupRenderer.cues[0].transcriptCueRenderer);
+        if (!r) return;
+        const sn = r.snippet || r.cue || {};
+        const t = (sn.runs ? sn.runs.map(x => x.text).join('') : (sn.simpleText || ''));
+        if (t) out.push(t);
+      });
+      return out.join(' ').replace(/\\s+/g, ' ').trim();
+    }
+    // 1) InnerTube get_transcript
+    try {
+      const cfg = (window.ytcfg && window.ytcfg.data_) || {};
+      const apiKey = cfg.INNERTUBE_API_KEY;
+      const ctx = cfg.INNERTUBE_CONTEXT;
+      const params = deepFind(window.ytInitialData || {}, 'getTranscriptEndpoint', 0);
+      const transcriptParams = params && params.params;
+      if (apiKey && ctx && transcriptParams) {
+        const res = await fetch('/youtubei/v1/get_transcript?key=' + apiKey, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ context: ctx, params: transcriptParams }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const text = flattenTranscript(data);
+          if (text) return { available: true, text: text, languageCode: 'innertube' };
+        }
+      }
+    } catch (e) {}
+    // 2) 폴백: captionTracks baseUrl
+    function getPR() {
+      if (window.ytInitialPlayerResponse) return window.ytInitialPlayerResponse;
+      const m = (document.documentElement.innerHTML || '').match(/ytInitialPlayerResponse\\s*=\\s*(\\{.+?\\});/s);
+      if (m) { try { return JSON.parse(m[1]); } catch (e) { return null; } }
+      return null;
+    }
+    const pr = getPR();
+    const tracks = (pr && pr.captions && pr.captions.playerCaptionsTracklistRenderer && pr.captions.playerCaptionsTracklistRenderer.captionTracks) || [];
+    if (!tracks.length) return { available: false, note: 'no caption tracks / no transcript params' };
+    const manual = tracks.filter(t => t.kind !== 'asr');
+    const asr = tracks.filter(t => t.kind === 'asr');
+    let pick = null;
+    for (const pool of [manual, asr]) {
+      for (const lang of preferred) {
+        const hit = pool.find(t => t.languageCode === lang || (t.languageCode||'').indexOf(lang + '-') === 0);
+        if (hit) { pick = hit; break; }
+      }
+      if (pick) break;
+    }
+    if (!pick) pick = manual[0] || asr[0] || null;
+    if (!pick || !pick.baseUrl) return { available: false, note: 'no usable track' };
+    const sep = pick.baseUrl.indexOf('?') >= 0 ? '&' : '?';
+    let text = '';
+    try {
+      const res = await fetch(pick.baseUrl + sep + 'fmt=json3');
+      if (res.ok) {
+        const data = await res.json();
+        text = (data.events || []).map(e => (e.segs || []).map(s => s.utf8 || '').join('')).join(' ').replace(/\\s+/g, ' ').trim();
+      }
+    } catch (e) {}
+    if (!text) return { available: false, note: 'empty transcript' };
+    return { available: true, text: text, languageCode: pick.languageCode };
+    })();
+  })()`;
+
+  let result: { available: boolean; text?: string; languageCode?: string; note?: string };
+  try {
+    result = await page.evalExpr(expr);
+  } catch (e) {
+    return { videoId, available: false, text: '', note: `evaluate: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  let text = result.text ?? '';
+  const max = options.maxChars ?? 12_000;
+  if (text.length > max) text = text.slice(0, max);
+  return {
+    videoId,
+    available: Boolean(result.available && text),
+    text: result.available ? text : '',
+    languageCode: result.languageCode,
+    note: result.note,
+  };
+}

@@ -2,12 +2,23 @@ export { loadCredentials, defaultCredentialsPath, type YouTubeCredentials } from
 export { TokenManager, type FetchLike } from './token.js';
 export {
   YouTubeClient,
+  parseIsoDuration,
   type SearchResult,
   type SearchOptions,
   type VideoStats,
+  type VideoDuration,
   type ChannelAnalyticsOptions,
   type ChannelAnalyticsReport,
 } from './client.js';
+export {
+  fetchTranscript,
+  pickCaptionTrack,
+  extractCaptionTracks,
+  parseTimedTextXml,
+  parseTimedTextJson3,
+  type TranscriptResult,
+  type FetchTranscriptOptions,
+} from './transcript/fetch.js';
 export { filterByMinViews, MIN_VIEWS_DEFAULT } from './filters.js';
 export {
   collectVideoPerformance,
@@ -70,7 +81,10 @@ export {
   scrapeVideoSearchTable,
   clickExposureProbability,
   scrapeYoutubeSearchExtension,
+  scrapeTranscriptViaCdp,
   DEFAULT_CDP_ENDPOINT,
+  type CdpTranscriptResult,
+  type ScrapeTranscriptOptions,
   type CdpSession,
   type CdpBrowser,
   type CdpContext,

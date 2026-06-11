@@ -1,7 +1,51 @@
 # CMO — HANDOFF (현재 상태)
 
-> 최종 업데이트: 2026-06-10. 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
+> 최종 업데이트: 2026-06-11. 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
 > 300줄 넘으면 오래된 항목을 `docs/archive/`로 이관하고 요약만 남긴다.
+
+## 🟢 2026-06-11 — 후보 선별에 "시청자 정체성 정합성" 1순위 판단 추가 (키+풀링)
+
+사장님 지적: 보고서가 고른 "Make로 SNS 글쓰기 자동화" 류는 조회수·성과는 좋아도 **시청자 정체성**이 우리 타깃과 다름. 그 영상을 볼 사람은 "SNS 글쓰기를 자동화하려는 실무자"지 "마케팅 팀 없는 대표/사업가"가 아님 → 대표는 SNS 글쓰기를 자기 일로 인식 안 함. **선별 기준 = 마케팅 주제 매칭이 아니라 "이 영상 시청자의 정체성·자기인식 레벨이 우리 타깃과 같은가"가 1순위**(성과/기여/조회수는 전제). 키+풀링 공통.
+- `key-content-report.ts`: `selectPrompt` 정체성 1순위 재작성 + `marketJudgePrompt`의 targetFit를 정체성 의미로. `ReportCandidate`에 `viewer_identity`/`identity_match`(match·partial·mismatch)/`identity_reason`. **mismatch는 조회수 높아도 후보 제외**(note에 기록). jest 18/18(+정체성 제외 테스트).
+- `discovery-classification.ts`(키/풀링 공통 발굴 분류): ① 기준을 "시청자 정체성이 같은가(최우선)"로 강화 — 주제 관련 있어도 시청자가 낮은 작업·실무 정체성이면 unfit.
+- `pulling-candidates.ts`: 풀링 주제 생성도 "키와 동일한 시청자 정체성" 제약 추가.
+- UI `KeyContentReportBoard`: 후보 카드에 정체성 일치 배지(녹/갈/적) + 시청자/근거 표시. 시장성 표 헤더 '타깃 적합'→'타깃 정체성'. 검증: l5 jest 91/91·빌드 0, founder-ui tsc/build 0, 재기동.
+
+## 🟢 2026-06-11 — 키 콘텐츠 "상품 정의 승인 → 실검색 보고서" 2단계 승인 풀스택 신설
+
+배경: 사장님 요청 — 간단한 상품 정보에서 곧장 실행으로 점프하지 말고, **실검색 전에 승인 2단계**를 넣을 것. ① 상품 정의 정리(8섹션) 승인 → ② 실제 YouTube/Viewtrap 검색 기반 "키 콘텐츠 기획 보고서" 승인. 기존 키콘텐츠는 순수 LLM(검색 0)이었음.
+
+**Phase 1 — 상품 정의 승인 (product_defined)**
+- plugin 액션 `cmo:proposeProductDefinition`(plugin.ts) — `runKeyContentWorkflow` Step1~7 분석만(후보생성 X) + 뷰트랩 실검색용 짧은 키워드(2~4어절) LLM 생성 → `product_definition` 카드 저장. 라이브 HTTP 200·179s·draft 8/8·키워드 6개.
+- UI `ProductDefinitionBoard.tsx` — 사장님 요청 1~8 섹션(상품 한줄/타깃/기능·특징·장점/사용자 문제/현상·욕구·계획·행동·보상/키워드 후보/최종 키워드/승인). product_defined 진입 시 자동 1회 생성. 승인=`advanceStatus`. StrategyBoard 전진 버튼을 product_defined까지만 전진하도록 변경(PRE_PRODUCT_STATUSES).
+- Playwright 8섹션 전부 렌더 확인(`e2e/shot-product-def.mjs`, 스샷 `/tmp/product-def-board.png`).
+
+**Phase 2 — 키 콘텐츠 기획 보고서 (key_content_ideation)**
+- youtube 서비스 추가: `client.getVideoDurations`(롱폼/쇼츠 판별 contentDetails+publishedAt) · `parseIsoDuration` · `transcript/fetch.ts`(timedtext 자막 페처 — watch페이지 captionTracks→XML→평문, ko>en>asr, throw 없이 available=false). dist 빌드 0.
+- l5-core `key-content-report.ts` — 순수함수 `computeMarketMetrics`/`decideVerdict`(진행추천·보류·제외 임계)/`isQualifiedCandidate`(롱폼+5만+성과도/기여도 Good↑) + 오케스트레이션 `runKeyContentReport(input, deps)`. deps 주입: discover(키워드 발굴, classify 미주입→videos만)·getDurations·fetchTranscript·llmComplete. 흐름: ①키워드별 시장성 ②배치 LLM 판정 ③진행키워드 후보풀→LLM 최종3선 ④자막+판매논리(현상→…→보상+수익화) ⑤우리상품 적용 판매논리+추천1. **jest 17/17**.
+- plugin 액션 `cmo:proposeKeyContentReport` — `_discoveryInFlight` lock 공유, CDP YouTube 확장(성과도/기여도) graceful, `runDiscoveryPipeline`(분류 미주입) 재사용으로 discover 구현, sonnet CLI(240s) llm. `key_content_report` 카드 저장. 빈 body→400 등록 확인.
+- UI `KeyContentReportBoard.tsx` — 사장님 스펙 1~7 섹션(키워드 시장성 표/선별 3개 썸네일·링크/수익화 구조/현상·욕구·계획·행동·보상 표/우리 상품 판매논리/추천 사유/승인요청). key_content_ideation 진입 자동 생성, 승인=advanceStatus. StrategyBoard에서 **레거시 `KeyContentPlanBoard` 게이트를 이 보드로 교체**(동일 게이팅 창).
+- 검증: l5-core tsc 0·jest 17/17 · youtube tsc 0 · plugin build 0(dist node --check OK·액션 3 dist) · founder-ui tsc 0·next build "Compiled successfully" · nocobase/founder-ui 재기동 · advanceStatus product_defined→key_content_ideation 확인 · 라이브 보고서 생성 진행(CDP 9222·YouTube API·자막·Sonnet 다수, 5~15분).
+- **성과도/기여도(라이브 확정)**: 확장 스크래퍼는 정상(영어 등급 good/normal/bad/worst → 파이프라인이 한글키 metrics['성과도'/'기여도']로 저장). 실행 중 전부 null이던 건 connectCdp 일시 실패 → extensionAdapter 누락. **connectCdp 1회 재시도 + extraNotes 진단** 추가 후 재실행에서 등급 정상 수집(예: #1 normal·good, #2 good·good). 3번째 후보처럼 확장 검색결과에 없는 영상은 null(per-video graceful).
+- **자막(라이브 확정)**: 서버 raw timedtext·InnerTube get_transcript 직접 POST는 둘 다 막힘(빈 본문 / FAILED_PRECONDITION). → **로그인 CDP 브라우저에서 "Show transcript" 패널을 클릭해 `ytd-transcript-segment-renderer` DOM 세그먼트를 스크랩**하는 `scrapeTranscriptViaCdp`(youtube `viewtrap/cdp.ts`) 신설 — 실측 한글 대본 전문 확보(11268·9725자). plugin fetchTranscript가 CDP 우선, 서버 fetch 폴백.
+- **잔여/주의**: ① 보고서 승인(advanceStatus) 이후 downstream(풀링 candidate-selection)은 기존 `selectKeyContentCandidate` 경로 — 보고서 topPick과의 연결은 후속 배선 필요. ② 보고서 생성은 장시간(다수 Sonnet cold-spawn + 후보별 watch 페이지 자막 패널) — UI는 "5~15분" 안내 + 자동 1회 트리거. ③ 레거시 `KeyContentPlanBoard.tsx`는 미사용(파일은 남김). ④ 동일제목 중복 프로젝트 f791e8ea 삭제 완료(4f35e802만 잔존).
+
+## 🔴→🟢 2026-06-11 — 영상룸 키 콘텐츠 자동초안 도달 불가 버그 수정 (전진 버튼 미배선)
+
+증상: 새 영상 프로젝트에서 CMO와 대화해도 키 콘텐츠 기획 카드가 영구 🔒(이전 단계 완료 후). 자동초안 시작 불가.
+
+- **근본 원인**: `cmoChatMessage`(plugin.ts:2658~)는 답변/카드/게이트만 저장하고 **status를 전진시키지 않음**(`status: proj.status` 그대로 반환). status 전진 액션은 `cmo:advanceStatus`(plugin.ts:2737, api.ts `cmoAdvanceStatus`)뿐인데 **video-room UI 어디에서도 호출하지 않음**(호출부 0). → status가 `strategy_chat`(순서0)에 영구 정지 → 키 콘텐츠 카드 `blockState(from:'key_content_ideation'=순서3)`이 영구 locked. 비-게이트 단계(strategy_chat→business_pt_context_loading→product_defined→key_content_ideation) 전진 트리거가 통째로 빠져 있던 배선 누락.
+- **근본 수정**: `StrategyBoard.tsx`에 전진 버튼 배선 — `currentStatus`가 `strategy_chat/business_pt_context_loading/product_defined`일 때만 "전략 대화 완료 → 키 콘텐츠 기획 시작" 버튼 노출. 핸들러가 `cmoAdvanceStatus`를 `key_content_ideation` 도달까지 연속 호출(최대 5회, 비-PRE_KEY status 만나면 중단). 도달 시 `KeyContentPlanBoard`가 마운트되며 자동초안 1회 자동 실행(기존 동작). 게이트 단계는 기존 `cmoDecideGate`(page.tsx:50)가 담당 — 무간섭.
+- **즉시 실행**(현재 프로젝트 f791e8ea): `cmo:advanceStatus` API 3회로 `key_content_ideation` 도달 → `cmo:proposeKeyContentDraft` 라이브 실행 **HTTP 200·192s·후보 3개**(key_content_draft+candidates 카드 생성).
+- **검증**: founder-ui tsc 0 · `next build` 0(번들에 버튼 텍스트 반영) · launchd 재기동 · Playwright(`e2e/smoke-keycontent-advance.mjs`) — 후보 3개 화면 렌더 true, strategy_chat 프로젝트 전진 버튼 노출 true.
+- **메모**: 동일 내용 프로젝트가 2개(4f35e802=06:40 strategy_chat·대화6 / f791e8ea=07:10 key_content_ideation·자동초안 완료). f791e8ea가 라이브 진행분. 중복 정리는 사용자 판단 대기.
+
+## 🟢 2026-06-11 — 사이드바 '영상룸' 메뉴 신설 + 더미 사업 데이터 전체 삭제
+
+- **영상룸 사이드바 메뉴**: founder-ui `Sidebar.tsx` `NAV_TOOLS`에 `{ href: '/video-room', label: '영상룸', icon: 'video' }`를 CMO 마케팅 바로 아래 추가. `Icon.tsx`에 `video`(영상 카메라) 아이콘 1개 추가. 기존엔 video-room 페이지로 가는 사이드바 링크가 없었음.
+- **더미 데이터 전체 삭제**: businesses 10개 전부 테스트였음 → DB(`nocobase`)에서 businesses 및 모든 자식/도메인 테이블 TRUNCATE RESTART IDENTITY CASCADE. 삭제 테이블 = businesses/projects/agent_tasks(+agent_handoffs)/business_briefs/ceo_interpretations/cmo·cto_planning_messages/executive_*/founder_*/pmf_experiments/roadmap_items/chat_messages/video_room_projects·cards·gates/video_performance_metrics/video_execution_briefs. **백업** = `/tmp/nocobase_full_backup_20260611_pre_wipe.sql`(전체 DB, 1.1MB).
+- **검증**: founder-ui tsc 0 · `next build` 0(/video-room 라우트 포함) · launchd `com.l5.founder-ui`(next start -p 3002, prod) kickstart -k 재기동 · Playwright 스모크(`e2e/smoke-sidebar-videoroom.mjs`) — 영상룸 메뉴 존재=true, 활성 사업 비어있음=true, /video-room 라우팅 OK. 스샷 `/tmp/sidebar-after.png`.
+- **함정 메모**: 3002 founder-ui는 **prod build(next start)** — 소스 수정은 반드시 `next build` + launchd kickstart 재기동해야 반영(HMR 없음). 3001은 별개 앱(ACR Agent Control Room)이니 혼동 금지.
 
 ## 🟢 2026-06-10 — 제목 디벨롭 8단계 워크플로우 풀스택 완성 (PRD cmo-title-development §19~24)
 

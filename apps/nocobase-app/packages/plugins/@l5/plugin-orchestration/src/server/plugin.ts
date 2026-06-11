@@ -134,6 +134,7 @@ const {
   // v3 key-content planning
   draftKeyContentPlan,
   runKeyContentWorkflow,
+  runKeyContentReport,
   finalizeKeyContentPlan,
   buildViewtrapValidation,
   // v3 key-content 재기획: 서로 다른 주제 후보 N개 생성 + 사장님 선택 확정
@@ -226,7 +227,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeTitleDevelopment', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'proposeProductDefinition', 'proposeKeyContentReport', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeTitleDevelopment', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -3709,6 +3710,215 @@ function registerCmoResource(app: any, db: any) {
         });
 
         ctx.body = { ok: true, data: { candidates, progress: result.progress } };
+        await next();
+      },
+
+      // POST /api/cmo:proposeProductDefinition  { project_id }
+      // 키 콘텐츠 "기획"(실검색) 전에 상품 정의(Step1~7 분석)만 만들어 사장님 승인을 받는 단계.
+      // 후보 생성은 하지 않는다. 승인(advanceStatus) 후 proposeKeyContentDraft로 넘어간다.
+      proposeProductDefinition: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        const projRows = await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const proj = projRows[0];
+
+        const customer_problem =
+          (proj.customer_problem ? String(proj.customer_problem).trim() : '') || undefined;
+        const core_offer =
+          (proj.core_offer ? String(proj.core_offer).trim() : '') || undefined;
+        const productStr = String(proj.product ?? '').trim();
+        const product = {
+          product_name: productStr || String(proj.title ?? '').trim(),
+          category: String((proj as any).category ?? '').trim() || productStr || '제품/서비스',
+          target_audience: String(proj.target_audience ?? '').trim(),
+          core_offer: core_offer ?? productStr,
+          business_goal: String(proj.business_goal ?? 'brand_growth').trim(),
+        };
+
+        const llm = buildLLMClient('');
+        const llmComplete = (p: string) => llm.complete({ system: '', user: p });
+
+        // Step1~7 분석만 (후보 생성 X). 실패 스텝만 결정론 폴백.
+        let result: any;
+        try {
+          result = await runKeyContentWorkflow({ product, customer_problem }, { llmComplete });
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        // 뷰트랩 실검색용 짧은 키워드(2~4어절) 생성 — 다음 단계(키 콘텐츠 기획)의 검색 입력.
+        const sk = result.draft?.step7_search_keywords ?? {};
+        let viewtrap_keywords: string[] = [];
+        try {
+          const kwPrompt = [
+            '아래 분석을 바탕으로 YouTube/Viewtrap에서 실제로 검색할 짧은 키워드 6개를 뽑아라.',
+            '규칙: 각 2~4어절. 문장형·추상적 표현 금지. 사용자가 실제로 검색창에 칠 형태(예: "인스타 마케팅 자동화", "소상공인 마케팅 대행").',
+            `상품: ${product.product_name}`,
+            `타깃: ${product.target_audience}`,
+            customer_problem ? `핵심 문제: ${customer_problem}` : '',
+            `문제 키워드: ${(sk.problem_keywords ?? []).slice(0, 5).join(' / ')}`,
+            `기능 키워드: ${(sk.item_feature_benefit_keywords ?? []).join(' / ')}`,
+            'JSON 배열만 출력: ["키워드1","키워드2",...]',
+          ].filter(Boolean).join('\n');
+          const raw = await llmComplete(kwPrompt);
+          const m = raw.match(/\[[\s\S]*\]/);
+          if (m) viewtrap_keywords = (JSON.parse(m[0]) as unknown[])
+            .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+            .slice(0, 8);
+        } catch {
+          // graceful: 실패 시 기존 step7 기능 키워드로 폴백.
+        }
+        if (viewtrap_keywords.length === 0) {
+          viewtrap_keywords = (sk.item_feature_benefit_keywords ?? []).slice(0, 6);
+        }
+
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'product_definition',
+          `product_definition (progress: ${result.progress}/8)`,
+          {
+            draft: result.draft,
+            viewtrap_keywords,
+            progress: result.progress,
+            product: product.product_name,
+            target_audience: product.target_audience,
+          },
+        );
+
+        ctx.body = { ok: true, data: { draft: result.draft, viewtrap_keywords, progress: result.progress } };
+        await next();
+      },
+
+      // POST /api/cmo:proposeKeyContentReport  { project_id }
+      // 상품정의 승인 후 — 승인된 viewtrap_keywords로 키 콘텐츠 기획 "보고서"를 만든다.
+      //   ① YouTube API 키워드 시장성 분석 → 진행/보류/제외 판정
+      //   ② CDP YouTube 확장으로 성과도/기여도 등급 수집 + 5만+/롱폼 필터 → 키워드별 후보
+      //   ③ 최종 3개 선별 → 자막(timedtext) 추출 → 판매논리(현상→…→보상) 분석
+      //   ④ 우리 상품 적용 판매논리 + 최우선 추천 1개 + 승인요청 문장으로 보고서 조립
+      // CDP 단일 테넌트라 _discoveryInFlight lock 공유. CDP/자막/LLM 실패는 부분 폴백(throw 금지).
+      proposeKeyContentReport: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        const projRows = await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const proj = projRows[0];
+
+        // 상품정의 카드에서 승인된 검색 키워드를 읽는다(없으면 step7 폴백).
+        const cardRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'product_definition' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        const cardData = (cardRows[0]?.data ?? {}) as any;
+        let keywords: string[] = Array.isArray(cardData.viewtrap_keywords)
+          ? cardData.viewtrap_keywords.filter((s: unknown): s is string => typeof s === 'string' && s.trim().length > 0)
+          : [];
+        if (keywords.length === 0) {
+          ctx.throw(400, 'no approved keywords found — run proposeProductDefinition first');
+        }
+
+        const productStr = String(proj.product ?? '').trim();
+        const reportProduct = {
+          product_name: productStr || String(proj.title ?? '').trim(),
+          category: String((proj as any).category ?? '').trim() || productStr || '제품/서비스',
+          target_audience: String(proj.target_audience ?? '').trim() || '타깃 미상',
+          core_offer: String(proj.core_offer ?? productStr).trim() || productStr,
+        };
+        const discoveryProduct = { ...reportProduct, business_goal: String(proj.business_goal ?? 'brand_growth').trim() };
+        const target = reportProduct.target_audience;
+
+        if (_discoveryInFlight) {
+          ctx.throw(409, 'another discovery is in flight (CDP chrome is single-tenant); retry shortly');
+        }
+        _discoveryInFlight = true;
+
+        let cdpSession: any = null;
+        let report: any;
+        try {
+          const yt: any = await import(
+            path.resolve(__dirname, '../../../../../../../services/youtube/dist/index.js')
+          );
+          const creds = yt.loadCredentials();
+          const client = new yt.YouTubeClient(creds);
+          const sonnet = createClaudeCLIClient({ model: 'sonnet', timeoutMs: 240_000 });
+          const llmComplete = (p: string) => sonnet.complete({ system: '', user: p });
+
+          // CDP 확장 어댑터(성과도/기여도 등급) — graceful. 실패 시 조회수만으로 진행.
+          // 연결은 1회 재시도(런타임 일시 실패로 등급이 통째로 비던 원인 방지).
+          const reportNotes: string[] = [];
+          let extensionAdapter: any;
+          for (let attempt = 0; attempt < 2 && !cdpSession; attempt += 1) {
+            try {
+              cdpSession = await yt.connectCdp({ endpoint: yt.DEFAULT_CDP_ENDPOINT });
+            } catch (e: any) {
+              if (attempt === 1) reportNotes.push(`CDP 연결 실패 — 성과도/기여도 미수집(조회수만): ${e?.message ?? String(e)}`);
+            }
+          }
+          if (cdpSession) {
+            extensionAdapter = yt.createExtensionScraperAdapter(cdpSession, {});
+            reportNotes.push('CDP YouTube 확장 라이브 — 성과도/기여도 등급 수집');
+          }
+          const baseDeps = yt.createLiveDiscoveryDeps({
+            client,
+            searchMaxResults: 25,
+            ...(extensionAdapter ? { extensionAdapter } : {}),
+          });
+
+          // 키워드 1개 발굴 → 영상[](성과도/기여도 병합). 분류(classify) 미주입 → videos만 사용.
+          const discover = async (keyword: string) => {
+            const res = await runDiscoveryPipeline(
+              { query: keyword, product: discoveryProduct, target, mode: 'key' },
+              baseDeps,
+            );
+            return (res.videos ?? []).map((x: any) => ({
+              videoId: x.videoId,
+              title: x.title,
+              channelTitle: x.channelTitle,
+              viewCount: x.viewCount,
+              metrics: x.metrics,
+            }));
+          };
+          const getDurations = (ids: string[]) => client.getVideoDurations(ids);
+          // 자막: 로그인 CDP 브라우저의 "Show transcript" 패널 스크랩(서버 raw fetch는 빈 본문/pot로 막힘).
+          // CDP 없으면 서버 fetch 폴백(대개 빈 결과 — graceful, 판매논리는 메타데이터로).
+          const fetchTranscript = async (id: string) => {
+            if (cdpSession) {
+              try {
+                const t = await yt.scrapeTranscriptViaCdp(cdpSession, id, {});
+                if (t.available) return { available: true, text: t.text };
+              } catch { /* 폴백 */ }
+            }
+            const t = await yt.fetchTranscript(id, fetch);
+            return { available: t.available, text: t.text };
+          };
+
+          report = await runKeyContentReport(
+            { product: reportProduct, keywords, maxKeywords: 6, extraNotes: reportNotes },
+            { discover, getDurations, fetchTranscript, llmComplete },
+          );
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        } finally {
+          if (cdpSession) {
+            try { await cdpSession.browser.close(); } catch { /* ignore */ }
+          }
+          _discoveryInFlight = false;
+        }
+
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'key_content_report',
+          `key_content_report (${report.provenance.candidates_selected} candidates / ${report.provenance.keywords_advanced} keywords)`,
+          report,
+        );
+
+        ctx.body = { ok: true, data: report };
         await next();
       },
 

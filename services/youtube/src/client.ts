@@ -31,6 +31,21 @@ export interface SearchOptions {
   relevanceLanguage?: string;
 }
 
+export interface VideoDuration {
+  videoId: string;
+  durationSeconds: number;
+  isShort: boolean;
+  publishedAt: string;
+}
+
+/** ISO-8601 duration (PT#H#M#S) → seconds. Returns 0 on unparseable. */
+export function parseIsoDuration(iso: string): number {
+  const m = iso.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!m) return 0;
+  const [, h, min, s] = m;
+  return (Number(h ?? 0) * 3600) + (Number(min ?? 0) * 60) + Number(s ?? 0);
+}
+
 export interface ChannelAnalyticsOptions {
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
@@ -68,6 +83,14 @@ interface RawVideosResponse {
     id?: string;
     snippet?: { title?: string; channelTitle?: string };
     statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
+  }[];
+}
+
+interface RawDurationsResponse {
+  items?: {
+    id?: string;
+    snippet?: { publishedAt?: string };
+    contentDetails?: { duration?: string };
   }[];
 }
 
@@ -135,6 +158,35 @@ export class YouTubeClient {
           viewCount: Number(item.statistics?.viewCount ?? 0),
           likeCount: item.statistics?.likeCount != null ? Number(item.statistics.likeCount) : null,
           commentCount: item.statistics?.commentCount != null ? Number(item.statistics.commentCount) : null,
+        });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * videos.list (API key) — contentDetails.duration + publishedAt for up to N ids.
+   * 롱폼/쇼츠 판별·최근성 산출용. 60초 이하를 쇼츠로 본다(isShort).
+   */
+  async getVideoDurations(videoIds: string[]): Promise<VideoDuration[]> {
+    const results: VideoDuration[] = [];
+    for (let i = 0; i < videoIds.length; i += STATS_CHUNK_SIZE) {
+      const chunk = videoIds.slice(i, i + STATS_CHUNK_SIZE);
+      if (chunk.length === 0) continue;
+      const params = new URLSearchParams({
+        part: 'contentDetails,snippet',
+        id: chunk.join(','),
+        key: this.creds.api_key,
+      });
+      const data = (await this.getJson(`${DATA_API}/videos?${params}`)) as RawDurationsResponse;
+      for (const item of data.items ?? []) {
+        if (!item.id) continue;
+        const seconds = parseIsoDuration(item.contentDetails?.duration ?? '');
+        results.push({
+          videoId: item.id,
+          durationSeconds: seconds,
+          isShort: seconds > 0 && seconds <= 60,
+          publishedAt: item.snippet?.publishedAt ?? '',
         });
       }
     }

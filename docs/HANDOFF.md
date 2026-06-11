@@ -1,6 +1,35 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-09 (CTO/ACR 속도 실험 → 정리. 계획서: **docs/CTO_ACR_SPEED_IMPROVEMENT_PLAN.md**)
+최종 업데이트: 2026-06-09 (CTO/ACR 속도 실험 → 정리. 계획서: **docs/cto/CTO_ACR_SPEED_IMPROVEMENT_PLAN.md**)
+
+> 📁 **영역별 개발 문서 분리 중** (2026-06-10~): 기능별 문서는 250~300줄로 관리.
+> - **CMO**: [docs/cmo/](./cmo/CLAUDE.md) — 콘텐츠 마케팅 (라우터·HANDOFF·TASKS·기능 문서). CMO 작업은 이쪽 갱신.
+> - CTO / 전체 pulk: 추후 같은 패턴(`docs/cto/`)으로 분리 예정. 이 파일은 그때까지 전역 이력 유지.
+
+## 🟢 2026-06-11 — Native Orchestration: 병렬+budget+사업별 모니터+결과회수 마감 (정적검증·데몬 드라이런 PASS)
+
+**무엇**: 이전 세션 남은 4종을 마감. (1) **다중 phase 병렬**: `CTOPhase.depends_on` + `cto-native/parallelize.ts`(`planPhaseLevels`, 8 tests) — 레벨 단위 `Promise.all` 병렬 실행 + **merge는 레벨 종료 후 순차**(`runPhaseToVerdict`/`finalizePhase` 분리, 동시 머지 충돌 방지). 미지정=직전 phase 암묵 의존(기존 순차 보존). (2) **budget 루프**: `cto-native/budget.ts`(`applyPoolOutcome`, 6 tests) + 데몬 `runIntent` 실루프(`pools.json` 추적 + `NativeRunSummary`→`planNextPoll`). (3) **사업별 모니터**: `ACRIntent.business_id` + `PhaseRunSink` + plugin `native_phase_runs` 테이블/`monitor:nativeRuns` 액션/ACL(src+dist 패치) + founder-ui 전용 뷰(Workflow로 구현, tsc 0+build). (4) **결과 회수**: phase 프롬프트에 "마지막 출력에 전체 보고서 본문" + stdout 전체 `output` 영속화.
+**검증**: l5-core cto-native 76/76(+parallelize 8/budget 6), agent-runtime 41/41(+orchestrator native 4), founder-ui tsc 0+build, plugin dist node --check OK. **l5-core 4건 실패는 cto-design/model-routing baseline 드리프트(내 변경 무관)**.
+**🐞 데몬 드라이런이 잡은 실버그**: dist `native-orchestrator.js`의 cto-native **디렉토리 임포트**가 ESM에서 `ERR_UNSUPPORTED_DIR_IMPORT`로 데몬 기동 실패(jest CJS라 통과) → `/index.js` 명시로 수정. 데몬 첫 실기동에서 발견.
+**남음(사장님 손, 라이브 활성화)**: NocoBase 재기동(패치 plugin 로드) → 데몬 plist에 `NATIVE_ORCHESTRATION`/`NOCOBASE_TOKEN` 주입(PlistBuddy, 커밋 금지)+`launchctl bootstrap`+TCC(`~/Desktop`→레포밖 복사본) → queue.json 스모크. 상세: `docs/cto/CTO_NATIVE_ORCHESTRATION_IMPL.md` 남은 일.
+**커밋**: `fe3ea4e`(docs 재구성) + 본 세션 CTO 코드/문서 커밋. CMO/video-room WIP·HANDOFF/TASKS(혼재)는 불가침으로 미스테이징.
+
+## 🟡 2026-06-10 — CTO Native Orchestration: ACR 은퇴 본구현 S2~S4 (정적검증 완료, 라이브 스모크 중)
+
+**무엇**: ACR(별도 Next.js 앱)을 은퇴시키고 CTO가 나눈 phase를 Claude Code가 직접 실행하는 경로 구현. CTO Brain은 무변경 — dispatch 경계(`agents/cto.ts:637`)만 `NATIVE_ORCHESTRATION==='on'` flag로 `dispatchToNativeOrchestrator`로 교체(off면 기존 `dispatchToACR` 100% 유지, **비파괴**).
+**한 것**: (1) 순수 로직 `packages/l5-core/src/functions/cto-native/`(cli-command/model-map/fallback/recovery+types) — ACR `lib/`에서 이식, **jest 62/62**. (2) 실행 레이어 `services/agent-runtime/src/orchestrator/`(spawn-agent/worktree/phase-prompt/native-orchestrator) — **orchestrator jest 5/5, tsc 0**. (3) seam 비파괴 배선.
+**검증된 사실**: claude/codex/agy 3풀 모두 구독세션 동작(API키 미주입). codex는 `< /dev/null` 필수. S0 PoC 월클락 2분30초(ACR 직렬 동급 ~6분48초 대비 단축).
+**남음**: 라이브 스모크 결과 반영, S5 launchd 상주화+ScheduleWakeup 회복루프, 다중 phase 병렬, ACR 동등성 확인 후 은퇴.
+**문서**: `docs/cto/CTO_NATIVE_ORCHESTRATION_IMPL.md`(현황·파일맵), `CTO_NATIVE_ORCHESTRATION_ASSESSMENT.html`(설계), `~/.claude/plans/parsed-orbiting-cookie.md`(계획).
+
+## 🟢 2026-06-09 — R6 실 factory 연결 (sendBriefToFactory 스텁 제거)
+
+`sendBriefToFactory`가 더 이상 스텁 sent가 아니라 외부 factory 인박스로 brief를 실제 전달한다.
+- `plugin-orchestration/src/server/video-factory-transport.ts`: `submitBrief(brief)` 신설 → `${VIDEO_FACTORY_DIR=/Users/wonminyang/ai-slide-video-factory}/briefs/<slug>.json`(slug=content_card_id||title, path-traversal 가드 재사용)에 brief JSON write + `validate:brief`(runValidateBrief→scripts/validate-brief.ts, runValidate와 동일 npx tsx 패턴) 실행. 성공 `{ok:true,data:{brief_path,validated:true}}`, 검증 실패해도 파일은 남기고 `{ok:false,error}`.
+- `plugin.ts sendBriefToFactory`: transport.send 스텁 → `_videoFactoryTransport.submitBrief` 호출. transport null(=factory dir 미존재)이면 기존처럼 graceful stub. 응답 `data`에 `brief_path`/`stub:true` 표기.
+- **dist 패치**: 이 빌드에서 transport는 plugin.js에 인라인되지 않고 **별도 파일 `dist/video-factory-transport.js`**로 번들됨 → 그 파일에 submitBrief/runValidateBrief 추가 + plugin.js의 send만 패치. 번들 네임스페이스(import_fs/import_path/import_child_process) 사용, bare 식별자 금지(과거 randomUUID 버그 방지).
+- 검증: `node --check` 두 dist 파일 PASS. 실 factory dir 대상 submitBrief 스모크 PASS(briefs/에 JSON 생성 + validate:brief 통과 + 정리). l5-core/founder-ui 무영향(plugin 전용).
+- followup: 라이브 nocobase HTTP E2E(generateVideoExecutionBrief→sendBriefToFactory 200 + briefs/ 신규 JSON 확인) — 적합 프로젝트 부재로 미실행.
 
 ## 🟢 2026-06-09 — CMO 키콘텐츠 재기획: 3주제 후보 + HTML 보고서 + 진행률 UI (라이브 검증, 트랙 B)
 
@@ -23,7 +52,7 @@
 
 Reels PRD를 business 7로 실제 dispatch해 속도를 실측. **결론: pulk 과분해 차단(M9.8/8.1)은 phase 총량을 ~77→32(58%↓)로 줄였으나 월클락은 미개선** — 지배 병목이 ACR 실행모델(단일 직렬 runner + per-phase cold claude-code spawn)이라 pulk 오케스트레이션으로 못 고침. 21분간 11 task 중 1개만 완주. progress note는 에이전트가 지시 무시(연속성 미작동). 일부 task scope-creep(에셋 생성).
 
-→ **개선 계획 전체를 `docs/CTO_ACR_SPEED_IMPROVEMENT_PLAN.md`에 박제**(P1 ACR 병렬 runner / P2 TINY→codex / P3 grounding 경량화+ACR 연속성 강제 / P4 scope-creep / P5 ACR worktree 격리. 파일·수용기준·트레이드오프 포함). 나중에 그 문서대로 구현.
+→ **개선 계획 전체를 `docs/cto/CTO_ACR_SPEED_IMPROVEMENT_PLAN.md`에 박제**(P1 ACR 병렬 runner / P2 TINY→codex / P3 grounding 경량화+ACR 연속성 강제 / P4 scope-creep / P5 ACR worktree 격리. 파일·수용기준·트레이드오프 포함). 나중에 그 문서대로 구현.
 
 **상태**: 실험 중단·정리됨. ACR phase-runner bootout, business 7 task 13개 동결(done 1/needs_review 1). pulk 코드(M9.8/8.1)는 dist 반영됐으나 **git 미커밋**.
 
@@ -96,7 +125,7 @@ Reels PRD를 실제 CTO→ACR로 dispatch한 실험에서 두 비효율을 잡�
 
 ## 🟢 2026-06-09 — CMO PRD v3 end-to-end 구현 (트랙 B, agent team + Workflow)
 
-설계·근거 = `docs/DECISIONS.md` 2026-06-09(정본 ① video-room + 얇은 orchestrator) + `docs/CMO_V3_ARCHITECTURE.html`. 트랙 A(CTO integrate phase)와 파일 경계 분리 병렬. PRD = `docs/prd/cmo-content-strategy-v3.md`(10 Phase).
+설계·근거 = `docs/DECISIONS.md` 2026-06-09(정본 ① video-room + 얇은 orchestrator) + `docs/cmo/CMO_V3_ARCHITECTURE.html`. 트랙 A(CTO integrate phase)와 파일 경계 분리 병렬. PRD = `docs/prd/cmo-content-strategy-v3.md`(10 Phase).
 
 **배경**: CMO v3를 ACR로 돌리다 "절반에서 멈추고 연결 안 된"(built-but-not-wired) 상태였음 — 신규 `cmo-orchestrator/`가 PoC 스킬 2개만, Key Content는 video-room에 고립, types 5/10. 정밀 매핑 결과 **타입은 types.ts에 거의 다 존재, 갭은 작음**(P4 Pulling 12스텝·P5 Viewtrap 풀링·P6 Package 조립·P10 slide-deck LLM·orchestrator 배선). 정본=**기존 video-room 도메인 유지 + orchestrator는 얇은 지휘 레이어**(스킬=video-room 함수 호출 어댑터).
 
@@ -174,7 +203,7 @@ Reels PRD를 실제 CTO→ACR로 dispatch한 실험에서 두 비효율을 잡�
 
 ## 🟢 2026-06-06 — CMO/Script Room v3.1 전체 구현 (P0~P6, workflow 연속 실행)
 
-설계·근거 = `docs/CMO_SCRIPT_ROOM_EXECUTION_PLAN.md` + `docs/DECISIONS.md` 2026-06-06. PRD 3종(`~/Downloads/pulk_cmo_script_room_prd_v3_1_full.md` 정본, v2는 ScriptBeat 폐기, `ai_slide_video_factory_v2_1`은 수신측) 정합.
+설계·근거 = `docs/cmo/CMO_SCRIPT_ROOM_EXECUTION_PLAN.md` + `docs/DECISIONS.md` 2026-06-06. PRD 3종(`~/Downloads/pulk_cmo_script_room_prd_v3_1_full.md` 정본, v2는 ScriptBeat 폐기, `ai_slide_video_factory_v2_1`은 수신측) 정합.
 
 **확정 경계**: CMO = **무엇을 말할지** → 산출물 끝 = `VideoExecutionBrief`(schema_version `cmo_to_factory_v2`). scene_type/best_medium/duration/timeline **확정 금지**(Factory의 Scene Decision Engine 몫). v2식 `script-factory.ts`(scene_type 확정 VideoJob)는 `@deprecated`, `video-execution-brief.ts`로 교체.
 
@@ -1458,7 +1487,7 @@ CTO 로드맵(`/tmp/l5-roadmap.html`) Phase 1·2 구현. 전부 **ACR repo**(`~/
 - **자율 루프 게이팅 (E2E 검증됨)**: D1/D2 → 자동 dispatch, D3+ → `approval_required=true`로 dispatcher가 픽업 안 함(승인 시 자동 실행). `chat:submitInstruction` → CEO해석 → CTO분해 → ACR spawn → 샌드박스 파일생성+커밋 → 콜백 → done 전체 동작 확인.
 - **완료(2026-05-30 추가 작업)**:
   - **Stale 큐 정리**: 이전 세션 테스트 task 42건 전부 `killed` 처리 → queued 0건(깨끗한 베이스라인).
-  - **Cron 2개 설치·검증**: `com.l5.hermes.model-verify`(08:55) + `com.l5.hermes.self-learning`(09:00). 둘 다 수동 1회 실행 정상(model-verify: roster clean·알림 silent; self-learning: claude changelog 1건 변경·카탈로그 `docs/cto-tool-catalog.md` 갱신·Telegram 발송). plist에 Telegram 토큰+API Key 주입. (codex 403/antigravity 404 changelog fetch는 non-fatal.)
+  - **Cron 2개 설치·검증**: `com.l5.hermes.model-verify`(08:55) + `com.l5.hermes.self-learning`(09:00). 둘 다 수동 1회 실행 정상(model-verify: roster clean·알림 silent; self-learning: claude changelog 1건 변경·카탈로그 `docs/cto/cto-tool-catalog.md` 갱신·Telegram 발송). plist에 Telegram 토큰+API Key 주입. (codex 403/antigravity 404 changelog fetch는 non-fatal.)
   - **business_id→repo 매핑**: `businesses.repo_path`(text) 컬럼 추가(plugin-business-portfolio: collection 필드 + `ensureBusinessColumns` ALTER). dispatcher(`runTaskDispatcherLive`)가 `fetchBusinessRepoPaths`로 business_id→repo_path 조회 후 task.project_path 주입 → runCTOAgent `resolveProjectPath`가 cwd로 사용. repo_path 없으면 `L5_DEFAULT_PROJECT_PATH`(샌드박스) fallback. **E2E 검증**: business 1 repo_path=`~/l5-workspace/business-1` 설정 → "QA Fixed business" 지시 → CEO가 business_id=1 추론 → D2 task 자동 dispatch → **ACR 작업이 business-1 repo에 라우팅됨**(default-sandbox 아님). (단 해당 spawn은 빈 브랜치만 생성·파일 미커밋 — agent 실행 비결정성, 매핑과 별개. 이전 SMOKE 테스트에선 파일 생성 정상.)
 - **다음 작업**: business 2 및 향후 사업의 `repo_path`를 실제 repo로 지정(현재 business 1만 설정). project-status-sync cron(템플릿 존재, 미설치). dispatcher PATH에 claude 추가 시 CTO dev-workflow LLM 보강 활성화(현재 deterministic fallback). ACR `data/projects.json`의 pulk 가리키는 stale 등록 정리(샌드박스 기본값으로 무력화돼 있으나 청소 권장).
 
@@ -2865,7 +2894,7 @@ type AgentHandoff = {
 
 - pulk CTO = source of truth, ACR = 실행 커널 원칙을 코드 계약으로 고정. PRD `FINAL_pulk_cto_acr_kernel_harness_agent_team_prd.md`의 pulk 측 1차 구현 범위(타입·복잡도 라우터·가드·프롬프트 빌더·Agent Team router) 완료.
 - 위치: `packages/l5-core/src/functions/cto-harness/` (8 모듈 + 7 테스트 스위트, 216 테스트 GREEN, tsc 0). 루트 `index.ts`에 export 1줄 추가.
-- 실제 worktree 실행/HTTP API/ACR UI는 별도 저장소 agent-control-room 책임 — pulk에 중복 구현하지 않음(상세 docs/ACR_KERNEL_REFACTOR_PLAN.md).
+- 실제 worktree 실행/HTTP API/ACR UI는 별도 저장소 agent-control-room 책임 — pulk에 중복 구현하지 않음(상세 docs/cto/ACR_KERNEL_REFACTOR_PLAN.md).
 - CMO 작업과 완전 분리(공유 파일 충돌 없음). 커밋 시 cto-harness/·index.ts·신규 문서 2개만 선택 add 권장(CMO 미커밋 변경분 제외).
 - 다음 단계(선택): hermes acr-client.ts에 buildWorkOrder→ACRIntent 어댑터 배선, founder-ui control-room에 ExecutionRun 상태 표시.
 
@@ -2873,7 +2902,7 @@ type AgentHandoff = {
 
 ## CTO×ACR Kernel×Harness×Agent Team 풀구현 (2026-06-06, dynamic phased workflow 8단계)
 
-PRD `FINAL_pulk_cto_acr_kernel_harness_agent_team_prd.md` MVP **완료(PASS)**. 판정 리포트: `docs/CTO_ACR_PRD_COMPLETION.html`.
+PRD `FINAL_pulk_cto_acr_kernel_harness_agent_team_prd.md` MVP **완료(PASS)**. 판정 리포트: `docs/cto/CTO_ACR_PRD_COMPLETION.html`.
 
 - **ACR repo**(agent-control-room, 브랜치 feat/runner-verify-merge-phase123) 신규 실행 커널 — 전부 additive, 111 WIP 불가침:
   - `b8ecacd` ExecutionRun API(§8/§9): lib/execution-run/*, lib/storage/execution-run-store, app/api/execution-runs/{,[run_id],/result}

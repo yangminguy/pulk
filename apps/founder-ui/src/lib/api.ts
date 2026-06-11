@@ -862,6 +862,20 @@ export const api = {
       body: JSON.stringify(params),
     }).then(r => unwrap(r)),
 
+  // 상품 정의(승인 단계): Step1~7 분석 + 뷰트랩 검색 키워드. 후보 생성 X.
+  cmoProposeProductDefinition: (project_id: string) =>
+    request<{ data: { ok: boolean; data: { draft: Record<string, unknown>; viewtrap_keywords: string[]; progress: number } } }>('/api/cmo:proposeProductDefinition', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)),
+
+  // CMO v3 — 키 콘텐츠 기획 보고서(시장성→후보3→판매논리→추천). 상품정의 승인 후.
+  cmoProposeKeyContentReport: (project_id: string) =>
+    request<{ data: { ok: boolean; data: Record<string, unknown> } }>('/api/cmo:proposeKeyContentReport', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)),
+
   // CMO v3 — stage guides: { [status]: { label, focus } } for StepProgressRail.
   cmoGetStageGuides: () =>
     request<{ data: { ok: boolean; data: { guides: Record<string, { label: string; focus: string }> } } }>('/api/cmo:getStageGuides', {
