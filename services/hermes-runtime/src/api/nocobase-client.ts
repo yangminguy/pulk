@@ -3,7 +3,12 @@
 // that wire them to the running NocoBase instance.
 
 import { randomUUID } from "crypto";
-import type { AgentTask } from "@l5/core";
+import type {
+  AgentTask,
+  BPRLog,
+  WorkflowImprovementProposal,
+  MemoryEntry,
+} from "@l5/core";
 
 const NOCOBASE_URL = process.env.NOCOBASE_URL ?? "http://localhost:13000";
 const NOCOBASE_TOKEN = process.env.NOCOBASE_TOKEN ?? "";
@@ -194,6 +199,89 @@ export async function createProjectRoadmapEvent(event: {
 export async function deleteAgentTask(taskId: string): Promise<void> {
   await apiFetch(`/api/agent_tasks:destroy?filterByTk=${taskId}`, {
     method: "POST",
+  });
+}
+
+// ── 호랑이(Tiger) 자가개선 카드 영속화 ───────────────────────────────────────
+// night-bpr-loop가 호랑이 분석 카드를 BPRLog/WorkflowImprovementProposal/MemoryEntry로 적재한다.
+// NocoBase camelCase 함정 회피: created_at/updated_at + createdAt/updatedAt를 함께 보낸다.
+
+export async function createBPRLog(
+  payload: Omit<BPRLog, "id" | "created_at" | "updated_at">,
+): Promise<string> {
+  const now = new Date().toISOString();
+  const data = await apiFetch("/api/bpr_logs:create", {
+    method: "POST",
+    body: JSON.stringify({
+      id: randomUUID(),
+      ...payload,
+      created_at: now,
+      updated_at: now,
+      createdAt: now,
+      updatedAt: now,
+    }),
+  });
+  return data.data?.id ?? data.id;
+}
+
+export async function createWorkflowImprovementProposal(
+  payload: Omit<WorkflowImprovementProposal, "id" | "created_at" | "updated_at">,
+): Promise<string> {
+  const now = new Date().toISOString();
+  const data = await apiFetch("/api/workflow_improvement_proposals:create", {
+    method: "POST",
+    body: JSON.stringify({
+      id: randomUUID(),
+      ...payload,
+      created_at: now,
+      updated_at: now,
+      createdAt: now,
+      updatedAt: now,
+    }),
+  });
+  return data.data?.id ?? data.id;
+}
+
+export async function createMemoryEntry(
+  payload: Omit<MemoryEntry, "id" | "created_at" | "updated_at">,
+): Promise<string> {
+  const now = new Date().toISOString();
+  const data = await apiFetch("/api/memory_entries:create", {
+    method: "POST",
+    body: JSON.stringify({
+      id: randomUUID(),
+      ...payload,
+      created_at: now,
+      updated_at: now,
+      createdAt: now,
+      updatedAt: now,
+    }),
+  });
+  return data.data?.id ?? data.id;
+}
+
+/** 호랑이가 발행하고 사장님이 일괄 승인한(status=approved) proposal만. tiger-dispatch 입력. */
+export async function fetchApprovedTigerProposals(): Promise<
+  Array<{ id: string; source_ref?: string }>
+> {
+  const data = await apiFetch(
+    "/api/workflow_improvement_proposals:list?filter[status]=approved&filter[suggested_by_agent_id]=Tiger&sort=-createdAt&pageSize=200",
+  );
+  return ((data.data ?? []) as any[]).map((p) => ({
+    id: String(p.id),
+    source_ref: (p.source_ref as string | undefined) ?? undefined,
+  }));
+}
+
+/** proposal status 패치(실행 결과 회수: 성공=implemented, 보류/실패=proposed 잔류). */
+export async function updateWorkflowImprovementProposalStatus(
+  id: string,
+  status: WorkflowImprovementProposal["status"],
+): Promise<void> {
+  const now = new Date().toISOString();
+  await apiFetch(`/api/workflow_improvement_proposals:update?filterByTk=${encodeURIComponent(id)}`, {
+    method: "POST",
+    body: JSON.stringify({ status, updated_at: now, updatedAt: now }),
   });
 }
 

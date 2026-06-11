@@ -6,6 +6,21 @@
 > - **CMO**: [docs/cmo/](./cmo/CLAUDE.md) — 콘텐츠 마케팅 (라우터·HANDOFF·TASKS·기능 문서). CMO 작업은 이쪽 갱신.
 > - CTO / 전체 pulk: 추후 같은 패턴(`docs/cto/`)으로 분리 예정. 이 파일은 그때까지 전역 이력 유지.
 
+## 🟢 2026-06-11 — 호랑이(Tiger) 자가개선 루프: M1~M4 코드 구현 + 정적검증 완료 (런타임 배선 잔여)
+
+**무엇**: SPEC(아래 섹션) 기반으로 M1~M4를 subagent team workflow(2병렬+2순차)로 구현. 레지스트리→수집기→두뇌(Claude)→디스패치 전 층.
+**한 것**: (M1) `l5-core/functions/tiger/`(types/tool-registry/collector/analysis/proposal-to-task/phase-result-to-memory) + `hermes-runtime/src/tiger/`(log-adapter/manual-reports/tiger-collector). (M2) `hermes/src/api/claude-cli.ts`(spawn-agent 이식, OpenAI 0) + `loops/night-bpr-loop.ts` 본체(적응형 opus/sonnet → 카드 → BPRLog/WIP/Memory 저장+텔레그램). (M3) `founder-ui/src/app/self-improve/page.tsx`(체크박스 일괄승인+문제/원인/해결/대상repo) + api.ts + Sidebar NAV. (M4) `cto-native/batch-plan`(repo별 ACRIntent 그룹핑+위상정렬) + `agent-runtime/orchestrator/batch-runner.ts`(코어수-2 세마포어 병렬) + `hermes/loops/tiger-dispatch-loop.ts`(승인분만=게이트 보존) + gateway/runner 등록 + plist 2종 작성.
+**검증(직접 재확인, agent 자기보고 불신)**: l5-core **tsc0 · tiger 66 · cto-native 92**, hermes-runtime **tsc0 · tiger+night-bpr 21**, agent-runtime **tsc0 · batch-runner+orchestrator 29**, founder-ui **tsc0**. 신규 단위테스트 전부 목 주입 결정론.
+**⚠️ 런타임 배선 잔여(코드밖, 라이브 전 필수)**: (a) **plugin-executive-monitor 백엔드 핸들러 2개 미구현**(`monitor:selfImproveCards`·`bulkApproveSelfImprove`) → 현재 UI 빈배열. (b) NocoBase `bpr_logs`/`workflow_improvement_proposals` 컬렉션 실재 검증(없으면 정의+마이그레이션). (c) launchd `com.l5.hermes.{night-bpr-loop,tiger-dispatch}.plist` 토큰주입+`launchctl bootstrap`(파일은 작성됨). (d) M1-A 도구 구조화 로그 심기(무인자율 완성). (e) 런타임 E2E. **아직 미커밋(브랜치 cmo/content-strategy-v3).**
+**정본 SPEC**: docs/TIGER_SELF_IMPROVE_SPEC.md. 메모리: [[tiger-self-improve-loop]].
+
+## 🟡 2026-06-11 — 호랑이(Tiger) 자가개선 루프: 정식 SPEC 작성 (구현 착수 전)
+
+**무엇**: Nous Hermes 외부 에이전트(OpenAI 기반)의 "알아서 축적·개선" 자가개선 루프를 **OpenAI 없이** pulk 안에서 재현하는 기능 기획. 코드네임 **호랑이**. 매일 밤 전 임원(CMO·CTO 등) 워크플로우의 오류·병목을 **cross-repo**(외부 도구 `ai-slide-video-factory` 포함)로 수집 → **Claude가 분석**해 "문제→원인→해결예정→대상repo" 개선 카드 작성 → 사이드바 `/self-improve`에서 **체크박스 일괄 승인** → CTO가 **repo별 병렬 코딩→merge→e2e→QA** → 결과를 MemoryEntry로 축적(자가개선).
+**확정**: 두뇌=Claude 전담(OpenAI 0), 범위=전 임원·cross-repo, 수집=도구 repo 로그/실행기록+사장님 수동제보, 승인=일괄, 실행기=Native Orchestration(**ACR 은퇴 확정, 미사용**).
+**산출물**: `docs/TIGER_SELF_IMPROVE_SPEC.md`(1,257줄). subagent team workflow 6병렬 설계(registry/collector/brain/ui/cto/safety)→메인 종합. 실코드 기반(타입·경로·함수명 검증). 신규 4개(레지스트리·수집기·night-bpr-loop 본체·self-improve 페이지), 핵심파일 55개, **미해결 질문 23개**(SPEC 말미) — 로그 경로 미확정/repo_path 필드 부재/NocoBase 컬렉션 존재여부/Claude CLI 이식방식/야간잡 시각/분석모델 등.
+**남음**: 미해결 질문 핵심 결정 → M1(레지스트리+수집기, l5-core 순수함수+단위테스트)부터 착수. 아직 코드 변경 0(기획만).
+
 ## 🟢 2026-06-11 — Native Orchestration: 병렬+budget+사업별 모니터+결과회수 마감 (정적검증·데몬 드라이런 PASS)
 
 **무엇**: 이전 세션 남은 4종을 마감. (1) **다중 phase 병렬**: `CTOPhase.depends_on` + `cto-native/parallelize.ts`(`planPhaseLevels`, 8 tests) — 레벨 단위 `Promise.all` 병렬 실행 + **merge는 레벨 종료 후 순차**(`runPhaseToVerdict`/`finalizePhase` 분리, 동시 머지 충돌 방지). 미지정=직전 phase 암묵 의존(기존 순차 보존). (2) **budget 루프**: `cto-native/budget.ts`(`applyPoolOutcome`, 6 tests) + 데몬 `runIntent` 실루프(`pools.json` 추적 + `NativeRunSummary`→`planNextPoll`). (3) **사업별 모니터**: `ACRIntent.business_id` + `PhaseRunSink` + plugin `native_phase_runs` 테이블/`monitor:nativeRuns` 액션/ACL(src+dist 패치) + founder-ui 전용 뷰(Workflow로 구현, tsc 0+build). (4) **결과 회수**: phase 프롬프트에 "마지막 출력에 전체 보고서 본문" + stdout 전체 `output` 영속화.

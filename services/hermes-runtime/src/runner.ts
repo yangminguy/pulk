@@ -11,7 +11,20 @@ import {
   updateAgentTask,
   createProjectRoadmapEvent,
   deleteAgentTask,
+  createMemoryEntry,
+  fetchApprovedTigerProposals,
+  updateWorkflowImprovementProposalStatus,
 } from "./api/nocobase-client.js";
+import { runApprovedBatch } from "@l5/agent-runtime";
+import {
+  decodeTargetRef,
+  getImprovementTarget,
+  type TigerExecutiveRole,
+} from "@l5/core";
+import {
+  runTigerDispatchLoop,
+  type BatchRunResultShape,
+} from "./loops/tiger-dispatch-loop.js";
 import { runRepetitionAnalyzer } from "./tasks/repetition-analyzer.js";
 import { runApprovalChecker } from "./tasks/approval-checker.js";
 import { runDailyBriefGenerator } from "./tasks/daily-brief-generator.js";
@@ -183,6 +196,50 @@ export async function runCmoStrategyWatchLive() {
     createToolRequest: async (payload) =>
       createAgentTask({ ...payload, instruction_id: randomUUID() }),
   });
+}
+
+// 호랑이 일괄 승인분 → repo별 병렬 CTO 실행 + 학습축적. agent-runtime runApprovedBatch 주입.
+// 디스패치(코딩)는 승인분만 처리(승인 전 코딩 금지 게이트 보존 — fetchApprovedTigerProposals).
+const TIGER_EXECUTIVES = new Set(["CEO", "CMO", "CTO", "CFO", "CRO", "CPO", "COO"]);
+function toTigerExecutive(role: string | undefined): TigerExecutiveRole {
+  return role && TIGER_EXECUTIVES.has(role) ? (role as TigerExecutiveRole) : "CTO";
+}
+
+export async function runTigerDispatchLive() {
+  return runTigerDispatchLoop(
+    {},
+    {
+      fetchApproved: async () => {
+        const proposals = await fetchApprovedTigerProposals();
+        return proposals.map((p) => {
+          const targetId = decodeTargetRef(p.source_ref) ?? "";
+          const entry = targetId ? getImprovementTarget(targetId) : undefined;
+          return {
+            proposal_id: p.id,
+            source_ref: p.source_ref,
+            target_id: targetId,
+            executive: toTigerExecutive(entry?.owner),
+          };
+        });
+      },
+      runBatch: async (plan): Promise<BatchRunResultShape> => {
+        const res = await runApprovedBatch(plan);
+        return {
+          group_results: res.group_results.map((g) => ({
+            project_path: g.project_path,
+            card_ids: g.card_ids,
+            status: g.status,
+            reason: g.reason,
+          })),
+          exhausted_agents: res.exhausted_agents.map(String),
+        };
+      },
+      createMemory: (payload) => createMemoryEntry(payload),
+      patchProposal: (patch) =>
+        updateWorkflowImprovementProposalStatus(patch.proposal_id, patch.status),
+      pulkRoot: process.env.PULK_ROOT ?? process.cwd(),
+    },
+  );
 }
 
 export async function runTaskArchiverLive() {

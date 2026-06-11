@@ -1637,3 +1637,17 @@ L5 Business OS
 - [~] **R5 Viewtrap 자동화(심만)**: reference-adapters.ts(ReferenceSourceAdapter 인터페이스 + manualInputAdapter 폴백 + createReferenceAdapter 선택형). 실 스크래퍼/세션영속/자격증명/Playwright는 외부 의존이라 미구현(followup). 수동 입력 흐름 보존. 5 GREEN.
 - [x] **R6 전략패키지→Brief→렌더(버그수정+연결)**: generateVideoExecutionBrief의 buildVideoExecutionBrief 잘못된 시그니처 호출 수정(validate 통과) + 누락된 sendBriefToFactory 액션 신설(404 해소)+ACL+dist. transport는 기존 재사용/미설정 시 결정론 스텁. factory-handoff+video-execution-brief 30 GREEN. (slide/render brief 참조 보강은 followup)
 - [x] **R7 성과 재학습 루프(구조)**: performance-ingestion.ts(recordVideoPerformance)+completion-insight-extraction.ts(extractCompletionInsight, 임계값 폴백) + plugin(video_performance_metrics 테이블, recordVideoPerformance/getCompletedVideoInsights)+ACL+dist + UI(PerformanceBoard, completed 단계)+api. 8 GREEN. 성과 데이터는 수동 입력(외부 분석 자동연동은 followup).
+
+## 호랑이(Tiger) 자가개선 루프 — M1~M4 (2026-06-11, SPEC 작성 완료 · 구현 착수 전)
+
+> 정본 SPEC: **docs/TIGER_SELF_IMPROVE_SPEC.md**. 전 임원 워크플로우 오류·병목을 cross-repo 수집 → Claude 분석 → 사이드바 일괄승인 → CTO 병렬 코딩+e2e+QA → MemoryEntry 축적. 두뇌=Claude 전담(OpenAI 0), ACR 미사용(Native Orchestration).
+
+- [ ] **SPEC**: subagent team 6병렬 설계→종합. 1,257줄. 신규 4개, 핵심파일 55, 미해결 질문 23(SPEC 말미). ← 완료.
+> **M1~M4 코드 구현 완료 (2026-06-11, subagent team workflow).** 통합검증 직접 재확인: l5-core tsc0/tiger 66·cto-native 92 · hermes tsc0/21 · agent-runtime tsc0/29 · founder-ui tsc0. 잔여=런타임 배선(아래 ⚠️).
+
+- [x] **M1 레지스트리**: `l5-core/functions/tiger/{types,tool-registry,index}` — ImprovementTargetEntry+9도구(ACR 제외)+헬퍼. 10 GREEN.
+- [x] **M1 수집기**: `l5-core/.../tiger/collector.ts` `collectBottlenecks`(정규화·dedup·집계·priority·PII분리, never-throw) + `hermes-runtime/src/tiger/`(log-adapter·manual-reports·tiger-collector, cmo-strategy-watch 패턴). 타입 BottleneckCandidate. l5 22 + hermes 8 GREEN.
+- [x] **M2 호랑이 두뇌**: `l5-core/.../tiger/analysis.ts`(prepareCandidates·selectModel 적응형 opus/sonnet·buildTigerPrompt·parseTigerOutput·card매핑) + `hermes/src/api/claude-cli.ts`(spawn-agent 이식, OpenAI 0) + `night-bpr-loop.ts` 본체(후보→Claude→카드→BPRLog/WIP/Memory 저장+텔레그램). repo는 source_ref `tiger:<target_id>` 인코딩. l5 24 + hermes 6 GREEN.
+- [x] **M3 self-improve 페이지**: `founder-ui/src/app/self-improve/page.tsx`(체크박스+전체선택+일괄승인+문제/원인/해결/대상repo 배지) + api.ts(SelfImproveCard/bulkApproveSelfImprove 계약) + Sidebar NAV. tsc0.
+- [x] **M4 디스패치+학습+launchd**: `l5-core/.../tiger/proposal-to-task`·`phase-result-to-memory` + `cto-native/batch-plan`(repo별 ACRIntent 그룹핑+위상정렬) + `agent-runtime/.../batch-runner.ts`(코어수-2 세마포어 병렬) + `hermes/.../tiger-dispatch-loop.ts`(승인분만=게이트 보존) + gateway/runner 등록 + plist 2종 작성. l5 17 + agent-rt 6 + hermes 7 GREEN.
+- [ ] ⚠️ **런타임 배선(사장님/다음 세션)**: (a) **plugin-executive-monitor 백엔드 핸들러 2개**(`/api/monitor:selfImproveCards`·`bulkApproveSelfImprove`) 미구현 → UI가 빈배열. (b) NocoBase `bpr_logs`/`workflow_improvement_proposals` 컬렉션 실재 검증(없으면 정의 추가). (c) launchd `com.l5.hermes.{night-bpr-loop,tiger-dispatch}.plist` 토큰주입+`launchctl bootstrap`. (d) M1-A 도구 구조화 로그 심기. (e) 런타임 E2E.

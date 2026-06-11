@@ -18,3 +18,10 @@ export {
   buildPhaseExecutionPrompt,
   type BuildPhasePromptOptions,
 } from './phase-prompt.js';
+export {
+  runApprovedBatch,
+  type BatchRunResult,
+  type GroupRunResult,
+  type GroupStatus,
+  type BatchRunnerOverrides,
+} from './batch-runner.js';

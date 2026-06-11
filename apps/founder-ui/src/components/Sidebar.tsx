@@ -23,6 +23,7 @@ const NAV_TOOLS = [
   { href: '/memory', label: '지식', icon: 'database' },
   { href: '/control-room', label: 'Control Room', icon: 'sliders' },
   { href: '/tool-requests', label: 'Tool Requests', icon: 'wrench' },
+  { href: '/self-improve', label: '🐯 자가개선', icon: 'refresh' },
 ]
 
 function navItemStyle(active: boolean, hover: boolean): React.CSSProperties {

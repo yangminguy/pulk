@@ -10,3 +10,4 @@ export * from './recovery';
 export * from './parallelize';
 export * from './budget';
 export * from './verify-command';
+export * from './batch-plan';

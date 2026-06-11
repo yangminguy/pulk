@@ -118,6 +118,31 @@ export type ToolRequestItem = {
   acr_pr_url?: string | null
 }
 
+// 호랑이 자가개선 카드 — 호랑이 루프가 생성, UI는 표시/선택/전송만.
+// shape는 l5-core WorkflowImprovementProposal 도메인 계약의 평탄화 read 뷰.
+export type SelfImproveCard = {
+  proposal_id: string            // = WorkflowImprovementProposal.id (dispatch 키)
+  executive: string              // 'CMO' | 'CTO' | 'CFO' | 'CRO' | 'CEO' | 'COO' | ...
+  tool_label: string             // 레지스트리상 도구명 e.g. 'AI 슬라이드/영상 팩토리'
+  problem: string                // identified_bottleneck (현상)
+  root_cause: string | null      // 호랑이 분석 근본원인
+  proposed_fix: string           // proposed_improvement (해결예정)
+  effort_estimate: string | null // effort_to_implement e.g. '~2h', 'C2'
+  // cross-repo 타겟 — 자가개선은 다른 repo를 고치므로 카드가 명시적 절대경로를 들고 있어야 한다.
+  target_repo: string            // 절대경로
+  target_repo_label: string      // 표시용 e.g. 'ai-slide-video-factory' | 'pulk · services/youtube'
+  risk_level: 'D1' | 'D2'        // 자가개선은 D1~D2 고정
+  source: 'log_adapter' | 'founder_report'  // 수집 소스 배지
+  self_mod_status?: string | null  // null=미전송 | 'sent' | 'in_progress' | 'applied' | 'rejected'
+  created_at: string
+}
+
+export type BulkApproveResult = {
+  dispatched: Array<{ proposal_id: string; self_mod_task_id: string; status: 'sent' }>
+  // intent 게이트(보호영역 수정 시사)에 걸려 차단된 카드 — UI는 빨강 배지로 표시
+  blocked: Array<{ proposal_id: string; reason: string; denied_by?: string }>
+}
+
 // P2 — live agent status
 export type LiveStatusAgent = {
   task_id: string
@@ -904,6 +929,13 @@ export const api = {
       body: JSON.stringify({ project_id }),
     }).then(r => unwrap(r)),
 
+  // 풀링 콘텐츠 주제 탐색 보고서(workflow v2) — 실데이터 기반 현상→욕구 주제 4~5개.
+  cmoProposePullingReport: (project_id: string) =>
+    request<{ data: { ok: boolean; data: Record<string, unknown> } }>('/api/cmo:proposePullingReport', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)),
+
   // CMO v3 — stage guides: { [status]: { label, focus } } for StepProgressRail.
   cmoGetStageGuides: () =>
     request<{ data: { ok: boolean; data: { guides: Record<string, { label: string; focus: string }> } } }>('/api/cmo:getStageGuides', {
@@ -1256,6 +1288,22 @@ export const api = {
     )
       .then(r => unwrap(r) as ToolRequestItem[])
       .catch(() => [] as ToolRequestItem[]),
+
+  // 호랑이 자가개선 카드 목록 (미해결 status만 default).
+  listSelfImproveCards: (status?: string) =>
+    request<{ data: { ok: boolean; data: SelfImproveCard[] } }>(
+      `/api/monitor:selfImproveCards${status && status !== 'all' ? `?status=${encodeURIComponent(status)}` : ''}`
+    )
+      .then(r => unwrap(r) as SelfImproveCard[])
+      .catch(() => [] as SelfImproveCard[]),
+
+  // 일괄 승인 → CTO. 선택된 모든 카드를 target_repo와 함께 한 번에 dispatch.
+  // 단건 sendToCTO와 달리 proposal_id + target_repo 쌍을 배열로 보낸다(cross-repo 필수).
+  bulkApproveSelfImprove: (items: Array<{ proposal_id: string; target_repo: string }>) =>
+    request<{ data: { ok: boolean; data: BulkApproveResult } }>('/api/monitor:bulkApproveSelfImprove', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    }).then(r => unwrap(r)) as Promise<BulkApproveResult>,
 
   executeTask: (task_id: string) =>
     request<{ data: { ok: boolean; data: { task_id: string; status: string; approval_required: boolean; output: Record<string, unknown>; handoff: Record<string, unknown> } } }>('/api/agent:executeTask', {
