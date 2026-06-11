@@ -530,6 +530,34 @@ export type ThumbnailCandidate = {
   click_logic: string
   used_insights: string[]
 }
+// 썸네일 9개 A/B(PRD cmo-thumbnail-ab-automation) — 매트릭스 후보 + 심리분석.
+export type ThumbnailMatrixCandidate = {
+  candidate_id: string
+  slot: string                 // A~I
+  image_strategy: 'zoom' | 'evidence' | 'empathy'
+  text_strategy: 'gain' | 'loss_avoidance' | 'curiosity'
+  click_hypothesis: string
+  thumbnail_text: string
+  image_composition: string
+  design_notes: string
+}
+export type ThumbnailPsychologyAnalysis = {
+  candidate_id: string
+  text_structure: string
+  text_psychology: string
+  image_association: string
+  combined_click_psychology: string
+  expected_viewer_question: string
+  expected_viewer_desire: string
+  expected_viewer_fear: string
+  click_reason_clarity_score: number
+  title_text_image_alignment_score: number
+}
+export type ThumbnailMatrixResult = {
+  candidates: ThumbnailMatrixCandidate[]
+  analyses: ThumbnailPsychologyAnalysis[]
+  source: 'llm' | 'fallback'
+}
 export type ThumbnailPlanDraft = {
   content_id: string
   thumbnail_direction: string
@@ -961,6 +989,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ project_id, candidate_id }),
     }).then(r => unwrap(r)) as Promise<{ selected: ThumbnailCandidate; status: string | null }>,
+
+  // 썸네일 9개 A/B(PRD) — 영상 정보 → 9개 매트릭스 후보 + 후보별 클릭 심리분석(G1 승인 대상).
+  cmoProposeThumbnailMatrix: (input: {
+    project_id: string
+    title: string
+    main_click_reason: string
+    target_audience?: string
+    target_problem?: string
+    target_desire?: string
+    target_loss_to_avoid?: string
+    deterministic?: boolean
+  }) =>
+    request<{ data: { ok: boolean; data: ThumbnailMatrixResult } }>('/api/cmo:proposeThumbnailMatrix', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }).then(r => unwrap(r)) as Promise<ThumbnailMatrixResult>,
 
   // CMO 제목 디벨롭 8단계 — Viewtrap 레퍼런스 2개 입력 → 교차조합 → 2~8단계 → 평가 → title_development 카드.
   // 레퍼런스 검증 실패 시 { ok:false, failed_references } 반환(추가 레퍼런스 요청). 도메인 로직은 서버(l5-core).

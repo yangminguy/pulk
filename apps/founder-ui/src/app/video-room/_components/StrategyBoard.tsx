@@ -7,6 +7,7 @@ import { Intro30sCard, CardShell } from './cards'
 import StageGate from './StageGate'
 import PullingPlanBoard from './PullingPlanBoard'
 import ThumbnailPlanBoard from './ThumbnailPlanBoard'
+import ThumbnailMatrixBoard from './ThumbnailMatrixBoard'
 import TitleDevelopmentBoard from './TitleDevelopmentBoard'
 import ProductDefinitionBoard from './ProductDefinitionBoard'
 import KeyContentReportBoard from './KeyContentReportBoard'
@@ -140,6 +141,13 @@ export default function StrategyBoard({
       <div style={{ marginTop: 16 }}>
         <StageGate title="썸네일 상세 기획 (v3 · 후보 택1)" state={blockState({ from: 'thumbnail_pattern_extraction', to: 'hook_draft_approval' }, currentStatus)}>
           <ThumbnailPlanBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
+        </StageGate>
+      </div>
+
+      {/* 썸네일 9개 A/B 보드 — thumbnail_pattern_extraction 확장(9개 매트릭스 + 심리분석, G1 승인) */}
+      <div style={{ marginTop: 16 }}>
+        <StageGate title="썸네일 9개 A/B (매트릭스 · 클릭 심리분석)" state={blockState({ from: 'thumbnail_pattern_extraction', to: 'hook_draft_approval' }, currentStatus)}>
+          <ThumbnailMatrixBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
         </StageGate>
       </div>
 
