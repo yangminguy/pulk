@@ -19,9 +19,21 @@ export interface VideoStats {
   videoId: string;
   title: string;
   channelTitle: string;
+  channelId: string;
   viewCount: number;
   likeCount: number | null;
   commentCount: number | null;
+}
+
+/** channels.list 통계 — 채널 규모 대비 영상 초과성과(outlier) 보정용. */
+export interface ChannelStats {
+  channelId: string;
+  channelTitle: string;
+  subscriberCount: number | null;
+  viewCount: number;
+  videoCount: number;
+  /** 영상당 평균 조회수(viewCount / videoCount, videoCount=0이면 0). */
+  avgViewsPerVideo: number;
 }
 
 export interface SearchOptions {
@@ -29,6 +41,15 @@ export interface SearchOptions {
   order?: 'relevance' | 'viewCount' | 'date' | 'rating';
   regionCode?: string;
   relevanceLanguage?: string;
+  /** RFC3339 (e.g. 2026-05-28T00:00:00Z) — 이 시각 이후 게시 영상만. 미지정 시 전체(하위호환). */
+  publishedAfter?: string;
+}
+
+/** search.list type=channel 결과 — 채널 우선 발굴용. */
+export interface ChannelSearchResult {
+  channelId: string;
+  title: string;
+  description: string;
 }
 
 export interface VideoDuration {
@@ -68,9 +89,10 @@ export interface ChannelAnalyticsReport {
 
 interface RawSearchResponse {
   items?: {
-    id?: { videoId?: string };
+    id?: { videoId?: string; channelId?: string };
     snippet?: {
       title?: string;
+      description?: string;
       channelTitle?: string;
       publishedAt?: string;
       thumbnails?: Record<string, { url: string; width?: number; height?: number }>;
@@ -81,8 +103,16 @@ interface RawSearchResponse {
 interface RawVideosResponse {
   items?: {
     id?: string;
-    snippet?: { title?: string; channelTitle?: string };
+    snippet?: { title?: string; channelTitle?: string; channelId?: string };
     statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
+  }[];
+}
+
+interface RawChannelsResponse {
+  items?: {
+    id?: string;
+    snippet?: { title?: string };
+    statistics?: { subscriberCount?: string; viewCount?: string; videoCount?: string; hiddenSubscriberCount?: boolean };
   }[];
 }
 
@@ -105,6 +135,18 @@ interface RawCommentThreadsResponse {
 interface RawAnalyticsResponse {
   columnHeaders?: { name: string; columnType: string; dataType: string }[];
   rows?: (string | number)[][];
+}
+
+function mapVideoSearchItems(data: RawSearchResponse): SearchResult[] {
+  return (data.items ?? [])
+    .filter((item) => item.id?.videoId)
+    .map((item) => ({
+      videoId: item.id!.videoId!,
+      title: item.snippet?.title ?? '',
+      channelTitle: item.snippet?.channelTitle ?? '',
+      publishedAt: item.snippet?.publishedAt ?? '',
+      thumbnails: item.snippet?.thumbnails ?? {},
+    }));
 }
 
 // ---- Client ----
@@ -132,17 +174,46 @@ export class YouTubeClient {
     if (opts.order) params.set('order', opts.order);
     if (opts.regionCode) params.set('regionCode', opts.regionCode);
     if (opts.relevanceLanguage) params.set('relevanceLanguage', opts.relevanceLanguage);
+    if (opts.publishedAfter) params.set('publishedAfter', opts.publishedAfter);
 
     const data = (await this.getJson(`${DATA_API}/search?${params}`)) as RawSearchResponse;
+    return mapVideoSearchItems(data);
+  }
+
+  /** search.list type=channel (API key) — 채널 우선 발굴. 규모/조회수는 getChannelStats로 후속 조회. */
+  async searchChannels(query: string, maxResults = 10): Promise<ChannelSearchResult[]> {
+    const params = new URLSearchParams({
+      part: 'snippet',
+      q: query,
+      type: 'channel',
+      maxResults: String(maxResults),
+      key: this.creds.api_key,
+    });
+    const data = (await this.getJson(`${DATA_API}/search?${params}`)) as RawSearchResponse;
     return (data.items ?? [])
-      .filter((item) => item.id?.videoId)
+      .filter((item) => item.id?.channelId)
       .map((item) => ({
-        videoId: item.id!.videoId!,
+        channelId: item.id!.channelId!,
         title: item.snippet?.title ?? '',
-        channelTitle: item.snippet?.channelTitle ?? '',
-        publishedAt: item.snippet?.publishedAt ?? '',
-        thumbnails: item.snippet?.thumbnails ?? {},
+        description: item.snippet?.description ?? '',
       }));
+  }
+
+  /**
+   * search.list channelId+order=viewCount (API key) — 채널의 역대 상위 영상 id/제목.
+   * 조회수 등 statistics 결합은 호출부 몫(getVideoStats와 조합).
+   */
+  async getChannelTopVideos(channelId: string, maxResults = 10): Promise<SearchResult[]> {
+    const params = new URLSearchParams({
+      part: 'snippet',
+      channelId,
+      type: 'video',
+      order: 'viewCount',
+      maxResults: String(maxResults),
+      key: this.creds.api_key,
+    });
+    const data = (await this.getJson(`${DATA_API}/search?${params}`)) as RawSearchResponse;
+    return mapVideoSearchItems(data);
   }
 
   /** videos.list (API key) — statistics for up to N ids, chunked by 50. */
@@ -163,9 +234,40 @@ export class YouTubeClient {
           videoId: item.id,
           title: item.snippet?.title ?? '',
           channelTitle: item.snippet?.channelTitle ?? '',
+          channelId: item.snippet?.channelId ?? '',
           viewCount: Number(item.statistics?.viewCount ?? 0),
           likeCount: item.statistics?.likeCount != null ? Number(item.statistics.likeCount) : null,
           commentCount: item.statistics?.commentCount != null ? Number(item.statistics.commentCount) : null,
+        });
+      }
+    }
+    return results;
+  }
+
+  /** channels.list (API key) — 채널 규모(구독자/총조회/영상수), chunked by 50. */
+  async getChannelStats(channelIds: string[]): Promise<ChannelStats[]> {
+    const results: ChannelStats[] = [];
+    const uniq = [...new Set(channelIds.filter((id) => id))];
+    for (let i = 0; i < uniq.length; i += STATS_CHUNK_SIZE) {
+      const chunk = uniq.slice(i, i + STATS_CHUNK_SIZE);
+      if (chunk.length === 0) continue;
+      const params = new URLSearchParams({
+        part: 'statistics,snippet',
+        id: chunk.join(','),
+        key: this.creds.api_key,
+      });
+      const data = (await this.getJson(`${DATA_API}/channels?${params}`)) as RawChannelsResponse;
+      for (const item of data.items ?? []) {
+        if (!item.id) continue;
+        const viewCount = Number(item.statistics?.viewCount ?? 0);
+        const videoCount = Number(item.statistics?.videoCount ?? 0);
+        results.push({
+          channelId: item.id,
+          channelTitle: item.snippet?.title ?? '',
+          subscriberCount: item.statistics?.subscriberCount != null ? Number(item.statistics.subscriberCount) : null,
+          viewCount,
+          videoCount,
+          avgViewsPerVideo: videoCount > 0 ? Math.round(viewCount / videoCount) : 0,
         });
       }
     }

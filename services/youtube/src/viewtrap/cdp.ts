@@ -58,6 +58,15 @@ export interface CdpPage {
   screenshot(): Promise<string>;
   /** raw 확장: 이 페이지가 속한 창을 화면 밖으로. */
   moveOffscreen(): Promise<void>;
+  /** raw 확장: 이 페이지 창을 화면 안(normal)으로 + 앞으로. viewtrap 검색의 trusted 키 입력용. */
+  bringOnscreen(): Promise<void>;
+  /**
+   * raw 확장: 요소를 찾아 **trusted 마우스 클릭**(Input.dispatchMouseEvent). findExpr는 요소를 반환하는
+   * JS 식(예: `[...document.querySelectorAll('button')].find(b=>/확인/.test(b.innerText))`).
+   * viewtrap의 검색(돋보기)·확인 모달·노출확률 버튼은 합성 click()을 무시하고 trusted 클릭만 받는다(실측).
+   * 요소 없거나 보이지 않으면 false.
+   */
+  trustedClick?(findExpr: string): Promise<boolean>;
 }
 
 export interface CdpContext {
@@ -81,7 +90,7 @@ type WsCtor = new (url: string) => WsLike;
 interface WsLike {
   send(data: string): void;
   close(): void;
-  addEventListener(type: 'open' | 'message' | 'error', cb: (ev: { data?: string }) => void): void;
+  addEventListener(type: 'open' | 'message' | 'error' | 'close', cb: (ev: { data?: string }) => void): void;
 }
 
 interface CdpTargetInfo {
@@ -115,11 +124,16 @@ function thisModuleUrl(): string | null {
 }
 
 /** 한 page 타겟의 WebSocket 세션. id 매칭으로 명령/응답 짝을 맞춘다. */
+/** CDP RPC 기본 타임아웃. 응답 유실(탭 파괴·네비게이션 중 evaluate·ws 단절) 시
+ * pending이 영원히 안 풀려 상위 워크플로우 전체가 행되는 사고 방지(2026-06-11 실측). */
+export const CDP_RPC_TIMEOUT_MS = 60_000;
+
 class RawCdpConnection {
   private ws: WsLike;
   private id = 0;
-  private pending = new Map<number, (msg: Record<string, unknown>) => void>();
+  private pending = new Map<number, { res: (msg: Record<string, unknown>) => void; rej: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   private opened: Promise<void>;
+  private closed = false;
 
   constructor(WsImpl: WsCtor, wsUrl: string) {
     this.ws = new WsImpl(wsUrl);
@@ -131,26 +145,56 @@ class RawCdpConnection {
       if (!ev.data) return;
       const m = JSON.parse(ev.data) as { id?: number };
       if (typeof m.id === 'number' && this.pending.has(m.id)) {
-        const cb = this.pending.get(m.id)!;
+        const p = this.pending.get(m.id)!;
         this.pending.delete(m.id);
-        cb(m as Record<string, unknown>);
+        clearTimeout(p.timer);
+        p.res(m as Record<string, unknown>);
       }
     });
+    // ws가 끊기면 대기 중인 모든 RPC를 즉시 reject(무한 대기 금지).
+    const failAll = (why: string) => {
+      this.closed = true;
+      for (const [, p] of this.pending) {
+        clearTimeout(p.timer);
+        p.rej(new Error(`CDP 연결 종료(${why}) — RPC 응답 불가`));
+      }
+      this.pending.clear();
+    };
+    this.ws.addEventListener('close', () => failAll('close'));
+    this.ws.addEventListener('error', () => failAll('error'));
   }
 
   async ready(): Promise<void> {
     await this.opened;
   }
 
-  send(method: string, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  send(
+    method: string,
+    params: Record<string, unknown> = {},
+    timeoutMs: number = CDP_RPC_TIMEOUT_MS,
+  ): Promise<Record<string, unknown>> {
+    if (this.closed) return Promise.reject(new Error('CDP 연결이 이미 종료됨'));
     const i = ++this.id;
-    return new Promise((res) => {
-      this.pending.set(i, res);
-      this.ws.send(JSON.stringify({ id: i, method, params }));
+    return new Promise((res, rej) => {
+      const timer = setTimeout(() => {
+        if (this.pending.has(i)) {
+          this.pending.delete(i);
+          rej(new Error(`CDP RPC 타임아웃(${timeoutMs}ms): ${method}`));
+        }
+      }, timeoutMs);
+      this.pending.set(i, { res, rej, timer });
+      try {
+        this.ws.send(JSON.stringify({ id: i, method, params }));
+      } catch (e) {
+        clearTimeout(timer);
+        this.pending.delete(i);
+        rej(e instanceof Error ? e : new Error(String(e)));
+      }
     });
   }
 
   close(): void {
+    this.closed = true;
     try {
       this.ws.close();
     } catch {
@@ -308,6 +352,40 @@ class RawCdpPage implements CdpPage {
         bounds: { windowState: 'minimized' },
       });
     }
+  }
+
+  async bringOnscreen(): Promise<void> {
+    const win = (await this.conn.send('Browser.getWindowForTarget')) as {
+      result?: { windowId?: number };
+    };
+    const wid = win.result?.windowId;
+    if (wid) {
+      // 화면 안(normal)으로 복귀 + 앞으로. viewtrap 검색은 trusted 키 입력(Input.dispatchKeyEvent)이
+      // 활성 창을 요구하므로 minimized/화면밖에선 검색이 트리거되지 않는다(실측).
+      await this.conn.send('Browser.setWindowBounds', {
+        windowId: wid,
+        bounds: { left: 80, top: 60, width: 1500, height: 950, windowState: 'normal' },
+      });
+      await this.conn.send('Page.bringToFront').catch(() => undefined);
+    }
+  }
+
+  async trustedClick(findExpr: string): Promise<boolean> {
+    // 요소를 찾아 중심 좌표 계산(+ 화면 안으로 스크롤). 보이지 않으면 null.
+    const rectJson = await this.evalExpr<string | null>(`(() => {
+      const el = (${findExpr});
+      if (!el) return null;
+      try { el.scrollIntoView({ block: 'center', inline: 'center' }); } catch (e) {}
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) return null;
+      return JSON.stringify({ x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) });
+    })()`);
+    if (!rectJson) return false;
+    const { x, y } = JSON.parse(rectJson) as { x: number; y: number };
+    await this.conn.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    await this.conn.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+    await this.conn.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+    return true;
   }
 
   /** 내부: locator가 식 평가를 위임받는다. */
@@ -481,18 +559,23 @@ const FIRST_ROW_EXPR =
  * "확인" 버튼을 클릭한다. 모달 등장까지 잠깐 폴링. clickExposureProbability 의 확인 패턴 재사용.
  * 클릭했으면 true, 모달이 끝내 안 뜨면 false(이미 검색이 시작됐거나 모달 없는 흐름).
  */
+// 확인 버튼 식: '취소'가 아닌 '확인' 버튼.
+const CONFIRM_BTN_EXPR =
+  `[...document.querySelectorAll('button')].find((b)=>{const t=(b.innerText||'').trim();return t==='확인'||(/확인/.test(t)&&!/취소/.test(t));})`;
+
 async function clickSearchConfirm(page: CdpPage, deadlineMs: number): Promise<boolean> {
   const deadline = Date.now() + deadlineMs;
   while (Date.now() < deadline) {
-    const confirmed = await page.evalExpr<string>(`(() => {
-      const up = /이용횟수가 차감|검색하시겠습니까/.test(document.body.innerText || '');
-      if (!up) return 'NO_MODAL';
-      const ok = [...document.querySelectorAll('button')].find((b) => (b.innerText || '').trim() === '확인');
-      if (!ok) return 'NO_OK';
-      ok.click();
-      return 'CONFIRMED';
-    })()`);
-    if (confirmed === 'CONFIRMED') return true;
+    const modalUp = await page.evalExpr<boolean>(
+      `/이용횟수가 차감|검색하시겠습니까|진행하시겠습니까/.test(document.body.innerText || '')`,
+    );
+    if (modalUp) {
+      // 확인 버튼은 **trusted 마우스 클릭**만 받는다(합성 click() 무시 — 실측). 폴백은 합성.
+      const ok = page.trustedClick
+        ? await page.trustedClick(CONFIRM_BTN_EXPR)
+        : await page.evalExpr<boolean>(`(()=>{const b=(${CONFIRM_BTN_EXPR});if(!b)return false;b.click();return true;})()`);
+      if (ok) return true;
+    }
     await page.waitForTimeout(400);
   }
   return false;
@@ -580,22 +663,21 @@ export async function scrapeVideoSearchTable(
     await page.fill(SEARCH_INPUT, query);
     await page.waitForTimeout(300);
 
-    // ② 검색 실행: Enter(trusted) → 안 먹으면 검색 버튼(bg-primary-300) 클릭.
-    await page.press(SEARCH_INPUT, 'Enter');
-    await page.waitForTimeout(500);
+    // ② 검색 실행: **돋보기 버튼(bg-primary-300) trusted 마우스 클릭**. Enter는 viewtrap이 무시한다(실측).
+    const MAGNIFIER_EXPR =
+      `[...document.querySelectorAll('button')].find((x)=>/bg-primary-300/.test((x.className&&x.className.toString&&x.className.toString())||''))`;
+    if (page.trustedClick) {
+      await page.trustedClick(MAGNIFIER_EXPR);
+    } else {
+      await page.press(SEARCH_INPUT, 'Enter'); // 폴백(fake page)
+    }
+    await page.waitForTimeout(800);
 
-    // ③ 확인 모달 대기 → "확인" 클릭. 모달이 안 떴으면 검색 버튼을 눌러 다시 시도.
-    let confirmed = await clickSearchConfirm(page, 4_000);
-    if (!confirmed) {
-      const clickedBtn = await page.evalExpr<boolean>(`(() => {
-        const b = [...document.querySelectorAll('button')].find((x) =>
-          /bg-primary-300/.test((x.className && x.className.toString && x.className.toString()) || ''),
-        );
-        if (!b) return false;
-        b.click();
-        return true;
-      })()`);
-      if (clickedBtn) confirmed = await clickSearchConfirm(page, 4_000);
+    // ③ 확인 모달 대기 → "확인" trusted 클릭. 안 떴으면 돋보기를 다시 눌러 재시도.
+    let confirmed = await clickSearchConfirm(page, 6_000);
+    if (!confirmed && page.trustedClick) {
+      await page.trustedClick(MAGNIFIER_EXPR);
+      confirmed = await clickSearchConfirm(page, 6_000);
     }
 
     // ④ 결과 갱신 대기: 확인 후 ~20초 뒤 첫 행이 바뀜(최대 resultWaitMs). 모달이 없었어도(즉시 검색)
@@ -617,6 +699,44 @@ export async function scrapeVideoSearchTable(
     }));
   });
   return parseVideoSearchRows(raws);
+}
+
+/**
+ * 검색을 트리거하지 않고, **사장님이 이미 viewtrap에 로드해둔 테이블**의 노출확률을 수집한다.
+ * (viewtrap은 코드 검색 트리거가 신용게이트로 막힘 — rules/50. 그래서 로드된 테이블만 읽는다.)
+ *   현재 테이블 파싱 → 노출확률 헤더 버튼 클릭 → 충분히 대기(기본 50초, "40초+ 기다려야 뜬다") → 수집.
+ * videoId별 노출확률 등급만 반환(발굴 풀에 매칭 병합용). 탭/테이블 없으면 빈 배열(graceful).
+ */
+export async function scrapeLoadedViewtrapExposure(
+  session: CdpSession,
+  options: { waitMs?: number } = {},
+): Promise<Array<{ videoId: string; exposure: ViewtrapGrade }>> {
+  const page = findPage(session.context, 'app.viewtrap.com');
+  if (!page) return [];
+  const hasTable = await page
+    .waitForSelector(TABLE_ROWS, { timeout: 8_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!hasTable) return [];
+
+  // 현재 로드된 테이블을 그대로 파싱(검색 트리거 없음).
+  const raws = await page.evaluate((): RawTableRow[] => {
+    const rows = Array.from(document.querySelectorAll('table tbody tr'));
+    return rows.map((tr) => ({
+      cells: Array.from(tr.querySelectorAll('td')).map((td) =>
+        (td as HTMLElement).innerText.replace(/\s+/g, ' ').trim(),
+      ),
+      thumbnailSrc: tr.querySelector('img')?.getAttribute('src') ?? null,
+    }));
+  });
+  const rows = parseVideoSearchRows(raws);
+  if (rows.length === 0) return [];
+
+  // 노출확률 버튼 클릭 + 긴 대기(40초+). clickExposureProbability가 videoId별로 채워준다.
+  const withExposure = await clickExposureProbability(session, rows, { waitMs: options.waitMs ?? 50_000 });
+  return withExposure
+    .filter((r) => r.exposure !== null)
+    .map((r) => ({ videoId: r.videoId, exposure: r.exposure as ViewtrapGrade }));
 }
 
 export interface ExposureClickOptions {
@@ -648,29 +768,25 @@ export async function clickExposureProbability(
 
   const waitMs = options.waitMs ?? 35_000;
 
-  // ① 헤더 노출확률 버튼 클릭. 없으면(이미 분석됨/다른 레이아웃) 폴링만 시도.
-  const clicked = await page.evalExpr<string>(`(() => {
-    const ths = [...document.querySelectorAll('table thead th')];
-    const th = ths[${EXPOSURE_CELL_NTH - 1}];
-    const btn = th && th.querySelector('button');
-    if (!btn) return 'NO_HEADER_BTN';
-    btn.click();
-    return 'CLICKED';
-  })()`);
+  // ① 헤더 노출확률 버튼 **trusted 마우스 클릭**(합성 click() 무시 — 실측). 없으면 폴링만.
+  const HEADER_BTN_EXPR = `(()=>{const th=[...document.querySelectorAll('table thead th')][${EXPOSURE_CELL_NTH - 1}];return th?th.querySelector('button'):null;})()`;
+  const clicked = page.trustedClick
+    ? await page.trustedClick(HEADER_BTN_EXPR)
+    : await page.evalExpr<boolean>(`(()=>{const b=${HEADER_BTN_EXPR};if(!b)return false;b.click();return true;})()`);
 
-  if (clicked === 'CLICKED') {
-    // ② 확인 모달의 "확인" 버튼 클릭(모달 등장까지 잠깐 폴링).
-    const confirmDeadline = Date.now() + 6_000;
+  if (clicked) {
+    // ② 확인 모달의 "확인" 버튼 trusted 클릭(모달 등장까지 잠깐 폴링).
+    const confirmDeadline = Date.now() + 8_000;
     while (Date.now() < confirmDeadline) {
-      const confirmed = await page.evalExpr<string>(`(() => {
-        const modal = document.querySelector('[role="dialog"], [class*="modal"]');
-        if (!modal) return 'NO_MODAL';
-        const ok = [...modal.querySelectorAll('button')].find((b) => /확인/.test(b.innerText || ''));
-        if (!ok) return 'NO_OK';
-        ok.click();
-        return 'CONFIRMED';
-      })()`);
-      if (confirmed === 'CONFIRMED') break;
+      const modalUp = await page.evalExpr<boolean>(
+        `!!document.querySelector('[role="dialog"], [class*="modal"], [class*="Modal"]') || /진행하시겠습니까|차감/.test(document.body.innerText||'')`,
+      );
+      if (modalUp) {
+        const ok = page.trustedClick
+          ? await page.trustedClick(CONFIRM_BTN_EXPR)
+          : await page.evalExpr<boolean>(`(()=>{const b=(${CONFIRM_BTN_EXPR});if(!b)return false;b.click();return true;})()`);
+        if (ok) break;
+      }
       await page.waitForTimeout(400);
     }
   }
