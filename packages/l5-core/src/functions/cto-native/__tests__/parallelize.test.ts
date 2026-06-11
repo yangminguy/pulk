@@ -55,6 +55,12 @@ describe('planPhaseLevels', () => {
     expect(names(levels)).toEqual([['root'], ['z', 'a']]);
   });
 
+  it('명시적 depends_on:[] 는 선행 없음(root) → 동시 실행 가능', () => {
+    // 둘 다 []로 명시 → 같은 레벨(병렬). 미지정과 달리 직전 phase에 암묵 의존하지 않음.
+    const levels = planPhaseLevels([phase('A', []), phase('B', [])]);
+    expect(names(levels)).toEqual([['A', 'B']]);
+  });
+
   it('미존재 의존은 무시(graceful) — 의존 없는 것으로 취급', () => {
     const levels = planPhaseLevels([phase('A', ['ghost']), phase('B', ['A'])]);
     expect(names(levels)).toEqual([['A'], ['B']]);

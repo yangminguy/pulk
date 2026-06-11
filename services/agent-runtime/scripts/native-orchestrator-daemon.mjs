@@ -239,6 +239,25 @@ async function main() {
   console.error('[native-daemon] 시작.');
   await ensureQueueDir();
 
+  // 고아 작업 복구: 데몬이 재시작되면 직전에 'running'이던 intent는 아무도 안 집는
+  // 미아가 된다(메인 루프는 'pending'만 처리). 부팅 시 'running'→'pending'으로 되돌려 재개.
+  try {
+    const boot = await readQueue();
+    let recovered = 0;
+    for (const item of boot) {
+      if (item.status === 'running') {
+        item.status = 'pending';
+        recovered += 1;
+      }
+    }
+    if (recovered > 0) {
+      await writeQueue(boot);
+      console.error(`[native-daemon] 고아 작업 ${recovered}건 복구(running→pending).`);
+    }
+  } catch (err) {
+    console.error('[native-daemon] 고아 복구 실패(무시):', err?.message ?? err);
+  }
+
   const mods = await loadModules();
   console.error('[native-daemon] 모듈 로드 완료. 큐 폴링 시작.');
 

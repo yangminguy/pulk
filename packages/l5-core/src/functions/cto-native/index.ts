@@ -9,3 +9,4 @@ export * from './fallback';
 export * from './recovery';
 export * from './parallelize';
 export * from './budget';
+export * from './verify-command';

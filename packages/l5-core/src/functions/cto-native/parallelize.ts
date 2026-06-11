@@ -25,9 +25,12 @@ export function planPhaseLevels(phases: CTOPhase[]): CTOPhase[][] {
   });
 
   // 각 phase의 유효 의존 인덱스 집합.
+  //  - depends_on 미지정(undefined) → 직전 phase에 암묵 의존(기존 순차 보존).
+  //  - depends_on=[](명시적 빈 배열) → 선행 없음(root) → 같은 레벨로 병렬 가능.
+  //  - depends_on=[...] → 그 phase들에 의존.
   const deps: number[][] = phases.map((p, i) => {
     const raw =
-      p.depends_on && p.depends_on.length > 0
+      p.depends_on !== undefined
         ? p.depends_on
         : i > 0
           ? [phases[i - 1].name]

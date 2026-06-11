@@ -65,3 +65,17 @@ phase별 worktree 격리 + phase.runtime(claude/codex/antigravity) CLI를 직접
 2. **데몬 plist env 주입 + 등록** — `NATIVE_ORCHESTRATION=on`, `NOCOBASE_URL`, `NOCOBASE_TOKEN`(시크릿 → PlistBuddy로 주입, 커밋 금지) → `~/Library/LaunchAgents/`로 복사 → `launchctl bootstrap gui/501 ...`. TCC: `~/Desktop` 접근 차단 가능 → 데몬+dist를 레포 밖(`~/.l5/`) 복사본으로 운전 검토(rule 50 CDP 선례).
 3. **라이브 스모크** — `~/.l5/native/queue.json`에 작은 intent 1건 → 데몬 실행 → `native_phase_runs` 행 + 모니터 사업별 표시 + phase output 전체 회수 확인.
 4. ACR 동등성 확인 후 `dispatchToACR` 경로 단계적 은퇴.
+
+## 실전 개선 적용 (2026-06-11, 썸네일 PRD 구현 중 발견)
+
+도그푸드에서 나온 점검 결과를 코드/정책에 반영:
+
+**코드 개선(적용·테스트 완료):**
+1. **verify 견고화** — `buildVerifyCommand`(cto-native): verify_command는 정확한 테스트 파일 경로 대신 **디렉토리/패키지 전체**로 jest를 돌린다. (실전 버그: 파일명 하드코딩 → 에이전트가 다르게 명명 → "0 matches"로 멀쩡한 작업 held.)
+2. **Agy 대타(3-풀 로테이션)** — `fallback.ts`: claude→codex→antigravity→claude. claude+codex 동시 소진 시 agy로 넘겨 idle 방지. 코드작업 agy 위험은 verify_command 게이트가 차단하므로 안전.
+3. **명시적 병렬** — `parallelize.ts`: `depends_on: []`(빈 배열)=선행 없음(root, 병렬 가능), `undefined`=직전 phase 암묵 의존(기존 순차 보존). 진짜 독립 작업을 깔끔히 동시 실행.
+4. **고아 작업 복구** — 데몬 부팅 시 'running'으로 멈춘 intent를 'pending'으로 되돌려 재개(데몬 재시작에도 미아 없음).
+
+**운영 정책(코드 변경 없음):**
+5. **NocoBase 민감 배관(dist 손패치)은 CTO 직접 담당** — 플러그인 dist는 빌드 스크립트 없는 손패치라 CLI에 부적합. 메인 CTO가 직접 패치(native_phase_runs·proposeThumbnailMatrix 선례).
+6. **정밀·핵심 코드는 claude 우선 배정**(a29ed2a 라우팅 유지) — codex는 느리고 동명파일 오수정 이력 → 병렬 짐 나눔 보조로만.

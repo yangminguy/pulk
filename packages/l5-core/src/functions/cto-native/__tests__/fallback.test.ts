@@ -5,8 +5,8 @@ describe('recommendFallbackAgent', () => {
     expect(recommendFallbackAgent('claude-code')).toBe('codex');
   });
 
-  it('codex → claude-code', () => {
-    expect(recommendFallbackAgent('codex')).toBe('claude-code');
+  it('codex → antigravity (3-풀 로테이션)', () => {
+    expect(recommendFallbackAgent('codex')).toBe('antigravity');
   });
 
   it('antigravity → claude-code', () => {
@@ -14,17 +14,17 @@ describe('recommendFallbackAgent', () => {
   });
 });
 
-describe('getFallbackChain', () => {
-  it('claude-code 체인: [codex] — codex→claude-code는 시작점 재방문이므로 중단', () => {
-    // claude-code(visited) → codex → claude-code(visited, stop)
-    expect(getFallbackChain('claude-code')).toEqual(['codex']);
+describe('getFallbackChain (3-풀 로테이션 — 나머지 둘을 모두 커버)', () => {
+  it('claude-code 체인: [codex, antigravity]', () => {
+    // claude-code → codex → antigravity → claude-code(visited, stop)
+    expect(getFallbackChain('claude-code')).toEqual(['codex', 'antigravity']);
   });
 
-  it('codex 체인: [claude-code] — claude-code→codex는 시작점 재방문이므로 중단', () => {
-    expect(getFallbackChain('codex')).toEqual(['claude-code']);
+  it('codex 체인: [antigravity, claude-code]', () => {
+    expect(getFallbackChain('codex')).toEqual(['antigravity', 'claude-code']);
   });
 
-  it('antigravity 체인: [claude-code, codex] — antigravity→claude-code→codex→claude-code(visited)', () => {
+  it('antigravity 체인: [claude-code, codex]', () => {
     expect(getFallbackChain('antigravity')).toEqual(['claude-code', 'codex']);
   });
 
