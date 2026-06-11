@@ -48,6 +48,7 @@ import type {
   PlannedExecutionRun,
 } from "@l5/core";
 import { createExecutionRun } from "./acr-execution-client.js";
+import { dispatchToNativeOrchestrator } from "../orchestrator/index.js";
 import { readFileSync } from "node:fs";
 
 export type CTOAgentInput = AgentInput;
@@ -95,6 +96,15 @@ function resolveProjectPath(task: CTOAgentInput["task"]): string | undefined {
   const meta = task as unknown as { project_path?: string; cwd?: string } | undefined;
   return (
     meta?.project_path ?? meta?.cwd ?? process.env["L5_DEFAULT_PROJECT_PATH"] ?? undefined
+  );
+}
+
+/** 사업 id를 dispatch payload에서 해석(사업별 모니터·native_phase_runs 키). 타입에 없는
+ *  런타임 필드라 캐스팅해 읽는다(resolveProjectPath와 동일 패턴). 없으면 undefined. */
+function resolveBusinessId(task: CTOAgentInput["task"]): string | undefined {
+  const meta = task as unknown as { business_id?: string; l5_business_id?: string } | undefined;
+  return (
+    meta?.business_id ?? meta?.l5_business_id ?? process.env["L5_DEFAULT_BUSINESS_ID"] ?? undefined
   );
 }
 
@@ -240,6 +250,8 @@ function buildDeterministicIntent(
   };
   const projectPath = resolveProjectPath(task);
   if (projectPath) intent.project_path = projectPath;
+  const businessId = resolveBusinessId(task);
+  if (businessId) intent.business_id = businessId;
   return intent;
 }
 
@@ -600,6 +612,7 @@ export async function runCTOAgent(
         // See buildDeterministicIntent: dispatcher only forwards approved tasks.
         l5_approved: true,
         ...(projectPath ? { project_path: projectPath } : {}),
+        ...(resolveBusinessId(input.task) ? { business_id: resolveBusinessId(input.task) } : {}),
       };
     }
   }
@@ -633,7 +646,15 @@ export async function runCTOAgent(
   });
 
   await registerWithACR(input.task);
-  await dispatchToACR(acrIntent);
+  if (process.env["NATIVE_ORCHESTRATION"] === "on") {
+    try {
+      await dispatchToNativeOrchestrator(acrIntent);
+    } catch {
+      // non-fatal: native orchestrator errors must not block CTO output
+    }
+  } else {
+    await dispatchToACR(acrIntent);
+  }
 
   // 추가 레일(비파괴): ACR_EXECUTION_RUNS=on 일 때만 execution-runs 로도 디스패치.
   // 기존 workbench dispatch 는 그대로 유지된다. 분해/팀런 판단은 team-orchestrator.

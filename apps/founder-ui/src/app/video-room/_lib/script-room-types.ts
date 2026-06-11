@@ -1,5 +1,5 @@
 // Mirror types for CMO / Script Room v3.1 — do NOT import from @l5/core directly.
-// Contract reference: docs/CMO_TO_FACTORY_CONTRACT.md (cmo_to_factory_v2)
+// Contract reference: docs/cmo/CMO_TO_FACTORY_CONTRACT.md (cmo_to_factory_v2)
 
 export type ContentType = 'key' | 'pulling'
 

@@ -57,6 +57,9 @@ apps/nocobase-app/cron_*
 .claude/*
 !.claude/rules/
 !.claude/rules/**
+# Executive subagents (@ceo/@cmo/@cto …) are shared team config — track them.
+!.claude/agents/
+!.claude/agents/**
 # Nested per-package .claude dirs stay fully ignored.
 apps/**/.claude/
 packages/**/.claude/
@@ -67,3 +70,6 @@ ai-slide-video-factory/
 
 # YouTube API 자격증명 (절대 커밋 금지)
 services/youtube/.credentials.json
+
+# Telegram gateway per-run deliverables (ephemeral; shipped to Telegram then disposable)
+.telegram-runs/

@@ -5,9 +5,13 @@ import { blockState } from '../_lib/phases'
 import type { CmoCard } from '../_lib/types'
 import { Intro30sCard, CardShell } from './cards'
 import StageGate from './StageGate'
-import KeyContentPlanBoard from './KeyContentPlanBoard'
-import PullingPlanBoard from './PullingPlanBoard'
 import ThumbnailPlanBoard from './ThumbnailPlanBoard'
+import ThumbnailMatrixBoard from './ThumbnailMatrixBoard'
+import TitleDevelopmentBoard from './TitleDevelopmentBoard'
+import HookApprovalBoard from './HookApprovalBoard'
+import ProductDefinitionBoard from './ProductDefinitionBoard'
+import KeyContentReportBoard from './KeyContentReportBoard'
+import PullingReportBoard from './PullingReportBoard'
 
 // ── Strategy Board ───────────────────────────────────────────────────────────
 export default function StrategyBoard({
@@ -28,6 +32,29 @@ export default function StrategyBoard({
   const [refViews, setRefViews] = useState('')
   const [refReason, setRefReason] = useState('')
   const [saving, setSaving] = useState(false)
+  const [advancing, setAdvancing] = useState(false)
+
+  // 전략 대화 → 상품 정의. strategy_chat/PT 로딩 구간엔 게이트가 없으므로 advanceStatus 로
+  // product_defined 까지 전진시킨다. 거기서 ProductDefinitionBoard 가 상품 정의 초안을
+  // 생성·표시하고, 사장님 승인(보드 내부 버튼)으로 키 콘텐츠 기획(실검색)으로 넘어간다.
+  const PRE_PRODUCT_STATUSES = ['strategy_chat', 'business_pt_context_loading']
+  const canStartProductDef = PRE_PRODUCT_STATUSES.includes(currentStatus)
+  const startProductDef = async () => {
+    if (advancing) return
+    setAdvancing(true)
+    try {
+      for (let i = 0; i < 4; i++) {
+        const res = await api.cmoAdvanceStatus(projectId)
+        const next = (res as { status?: string })?.status
+        if (next === 'product_defined' || !PRE_PRODUCT_STATUSES.includes(next ?? '')) break
+      }
+      onRefresh()
+    } catch {
+      // 오류 시 멈춤 — 사장님이 다시 시도할 수 있다.
+    } finally {
+      setAdvancing(false)
+    }
+  }
 
   const strategyCards = cards.filter(c =>
     !['script_planning', 'script_draft', 'reading_script', 'voice_recording', 'slide_deck', 'rendering', 'qa', 'upload_draft'].includes(c.stage)
@@ -59,6 +86,28 @@ export default function StrategyBoard({
     <div>
       <div className="j-overline" style={{ marginBottom: 8 }}>Strategy Board</div>
 
+      {canStartProductDef && (
+        <div style={{ marginBottom: 16 }}>
+          <button
+            className="j-btn j-btn-primary"
+            onClick={startProductDef}
+            disabled={advancing}
+            style={{ width: '100%' }}
+          >
+            {advancing ? '상품 정의 준비 중…' : '전략 대화 완료 → 상품 정의 시작'}
+          </button>
+          <p style={{ fontSize: 11.5, color: 'var(--ink-4)', marginTop: 6 }}>
+            CMO와 충분히 논의했다면 눌러서 상품 정의 초안을 생성합니다.
+          </p>
+        </div>
+      )}
+
+      {currentStatus === 'product_defined' && (
+        <div style={{ marginBottom: 16 }}>
+          <ProductDefinitionBoard projectId={projectId} cards={cards} currentStatus={currentStatus} onRefresh={onRefresh} />
+        </div>
+      )}
+
       {strategyCards.length === 0 && (
         <p style={{ fontSize: 13, color: 'var(--ink-4)', marginBottom: 16 }}>
           CMO와 대화를 시작하면 카드가 생성됩니다.
@@ -67,7 +116,7 @@ export default function StrategyBoard({
 
       {strategyCards
         // 키 콘텐츠 v3 카드는 raw JSON으로 노출하지 않는다 — 전용 보드(KeyContentPlanBoard)가 렌더.
-        .filter(card => !['key_content_draft', 'key_content_candidates', 'key_content_choice', 'key_content', 'pulling_candidates', 'pulling_plan', 'thumbnail_plan', 'thumbnail_choice'].includes(card.stage))
+        .filter(card => !['product_definition', 'key_content_draft', 'key_content_candidates', 'key_content_choice', 'key_content', 'key_content_report', 'pulling_candidates', 'pulling_content_report', 'pulling_plan', 'thumbnail_plan', 'thumbnail_choice', 'title_development', 'thumbnail_matrix', 'image_sources'].includes(card.stage))
         .map(card => {
           if (card.stage === 'intro_30s') {
             return <Intro30sCard key={card.id} card={card} />
@@ -75,17 +124,17 @@ export default function StrategyBoard({
           return <CardShell key={card.id} card={card} />
         })}
 
-      {/* 키 콘텐츠 11스텝 보드 — key_content_ideation/viewtrap_key_research/key_content_approval */}
+      {/* 키 콘텐츠 기획 보고서 — 상품정의 승인 후 실검색(시장성→후보3→판매논리→추천). */}
       <div style={{ marginTop: 16 }}>
-        <StageGate title="키 콘텐츠 기획 (v3 · 11스텝)" state={blockState({ from: 'key_content_ideation', to: 'key_content_approval' }, currentStatus)}>
-          <KeyContentPlanBoard projectId={projectId} product={product} cards={cards} onRefresh={onRefresh} />
+        <StageGate title="키 콘텐츠 기획 보고서 (실검색 · 승인 2단계)" state={blockState({ from: 'key_content_ideation', to: 'key_content_approval' }, currentStatus)}>
+          <KeyContentReportBoard projectId={projectId} cards={cards} currentStatus={currentStatus} onRefresh={onRefresh} />
         </StageGate>
       </div>
 
       {/* 풀링 주제 기획 보드 — pulling_content_set_selection ~ pulling_content_set_approval */}
       <div style={{ marginTop: 16 }}>
-        <StageGate title="풀링 주제 기획 (v3 · 세트 승인)" state={blockState({ from: 'pulling_content_set_selection', to: 'pulling_content_set_approval' }, currentStatus)}>
-          <PullingPlanBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
+        <StageGate title="풀링 주제 기획 (실데이터 · 현상→욕구 · 세트 승인)" state={blockState({ from: 'pulling_content_set_selection', to: 'pulling_content_set_approval' }, currentStatus)}>
+          <PullingReportBoard projectId={projectId} cards={cards} currentStatus={currentStatus} onRefresh={onRefresh} />
         </StageGate>
       </div>
 
@@ -95,6 +144,29 @@ export default function StrategyBoard({
           <ThumbnailPlanBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
         </StageGate>
       </div>
+
+      {/* 썸네일 9개 A/B 보드 — thumbnail_pattern_extraction 확장(9개 매트릭스 + 심리분석, G1 승인).
+          hook_draft_approval에서는 승인③ 통합 보드(HookApprovalBoard)가 대신 뜨므로 intro_30s_analysis까지만 active. */}
+      <div style={{ marginTop: 16 }}>
+        <StageGate title="썸네일 9개 A/B (매트릭스 · 클릭 심리분석 · 검수)" state={blockState({ from: 'thumbnail_pattern_extraction', to: 'intro_30s_analysis' }, currentStatus)}>
+          <ThumbnailMatrixBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
+        </StageGate>
+      </div>
+
+      {/* 제목 디벨롭 8단계 보드 — thumbnail_pattern_extraction ~ intro_30s_analysis (승인③ 통합 보드에서 최종 확인) */}
+      <div style={{ marginTop: 16 }}>
+        <StageGate title="제목 디벨롭 (8단계 · Viewtrap 레퍼런스 2개)" state={blockState({ from: 'thumbnail_pattern_extraction', to: 'intro_30s_analysis' }, currentStatus)}>
+          <TitleDevelopmentBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
+        </StageGate>
+      </div>
+
+      {/* 승인③ 통합 보드 — hook_draft_approval에서만. 제목 후보 + 썸네일 후보 + 도입부 강도 정합을
+          한 화면에서 사장님이 최종 확인·택1·승인(approveStageGate). 점수·판정은 전부 서버 산출물 표시. */}
+      {currentStatus === 'hook_draft_approval' && (
+        <div style={{ marginTop: 16 }}>
+          <HookApprovalBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
+        </div>
+      )}
 
       {/* Viewtrap 수동 입력 폼 — 리서치 단계 게이팅 */}
       <div style={{ marginTop: 16 }}>

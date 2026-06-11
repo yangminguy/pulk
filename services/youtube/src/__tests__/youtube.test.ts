@@ -223,6 +223,7 @@ describe('filterByMinViews', () => {
     videoId,
     title: videoId,
     channelTitle: 'c',
+    channelId: 'ch',
     viewCount,
     likeCount: null,
     commentCount: null,

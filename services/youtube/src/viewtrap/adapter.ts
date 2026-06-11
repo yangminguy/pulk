@@ -11,10 +11,13 @@
 import {
   scrapeVideoSearchTable,
   clickExposureProbability,
+  scrapeYoutubeSearchExtension,
   type CdpSession,
   type ScrapeVideoSearchOptions,
   type ExposureClickOptions,
+  type ScrapeYoutubeExtensionOptions,
 } from './cdp.js';
+import type { ExtensionMetricsRow } from './types.js';
 import { filterDiscoveryRows, type DiscoveryFilterOptions } from './filters.js';
 import {
   toReferenceCandidates,
@@ -62,6 +65,29 @@ export function createViewtrapScraperAdapter(
       }
       const passed = filterDiscoveryRows(rows, options.filter);
       return toReferenceCandidates(passed, options.transform);
+    },
+  };
+}
+
+// ── 2단계: YouTube 검색결과 확장(deepWalk) per-video 지표 어댑터 ───────────────
+
+/** 영상별 Viewtrap 지표(기여도/성과도/노출확률) — deepWalk 산출(2단계). */
+export interface ExtensionMetricsAdapter {
+  /** query 검색결과에서 확장이 주입한 영상별 지표를 deepWalk로 추출. */
+  fetch(query: string): Promise<ExtensionMetricsRow[]>;
+}
+
+/**
+ * CDP 세션 기반 2단계 확장 스크래퍼. createLiveDiscoveryDeps가 영상별 지표 소스로 쓴다.
+ * youtube.com 탭을 재사용/이동(안전 — 인메모리 인증은 app.viewtrap.com 탭에만 해당).
+ */
+export function createExtensionScraperAdapter(
+  session: CdpSession,
+  options: { scrape?: ScrapeYoutubeExtensionOptions } = {},
+): ExtensionMetricsAdapter {
+  return {
+    async fetch(query: string): Promise<ExtensionMetricsRow[]> {
+      return scrapeYoutubeSearchExtension(session, query, options.scrape);
     },
   };
 }

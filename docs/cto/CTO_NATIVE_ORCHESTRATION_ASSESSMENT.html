@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CTO 네이티브 오케스트레이션 방향 평가</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d2128; --line:#2a2f3a;
+    --ink:#e7eaf0; --sub:#9aa3b2; --accent:#6ea8fe; --good:#5ad19b;
+    --warn:#f2c14e; --bad:#ef6f6c; --chip:#262b34;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+    line-height:1.65;font-size:15px}
+  .wrap{max-width:1040px;margin:0 auto;padding:48px 28px 96px}
+  header{border-bottom:1px solid var(--line);padding-bottom:26px;margin-bottom:34px}
+  .kicker{color:var(--accent);font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:700}
+  h1{font-size:30px;margin:.35em 0 .25em;line-height:1.25}
+  h2{font-size:21px;margin:46px 0 14px;padding-top:8px;border-top:1px solid var(--line);padding-top:26px}
+  h2 .n{color:var(--accent);font-variant-numeric:tabular-nums;margin-right:10px}
+  h3{font-size:16px;margin:26px 0 8px;color:#cfd6e2}
+  p{margin:10px 0;color:#d4d9e2}
+  .meta{color:var(--sub);font-size:13px}
+  .lead{background:linear-gradient(180deg,#1a2433,#161b24);border:1px solid #2c3a52;
+    border-radius:14px;padding:20px 22px;margin-top:18px}
+  .lead b{color:#bcd4ff}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:780px){.g2,.g3{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .card h4{margin:0 0 6px;font-size:14.5px}
+  .card.good{border-color:#2f5d49}.card.warn{border-color:#5e5026}.card.bad{border-color:#5e3331}
+  .tag{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;
+    background:var(--chip);color:var(--sub);border:1px solid var(--line);vertical-align:middle}
+  .tag.good{color:var(--good);border-color:#2f5d49;background:#13241d}
+  .tag.warn{color:var(--warn);border-color:#5e5026;background:#241f12}
+  .tag.bad{color:var(--bad);border-color:#5e3331;background:#241414}
+  .tag.acc{color:var(--accent);border-color:#2c3a52;background:#13202f}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.6px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--sub);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em}
+  td b{color:#eaf0fa}
+  code{background:#0c0e12;border:1px solid var(--line);border-radius:5px;padding:1px 6px;
+    font-family:"SF Mono",ui-monospace,Menlo,monospace;font-size:12.5px;color:#bcd4ff}
+  pre{background:#0b0d11;border:1px solid var(--line);border-radius:10px;padding:16px 18px;overflow:auto;
+    font-family:"SF Mono",ui-monospace,Menlo,monospace;font-size:12.6px;line-height:1.6;color:#d4dbe6}
+  pre .c{color:#6b7484}.pre .k{color:#c89bf0}
+  .flow{background:#0b0d11;border:1px solid var(--line);border-radius:10px;padding:18px 20px;
+    font-family:"SF Mono",ui-monospace,Menlo,monospace;font-size:12.4px;line-height:1.75;color:#cdd5e2;white-space:pre;overflow:auto}
+  ul{margin:8px 0;padding-left:22px}li{margin:5px 0;color:#d4d9e2}
+  .pill{font-size:11px;padding:1px 7px;border-radius:6px;background:#13202f;color:var(--accent);border:1px solid #2c3a52}
+  .verdict{display:flex;gap:10px;align-items:flex-start;margin:8px 0}
+  .verdict .ico{flex:0 0 auto;width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-size:13px;font-weight:800;margin-top:1px}
+  .ok{background:#13241d;color:var(--good);border:1px solid #2f5d49}
+  .ng{background:#241414;color:var(--bad);border:1px solid #5e3331}
+  .mid{background:#241f12;color:var(--warn);border:1px solid #5e5026}
+  .foot{margin-top:50px;border-top:1px solid var(--line);padding-top:18px;color:var(--sub);font-size:12.5px}
+  .num{font-variant-numeric:tabular-nums}
+  .hl{color:#bcd4ff;font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">L5 Business OS · CTO 실행 아키텍처 평가</div>
+  <h1>ACR을 빼고, CTO가 Claude Code를 직접 오케스트레이션하는 방향</h1>
+  <p class="meta">작성일 2026-06-10 · 근거: 개발 문서만 검토(코드 미분석) · 대상: 사장님 구두 비전</p>
+  <div class="lead">
+    <p style="margin-top:0"><b>한 줄 결론.</b> 이 방향은 타당하다. 본질은 <span class="hl">"ACR을 없애는 것"이 아니라, ACR이 하던 일(격리·검증·에이전트 배정·결과 회수)을 별도 Next.js 시스템 대신 <u>Claude Code의 네이티브 Workflow 기능</u>으로 흡수</span>하는 것이다. 마침 Claude Code Workflow는 사장님이 말한 4가지 — <b>phase별 worktree 격리 · 모델 티어링(opus/sonnet/haiku) · 외부 CLI(codex·agy) 호출 · 중단/재개</b> — 를 거의 1:1로 이미 지원한다. 단, <b>검증 게이트·승인 게이트·boundary는 ACR에서 빼더라도 Workflow 안으로 반드시 옮겨야</b> 한다. 빼면 안 되는 건 "시스템"이 아니라 "안전장치"다.</p>
+  </div>
+</header>
+
+<!-- 1 -->
+<h2><span class="n">1</span>사장님이 원하는 것 (요약)</h2>
+<div class="grid g2">
+  <div class="card">
+    <h4>CTO가 하는 일 <span class="tag acc">오케스트레이션</span></h4>
+    <ul>
+      <li>전체 PRD를 받아 <b>phase로 분해</b></li>
+      <li>phase별 <b>worktree 분리</b>로 관리</li>
+      <li>phase 안에서 <b>"이 task는 이 에이전트"</b> 배정</li>
+      <li>그 배정을 <b>Claude Code CLI에 전달</b>해 실행</li>
+      <li>토큰 소진 시 <b>회복 대기 → 재개</b>, 중단된 phase <b>재실행</b></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Claude Code가 하는 일 <span class="tag acc">실행</span></h4>
+    <ul>
+      <li>내부 <b>Workflow 기능</b>으로 task 실행</li>
+      <li>큰 아키텍처 → <b>Opus</b></li>
+      <li>가벼운 개발 → <b>Sonnet/Haiku</b></li>
+      <li>QA/검증 → <b>Codex 토큰</b></li>
+      <li>UI/흐름 → <b>Antigravity(AY) 토큰</b></li>
+    </ul>
+  </div>
+</div>
+<div class="card" style="margin-top:14px">
+  <h4>진짜 목표 <span class="tag good">핵심</span></h4>
+  <p style="margin:6px 0 0"><b>가용한 모든 토큰 풀(Claude·Codex·AY)을 최대치로, 끊김 없이 갈아넣어 개발량을 극대화</b>하고, 토큰이 회복될 때마다 자동으로 다시 투입한다. 사장님은 <b>phase별 진행 상태만</b> 확인한다.</p>
+</div>
+
+<!-- 2 -->
+<h2><span class="n">2</span>이 방향이 기존 기획과 충돌하는가?</h2>
+<p>지난 검토에서 "한 세션이 phase 전체 task를 묶을 때" 4가지 충돌이 있었다. 이번 비전은 그중 2개를 <b>사장님이 직접 해소</b>했다.</p>
+<table>
+  <thead><tr><th style="width:30%">기획 원칙</th><th style="width:18%">상태</th><th>설명</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>worktree 격리</b><br><span class="meta">30-worktree-policy</span></td>
+      <td><span class="tag good">해소됨</span></td>
+      <td>사장님이 <b>"phase별 worktree 분리"</b>를 명시 → run마다 격리 원칙 충족. 격리 단위가 task→phase로 격상될 뿐, 격리 자체는 유지.</td>
+    </tr>
+    <tr>
+      <td><b>CTO(brain) ↔ executor 분리</b><br><span class="meta">00-global, AGENT_TEAM §1</span></td>
+      <td><span class="tag good">해소됨</span></td>
+      <td>CTO가 <b>PRD→phase→task→에이전트 배정까지 확정</b>하고 넘김. Claude Code는 "실행"만. 판단은 여전히 CTO. "ACR을 planning brain으로 만들지 않는다" 원칙 유지.</td>
+    </tr>
+    <tr>
+      <td><b>task별 검증 게이트</b><br><span class="meta">40-verification "checks passed = Done"</span></td>
+      <td><span class="tag warn">옮겨야 함</span></td>
+      <td>ACR Harness가 강제하던 typecheck/test/boundary를 <b>Workflow의 verify 단계로 이식</b> 필요. 안 하면 "agent says done ≠ Done"으로 후퇴.</td>
+    </tr>
+    <tr>
+      <td><b>승인 게이트 / 위험도 D0–D4</b><br><span class="meta">l5-founder-approval-model</span></td>
+      <td><span class="tag warn">유지해야 함</span></td>
+      <td>외부 액션(아웃바운드·결제·배포)은 시스템 구조와 무관하게 살아있어야 함. Workflow 안에서 승인 토큰 게이트로 재현.</td>
+    </tr>
+    <tr>
+      <td><b>boundary / allowedFiles</b><br><span class="meta">Harness 11단계</span></td>
+      <td><span class="tag warn">옮겨야 함</span></td>
+      <td>phase worktree + <code>command-guard</code> hook + allowedFiles 검사를 Workflow 진입 전후로 강제. (hook은 <code>.claude/settings.json</code>으로 그대로 따라옴)</td>
+    </tr>
+  </tbody>
+</table>
+<p class="meta">결론: <span class="hl">근본 충돌은 0개.</span> 남은 3개는 "ACR이 코드로 강제하던 안전장치를 Workflow 스크립트 안으로 이사"하는 작업일 뿐, 비전과 모순되지 않는다.</p>
+
+<!-- 3 -->
+<h2><span class="n">3</span>왜 Claude Code Workflow가 ACR의 자연스러운 대체인가</h2>
+<p>사장님 요구사항과 Claude Code Workflow 기능이 거의 그대로 맞물린다. ACR이 직접 구현하던 것을 네이티브 기능이 대신한다.</p>
+<table>
+  <thead><tr><th>사장님 요구</th><th>ACR이 하던 방식</th><th>Claude Code 네이티브</th></tr></thead>
+  <tbody>
+    <tr><td>phase별 worktree 격리</td><td><code>provisionWorktreeForRun</code> (Next.js)</td><td><code>agent(..., {isolation:'worktree'})</code> — 자동 생성·정리</td></tr>
+    <tr><td>모델 티어링(opus/sonnet/haiku)</td><td>model-routing.ts + per-phase spawn</td><td><code>agent(..., {model:'opus'\|'sonnet'\|'haiku'})</code> 호출별 지정</td></tr>
+    <tr><td>Codex / AY 토큰 활용</td><td>codex·agy CLI를 cold spawn</td><td>Workflow 내 <code>Bash</code>로 codex·agy CLI 호출(warm) 또는 <code>agentType</code></td></tr>
+    <tr><td>task 병렬 / 의존순서</td><td>직렬 단일 runner <span class="tag bad">병목</span></td><td><code>pipeline()</code> / <code>parallel()</code> — 동시 슬롯 자동</td></tr>
+    <tr><td>중단된 phase 재개</td><td>큐 재적재 + cwd 수동정리</td><td><code>resumeFromRunId</code> — 끝난 agent는 캐시, 중단점부터 재실행</td></tr>
+    <tr><td>토큰 예산 안에서 최대 투입</td><td>없음(수동)</td><td><code>budget.remaining()</code> 루프 — 예산 소진까지 자동 fan-out</td></tr>
+    <tr><td>phase 진행 상태만 보기</td><td>Control Room UI(별도 앱)</td><td><code>/workflows</code> 라이브 진행 트리 + <code>log()</code></td></tr>
+  </tbody>
+</table>
+<div class="card good" style="margin-top:10px">
+  <p style="margin:0"><span class="tag good">핵심 이점</span> ACR의 가장 큰 병목이던 <b>"직렬 단일 runner + per-phase cold spawn"</b>(속도계획서 P1·P2의 표적)이 Workflow의 <b>pipeline 병렬 + warm 컨텍스트</b>로 구조적으로 사라진다. 별도 launchd 데몬·큐 파일·prepare 409 정리 루프도 함께 제거된다.</p>
+</div>
+
+<!-- 4 -->
+<h2><span class="n">4</span>제안 아키텍처</h2>
+<div class="flow">사장님: 전체 PRD 1장
+   │
+   ▼
+┌─────────────────────────────────────────────────────────┐
+│ CTO (Brain · pulk)                                       │
+│  • PRD → Phase[1..N] 분해 (의존 그래프)                   │
+│  • 각 Phase → Task[] + task별 에이전트 배정 + allowedFiles│
+│  • Phase별 acceptanceCriteria / 검증 프로필 확정          │
+│  • 위험도(D0–D4) · 승인 게이트 태깅                       │
+└───────────────┬─────────────────────────────────────────┘
+                │  Phase 작업지시서(Work Order)
+                ▼
+┌─────────────────────────────────────────────────────────┐
+│ Phase Orchestrator (CTO가 운영하는 루프)                 │
+│  for each ready phase:                                   │
+│    • git worktree add  (phase 격리)            ← 격리    │
+│    • Claude Code Workflow 실행 ───────────┐              │
+│    • 토큰 소진/rate-limit → 대기 후 resume │   ← 재개    │
+│    • verify 통과 → merge, 실패 → 재실행    │   ← 검증    │
+└───────────────────────────────────────────┼─────────────┘
+                                            ▼
+┌─────────────────────────────────────────────────────────┐
+│ Claude Code Workflow (Phase 1개 = 스크립트 1개)          │
+│                                                          │
+│  pipeline(tasks,                                         │
+│    t => 아키텍처/구현  → agent(model:'opus'|'sonnet')    │ Claude 토큰
+│    r => QA/테스트       → Bash: codex exec ...           │ Codex 토큰
+│    r => UI/흐름 검증    → Bash: agy ...                  │ AY 토큰
+│    r => verify          → typecheck/test/boundary 게이트 │ 안전장치
+│  )                                                       │
+│  while(budget.remaining()>th){ 추가 task fan-out }       │ 토큰 최대투입
+└─────────────────────────────────────────────────────────┘
+                │ Result Packet (phase 상태)
+                ▼
+        사장님: /workflows 진행 트리만 확인</div>
+
+<h3>역할 매핑 (사장님 비전 → 컴포넌트)</h3>
+<div class="grid g3">
+  <div class="card"><h4>CTO Brain</h4><p class="meta" style="margin:0">PRD 분해 · 에이전트 배정 · 검증/승인 정책 결정. <b>코드 안 씀.</b></p></div>
+  <div class="card"><h4>Phase Orchestrator</h4><p class="meta" style="margin:0">worktree 생성 · Workflow 기동 · <b>토큰 회복 대기·재개·재실행</b>. 사장님이 말한 "그 과정"이 여기.</p></div>
+  <div class="card"><h4>Claude Code Workflow</h4><p class="meta" style="margin:0">phase 내 task를 모델·CLI 라우팅으로 실제 실행. <b>3개 토큰 풀 동시 소비.</b></p></div>
+</div>
+
+<!-- 5 -->
+<h2><span class="n">5</span>"토큰 최대 투입 + 회복 대기 재개" — 이게 신규 핵심</h2>
+<p>기존 ACR엔 없던 부분이고, 비전의 알맹이다. 두 층위로 나뉜다.</p>
+<table>
+  <thead><tr><th style="width:24%">층위</th><th>메커니즘</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td><b>Workflow 내부</b><br><span class="meta">한 phase 안</span></td>
+      <td><code>while(budget.total &amp;&amp; budget.remaining()&gt;th){ agent(...) }</code> 로 예산 소진까지 task를 계속 fan-out. 동시 슬롯은 자동 캡.</td>
+      <td>"가용 토큰 다 쓴다"를 코드로 보장. 예산은 사장님이 phase별로 지정.</td></tr>
+    <tr><td><b>Phase Orchestrator</b><br><span class="meta">phase 사이</span></td>
+      <td>rate-limit/quota 소진으로 phase가 멈추면 → <code>ScheduleWakeup</code>로 회복 추정 시점에 깨어나 <code>resumeFromRunId</code>로 중단점부터 재개.</td>
+      <td>"회복되면 다시 쓴다"를 보장. 끝난 agent는 캐시되어 토큰 낭비 없음.</td></tr>
+    <tr><td><b>3개 풀 동시</b><br><span class="meta">풀 간 부하분산</span></td>
+      <td>Claude 풀이 마르면 같은 phase의 QA/UI task를 Codex·AY 풀로 흘려보내 <b>한 풀이 막혀도 다른 풀로 진행</b>.</td>
+      <td>총 처리량 = 세 풀의 합. 직렬 ACR로는 불가능했던 지점.</td></tr>
+  </tbody>
+</table>
+<div class="card warn" style="margin-top:10px">
+  <p style="margin:0"><span class="tag warn">주의</span> Codex·AY는 Claude Code의 네이티브 <code>agentType</code>이 아니라 <b>외부 CLI</b>다. Workflow 안에서 <code>Bash</code>로 호출하고 결과를 구조화(JSON)로 받아오는 <b>얇은 어댑터</b>가 필요하다. ACR이 이미 codex/agy 헤드리스 호출을 풀어놨으므로(메모리: ACR CLI 완료 현황) 그 호출 규약만 가져오면 된다.</p>
+</div>
+
+<!-- 6 -->
+<h2><span class="n">6</span>리스크와 권고</h2>
+<div class="grid g2">
+  <div class="card bad"><h4><span class="tag bad">리스크</span> 안전장치 누락</h4><p class="meta" style="margin:0">ACR을 걷어내며 검증/boundary/승인 게이트까지 같이 사라지면 품질·안전이 무너진다. → Workflow 템플릿에 <b>verify 단계와 승인 게이트를 기본 내장</b>해 우회 불가하게.</p></div>
+  <div class="card bad"><h4><span class="tag bad">리스크</span> Workflow는 단일 호스트</h4><p class="meta" style="margin:0">ACR launchd처럼 무인 상시가 아니라 세션/turn 기반. 장시간 무인 운전엔 <b>Phase Orchestrator를 launchd/cron으로</b> 띄워 Workflow를 반복 기동하는 얇은 상주 프로세스가 필요.</p></div>
+  <div class="card warn"><h4><span class="tag warn">주의</span> 외부 CLI 결과 구조화</h4><p class="meta" style="margin:0">codex/agy의 텍스트 출력을 그대로 신뢰하면 검증이 샌다. outputContract(JSON) 강제 + 실패 시 재시도 어댑터.</p></div>
+  <div class="card warn"><h4><span class="tag warn">주의</span> 결정성</h4><p class="meta" style="margin:0"><code>ACR_DETERMINISTIC_PHASES</code>가 보장하던 "built but not wired" 차단(integrate phase)을 Workflow verify 단계에 옮겨 유지.</p></div>
+</div>
+
+<h3>권고 — 단계적 이행 (ACR 즉시 폐기 X)</h3>
+<table>
+  <thead><tr><th style="width:14%">단계</th><th>내용</th><th style="width:20%">검증</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pill">P0</span></td><td>1개 PRD로 <b>Phase 1개</b>를 Claude Code Workflow로 끝까지 실행(worktree+verify+merge)하는 PoC. ACR 경로는 그대로 둠.</td><td>월클락·토큰량을 ACR 직렬과 직접 비교</td></tr>
+    <tr><td><span class="pill">P1</span></td><td>Phase Orchestrator 골격 — worktree 생성·Workflow 기동·resume·재실행 루프. (사장님이 "CTO가 할 일"이라 한 부분)</td><td>중단→회복→재개 1사이클</td></tr>
+    <tr><td><span class="pill">P2</span></td><td>codex/agy <b>Bash 어댑터</b> + outputContract. 3개 토큰 풀 동시 소비 확인.</td><td>한 phase에서 3풀 동시 로그</td></tr>
+    <tr><td><span class="pill">P3</span></td><td>verify/boundary/승인 게이트를 Workflow 템플릿에 내장. ACR과 품질 동등성 확인 후 <b>ACR 디스패치 경로 은퇴</b>.</td><td>checks-passed 게이트 우회 불가</td></tr>
+    <tr><td><span class="pill">P4</span></td><td>Orchestrator를 launchd 상주화 → 무인 장시간 운전. 사장님은 <code>/workflows</code>로 진행만 확인.</td><td>무인 N시간 연속 가동</td></tr>
+  </tbody>
+</table>
+
+<!-- 7 -->
+<h2><span class="n">7</span>최종 판단</h2>
+<div class="verdict"><div class="ico ok">✓</div><div><b>방향 자체는 옳다.</b> ACR의 비효율(직렬·cold spawn·별도 앱 운영부담)을 정확히 겨냥했고, Claude Code Workflow가 그 대체를 네이티브로 제공한다. 속도 개선 계획서 P1~P5가 노렸던 것을 "ACR을 고쳐서"가 아니라 "ACR을 흡수해서" 달성한다.</div></div>
+<div class="verdict"><div class="ico mid">!</div><div><b>"ACR을 뺀다"는 표현은 "시스템을 뺀다"로만 받아들이고, "안전장치를 뺀다"로는 받아들이면 안 된다.</b> 검증·boundary·승인 게이트는 Workflow 안으로 이사시켜 반드시 살린다.</div></div>
+<div class="verdict"><div class="ico ok">✓</div><div><b>비전의 알맹이(3개 토큰 풀 최대·지속 투입 + 회복 재개)는 ACR엔 없던 신규 가치</b>이고, Workflow의 <code>budget</code>·<code>resumeFromRunId</code>·병렬 + 얇은 Orchestrator로 구현 가능하다.</div></div>
+<div class="verdict"><div class="ico mid">!</div><div><b>한 방에 ACR을 끄지 말 것.</b> P0 PoC로 월클락·토큰량·품질을 ACR과 수치 비교한 뒤, 동등 이상 확인되면 단계적으로 은퇴시킨다.</div></div>
+
+<div class="foot">
+  본 보고서는 <code>docs/</code> 개발 문서만 검토해 작성됨(코드 미분석). 근거 문서: <code>CTO_ACR_SPEED_IMPROVEMENT_PLAN.md</code>(P1~P5 병목), <code>AGENT_TEAM_ARCHITECTURE.md</code>(2-level orchestration), <code>HARNESS_UTILIZATION.md</code>(14단계 안전장치), <code>EXECUTIVE_DELEGATION_SPEC.md</code>(결정론 루프·승인), <code>.claude/rules/*</code>(역할·worktree·검증 정책). Claude Code Workflow 기능은 현재 세션 도구 사양 기준.
+</div>
+
+</div>
+</body>
+</html>

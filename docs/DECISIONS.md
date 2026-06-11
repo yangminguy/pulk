@@ -1,5 +1,17 @@
 # DECISIONS — L5 Business OS
 
+## 2026-06-11 — 임원 호출 = `.claude/agents` 서브에이전트, 텔레그램 실행기 = 헤드리스 claude CLI
+
+**컨텍스트**: 사장님 요구 — `@cto`/`@cmo`로 임원을 호출해 "실제 작업 + 파일 회신"을, 이 세션뿐 아니라 **텔레그램에서**도. 기존 자산: `services/agent-runtime/src/agents/*.ts`(임원별 SYSTEM_PROMPT, 단 `runXAgent()`는 판단 JSON만 반환), CMO 영상 풀 파이프라인(`packages/l5-core/.../video-room/`, 실제 `video.mp4`까지 — 단 렌더는 외부 `ai-slide-video-factory`가 `npm run render`로 수행), 텔레그램 **아웃바운드만**(`hermes-runtime/.../notifier/telegram.ts`).
+
+**결정 1 — 임원 호출 = Claude Code 서브에이전트**: `.claude/agents/<id>.md` 9종(ceo/cmo/cto/cpo/cro/coo/cfo/chief-of-staff/risk-qa)으로 정의. 각 페르소나는 agent-runtime SYSTEM_PROMPT + rules 가드레일을 반영. 이유: 서브에이전트는 파일 생성·bash·영상 렌더·ACR 디스패치 등 **실제 작업**이 가능(runXAgent의 JSON-only 한계 회피). 도메인 로직은 l5-core/agent-runtime에 그대로 두고, 서브에이전트는 그 위의 대화·실행 인터페이스 레이어로 한정(UI/플러그인에 도메인 하드코딩 금지 규칙 유지).
+
+**결정 2 — 텔레그램 인바운드 실행기 = 헤드리스 `claude -p`**: 신규 `services/telegram-gateway`가 getUpdates 폴링→`@임원` 파싱→`claude -p`로 해당 서브에이전트 구동→결과/파일 회신. 대안(텔레그램→`runXAgent()` 직접 호출)은 판단 JSON만 나와 "실제 작업+파일" 미충족이라 배제. 봇은 사장님 맥 상시 구동(launchd KeepAlive) — 레포·claude CLI·영상 팩토리가 그 맥에 있어야 실행 가능. 허용 chat id 밖 메시지는 무시(보안). 시크릿은 env 전용(plist 하드코딩 금지).
+
+**결정 3 — `.claude/agents/` git 추적**: 기존 `.gitignore`는 `.claude/*` 전부 무시(+`rules/`만 예외). 임원 정의는 팀 공유 설정이므로 `!.claude/agents/` 예외 추가해 추적. `.telegram-runs/`(런별 산출물 임시)는 무시.
+
+**검증**: telegram-gateway tsc 0 / build OK / jest router 10/10. **라이브 end-to-end(실 봇 토큰)는 사장님 맥에서 install.sh 후 확인 필요**(샌드박스 제약).
+
 ## 2026-06-09 — CMO PRD v3 정본: video-room 도메인 유지 + orchestrator 얇은 레이어 (트랙 B)
 
 **컨텍스트**: CMO 콘텐츠 전략 시스템 v3(PRD `docs/prd/cmo-content-strategy-v3.md`, 10 Phase)를 ACR로 구현하다 "built-but-not-wired"로 멈춤. 코드 조사 결과 **두 갈래가 중복 병존**: 기존 `video-room/`(25단계 v3.1, 509테스트, thumbnail/intro/script/voice/brief 등 도메인 함수·타입 대부분 완비)와 신규 `cmo-orchestrator/`(PRD v3 재설계, 인프라 + PoC 스킬 2개만). Key Content 11스텝은 video-room에 구현됐으나 orchestrator에 미등록(고립), types 5/10. **정본을 안 정하면 트랙 B가 또 중복 생산.**
@@ -1082,3 +1094,29 @@ l5-core tsc 0 + jest dev-workflow-spec 60/60(신규 M9.8 5군 포함) GREEN, age
 ## M4 — 렌더 상태는 파일 기반 프로토콜로 폴링 (2026-06-10)
 
 **결정**: factory(ai-slide-video-factory)에 잡 큐/상태 API가 없으므로, 렌더 상태는 별도 큐 없이 **파일 존재로 도출**한다 — jobs/<file>.json(=queued) → outputs/<job.slug>/ 생성(=rendering) → video.mp4(>0B)+render_report.json(=completed), render_error.txt(=failed, 옵션 마커). 관찰(파일 사실 수집)은 plugin transport(`getRenderJobStatus`), 판단은 l5-core(`deriveRenderJobStatus`/`reconcileRenderJob`/`evaluateRenderArtifacts`)로 분리(도메인=l5-core 원칙). 업로드는 `buildYoutubeUploadDraftFromBrief` 초안(private/pending)까지만 — 실제 업로드는 승인 게이트 뒤 수동.
+
+## 제목 디벨롭 8단계 — cmo-strategy 배치 + thumbnail_pattern_extraction 단계 내부 수행 (2026-06-10)
+
+**결정**: 제목 디벨롭(PRD cmo-title-development)은 (a) 신규 타입/로직을 `video-room/`이 아닌 `cmo-strategy/`에 둔다(video-room/types.ts가 이미 큼, PRD §27 권고. Viewtrap·ThumbnailPattern 타입은 배럴 import 재사용). (b) `VideoRoomStatus`에 새 상태를 추가하지 않고 기존 `thumbnail_pattern_extraction` 단계 내부에서 수행하고 산출 카드 stage=`title_development`(PRD §20.1 MVP — 상태머신 변경·회귀 부담 최소). 최종 제목/썸네일은 `hook_draft_approval`(승인3) 게이트에서 승인, `script_approval`(승인4)에서 확정 제목을 읽기 전용 노출해 원고 약속 회수를 검토. 8단계 LLM은 `key-content-draft.ts`의 "LLM 주입+retry+단계별 결정론 폴백" 패턴을 복제(전체 폴백 아님). 향후 별도 상태(`pulling_title_development`)는 PRD §20.2 v2로 보류.
+
+## CTO Native Orchestration — ACR 은퇴, Claude Code 직접 실행 (2026-06-10)
+
+**결정**: ACR(별도 Next.js 실행 앱)을 점진 은퇴시키고, CTO가 나눈 phase를 Claude Code(CLI/Workflow)가 직접 실행하는 Native Orchestration으로 전환한다. 근거: ACR의 지배 병목이 **단일 직렬 phase-runner + per-phase cold spawn**(`docs/cto/CTO_ACR_SPEED_IMPROVEMENT_PLAN.md`)인데, 이는 "ACR을 고쳐서"가 아니라 "ACR이 쓰던 자산(CLI 호출 규약·모델맵·fallback·recovery)을 Claude Code의 병렬 실행엔진으로 흡수"해 해결하는 게 구조적으로 옳다. ACR에 이미 순수 로직이 존재(직렬 runner에 묶이거나 dry-run이라 못 쓰던 것)하므로 **재작성이 아닌 이식**.
+
+**원칙 보존**: (1) CTO Brain(판단/분해)은 무변경 — `agents/cto.ts`의 `acrIntent`(이미 phase별 runtime/model/prompt_packet/allowed_files 포함)가 그대로 입력. (2) 역할분리 유지 — Native Orchestrator는 실행만, "planning brain으로 만들지 않는다". (3) 안전장치(verify/boundary/command-guard/승인)는 ACR에서 빼되 **버리지 않고** pulk 순수함수로 실행 단계에 이식(비병목: ms 순수판정). (4) 격리는 task→**phase 단위 worktree**로 격상.
+
+**구조**: 순수 로직 `packages/l5-core/.../cto-native/`(NocoBase 없이 테스트), 실행 레이어 `services/agent-runtime/src/orchestrator/`(child_process/git). dispatch 경계는 `NATIVE_ORCHESTRATION` env flag로 비파괴 A/B — off면 기존 `dispatchToACR` 불변.
+
+**Impact**: 직렬+cold spawn 병목 제거(병렬+warm). 3개 토큰 풀(claude/codex/agy 구독세션) 동시 활용 + 토큰 소진 시 fallback 인계 + 회복 대기 재개. 별도 launchd 데몬·큐·409 정리 부담 소멸.
+
+**Verify**: cto-native jest 62/62, orchestrator jest 5/5, tsc 0. S0 PoC 월클락 2분30초(ACR 동급 ~6분48초 대비 단축). 라이브 스모크/ACR 동등성 확인 후 단계적 은퇴. 상세: `docs/cto/CTO_NATIVE_ORCHESTRATION_IMPL.md`.
+
+## Native Orchestration — 병렬 머지 직렬화 · budget 근사 · 사업별 모니터 (2026-06-11)
+
+**병렬 실행 + 머지 직렬화**: `CTOPhase.depends_on`(CTO 명시)로 `planPhaseLevels`가 위상 레벨을 만들고, 레벨 내 phase는 `Promise.all` 병렬, **merge는 레벨 종료 후 순차**다. 근거: 각 phase는 독립 worktree에서 작업 후 같은 base repo로 `git merge`하는데, 동시 머지는 index/내용 충돌을 낸다. 그래서 `runPhaseToVerdict`(worktree 작업·검증·커밋까지, 병렬 안전)와 `finalizePhase`(merge+영속화+정리, 순차)로 분리. 충돌은 throw 아닌 graceful 보류(`held`). `depends_on` 미지정 phase는 직전 phase에 암묵 의존 → 기존 완전 순차 동작을 비파괴로 보존.
+
+**budget 근사**: CLI는 토큰 수를 반환하지 않으므로 토큰 카운트를 지어내지 않는다. 대신 실행 결과 신호(`looksLikeTokenExhaustion`/비정상 종료)로 pool을 `exhausted`+백오프 처리(`applyPoolOutcome`, 순수). 데몬은 `pools.json`을 추적하고 `dispatchToNativeOrchestrator`의 `NativeRunSummary`(waited/exhaustedAgents)로 `planNextPoll` 실루프를 돌려 회복 추정 시각까지 대기 후 재시도.
+
+**사업별 모니터 = 신규 테이블**: 기존 `agent_tasks`(ACR 경로) 재사용 대신 `native_phase_runs` 전용 테이블 + `monitor:nativeRuns` 조회 액션 + founder-ui 전용 뷰. 근거: phase 단위 세밀도(풀·상태·전체 output·타이밍)는 task 단위 모델로 표현 불가. 오케스트레이터는 `PhaseRunSink` 콜백(NocoBase 비의존, 테스트 가능)으로만 영속화하고, 데몬이 표준 REST(:create/:update)로 기록 — 커스텀 쓰기 액션 불필요. 결과 본문 회수: phase 프롬프트에 "마지막 출력에 전체 보고서 본문" 지시 + spawn stdout 전체를 `output`에 보존.
+
+**ESM 디렉토리 임포트 수정**: dist `native-orchestrator.js`가 `@l5/core/dist/functions/cto-native`(디렉토리)를 value 임포트해 ESM 런타임에서 `ERR_UNSUPPORTED_DIR_IMPORT`로 데몬 기동 실패(jest는 CJS라 통과). `/index.js` 명시로 수정. 데몬 드라이런(빈 큐 기동→모듈 로드→폴링)이 잡은 잠복 버그 — 데몬이 실제 기동된 적이 없어 미발견이었다.

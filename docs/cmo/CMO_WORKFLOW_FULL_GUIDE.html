@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMO 콘텐츠 마케팅 워크플로우 — 전체 가이드 (비개발자용)</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#1a212b; --panel2:#222b38; --line:#2d3947;
+    --tx:#e8eef4; --mut:#93a1b0; --acc:#5aa9ff; --grn:#46c266; --yel:#e3b341;
+    --red:#f4685c; --pur:#bd93f9; --cy:#56d4dd; --org:#ff9f6e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo",sans-serif;
+    line-height:1.7;font-size:15.5px}
+  .wrap{max-width:1080px;margin:0 auto;padding:44px 26px 100px}
+  h1{font-size:30px;margin:0 0 8px;letter-spacing:-.5px;line-height:1.2}
+  .lede{color:var(--mut);font-size:16px;margin:0 0 8px}
+  h2{font-size:23px;margin:54px 0 4px;letter-spacing:-.3px}
+  h2 .badge{font-size:13px;font-weight:600;vertical-align:middle;margin-left:10px;padding:3px 11px;border-radius:20px;background:var(--panel2);color:var(--acc)}
+  .h2sub{color:var(--mut);font-size:14.5px;margin:2px 0 18px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+  h3{font-size:18px;margin:30px 0 8px;color:var(--cy)}
+  p{margin:10px 0}
+  .big{background:linear-gradient(135deg,#1a212b,#202a38);border:1px solid var(--line);border-radius:14px;padding:24px 26px;margin:22px 0}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:14px 0;font-size:13.5px}
+  .node{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 13px;white-space:nowrap}
+  .node.gate{border-color:var(--yel);background:#2a2410;color:var(--yel);font-weight:600}
+  .node.start{border-color:var(--grn);background:#13261a;color:#7ee787}
+  .node.end{border-color:var(--pur);background:#231a36;color:var(--pur)}
+  .arr{color:var(--mut);font-size:15px}
+  .step{display:flex;gap:16px;margin:0;padding:16px 0;border-bottom:1px solid var(--line)}
+  .step:last-child{border-bottom:none}
+  .num{flex-shrink:0;width:34px;height:34px;border-radius:9px;background:var(--acc);color:#08111f;
+    font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center}
+  .num.g{background:var(--grn)} .num.t{background:var(--cy);color:#06201f} .num.p{background:var(--pur);color:#1a0b2e}
+  .num.v{background:var(--org);color:#2e1408}
+  .step .body{flex:1}
+  .step .t{font-weight:700;font-size:15.5px;margin-bottom:2px}
+  .step .d{color:var(--mut);font-size:14px}
+  .step .io{font-size:12.5px;color:var(--cy);margin-top:5px;font-family:ui-monospace,Menlo,monospace}
+  .founder{display:inline-block;font-size:11px;font-weight:700;background:#2a2410;color:var(--yel);
+    border:1px solid #5c4a16;padding:1px 8px;border-radius:20px;margin-left:8px;vertical-align:middle}
+  .auto{display:inline-block;font-size:11px;font-weight:700;background:#13261a;color:#7ee787;
+    border:1px solid #1f5132;padding:1px 8px;border-radius:20px;margin-left:8px;vertical-align:middle}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 22px;margin:16px 0}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mut);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.5px}
+  code{background:#0c1117;padding:2px 7px;border-radius:5px;font-size:13px;color:var(--cy);font-family:ui-monospace,Menlo,monospace}
+  .tip{background:#10241a;border:1px solid #1f5132;border-radius:10px;padding:14px 18px;margin:16px 0;font-size:14px}
+  .warn{background:#2a1d10;border:1px solid #5c3d12;border-radius:10px;padding:14px 18px;margin:16px 0;font-size:14px}
+  .key{background:#1a2433;border-left:4px solid var(--acc);border-radius:0 10px 10px 0;padding:12px 18px;margin:16px 0}
+  ul{margin:8px 0;padding-left:22px} li{margin:5px 0}
+  .toc{columns:2;column-gap:30px;font-size:14.5px}
+  .toc a{color:var(--acc);text-decoration:none;display:block;padding:3px 0}
+  .toc a:hover{text-decoration:underline}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--mut);margin:8px 0 0}
+  footer{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);color:var(--mut);font-size:13px}
+  .pill{font-size:11.5px;padding:2px 9px;border-radius:6px;font-weight:600;white-space:nowrap}
+  .ps{background:#1a2f22;color:#7ee787} .pp{background:#2a2410;color:var(--yel)} .pr{background:#33202a;color:#ff9eb1}
+  .em{color:var(--tx);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>CMO 콘텐츠 마케팅 워크플로우 — 전체 가이드</h1>
+<p class="lede">상품 하나가 들어오면 → 영상이 나오고 → 성과가 다시 다음 기획에 반영되기까지, AI CMO가 어떻게 일하는지 모든 과정을 단계별로 정리했습니다.</p>
+<p class="lede" style="font-size:14px">비개발자도 읽을 수 있게 쉬운 말로 적었습니다 · 기준: 현재 코드 실제 구현 (2026-06-10)</p>
+
+<div class="big">
+  <h3 style="margin-top:0;color:var(--tx)">📌 한 문장 요약</h3>
+  <p style="margin:4px 0 0">CMO는 <span class="em">"상품의 장점을 자랑"</span>하는 게 아니라 <span class="em">"고객이 겪는 문제"</span>에서 출발해서, 사람들이 유튜브 홈에서 <span class="em">눌러보고 싶어지는 영상</span>을 기획·제작합니다. 그 과정은 <span class="em">① 키 콘텐츠(핵심 판매 영상) → ② 풀링 콘텐츠(끌어오는 영상 5개) → ③ 제목·썸네일 → ④ 원고 → ⑤ 영상 제작 → ⑥ 성과 학습</span> 순서로 흐릅니다.</p>
+</div>
+
+<h3>전체 흐름 한눈에</h3>
+<div class="flow">
+  <span class="node start">상품 입력</span><span class="arr">→</span>
+  <span class="node">키 콘텐츠 기획</span><span class="arr">→</span>
+  <span class="node gate">승인①</span><span class="arr">→</span>
+  <span class="node">풀링 5개 기획</span><span class="arr">→</span>
+  <span class="node gate">승인②</span><span class="arr">→</span>
+  <span class="node">제목·썸네일</span><span class="arr">→</span>
+  <span class="node gate">승인③</span><span class="arr">→</span>
+  <span class="node">원고</span><span class="arr">→</span>
+  <span class="node gate">승인④</span><span class="arr">→</span>
+  <span class="node">영상 제작</span><span class="arr">→</span>
+  <span class="node gate">승인⑤</span><span class="arr">→</span>
+  <span class="node gate">업로드 승인⑥</span><span class="arr">→</span>
+  <span class="node end">성과 학습</span>
+</div>
+<div class="legend">
+  <span><span class="founder">사장님</span> = 사장님이 직접 보고 결정하는 곳</span>
+  <span><span class="auto">자동</span> = AI가 초안까지 자동으로 만드는 곳</span>
+</div>
+
+<h2>목차</h2>
+<div class="h2sub"></div>
+<div class="toc">
+  <a href="#concept">0. 먼저 알아둘 3가지 개념</a>
+  <a href="#statemachine">1. 전체 25단계 지도 + 승인 6곳</a>
+  <a href="#key">2. 키 콘텐츠 기획 (11스텝)</a>
+  <a href="#pulling">3. 풀링 콘텐츠 기획 (12스텝)</a>
+  <a href="#title">4. 제목·썸네일 기획 (제목 디벨롭 8단계)</a>
+  <a href="#script">5. 원고 작성</a>
+  <a href="#video">6. 영상 제작 파이프라인</a>
+  <a href="#learn">7. 성과 재학습</a>
+  <a href="#approvals">8. 사장님이 손대는 곳 정리</a>
+</div>
+
+<!-- ───────────── 0. 개념 ───────────── -->
+<h2 id="concept">0. 먼저 알아둘 3가지 개념</h2>
+<div class="h2sub">이 3가지만 알면 아래 모든 단계가 이해됩니다.</div>
+
+<div class="card">
+<div class="step"><div class="num g">1</div><div class="body">
+  <div class="t">키 콘텐츠 vs 풀링 콘텐츠</div>
+  <div class="d"><span class="em">키 콘텐츠</span> = 실제로 상품을 파는 핵심 영상(1개). <span class="em">풀링 콘텐츠</span> = 아직 상품에 관심 없는 사람을 키 콘텐츠로 <span class="em">끌어오는(pulling)</span> 영상들(보통 5개). 풀링이 사람을 모으고, 키가 판매합니다.</div>
+</div></div>
+<div class="step"><div class="num g">2</div><div class="body">
+  <div class="t">소비자 행동 5단계 (현상 → 욕구 → 계획 → 행동 → 보상)</div>
+  <div class="d">고객은 <span class="em">"문제를 느끼고(현상) → 해결하고 싶어지고(욕구) → 방법을 찾고(계획) → 행동하고(행동) → 결과를 얻는(보상)"</span> 흐름을 탑니다. 콘텐츠 세트 전체가 이 5단계를 자연스럽게 덮도록 기획합니다.</div>
+</div></div>
+<div class="step"><div class="num g">3</div><div class="body">
+  <div class="t">유튜브 발굴 = YouTube, 지표 검증 = Viewtrap</div>
+  <div class="d">아이디어/경쟁 영상을 <span class="em">찾을 때는 YouTube</span>(검색 한도 없음), 그 영상이 진짜 잘 됐는지 <span class="em">성과·노출 지표를 확인할 때는 Viewtrap</span>(횟수 제한 있음)을 씁니다. Viewtrap 검색은 사장님이 직접 하고, AI는 결과를 읽어 분석합니다.</div>
+</div></div>
+</div>
+
+<!-- ───────────── 1. 상태머신 ───────────── -->
+<h2 id="statemachine">1. 전체 25단계 지도 <span class="badge">상태머신</span></h2>
+<div class="h2sub">하나의 영상 프로젝트는 아래 순서대로 "단계(status)"를 밟아 나갑니다. 노란색은 사장님 승인이 있어야 다음으로 넘어가는 곳입니다.</div>
+
+<table>
+<thead><tr><th>#</th><th>단계</th><th>이 단계에서 하는 일</th><th>구분</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>전략 대화 시작</td><td>어떤 상품을, 누구에게, 어떤 목표(상담/판매/대기자)로 팔지 가볍게 확인</td><td><span class="pill ps">전략</span></td></tr>
+<tr><td>2</td><td>비즈니스 PT 로딩</td><td>그동안 쌓인 강의·컨설팅·후기 자료(Second Brain)를 불러와 기획 원칙 정리</td><td><span class="pill ps">전략</span></td></tr>
+<tr><td>3</td><td>상품/문제 정의</td><td>상품·타깃·고객 문제·USP·CTA 확정</td><td><span class="pill ps">전략</span></td></tr>
+<tr><td>4</td><td>키 콘텐츠 후보 기획</td><td>판매 목표를 먼저 정하고 거꾸로, 고객 문제에서 출발한 키 콘텐츠 후보 2~4개 생성</td><td><span class="pill ps">전략</span></td></tr>
+<tr><td>5</td><td>Viewtrap 키 리서치</td><td>검색 키워드를 뽑아 사장님이 Viewtrap에서 경쟁 영상 검증 (사람이 직접)</td><td><span class="pill ps">전략</span></td></tr>
+<tr><td>6</td><td><b>키 콘텐츠 확정</b> <span class="founder">승인①</span></td><td>근거를 바탕으로 키 콘텐츠 1개 추천 → 사장님 승인</td><td><span class="pill pp">승인</span></td></tr>
+<tr><td>7</td><td>Viewtrap 풀링 리서치</td><td>소비자 여정 단계별 풀링 후보를 Viewtrap에서 검증</td><td><span class="pill ps">전략</span></td></tr>
+<tr><td>8</td><td>풀링 5개 선별</td><td>역할별(문제인식·심화·욕구·계획·브릿지) 풀링 콘텐츠 5개 선별</td><td><span class="pill ps">전략</span></td></tr>
+<tr><td>9</td><td><b>풀링 세트 승인</b> <span class="founder">승인②</span></td><td>풀링 5개 세트 + 키 콘텐츠로 이어지는 다리(브릿지) 확인 → 승인</td><td><span class="pill pp">승인</span></td></tr>
+<tr><td>10</td><td>썸네일 구성 + <b>제목 디벨롭</b></td><td>썸네일 후보 + 제목 디벨롭 8단계(아래 4장) 수행</td><td><span class="pill pr">제작</span></td></tr>
+<tr><td>11</td><td>도입부 30초 분석</td><td>영상 시작 0~30초의 후킹·빌드업 구조 설계</td><td><span class="pill pr">제작</span></td></tr>
+<tr><td>12</td><td><b>썸네일/제목/도입부 승인</b> <span class="founder">승인③</span></td><td>제목·썸네일·도입부 후보 → 사장님 승인</td><td><span class="pill pp">승인</span></td></tr>
+<tr><td>13</td><td>원고 기획</td><td>승인된 제목으로 원고 구성 설계</td><td><span class="pill pr">제작</span></td></tr>
+<tr><td>14</td><td>원고 작성</td><td>도입부 + 판매 논리 블록 + 통합 원고 자동 작성</td><td><span class="pill pr">제작</span></td></tr>
+<tr><td>15</td><td><b>원고 승인</b> <span class="founder">승인④</span></td><td>작성된 원고 검토 → 승인 (제목 약속을 원고가 회수하는지 확인)</td><td><span class="pill pp">승인</span></td></tr>
+<tr><td>16</td><td>녹음</td><td>읽기용 원고로 변환 → 사장님이 녹음 파일 업로드</td><td><span class="pill pr">제작</span></td></tr>
+<tr><td>17</td><td>슬라이드 스펙 생성</td><td>원고+녹음으로 슬라이드 영상 설계도(SlideDeckSpec) 생성</td><td><span class="pill pr">제작</span></td></tr>
+<tr><td>18</td><td>렌더링</td><td>설계도를 영상 공장(Factory)에 제출해 실제 영상 생성</td><td><span class="pill pr">제작</span></td></tr>
+<tr><td>19</td><td>QA</td><td>완성 영상을 전략 일치성 + 품질 기준으로 점검</td><td><span class="pill pr">제작</span></td></tr>
+<tr><td>20</td><td><b>QA 승인</b> <span class="founder">승인⑤</span></td><td>QA 결과 확인 → 승인</td><td><span class="pill pp">승인</span></td></tr>
+<tr><td>21</td><td>업로드 초안</td><td>제목·설명·태그·썸네일로 업로드 초안 생성 (기본 비공개)</td><td><span class="pill pr">발행</span></td></tr>
+<tr><td>22</td><td><b>업로드 승인</b> <span class="founder">승인⑥</span></td><td>최종 승인 → 공개/예약은 승인 후에만</td><td><span class="pill pp">승인</span></td></tr>
+<tr><td>23</td><td>완료 → 성과 학습</td><td>성과 기록 후보를 남기고 다음 기획에 반영</td><td><span class="pill ps">학습</span></td></tr>
+</tbody>
+</table>
+
+<div class="tip"><b>승인 게이트는 정확히 6곳입니다.</b> ①키 콘텐츠 ②풀링 세트 ③썸네일/제목/도입부 ④원고 ⑤QA ⑥업로드. 이 6곳을 빼면 AI가 알아서 초안까지 진행하고, 6곳에서만 사장님이 멈춰 서서 결정합니다. <b>승인 없이 외부에 자동 게시되는 일은 절대 없습니다.</b></div>
+
+<!-- ───────────── 2. 키 콘텐츠 ───────────── -->
+<h2 id="key">2. 키 콘텐츠 기획 <span class="badge">11스텝</span></h2>
+<div class="h2sub">상품을 실제로 파는 핵심 영상을 기획합니다. "장점 자랑"이 아니라 "고객 문제 역설계"로 판매 논리를 만드는 게 핵심입니다. Step 1~7,10은 AI가 자동 초안, Step 8·9·11은 검증·사장님 몫입니다.</div>
+
+<div class="card">
+<div class="step"><div class="num">1</div><div class="body"><div class="t">일반화 — 기능·특징·장점 정리 <span class="auto">자동</span></div>
+  <div class="d">상품(아이템)과 그 상품군(카테고리) 각각의 기능/특징/장점을 정리합니다.</div>
+  <div class="io">출력: item·category 의 features / characteristics / benefits</div></div></div>
+<div class="step"><div class="num">2</div><div class="body"><div class="t">아이템 기능–혜택 연결 <span class="auto">자동</span></div>
+  <div class="d">이 상품만의 기능이 고객에게 어떤 혜택이 되는지 연결합니다.</div></div></div>
+<div class="step"><div class="num">3</div><div class="body"><div class="t">카테고리 기능–혜택 연결 <span class="auto">자동</span></div>
+  <div class="d">상품군 전체 수준에서 기능–혜택을 연결합니다 (왜 이 카테고리가 필요한가).</div></div></div>
+<div class="step"><div class="num">4</div><div class="body"><div class="t">문제 도출 — 기능을 거꾸로 <span class="auto">자동</span></div>
+  <div class="d">"이 기능이 있다는 건, 고객이 이런 문제를 겪는다는 뜻"이라고 <span class="em">역으로</span> 고객 문제를 끌어냅니다. (아이템 문제 + 카테고리 문제)</div>
+  <div class="io">출력: item_problems[], category_problems[] (각 문제가 어느 기능에서 나왔는지 표기)</div></div></div>
+<div class="step"><div class="num">5</div><div class="body"><div class="t">퍼널 배치 — 5단계에 문제 꽂기 <span class="auto">자동</span></div>
+  <div class="d">도출한 문제들을 소비자 행동 5단계(현상/욕구/계획/행동/보상)에 배치합니다. 최소 2개 단계는 반드시 채웁니다.</div></div></div>
+<div class="step"><div class="num">6</div><div class="body"><div class="t">진입 단계 결정 <span class="auto">자동</span></div>
+  <div class="d">키 콘텐츠가 5단계 중 <span class="em">어디서 시작</span>해야 판매 논리가 가장 자연스러운지 정합니다 (현상/욕구/계획 중 택1 + 이유).</div></div></div>
+<div class="step"><div class="num">7</div><div class="body"><div class="t">검색 키워드 도출 <span class="auto">자동</span></div>
+  <div class="d">Viewtrap에서 경쟁 영상을 찾을 검색 키워드를 뽑습니다.</div></div></div>
+<div class="step"><div class="num v">8</div><div class="body"><div class="t">Viewtrap 검증 <span class="founder">사람</span></div>
+  <div class="d">사장님이 키워드로 Viewtrap에서 경쟁 영상의 성과·구조를 검증합니다 (조회수, 썸네일, 도입부 등).</div></div></div>
+<div class="step"><div class="num v">9</div><div class="body"><div class="t">검증 결과 반영 <span class="founder">사람</span></div>
+  <div class="d">검증으로 얻은 근거를 기획에 반영합니다.</div></div></div>
+<div class="step"><div class="num">10</div><div class="body"><div class="t">판매 논리 완성 <span class="auto">자동</span></div>
+  <div class="d">최종 판매 논리 6요소를 만듭니다: <span class="em">문제 제시 → 카테고리 기능·혜택 → 카테고리 필요성 → 내 상품 기능·혜택 → 내 상품 해결 선언 → CTA(행동 유도)</span>.</div>
+  <div class="io">출력: problem_statement / category_feature_benefit / category_need / item_feature_benefit / item_solution_statement / cta</div></div></div>
+<div class="step"><div class="num v">11</div><div class="body"><div class="t">키 콘텐츠 확정 <span class="founder">승인①</span></div>
+  <div class="d">AI가 추천한 키 콘텐츠 1개를 사장님이 승인/수정/다른 후보/보류 중에서 결정합니다.</div></div></div>
+</div>
+<div class="key"><b>왜 거꾸로?</b> 보통은 "우리 상품 좋아요"부터 말하는데, 이 워크플로우는 <span class="em">기능 → (역설계) → 고객 문제 → 판매 논리</span> 순서로 갑니다. 그래야 고객이 "내 얘기네"하고 봅니다. — 별도로 <b>키 콘텐츠 후보 3개</b>를 만들어 비교·택1하는 단계도 있습니다.</div>
+
+<!-- ───────────── 3. 풀링 ───────────── -->
+<h2 id="pulling">3. 풀링 콘텐츠 기획 <span class="badge">12스텝</span></h2>
+<div class="h2sub">아직 상품을 모르는 사람을 키 콘텐츠로 끌어올 영상들을 기획합니다. 콘텐츠 1개가 여러 단계를 담당해도 되고, 세트 전체가 소비자 여정 5단계를 자연스럽게 덮으면 됩니다.</div>
+
+<div class="card">
+<div class="step"><div class="num g">0</div><div class="body"><div class="t">키 콘텐츠 판매 논리 불러오기 <span class="auto">자동</span></div>
+  <div class="d">앞서 확정한 키 콘텐츠의 판매 논리를 기준점으로 가져옵니다 (풀링은 전부 여기로 연결돼야 함).</div></div></div>
+<div class="step"><div class="num g">1</div><div class="body"><div class="t">"키 콘텐츠를 볼 준비가 된 사람" 정의 <span class="auto">자동</span></div>
+  <div class="d">어떤 문제 인식·욕구·계획 수준이 있어야 키 콘텐츠가 먹히는지, 또 아직 준비 안 된 사람은 왜인지 정의합니다.</div></div></div>
+<div class="step"><div class="num g">2</div><div class="body"><div class="t">논리적 확장 <span class="auto">자동</span></div>
+  <div class="d">상품·카테고리·기능혜택·문제·고객 상황에서 가능한 콘텐츠 주제들을 넓게 펼칩니다.</div></div></div>
+<div class="step"><div class="num g">3</div><div class="body"><div class="t">문제 축 분류 <span class="auto">자동</span></div>
+  <div class="d">주제를 6가지 축으로 분류: <span class="em">증상 / 원인 / 욕구 / 계획 / 오해 / 보상사례</span>. (고정 단계가 아니라 분류 도구)</div></div></div>
+<div class="step"><div class="num g">4</div><div class="body"><div class="t">콘텐츠 유형 포트폴리오 <span class="auto">자동</span></div>
+  <div class="d">한 가지 유형에 쏠리지 않게 콘텐츠 유형을 골고루 배분합니다.</div></div></div>
+<div class="step"><div class="num v">5</div><div class="body"><div class="t">풀링 Viewtrap 검증 <span class="founder">사람</span></div>
+  <div class="d">풀링 주제 후보들을 Viewtrap에서 검증합니다 (주제·핫비디오 구조·노출 확률·오래된 영상의 노출성).</div></div></div>
+<div class="step"><div class="num v">6</div><div class="body"><div class="t">핫비디오 구조 템플릿 <span class="auto">자동</span></div>
+  <div class="d">지금 잘 되는 영상의 제목·구성 구조를 분해해 우리 주제에 끼워 맞출 템플릿으로 만듭니다.</div></div></div>
+<div class="step"><div class="num v">7</div><div class="body"><div class="t">노출 확률 후보 <span class="founder">사람</span></div>
+  <div class="d">Viewtrap의 노출 확률(홈 추천 가능성) 지표로 후보를 평가합니다.</div></div></div>
+<div class="step"><div class="num v">8</div><div class="body"><div class="t">롱테일·에버그린 후보 <span class="auto">자동</span></div>
+  <div class="d">시간이 지나도 꾸준히 노출되는(에버그린) 주제 후보를 추립니다.</div></div></div>
+<div class="step"><div class="num g">9</div><div class="body"><div class="t">풀링 주제 점수화 <span class="auto">자동</span></div>
+  <div class="d">후보 주제들을 점수로 매겨 우선순위를 정합니다.</div></div></div>
+<div class="step"><div class="num g">10</div><div class="body"><div class="t">키 연결 문장 검사 <span class="auto">자동</span></div>
+  <div class="d">각 풀링이 키 콘텐츠로 어떻게 이어지는지 <span class="em">연결 문장</span>을 만들고, 연결이 없으면 통과시키지 않습니다(강제 규칙).</div></div></div>
+<div class="step"><div class="num g">11</div><div class="body"><div class="t">소비자 여정 커버리지 평가 <span class="auto">자동</span></div>
+  <div class="d">세트 전체가 5단계(현상~보상)를 자연스럽게 덮는지 점검합니다. 안 덮이면 경고.</div></div></div>
+<div class="step"><div class="num v">12</div><div class="body"><div class="t">풀링 세트 확정 <span class="founder">승인②</span></div>
+  <div class="d">승인된 풀링 주제들을 묶어 최종 세트를 조립하고 사장님이 승인합니다.</div></div></div>
+</div>
+
+<!-- ───────────── 4. 제목/썸네일 ───────────── -->
+<h2 id="title">4. 제목·썸네일 기획 <span class="badge">제목 디벨롭 8단계</span></h2>
+<div class="h2sub">"감"으로 제목을 짓던 걸, 잘 된 레퍼런스 2개를 조합·발전시켜 검증 가능한 제목으로 만듭니다. 결과는 승인③(썸네일/제목)에서 만들어지고 승인④(원고)에서도 함께 봅니다.</div>
+
+<div class="key"><b>입력 조건:</b> 같은 주제의 Viewtrap 레퍼런스 <span class="em">2개</span>가 필요합니다. 각각 <span class="em">조회수 5만 이상 + 성과도·기여도 Good 또는 Great</span>를 만족해야 시작합니다. (조건 미달이면 "추가 레퍼런스 필요"로 멈춥니다.)</div>
+
+<h3>1단계 — 4가지 교차 조합</h3>
+<p>레퍼런스 2개의 제목·썸네일을 4가지로 섞습니다: ①Ref1 썸네일+Ref2 제목 ②Ref1 제목+Ref2 썸네일 ③Ref1 썸네일 문구를 제목으로+Ref2 썸네일 ④Ref2 썸네일 문구를 제목으로+Ref1 썸네일. → 어색한 조합은 이유를 적고 탈락시킵니다.</p>
+
+<h3>2~8단계 — 제목을 7번 다듬기 <span class="auto">자동(AI 단계마다 1번씩 생각)</span></h3>
+<div class="card">
+<div class="step"><div class="num t">2</div><div class="body"><div class="t">쉬운 단어로 전환</div><div class="d">전문 용어를 타깃이 실제 쓰는 쉬운 말로. 의미가 약해지면 버립니다.</div></div></div>
+<div class="step"><div class="num t">3</div><div class="body"><div class="t">상위어로 전환</div><div class="d">좁은 단어를 더 큰 욕망의 단어로 넓힙니다. 주제가 흐려지면 되돌립니다.</div></div></div>
+<div class="step"><div class="num t">4</div><div class="body"><div class="t">부정어/반대 구조</div><div class="d">긍정형을 "손실 회피"형으로. 단, 원고에 근거가 없으면 쓰지 않습니다.</div></div></div>
+<div class="step"><div class="num t">5</div><div class="body"><div class="t">수식어 추가</div><div class="d">클릭 이유를 선명하게 하는 수식어 추가. <span class="em">제목 35자</span>를 넘기면 탈락.</div></div></div>
+<div class="step"><div class="num t">6</div><div class="body"><div class="t">질문이 생기게 전환</div><div class="d">답이 다 보이는 제목에서 정보 일부를 빼 호기심을 만듭니다.</div></div></div>
+<div class="step"><div class="num t">7</div><div class="body"><div class="t">핫비디오 구조로 갈아끼우기</div><div class="d">지금 잘 되는 영상의 제목 구조에 우리 주제를 치환합니다(베끼지 않음).</div></div></div>
+<div class="step"><div class="num t">8</div><div class="body"><div class="t">강한 단어로 변경</div><div class="d">약한 단어를 같은 의미의 강한 단어로. 근거 부족하면 한 단계 낮춰 안전 후보도 함께 남깁니다.</div></div></div>
+</div>
+
+<h3>최종 평가 — 100점 채점</h3>
+<table>
+<thead><tr><th>항목</th><th>배점</th><th>뜻</th></tr></thead>
+<tbody>
+<tr><td>타깃 적합도</td><td>20</td><td>우리 고객이 볼 문장인가</td></tr>
+<tr><td>욕망 선명도</td><td>20</td><td>원하는 게 분명히 드러나는가</td></tr>
+<tr><td>문제 지적</td><td>20</td><td>고객 문제를 날카롭게 찌르는가</td></tr>
+<tr><td>호기심</td><td>15</td><td>눌러보고 싶게 만드는가</td></tr>
+<tr><td>원고 일치도</td><td>15</td><td>제목 약속을 영상에서 실제로 보여주는가</td></tr>
+<tr><td>썸네일 결합도</td><td>10</td><td>썸네일과 잘 맞는가</td></tr>
+</tbody>
+</table>
+<p><span class="pill ps">85점 이상</span> 바로 업로드 후보 · <span class="pill pp">70~84점</span> 수정 권장 · <span class="pill pr">69점 이하</span> 레퍼런스부터 다시. — 최종 제목/썸네일 방향은 <b>승인③</b>에서 사장님 승인을 받습니다.</p>
+
+<div class="tip"><b>썸네일 별도:</b> 같은 단계에서 썸네일 후보(카피 + 시각 방향 + 클릭 논리)도 3개 만들어 택1합니다. 제목 디벨롭과 짝을 이룹니다.</div>
+
+<!-- ───────────── 5. 원고 ───────────── -->
+<h2 id="script">5. 원고 작성 <span class="badge">자동 초안</span></h2>
+<div class="h2sub">승인된 제목을 기준으로 원고를 자동 작성합니다. 4개 묶음으로 구성됩니다.</div>
+<div class="card">
+<div class="step"><div class="num p">1</div><div class="body"><div class="t">도입부 30초 (Intro 30s)</div>
+  <div class="d">첫 문장으로 후킹 → 빌드업 문장으로 긴장 → "왜 끝까지 봐야 하는지" 제시. <span class="em">제목·썸네일의 약속을 여기서 회수</span>합니다.</div></div></div>
+<div class="step"><div class="num p">2</div><div class="body"><div class="t">로직 블록 (판매 논리 전개)</div>
+  <div class="d">문제 제시 → 기존 방식 한계 → 새 관점 → 카테고리 필요성 → 내 상품 연결 → CTA. 각 블록이 소비자 여정 단계를 담당합니다.</div></div></div>
+<div class="step"><div class="num p">3</div><div class="body"><div class="t">통합 원고</div>
+  <div class="d">도입부 + 블록을 하나의 매끄러운 원고로 합치고, 중복을 제거합니다.</div></div></div>
+<div class="step"><div class="num p">4</div><div class="body"><div class="t">QA 점검</div>
+  <div class="d">원고가 판매 논리·말투·CTA를 지켰는지 자동 점검 리포트를 냅니다.</div></div></div>
+</div>
+<p>이어서 <b>내 말투 변환</b>(사장님 말투 프로필로 바꾸되 판매 논리·CTA는 보존)을 거쳐, <b>승인④(원고 승인)</b>에서 검토받습니다. 이때 4장의 확정 제목/썸네일 방향이 함께 보여서 "제목 약속을 원고가 지키는지" 확인할 수 있습니다.</p>
+
+<!-- ───────────── 6. 영상 제작 ───────────── -->
+<h2 id="video">6. 영상 제작 파이프라인 <span class="badge">원고 → 영상 파일</span></h2>
+<div class="h2sub">승인된 원고가 실제 영상 파일이 되기까지의 흐름입니다. "영상 공장(Factory)"이 실제 렌더링을 담당하고, 우리 시스템은 설계도 전달과 상태 확인을 합니다.</div>
+<div class="card">
+<div class="step"><div class="num p">1</div><div class="body"><div class="t">녹음 업로드 <span class="founder">사람</span></div>
+  <div class="d">읽기 좋은 원고로 변환 → 사장님이 직접 음성 파일을 녹음·업로드합니다.</div></div></div>
+<div class="step"><div class="num p">2</div><div class="body"><div class="t">슬라이드 설계도 생성 (SlideDeckSpec) <span class="auto">자동</span></div>
+  <div class="d">원고+녹음으로 장면별 자막·길이·슬라이드 구성 설계도를 만듭니다.</div></div></div>
+<div class="step"><div class="num p">3</div><div class="body"><div class="t">렌더 잡 제출 → 영상 공장 <span class="auto">자동</span></div>
+  <div class="d">설계도를 영상 공장의 작업 폴더(jobs/)에 제출합니다.</div></div></div>
+<div class="step"><div class="num p">4</div><div class="body"><div class="t">상태 추적 (파일 기반)</div>
+  <div class="d">별도 시스템 없이 <span class="em">파일 존재로 상태를 판단</span>합니다: 잡 파일 생김=대기 → 출력 폴더 생김=렌더링 중 → video.mp4 + 리포트 생김=완료 (오류 파일=실패).</div></div></div>
+<div class="step"><div class="num p">5</div><div class="body"><div class="t">완성 영상 QA <span class="auto">자동</span></div>
+  <div class="d">파일·길이·해상도·메타 + 전략 일치성·품질 7개 항목으로 점검합니다.</div></div></div>
+<div class="step"><div class="num p">6</div><div class="body"><div class="t">QA 승인 <span class="founder">승인⑤</span></div>
+  <div class="d">QA 결과를 사장님이 확인·승인합니다.</div></div></div>
+<div class="step"><div class="num p">7</div><div class="body"><div class="t">업로드 초안 → 최종 승인 <span class="founder">승인⑥</span></div>
+  <div class="d">제목·설명·태그로 업로드 초안을 만들되 <span class="em">기본 비공개(private/pending)</span>. <b>실제 업로드/공개는 사장님 최종 승인 뒤에만</b> 됩니다. 자동 공개는 절대 없습니다.</div></div></div>
+</div>
+
+<!-- ───────────── 7. 학습 ───────────── -->
+<h2 id="learn">7. 성과 재학습 <span class="badge">다음 기획에 반영</span></h2>
+<div class="h2sub">올린 영상의 성과를 수집해 "무엇이 잘 됐는지"를 다음 기획에 반영합니다.</div>
+<div class="card">
+<div class="step"><div class="num g">1</div><div class="body"><div class="t">성과 지표 수집 <span class="founder">현재 수동 입력</span></div>
+  <div class="d">조회수·노출·CTR 등 성과를 기록합니다. (일부 지표는 수동 입력 단계)</div></div></div>
+<div class="step"><div class="num g">2</div><div class="body"><div class="t">완료 인사이트 추출 <span class="auto">자동</span></div>
+  <div class="d">잘 된 제목·문제·브릿지 구조를 인사이트로 뽑아 Second Brain에 저장합니다.</div></div></div>
+<div class="step"><div class="num g">3</div><div class="body"><div class="t">다음 기획에 반영 <span class="auto">자동</span></div>
+  <div class="d">저장된 인사이트는 다음 프로젝트의 키/풀링/제목 기획 단계에서 참고 자료로 다시 들어갑니다 (2장 Step2의 Second Brain 로딩).</div></div></div>
+</div>
+
+<!-- ───────────── 8. 승인 요약 ───────────── -->
+<h2 id="approvals">8. 사장님이 손대는 곳만 정리</h2>
+<div class="h2sub">나머지는 AI가 초안까지 자동으로 만듭니다. 사장님은 아래만 보면 됩니다.</div>
+<table>
+<thead><tr><th>구분</th><th>무엇을</th><th>언제</th></tr></thead>
+<tbody>
+<tr><td><span class="founder">승인①</span></td><td>키 콘텐츠 1개 확정</td><td>핵심 판매 영상 주제 결정</td></tr>
+<tr><td><span class="founder">승인②</span></td><td>풀링 5개 세트 확정</td><td>끌어오는 영상들 결정</td></tr>
+<tr><td><span class="founder">승인③</span></td><td><b>썸네일·제목·도입부</b></td><td>제목 디벨롭 8단계 결과 확인</td></tr>
+<tr><td><span class="founder">승인④</span></td><td><b>원고</b> (+ 확정 제목 함께 표시)</td><td>원고가 제목 약속을 지키는지 확인</td></tr>
+<tr><td><span class="founder">승인⑤</span></td><td>완성 영상 QA</td><td>영상 품질 확인</td></tr>
+<tr><td><span class="founder">승인⑥</span></td><td>업로드 (공개)</td><td>최종 공개 결정</td></tr>
+<tr><td><span class="founder">중간 작업</span></td><td>Viewtrap 검증 · 녹음 업로드</td><td>키/풀링 리서치, 영상 녹음</td></tr>
+</tbody>
+</table>
+
+<div class="warn"><b>핵심 안전장치:</b> ① 고객에게 나가는 모든 외부 메시지·게시는 승인 게이트를 거칩니다. ② 업로드는 항상 비공개 초안부터, 공개는 사장님 승인 후에만. ③ AI 단계가 실패해도 그 단계만 안전한 기본값으로 대체하고 전체가 멈추지 않습니다.</div>
+
+<footer>
+생성: 2026-06-10 · 기준 = 현재 코드 실제 구현 (<code>packages/l5-core/src/functions/cmo-strategy</code>, <code>video-room</code>) · 정본 PRD = <code>docs/prd/cmo-content-strategy-v3.md</code> + <code>cmo-title-development.md</code><br>
+제목 디벨롭 8단계 상세 = <code>docs/cmo/features/title-development-workflow.md</code> · 영역 라우터 = <code>docs/cmo/CLAUDE.md</code>
+</footer>
+
+</div>
+</body>
+</html>

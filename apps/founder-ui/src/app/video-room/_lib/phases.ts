@@ -22,10 +22,8 @@ export const STATUS_LABEL: Record<string, string> = {
   viewtrap_pulling_research:       'Viewtrap 풀링 리서치',
   pulling_content_set_selection:   '풀링 콘텐츠 선별',
   pulling_content_set_approval:    '풀링 콘텐츠 승인 대기',
-  reference_analysis:              '레퍼런스 분석',
   thumbnail_pattern_extraction:    '썸네일 패턴 추출',
   intro_30s_analysis:              '도입부 30초 분석',
-  second_brain_insight_merge:      'Second Brain 인사이트 결합',
   hook_draft_approval:             'Hook 초안 승인 대기',
   script_planning:                 '원고 기획',
   script_draft:                    '원고 초안 작성',
@@ -61,11 +59,11 @@ export const PHASES: Phase[] = [
   {
     key: 'research',
     label: '리서치',
+    // 백엔드 state-machine(VIDEO_ROOM_FLOW)에 없는 status(reference_analysis,
+    // second_brain_insight_merge)는 도달 불가라 제거(2026-06-11).
     statuses: [
-      'reference_analysis',
       'thumbnail_pattern_extraction',
       'intro_30s_analysis',
-      'second_brain_insight_merge',
       'hook_draft_approval',
     ],
   },

@@ -5,3 +5,4 @@ export * from './strategy-watch';
 export * from './title-development-types';
 export * from './title-development';
 export * from './title-development-llm';
+export * from './title-reference-discovery';

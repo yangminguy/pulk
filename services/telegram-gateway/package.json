@@ -1,0 +1,26 @@
+{
+  "name": "@l5/telegram-gateway",
+  "version": "0.1.0",
+  "description": "L5 Business OS - Inbound Telegram gateway. Routes @executive commands from Telegram to the matching subagent (headless claude) and replies with results + files.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --config jest.config.cjs"
+  },
+  "keywords": ["l5", "telegram", "gateway", "agents"],
+  "author": "L5 Team",
+  "license": "AGPL-3.0-or-later",
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "catalog:",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "catalog:"
+  }
+}

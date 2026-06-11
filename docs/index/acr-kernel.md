@@ -1,6 +1,6 @@
 # index · acr-kernel
 
-전체: `docs/ACR_KERNEL_REFACTOR_PLAN.md`, PRD §8/§14/§16.
+전체: `docs/cto/ACR_KERNEL_REFACTOR_PLAN.md`, PRD §8/§14/§16.
 
 - ACR = Executor. ExecutionRun(task vs run 분리) 중심.
 - Harness 14단계(§14.3): validate → context pack → approval → mode → workspace → command guard → agent → logs → diff → verify → boundary → result packet → handoff → return.

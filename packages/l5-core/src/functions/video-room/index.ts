@@ -43,6 +43,9 @@ export * from './render-pipeline';
 export * from './key-content-planning.schemas';
 export * from './key-content-planning';
 export * from './key-content-draft';
+export * from './key-content-report';
+// 풀링 콘텐츠 주제 탐색 보고서(workflow v2) — 실데이터 기반 현상→욕구 주제 4~5개 선별.
+export * from './pulling-content-report';
 // key-content-candidates: 재기획된 "서로 다른 주제 후보 N개" 생성기.
 // types.ts에 PRD §7.2 KeyContentCandidate(다른 shape)가 이미 barrel-public이라
 // 충돌을 피하려 신규 후보 타입은 KeyContentCandidateV3로 별칭 재export한다(값/함수는 그대로).
@@ -133,3 +136,11 @@ export * from './discovery-classification';
 export * from './discovery-pipeline';
 // M5 성과 자동 수집: YouTube Analytics 응답 → 동일 ingest 입력 매핑(순수).
 export * from './performance-auto-mapping';
+// 썸네일 9개 A/B 자동화(PRD cmo-thumbnail-ab-automation): 매트릭스·심리분석·Track B 순차 A/B + 통합 flow.
+export * from './thumbnail-matrix';
+export * from './thumbnail-ab-test';
+export * from './thumbnail-ab-flow';
+export * from './image-sourcing';
+// 6주차 썸네일 강의·컨설팅 방법론 보강(B1~B6): 이미지 디벨롭 6기술·시청층 정합·문구 디벨롭·
+// 썸네일↔도입부 강도 연동·자가 재귀 점검·타깃 채널 우선 발굴.
+export * from './thumbnail-develop';

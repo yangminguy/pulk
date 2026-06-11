@@ -29,6 +29,10 @@ const { buildControlRoomTree } =
 const { buildSelfModAcceptanceCriteria, checkSelfModDiffForbidden, checkSelfModIntentForbidden } =
   require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/tool-request'));
 
+// 호랑이(Tiger) 자가개선 — 레지스트리/타깃 repo 해석 (pure l5-core).
+const { decodeTargetRef, getImprovementTarget, resolveRepoAbsPath } =
+  require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/tiger'));
+
 type MonitorContext = {
   app: any;
   db?: any;
@@ -204,6 +208,49 @@ async function liveStatus(ctx: MonitorContext) {
     groups.get(key).agents.push(row);
   }
 
+  ctx.body = { ok: true, data: Array.from(groups.values()) };
+}
+
+// Native Orchestration(Claude Code 직접 phase 실행) 작업 내역을 사업별로 그룹.
+// native_phase_runs(데몬이 REST로 기록)를 business 필터 + l5_task_id 그룹으로 반환.
+async function nativePhaseRuns(ctx: MonitorContext) {
+  const db = ctx.db || ctx.app.db;
+  const scope = readBusinessScope(ctx);
+  let runs: any[] = [];
+  try {
+    runs = await db.getRepository('native_phase_runs').find({
+      filter: withBusinessFilter({}, scope),
+      sort: ['started_at'],
+    });
+  } catch {
+    runs = []; // 테이블 미생성 등 — graceful 빈 목록
+  }
+
+  const groups = new Map<string, any>();
+  for (const r of runs) {
+    const key = String(r.l5_task_id ?? '__none__');
+    if (!groups.has(key)) {
+      groups.set(key, {
+        l5_task_id: r.l5_task_id ?? null,
+        task_title: r.task_title ?? null,
+        business_id: r.business_id ?? null,
+        phases: [],
+      });
+    }
+    groups.get(key).phases.push({
+      id: r.id,
+      phase_name: r.phase_name,
+      agent: r.agent,
+      runtime: r.runtime,
+      status: r.status,
+      output: r.output ?? '',
+      diff_summary: r.diff_summary ?? null,
+      changed_files: r.changed_files ?? null,
+      verdict: r.verdict ?? null,
+      started_at: r.started_at ?? r.createdAt ?? null,
+      ended_at: r.ended_at ?? null,
+    });
+  }
   ctx.body = { ok: true, data: Array.from(groups.values()) };
 }
 
@@ -1336,6 +1383,63 @@ function registerFounderMemoryCollection(db: any) {
   }));
 }
 
+// Native Orchestration phase 실행 내역 테이블. 데몬이 REST :create/:update로 기록하고
+// monitor:nativeRuns가 사업별로 조회한다. id는 서버 생성(uuid PK).
+function registerNativePhaseRunsCollection(db: any) {
+  db.collection(defineCollection({
+    name: 'native_phase_runs',
+    title: 'Native Phase Runs',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'business_id', type: 'string' },
+      { name: 'l5_task_id', type: 'string' },
+      { name: 'task_title', type: 'string' },
+      { name: 'phase_name', type: 'string' },
+      { name: 'agent', type: 'string' },        // claude-code | codex | antigravity
+      { name: 'runtime', type: 'string' },
+      { name: 'status', type: 'string' },        // merged | held | failed | waited
+      { name: 'output', type: 'text' },          // 에이전트 작업 보고서 전체 본문
+      { name: 'diff_summary', type: 'text' },
+      { name: 'changed_files', type: 'integer' },
+      { name: 'verdict', type: 'text' },
+      { name: 'started_at', type: 'date' },
+      { name: 'ended_at', type: 'date' },
+    ],
+  }));
+}
+
+// native_phase_runs 물리 테이블 보장(defineCollection은 모델만 등록 → DDL 필요).
+// 다른 L5 컬렉션과 동일 규약: CREATE TABLE IF NOT EXISTS + camelCase 타임스탬프. idempotent.
+async function ensureNativePhaseRunsTable(db: any) {
+  const dialect = db.sequelize?.getDialect?.();
+  if (dialect === 'sqlite') return;
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS native_phase_runs (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        business_id text,
+        l5_task_id text,
+        task_title text,
+        phase_name text,
+        agent text,
+        runtime text,
+        status text,
+        output text,
+        diff_summary text,
+        changed_files int,
+        verdict text,
+        started_at timestamptz,
+        ended_at timestamptz,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure native_phase_runs table: ${message}`);
+  }
+}
+
 // P3-2 — ensure the curation soft-delete columns exist on the existing table.
 // Additive, nullable, idempotent — safe to run on every boot.
 async function ensureCurationColumns(db: any) {
@@ -1357,10 +1461,348 @@ async function ensureCurationColumns(db: any) {
   }
 }
 
+// ── 호랑이(Tiger) 자가개선 컬렉션 + 핸들러 ──────────────────────────────────
+// night-bpr-loop가 REST :create로 BPRLog/WorkflowImprovementProposal/MemoryEntry를
+// 적재하고, monitor:selfImproveCards가 🐯 자가개선 surface로 조회한다.
+function registerTigerCollections(db: any) {
+  db.collection(defineCollection({
+    name: 'workflow_improvement_proposals',
+    title: 'Workflow Improvement Proposals',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'related_workflow_id', type: 'string' },
+      { name: 'related_business_id', type: 'string' },
+      { name: 'current_process', type: 'text' },
+      { name: 'identified_bottleneck', type: 'text' },
+      { name: 'proposed_improvement', type: 'text' },
+      { name: 'impact_on_timeline', type: 'string' },
+      { name: 'effort_to_implement', type: 'string' },
+      { name: 'suggested_by_agent_id', type: 'string' },
+      { name: 'status', type: 'string', defaultValue: 'proposed' },
+      { name: 'source_ref', type: 'string' },
+    ],
+  }));
+  db.collection(defineCollection({
+    name: 'bpr_logs',
+    title: 'BPR Logs',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'business_id', type: 'string' },
+      { name: 'bottleneck_description', type: 'text' },
+      { name: 'impact', type: 'string' },
+      { name: 'root_cause', type: 'text' },
+      { name: 'proposed_solution', type: 'text' },
+      { name: 'owner_agent_id', type: 'string' },
+      { name: 'status', type: 'string', defaultValue: 'identified' },
+      { name: 'source_ref', type: 'string' },
+    ],
+  }));
+  db.collection(defineCollection({
+    name: 'memory_entries',
+    title: 'Memory Entries',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'category', type: 'string' },
+      { name: 'content', type: 'text' },
+      { name: 'related_business_id', type: 'string' },
+      { name: 'related_entity_id', type: 'string' },
+      { name: 'related_entity_type', type: 'string' },
+      { name: 'pii_level', type: 'string', defaultValue: 'none' },
+      { name: 'searchable_tags', type: 'json' },
+      { name: 'suggested_tags', type: 'json' },
+      { name: 'reusability_score', type: 'integer' },
+      { name: 'approval_status', type: 'string', defaultValue: 'pending' },
+      { name: 'contains_pii', type: 'boolean', defaultValue: false },
+      { name: 'pii_notes', type: 'text' },
+      { name: 'source_task_id', type: 'string' },
+      { name: 'reusable_context', type: 'text' },
+      { name: 'source_ref', type: 'string' },
+    ],
+  }));
+}
+
+// defineCollection은 모델만 등록 → 물리 테이블 DDL 필요(native_phase_runs와 동일 규약).
+async function ensureTigerTables(db: any) {
+  const dialect = db.sequelize?.getDialect?.();
+  if (dialect === 'sqlite') return;
+  const stmts = [
+    `CREATE TABLE IF NOT EXISTS workflow_improvement_proposals (
+       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+       related_workflow_id text, related_business_id text,
+       current_process text, identified_bottleneck text, proposed_improvement text,
+       impact_on_timeline text, effort_to_implement text, suggested_by_agent_id text,
+       status text DEFAULT 'proposed', source_ref text,
+       "createdAt" timestamptz NOT NULL DEFAULT now(),
+       "updatedAt" timestamptz NOT NULL DEFAULT now()
+     );`,
+    `CREATE TABLE IF NOT EXISTS bpr_logs (
+       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+       business_id text, bottleneck_description text, impact text, root_cause text,
+       proposed_solution text, owner_agent_id text, status text DEFAULT 'identified',
+       source_ref text,
+       "createdAt" timestamptz NOT NULL DEFAULT now(),
+       "updatedAt" timestamptz NOT NULL DEFAULT now()
+     );`,
+    `CREATE TABLE IF NOT EXISTS memory_entries (
+       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+       category text, content text, related_business_id text, related_entity_id text,
+       related_entity_type text, pii_level text DEFAULT 'none',
+       searchable_tags jsonb, suggested_tags jsonb, reusability_score int,
+       approval_status text DEFAULT 'pending', contains_pii boolean DEFAULT false,
+       pii_notes text, source_task_id text, reusable_context text, source_ref text,
+       "createdAt" timestamptz NOT NULL DEFAULT now(),
+       "updatedAt" timestamptz NOT NULL DEFAULT now()
+     );`,
+  ];
+  for (const sql of stmts) {
+    try {
+      await db.sequelize.query(sql);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      db.logger?.warn?.(`Could not ensure tiger table: ${message}`);
+    }
+  }
+}
+
+// ── 호랑이(Tiger) 실시간 장애 감시 컬렉션 + 핸들러 ──────────────────────────
+// reactive 감시 루프(hermes)가 REST :create로 tiger_incidents를 적재하고,
+// monitor:incidents가 미해결 장애를 founder-ui 벨/장애 목록으로 surface한다.
+// monitor:approveIncidentFix가 승인 게이트(status=approved → CTO 수정 dispatch 허용).
+function registerTigerIncidentsCollection(db: any) {
+  db.collection(defineCollection({
+    name: 'tiger_incidents',
+    title: 'Tiger Incidents',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'task_ref', type: 'string' },       // 감시 대상 작업 식별(l5_task_id/run_id/phase_run id 등)
+      { name: 'task_label', type: 'string' },      // 사장님이 알아볼 작업명(키콘텐츠/영상룸 등)
+      { name: 'incident_type', type: 'string' },   // failed | stalled | error
+      { name: 'error_summary', type: 'text' },      // 오류 요지(메시지/스택 발췌)
+      { name: 'diagnosis', type: 'text' },          // 호랑이 진단
+      { name: 'proposed_fix', type: 'text' },       // "CTO에게 이렇게 고치게 하겠다" 수정 계획
+      { name: 'target_repo', type: 'string' },     // 수정 대상 repo 절대경로
+      { name: 'status', type: 'string', defaultValue: 'detected' }, // detected|approved|fixing|testing|resolved|escalated
+      { name: 'attempt_count', type: 'integer', defaultValue: 0 },
+      { name: 'detected_at', type: 'date' },
+      { name: 'source_ref', type: 'string' },       // 원 신호 출처(native_phase_runs:<id> 등)
+      { name: 'verify_command', type: 'string' },   // 호랑이 테스트 검증 명령(작업 repo 기준)
+    ],
+  }));
+}
+
+// defineCollection은 모델만 등록 → 물리 테이블 DDL 필요(native_phase_runs와 동일 규약). idempotent.
+async function ensureTigerIncidentsTable(db: any) {
+  const dialect = db.sequelize?.getDialect?.();
+  if (dialect === 'sqlite') return;
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS tiger_incidents (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        task_ref text,
+        task_label text,
+        incident_type text,
+        error_summary text,
+        diagnosis text,
+        proposed_fix text,
+        target_repo text,
+        status text DEFAULT 'detected',
+        attempt_count int DEFAULT 0,
+        detected_at timestamptz,
+        source_ref text,
+        verify_command text,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+    // 기존 테이블에 verify_command 컬럼 보강(additive, idempotent).
+    await db.sequelize.query(
+      `ALTER TABLE tiger_incidents ADD COLUMN IF NOT EXISTS verify_command text;`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure tiger_incidents table: ${message}`);
+  }
+}
+
+// pulk 레포 루트(레지스트리 pulk-relative repo_path 절대화용). l5-core require와 동일 베이스.
+const TIGER_PULK_ROOT =
+  process.env.L5_PULK_ROOT ?? path.resolve(__dirname, '../../../../../../..');
+
+// cardToProposal의 current_process 포맷에서 구조 필드를 복원(UI 카드 매핑용).
+function parseTigerProcess(cp: string): {
+  executive?: string;
+  target_id?: string;
+  repo_path?: string;
+  root_cause?: string;
+  risk_level?: string;
+} {
+  const m = (cp || '').match(
+    /^\[호랑이 자가개선\]\s*(\S+)\s*\/\s*(\S+)\s*\((.+?)\)\.\s*근본원인:\s*(.*?)\.\s*위험도\s*(D\d)/,
+  );
+  if (!m) return {};
+  return { executive: m[1], target_id: m[2], repo_path: m[3], root_cause: m[4], risk_level: m[5] };
+}
+
+// 🐯 자가개선 surface: status=proposed인 Tiger proposal → founder-ui SelfImproveCard.
+async function selfImproveCards(ctx: MonitorContext) {
+  const db = ctx.db || ctx.app.db;
+  const { status } = requestValues(ctx) as { status?: string };
+  const whereStatus = status && status !== 'all' ? `AND status = :status` : `AND status = 'proposed'`;
+  const rows = (await db.sequelize.query(
+    `SELECT * FROM workflow_improvement_proposals
+       WHERE suggested_by_agent_id = 'Tiger' ${whereStatus}
+       ORDER BY "createdAt" DESC`,
+    {
+      replacements: status && status !== 'all' ? { status } : {},
+      type: db.sequelize.QueryTypes.SELECT,
+    },
+  )) as any[];
+
+  ctx.body = {
+    ok: true,
+    data: rows.map((p: any) => {
+      const parsed = parseTigerProcess(p.current_process);
+      const targetId = decodeTargetRef(p.source_ref) ?? parsed.target_id ?? null;
+      const entry = targetId ? getImprovementTarget(targetId) : undefined;
+      const targetRepo = entry ? resolveRepoAbsPath(entry, TIGER_PULK_ROOT) : parsed.repo_path ?? '';
+      const targetRepoLabel = entry
+        ? entry.repo_path_kind === 'pulk-relative'
+          ? `pulk · ${entry.repo_path}`
+          : entry.repo_path
+        : parsed.repo_path ?? '';
+      return {
+        proposal_id: String(p.id),
+        executive: entry?.owner ?? parsed.executive ?? '',
+        tool_label: entry?.tool ?? targetId ?? '',
+        problem: p.identified_bottleneck ?? '',
+        root_cause: parsed.root_cause ?? null,
+        proposed_fix: p.proposed_improvement ?? '',
+        effort_estimate: p.effort_to_implement ?? null,
+        target_repo: targetRepo,
+        target_repo_label: targetRepoLabel,
+        risk_level: parsed.risk_level === 'D2' ? 'D2' : 'D1',
+        source: 'log_adapter',
+        self_mod_status: p.status === 'approved' ? 'sent' : null,
+        created_at: p.createdAt ?? p.created_at,
+      };
+    }),
+  };
+}
+
+// 일괄 승인: 선택 proposal을 status=approved로 마킹 → tiger-dispatch-loop(매시)가 집어
+// repo별 병렬 코딩. intent 게이트 1차(보호영역 시사면 rejected + blocked 회수).
+async function bulkApproveSelfImprove(ctx: MonitorContext) {
+  const db = ctx.db || ctx.app.db;
+  const { items } = requestValues(ctx) as {
+    items?: Array<{ proposal_id: string; target_repo?: string }>;
+  };
+  const list = Array.isArray(items) ? items : [];
+  const repo = db.getRepository('workflow_improvement_proposals');
+  const dispatched: Array<{ proposal_id: string; self_mod_task_id: string; status: string }> = [];
+  const blocked: Array<{ proposal_id: string; reason: string; denied_by?: string }> = [];
+
+  for (const it of list) {
+    const id = it?.proposal_id;
+    if (!id) continue;
+    const p = await repo.findOne({ filter: { id } });
+    if (!p) {
+      blocked.push({ proposal_id: String(id), reason: 'not found' });
+      continue;
+    }
+    const intent = checkSelfModIntentForbidden(
+      `${p.identified_bottleneck ?? ''} ${p.proposed_improvement ?? ''}`,
+    );
+    if (intent.forbidden) {
+      await repo.update({ filter: { id }, values: { status: 'rejected', updated_at: new Date() } });
+      blocked.push({ proposal_id: String(id), reason: intent.reason, denied_by: intent.pattern });
+      continue;
+    }
+    await repo.update({
+      filter: { id },
+      values: { status: 'approved', updatedAt: new Date(), updated_at: new Date() },
+    });
+    dispatched.push({ proposal_id: String(id), self_mod_task_id: '', status: 'sent' });
+  }
+  ctx.body = { ok: true, data: { dispatched, blocked } };
+}
+
+// 🔔 실시간 장애 surface: 미해결(resolved/escalated 제외) tiger_incidents → 벨 배지 + 장애 목록.
+// status 쿼리로 필터 가능(all=전체). 최신 detected 우선.
+async function incidents(ctx: MonitorContext) {
+  const db = ctx.db || ctx.app.db;
+  const rawQuery = (ctx as any).request?.query ?? (ctx as any).query ?? {};
+  const status = rawQuery['status'] ? String(rawQuery['status']) : undefined;
+  const whereStatus =
+    status && status !== 'all'
+      ? `WHERE status = :status`
+      : `WHERE status NOT IN ('resolved', 'escalated')`;
+  const rows = (await db.sequelize.query(
+    `SELECT * FROM tiger_incidents ${whereStatus}
+       ORDER BY COALESCE(detected_at, "createdAt") DESC`,
+    {
+      replacements: status && status !== 'all' ? { status } : {},
+      type: db.sequelize.QueryTypes.SELECT,
+    },
+  )) as any[];
+
+  ctx.body = {
+    ok: true,
+    data: rows.map((r: any) => ({
+      id: String(r.id),
+      task_ref: r.task_ref ?? null,
+      task_label: r.task_label ?? null,
+      incident_type: r.incident_type ?? null,
+      error_summary: r.error_summary ?? null,
+      diagnosis: r.diagnosis ?? null,
+      proposed_fix: r.proposed_fix ?? null,
+      target_repo: r.target_repo ?? null,
+      status: r.status ?? 'detected',
+      attempt_count: r.attempt_count ?? 0,
+      detected_at: r.detected_at ?? r.createdAt ?? r.created_at ?? null,
+      source_ref: r.source_ref ?? null,
+    })),
+  };
+}
+
+// 장애 수정 승인 게이트: status=detected인 장애를 approved로 전환 → reactive 루프가
+// 집어 CTO 수정 dispatch. 승인 전 코딩 금지(안전 게이트)이므로 여기서만 approved로 올린다.
+async function approveIncidentFix(ctx: MonitorContext) {
+  const db = ctx.db || ctx.app.db;
+  const { id } = requestValues(ctx) as { id?: string };
+  if (!id) {
+    (ctx as any).status = 400;
+    ctx.body = { ok: false, error: 'id is required' };
+    return;
+  }
+  const repo = db.getRepository('tiger_incidents');
+  const incident = await repo.findOne({ filter: { id } });
+  if (!incident) {
+    (ctx as any).status = 404;
+    ctx.body = { ok: false, error: 'incident not found' };
+    return;
+  }
+  // detected에서만 승인 가능(이미 진행/완료된 건 멱등 무시).
+  if (incident.status !== 'detected') {
+    ctx.body = { ok: true, data: { id: String(id), status: incident.status, changed: false } };
+    return;
+  }
+  await repo.update({
+    filter: { id },
+    values: { status: 'approved', updatedAt: new Date(), updated_at: new Date() },
+  });
+  ctx.body = { ok: true, data: { id: String(id), status: 'approved', changed: true } };
+}
+
 export default class PluginExecutiveMonitorServer extends Plugin {
   async load() {
     this.app.logger.info('PluginExecutiveMonitorServer loaded');
     registerFounderMemoryCollection(this.db);
+    registerNativePhaseRunsCollection(this.db);
+    await ensureNativePhaseRunsTable(this.db);
+    registerTigerCollections(this.db);
+    await ensureTigerTables(this.db);
+    registerTigerIncidentsCollection(this.db);
+    await ensureTigerIncidentsTable(this.db);
     await ensureBusinessIdIndex(this.db);
     await ensureCurationColumns(this.db);
     startHermesScheduler(this.db, this.app.logger);
@@ -1375,6 +1817,14 @@ export default class PluginExecutiveMonitorServer extends Plugin {
       actions: {
         currentTasks: async (ctx: MonitorContext, next: () => Promise<void>) => {
           await currentTasks(ctx);
+          await next();
+        },
+        selfImproveCards: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await selfImproveCards(ctx);
+          await next();
+        },
+        bulkApproveSelfImprove: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await bulkApproveSelfImprove(ctx);
           await next();
         },
         blockedTasks: async (ctx: MonitorContext, next: () => Promise<void>) => {
@@ -1417,6 +1867,10 @@ export default class PluginExecutiveMonitorServer extends Plugin {
           await liveStatus(ctx);
           await next();
         },
+        nativeRuns: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await nativePhaseRuns(ctx);
+          await next();
+        },
         curate: async (ctx: MonitorContext, next: () => Promise<void>) => {
           await curateSweep(ctx);
           await next();
@@ -1447,6 +1901,14 @@ export default class PluginExecutiveMonitorServer extends Plugin {
         },
         retryRun: async (ctx: MonitorContext, next: () => Promise<void>) => {
           await retryRun(ctx);
+          await next();
+        },
+        incidents: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await incidents(ctx);
+          await next();
+        },
+        approveIncidentFix: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await approveIncidentFix(ctx);
           await next();
         },
       },
@@ -1494,7 +1956,9 @@ export default class PluginExecutiveMonitorServer extends Plugin {
     registerGetRoute(this.app, '/api/monitor/blockedTasks', blockedTasks);
     registerGetRoute(this.app, '/api/monitor/approvalQueue', approvalQueue);
     registerGetRoute(this.app, '/api/monitor/liveStatus', liveStatus);
+    registerGetRoute(this.app, '/api/monitor/nativeRuns', nativePhaseRuns);
     registerGetRoute(this.app, '/api/monitor/controlRoomTree', controlRoomTree);
+    registerGetRoute(this.app, '/api/monitor/incidents', incidents);
 
     this.app.acl.allow('monitor', [
       'currentTasks',
@@ -1512,11 +1976,24 @@ export default class PluginExecutiveMonitorServer extends Plugin {
       'curationSummary',
       'overrideCuration',
       'controlRoomTree',
+      'nativeRuns',
       'sendToCTO',
       'applySelfMod',
       'rollbackSelfMod',
       'retryRun',
+      'selfImproveCards',
+      'bulkApproveSelfImprove',
+      'incidents',
+      'approveIncidentFix',
     ], 'loggedIn');
+    // 데몬이 native_phase_runs를 표준 REST(:create/:update/:list)로 기록·조회.
+    this.app.acl.allow('native_phase_runs', ['create', 'update', 'list', 'get'], 'loggedIn');
+    // night-bpr-loop가 호랑이 카드를 표준 REST로 적재/조회/갱신.
+    this.app.acl.allow('workflow_improvement_proposals', ['create', 'update', 'list', 'get'], 'loggedIn');
+    this.app.acl.allow('bpr_logs', ['create', 'update', 'list', 'get'], 'loggedIn');
+    // reactive 감시 루프가 tiger_incidents를 표준 REST로 적재/갱신/조회.
+    this.app.acl.allow('tiger_incidents', ['create', 'update', 'list', 'get'], 'loggedIn');
+    this.app.acl.allow('memory_entries', ['create', 'update', 'list', 'get'], 'loggedIn');
     this.app.acl.allow('roadmap', ['list'], 'loggedIn');
     this.app.acl.allow('discovery', ['today'], 'loggedIn');
     this.app.acl.allow('bpr', ['currentPhase', 'requestTransition', 'transitionSummary'], 'loggedIn');
