@@ -138,3 +138,4 @@ export * from './performance-auto-mapping';
 export * from './thumbnail-matrix';
 export * from './thumbnail-ab-test';
 export * from './thumbnail-ab-flow';
+export * from './image-sourcing';
