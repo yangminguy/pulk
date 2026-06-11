@@ -20,6 +20,73 @@ export type TextStrategy = (typeof TEXT_STRATEGIES)[number];
 export const SLOT_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'] as const;
 export type SlotLabel = (typeof SLOT_LABELS)[number];
 
+/**
+ * 강의 노트(2026-06-11) — 썸네일 구성 요소가 클릭률에 미치는 비중.
+ * 이미지 45% / 문구(폰트 내용) 45% / 디자인 10%.
+ * 초보자 함정: 디자인에 시간을 쏟고 이미지·문구 선정에 시간을 안 씀.
+ */
+export const THUMBNAIL_COMPONENT_WEIGHTS = {
+  image: 0.45,
+  text: 0.45,
+  design: 0.10,
+} as const;
+
+/** 강의 노트 — 썸네일 문구 권장 최대 글자 수 ("썸네일은 글씨를 줄여야 한다"). */
+export const THUMBNAIL_TEXT_RECOMMENDED_MAX = 16;
+
+/**
+ * 강의 노트 — 검수(Stage E) 체크리스트: 작은 화면 / 데드존 / 무게중심.
+ * 결정론 정본 — UI/검수 보고서가 그대로 표시한다.
+ */
+export const THUMBNAIL_REVIEW_CHECKLIST: readonly string[] = [
+  '작은 화면(모바일 피드 크기)으로 축소해도 주인공과 문구가 읽히는가',
+  '우하단 데드존: 시간 표시·재생목록 오버레이에 핵심 요소가 가리지 않는가 (모바일에서 더 커짐)',
+  '상단 데드존: 추천 영상 노출 시 윗부분이 가려져도 클릭 이유가 살아있는가',
+  '하단 데드존: 카톡 공유 미리보기에서 아랫부분이 잘려도 의미가 통하는가',
+  '무게중심이 가운데에 있는가 (시선은 왼쪽 위부터 — 핵심 요소는 좌상~중앙)',
+  `문구 글자 수가 ${THUMBNAIL_TEXT_RECOMMENDED_MAX}자 이내로 짧은가`,
+  '이미지 자체에서(문구 없이도) 클릭 이유가 느껴지는가 — 공감/증거/궁금증',
+  '폰트 출처·라이선스를 확인했는가 (눈누 등 무료 폰트의 영상/웹 사용 범위 확인)',
+] as const;
+
+/** B2 — channel_audience_profile 제공 시 체크리스트에 추가되는 시청층 정합 항목. */
+export const AUDIENCE_FIT_CHECKLIST_ITEM =
+  '내 채널에 모인 사람 기준으로 매력적인가 (주제 매몰 금지 — 같은 주제라도 시청층이 다르면 다른 썸네일)';
+
+/** 후보 1개에 대한 결정론 검수 경고 (통과 여부가 아니라 사람 검수 보조). */
+export function reviewThumbnailCandidate(candidate: {
+  thumbnail_text: string;
+  design_notes?: string;
+  /** B2 — 내 채널에 모인 사람 프로필. 제공 시 시청층 정합 체크 항목 추가. */
+  channel_audience_profile?: string;
+  /** B7 — 폰트 출처. 제공 시 license_checked가 true가 아니면 경고. */
+  font_source?: { name?: string; license_checked?: boolean };
+}): { warnings: string[]; checklist: readonly string[] } {
+  const warnings: string[] = [];
+  const textLen = [...candidate.thumbnail_text.trim()].length;
+  if (textLen > THUMBNAIL_TEXT_RECOMMENDED_MAX) {
+    warnings.push(
+      `문구 ${textLen}자 — 권장 ${THUMBNAIL_TEXT_RECOMMENDED_MAX}자 초과. 썸네일은 글씨를 줄여야 한다.`,
+    );
+  }
+  if (candidate.design_notes && [...candidate.design_notes].length > 120) {
+    warnings.push(
+      '디자인 노트가 과도하게 김 — 클릭률 비중은 이미지 45%·문구 45%·디자인 10%. 디자인에 공들이지 말 것.',
+    );
+  }
+  // B7 — 폰트 라이선스: font_source가 주어졌는데 license_checked가 true가 아니면 경고.
+  if (candidate.font_source && candidate.font_source.license_checked !== true) {
+    warnings.push(
+      `폰트 "${candidate.font_source.name ?? '(이름 미상)'}" 라이선스 미확인 — 출처·사용 범위(영상/웹) 확인 필요 (눈누 등 무료 폰트도 사용 범위가 다름).`,
+    );
+  }
+  // B2 — 시청층 프로필 제공 시 정합 체크 항목 추가.
+  const checklist: readonly string[] = candidate.channel_audience_profile?.trim()
+    ? [...THUMBNAIL_REVIEW_CHECKLIST, AUDIENCE_FIT_CHECKLIST_ITEM]
+    : THUMBNAIL_REVIEW_CHECKLIST;
+  return { warnings, checklist };
+}
+
 /** PRD §3.1 — 9개 슬롯별 클릭 가설 (결정론 정본). */
 const CLICK_HYPOTHESES: Record<SlotLabel, string> = {
   A: '주인공이 명확하면 클릭한다',
@@ -57,6 +124,8 @@ export interface ThumbnailMatrixInput {
   target_desire: string;
   target_loss_to_avoid: string;
   reference_patterns: ThumbnailPattern[];
+  /** B2 — 내 채널에 모인 사람(채널 시청층) 프로필. 제공 시 매트릭스 프롬프트에 주입. */
+  channel_audience_profile?: string;
 }
 
 export interface ThumbnailMatrixDeps {
@@ -188,6 +257,9 @@ function buildMatrixPrompt(input: ThumbnailMatrixInput): string {
     `타깃 욕구: ${input.target_desire}`,
     `타깃 손해: ${input.target_loss_to_avoid}`,
   ];
+  if (input.channel_audience_profile?.trim()) {
+    lines.push(`내 채널에 모인 사람: ${input.channel_audience_profile.trim()}`);
+  }
   if (input.reference_patterns.length > 0) {
     lines.push('', '레퍼런스 패턴 (구조 참고, 직접 복사 금지):');
     for (const p of input.reference_patterns.slice(0, 5)) {
@@ -200,6 +272,12 @@ function buildMatrixPrompt(input: ThumbnailMatrixInput): string {
     '1. 9개는 서로 다른 클릭 가설을 가져야 한다.',
     '2. 제목과 썸네일 문구가 같은 말을 반복하면 안 된다.',
     '3. 모든 후보에서 제목·문구·이미지는 같은 클릭 이유를 강화해야 한다.',
+    '4. 클릭률 비중: 이미지 45% / 문구 45% / 디자인 10% — 이미지 구성과 문구에 집중하고 design_notes는 최소한으로.',
+    '5. 이미지 자체에서(문구 없이도) 클릭 이유가 느껴져야 한다. 공감 = 시청자가 원하면서 피해를 막거나 이득이 되는 방향. 타깃 시청층의 정체성과 무관한 이미지는 금지.',
+    '6. 문구는 짧게(권장 16자 이내). 제목 디벨롭 기술(쉬운 일상어/수식어/질문화)을 문구에 재사용하되 제목과 다른 말로.',
+    '7. 시선은 왼쪽 위부터 — 핵심 요소는 좌상~중앙, 무게중심은 가운데. 우하단(시간 표시)·상하단 데드존에 핵심 요소를 두지 않는다.',
+    '8. 레퍼런스를 쓸 때 그 영상이 클릭된 이유가 이미지 때문인지 제목 때문인지 판단해 그 요소를 디벨롭하고, 불명확하면 둘 다 디벨롭한다.',
+    '9. 내 채널에 모인 사람 기준으로 매력을 판단한다 (주제 매몰 금지 — 같은 주제라도 시청층이 다르면 다른 썸네일이어야 한다).',
     '',
     '슬롯 순서: A(zoom×gain), B(zoom×loss_avoidance), C(zoom×curiosity),',
     'D(evidence×gain), E(evidence×loss_avoidance), F(evidence×curiosity),',

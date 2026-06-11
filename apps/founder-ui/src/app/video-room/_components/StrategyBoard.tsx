@@ -5,12 +5,13 @@ import { blockState } from '../_lib/phases'
 import type { CmoCard } from '../_lib/types'
 import { Intro30sCard, CardShell } from './cards'
 import StageGate from './StageGate'
-import PullingPlanBoard from './PullingPlanBoard'
 import ThumbnailPlanBoard from './ThumbnailPlanBoard'
 import ThumbnailMatrixBoard from './ThumbnailMatrixBoard'
 import TitleDevelopmentBoard from './TitleDevelopmentBoard'
+import HookApprovalBoard from './HookApprovalBoard'
 import ProductDefinitionBoard from './ProductDefinitionBoard'
 import KeyContentReportBoard from './KeyContentReportBoard'
+import PullingReportBoard from './PullingReportBoard'
 
 // ── Strategy Board ───────────────────────────────────────────────────────────
 export default function StrategyBoard({
@@ -115,7 +116,7 @@ export default function StrategyBoard({
 
       {strategyCards
         // 키 콘텐츠 v3 카드는 raw JSON으로 노출하지 않는다 — 전용 보드(KeyContentPlanBoard)가 렌더.
-        .filter(card => !['product_definition', 'key_content_draft', 'key_content_candidates', 'key_content_choice', 'key_content', 'key_content_report', 'pulling_candidates', 'pulling_plan', 'thumbnail_plan', 'thumbnail_choice', 'title_development', 'thumbnail_matrix', 'image_sources'].includes(card.stage))
+        .filter(card => !['product_definition', 'key_content_draft', 'key_content_candidates', 'key_content_choice', 'key_content', 'key_content_report', 'pulling_candidates', 'pulling_content_report', 'pulling_plan', 'thumbnail_plan', 'thumbnail_choice', 'title_development', 'thumbnail_matrix', 'image_sources'].includes(card.stage))
         .map(card => {
           if (card.stage === 'intro_30s') {
             return <Intro30sCard key={card.id} card={card} />
@@ -132,8 +133,8 @@ export default function StrategyBoard({
 
       {/* 풀링 주제 기획 보드 — pulling_content_set_selection ~ pulling_content_set_approval */}
       <div style={{ marginTop: 16 }}>
-        <StageGate title="풀링 주제 기획 (v3 · 세트 승인)" state={blockState({ from: 'pulling_content_set_selection', to: 'pulling_content_set_approval' }, currentStatus)}>
-          <PullingPlanBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
+        <StageGate title="풀링 주제 기획 (실데이터 · 현상→욕구 · 세트 승인)" state={blockState({ from: 'pulling_content_set_selection', to: 'pulling_content_set_approval' }, currentStatus)}>
+          <PullingReportBoard projectId={projectId} cards={cards} currentStatus={currentStatus} onRefresh={onRefresh} />
         </StageGate>
       </div>
 
@@ -144,19 +145,28 @@ export default function StrategyBoard({
         </StageGate>
       </div>
 
-      {/* 썸네일 9개 A/B 보드 — thumbnail_pattern_extraction 확장(9개 매트릭스 + 심리분석, G1 승인) */}
+      {/* 썸네일 9개 A/B 보드 — thumbnail_pattern_extraction 확장(9개 매트릭스 + 심리분석, G1 승인).
+          hook_draft_approval에서는 승인③ 통합 보드(HookApprovalBoard)가 대신 뜨므로 intro_30s_analysis까지만 active. */}
       <div style={{ marginTop: 16 }}>
-        <StageGate title="썸네일 9개 A/B (매트릭스 · 클릭 심리분석)" state={blockState({ from: 'thumbnail_pattern_extraction', to: 'hook_draft_approval' }, currentStatus)}>
+        <StageGate title="썸네일 9개 A/B (매트릭스 · 클릭 심리분석 · 검수)" state={blockState({ from: 'thumbnail_pattern_extraction', to: 'intro_30s_analysis' }, currentStatus)}>
           <ThumbnailMatrixBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
         </StageGate>
       </div>
 
-      {/* 제목 디벨롭 8단계 보드 — thumbnail_pattern_extraction ~ hook_draft_approval (승인3에서 함께 확인) */}
+      {/* 제목 디벨롭 8단계 보드 — thumbnail_pattern_extraction ~ intro_30s_analysis (승인③ 통합 보드에서 최종 확인) */}
       <div style={{ marginTop: 16 }}>
-        <StageGate title="제목 디벨롭 (8단계 · Viewtrap 레퍼런스 2개)" state={blockState({ from: 'thumbnail_pattern_extraction', to: 'hook_draft_approval' }, currentStatus)}>
+        <StageGate title="제목 디벨롭 (8단계 · Viewtrap 레퍼런스 2개)" state={blockState({ from: 'thumbnail_pattern_extraction', to: 'intro_30s_analysis' }, currentStatus)}>
           <TitleDevelopmentBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
         </StageGate>
       </div>
+
+      {/* 승인③ 통합 보드 — hook_draft_approval에서만. 제목 후보 + 썸네일 후보 + 도입부 강도 정합을
+          한 화면에서 사장님이 최종 확인·택1·승인(approveStageGate). 점수·판정은 전부 서버 산출물 표시. */}
+      {currentStatus === 'hook_draft_approval' && (
+        <div style={{ marginTop: 16 }}>
+          <HookApprovalBoard projectId={projectId} cards={cards} onRefresh={onRefresh} />
+        </div>
+      )}
 
       {/* Viewtrap 수동 입력 폼 — 리서치 단계 게이팅 */}
       <div style={{ marginTop: 16 }}>

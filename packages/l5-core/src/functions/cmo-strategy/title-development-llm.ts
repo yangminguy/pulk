@@ -99,11 +99,35 @@ export interface TitleDevelopmentLLMDeps {
   maxRetries?: number;
 }
 
+/**
+ * 뷰트랩 실측 핫비디오 (강의 노트 2026-06-11).
+ * 5단계(수식어)·7단계(핫비디오 구조 치환)는 LLM 일반 지식이 아니라
+ * 실제 뷰트랩에서 확인한 핫비디오 제목을 재료로 써야 한다.
+ * 수집 기준(강의): 성과도/기여도 Good·Great + 조회수 10만+ + 구독자 적은 순 정렬.
+ */
+export interface HotVideoReference {
+  title: string;
+  view_count?: number;
+  channel_subscribers?: number;
+  performance_grade?: string;
+  contribution_grade?: string;
+  url?: string;
+}
+
 export interface TitleDevelopmentTopicContext {
   pulling_topic: string;
   target_audience: string;
   business_goal?: string;
+  /**
+   * 뷰트랩 실측 핫비디오 목록 (옵션). 주입 시 5·7단계 프롬프트에 실데이터로 첨부.
+   * 미주입 시 7단계는 폴백 주의 문구를 남기고 일반 구조 지식으로 수행한다.
+   */
+  hot_videos?: HotVideoReference[];
 }
+
+/** 핫비디오 미주입 시 7단계 결과에 남기는 주의 문구. */
+export const HOT_VIDEO_MISSING_NOTE =
+  '핫비디오 실데이터 미제공 — 뷰트랩 실측 없이 일반 구조 지식으로 수행함. 뷰트랩 확인 권장.';
 
 /** 응답 본문에서 JSON을 추출한다(코드펜스/설명문 허용). */
 function extractJson(text: string): unknown {
@@ -275,16 +299,35 @@ const StepResultLLMSchema = z.object({
   selected_titles_for_next_step: z.array(z.string()).default([]),
 });
 
-/** PRD §10~§16 실행 방법 요약 — 단계별 프롬프트 주입(P0-8). */
+/** PRD §10~§16 실행 방법 요약 + 강의 노트 보강(2026-06-11) — 단계별 프롬프트 주입(P0-8). */
 const STEP_GUIDANCE: Record<DevelopStepNumber, string> = {
-  2: '제목 안의 전문어를 타겟이 실제로 쓰는 쉬운 말로 바꾼다. 의미가 바뀌거나 힘이 약해지면 버린다 (§10).',
-  3: '좁은 단어를 더 큰 욕망의 상위어로 넓힌다. 주제가 흐려지면 원래 단어로 되돌린다 (§11).',
-  4: '긍정형을 손실 회피(부정어/반대) 구조로 바꾼다. 원고에 근거가 없으면 부정형을 쓰지 않는다 (§12).',
-  5: '클릭 이유를 선명하게 만드는 수식어(문제 지적/결과 강조/대상 한정/시간 절약/강도/구조/대비)를 추가한다. 35자를 넘기지 않는다 (§13).',
-  6: '결론이 다 보이는 제목에서 정보 일부(누가/무엇을/왜 등)를 빼 질문이 생기게 만든다 (§14).',
-  7: '지금 성과가 좋은 핫비디오 제목을 구조 단위로 분해해 우리 주제에 치환한다. 베끼지 않는다 (§15).',
-  8: '약한 단어를 같은 의미의 강한 단어로 바꾼다. 원고 근거가 부족하면 강도를 한 단계 낮추고, 최종 후보와 안전 후보를 함께 남긴다 (§16).',
+  2: '제목 안의 전문어/한자어를 타겟이 실제로 쓰는 일상어로 바꾼다(예: 노화가 가속한다→빨리 늙는다, 카페 창업→카페 차리기). 중학생에게 말한다고 생각한다. 자가 점검 3가지: ① 의미가 달라지지 않았는가 ② 바꾼 표현의 검색 수요(조회수 합계)가 더 크다고 볼 근거가 있는가 ③ 사람들이 실제로 많이 쓰는 표현인가. 하나라도 어기면 버린다 (§10).',
+  3: '좁은 단어를 더 큰 욕망의 상위어로 넓힌다(예: 창업→돈 버는 법). 전제: 상위어 시장이 실제로 더 커야 한다(조회수 합계 기준) — 근거가 없으면 원래 단어로 되돌린다. 전달하려는 포인트가 달라지면 무효. 상위어 전환 후 일상어 전환 조합도 허용 (§11).',
+  4: '긍정형에 부정의 부정을 건다(예: 이렇게 하면 부자된다→이렇게 안 하면 가난해진다). 어감 차이 주의 — 원고에서 그 부정의 근거를 실제로 다루고 있어야 하며, 근거가 없으면 부정형을 쓰지 않는다. 내 평가가 아니라 실제 사람들이 흔들릴 제목인가를 본다 (§12).',
+  5: '클릭 이유를 선명하게 만드는 수식어를 추가한다. 수식어는 아래 핫비디오 실데이터(있다면)에서 가져온다 — 같은 분야가 아니어도 같은 강조 구조면 참고 가능. 내 주제가 흐려지면 안 되고, 콘텐츠 내용이 강화되는가가 기준이다. 35자를 넘기면 조사를 먼저 빼고, 그다음 수식어를 뺀다 (§13).',
+  6: '결론이 다 보이는 제목에서 정보 일부를 빼 질문이 생기게 만든다. 정보의 누락은 시청자의 욕구 기반 — 누가/언제/어디서/무엇을/어떻게/왜 중 시청자가 혜택(또는 피해)을 얻게 하는 정보를 하나씩 빼본다. 시청자 머리에 물음표(호기심/문제지적/의혹)가 떠야 한다. 제목이 곧 내용이면 안 된다 (§14).',
+  7: '아래 핫비디오 실데이터(뷰트랩 실측)의 제목을 구조 단위로 분해해 우리 주제에 치환한다. 베끼지 않는다. 실데이터가 없으면 일반 구조 지식으로 수행하되 결과 method_explanation에 그 사실을 명시한다 (§15).',
+  8: '약한 단어를 같은 의미의 강한 단어로 바꾼다. 단, 이 기법은 구독자가 이미 많은 채널용 — 신규/소형 채널이면 강도를 한 단계 낮추고, 최종 후보와 안전 후보를 함께 남긴다. 원고 근거가 부족해도 동일하게 낮춘다 (§16).',
 };
+
+/** 핫비디오 실데이터를 쓰는 단계 (강의 노트: 5단계 수식어 + 7단계 구조 치환). */
+const HOT_VIDEO_STEPS: ReadonlySet<DevelopStepNumber> = new Set([5, 7]);
+
+/** 핫비디오 목록을 프롬프트 블록으로 직렬화한다 (상위 10개). */
+function buildHotVideoBlock(hotVideos: HotVideoReference[]): string {
+  const lines = hotVideos.slice(0, 10).map((v, i) => {
+    const meta = [
+      v.view_count != null ? `조회수 ${v.view_count.toLocaleString()}` : null,
+      v.channel_subscribers != null ? `구독자 ${v.channel_subscribers.toLocaleString()}` : null,
+      v.performance_grade ? `성과 ${v.performance_grade}` : null,
+      v.contribution_grade ? `기여 ${v.contribution_grade}` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+    return `${i + 1}. ${v.title}${meta ? ` (${meta})` : ''}`;
+  });
+  return ['핫비디오 실데이터 (뷰트랩 실측 — 수식어/구조의 재료):', ...lines].join('\n');
+}
 
 export interface RunTitleDevelopmentStepsResult {
   step_results: TitleDevelopmentStepResult[];
@@ -317,14 +360,23 @@ export async function runTitleDevelopmentSteps(
   let currentTitles = [...initialTitles];
 
   for (const step of DEVELOP_STEPS) {
+    const hotVideos = context.hot_videos ?? [];
+    const hotVideoSection = HOT_VIDEO_STEPS.has(step)
+      ? hotVideos.length > 0
+        ? buildHotVideoBlock(hotVideos)
+        : `주의: ${HOT_VIDEO_MISSING_NOTE}`
+      : '';
     const system = [
       baseSystemPrompt(context),
       '',
       `제목 디벨롭 ${step}단계: ${STEP_NAMES[step]}`,
       STEP_GUIDANCE[step],
+      hotVideoSection,
       '입력 제목 각각을 디벨롭하고, 버린 후보는 이유와 함께 남긴다 (PRD §8).',
       '출력: { "output_titles": string[], "method_explanation": string, "cmo_reasoning": string, "rejected_titles": [{ "title": string, "reason": string }], "selected_titles_for_next_step": string[] }',
-    ].join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     const parsed = await completeJson(StepResultLLMSchema, {
       deps,
@@ -505,6 +557,8 @@ export interface TitleDevelopmentWorkflowInput {
   business_goal?: string;
   references: [TitleDevelopmentReference, TitleDevelopmentReference];
   script_summary?: string;
+  /** 뷰트랩 실측 핫비디오 (5·7단계 재료). 미주입 시 폴백 주의 문구로 수행. */
+  hot_videos?: HotVideoReference[];
 }
 
 export type TitleDevelopmentWorkflowResult =
@@ -533,6 +587,7 @@ export async function runTitleDevelopmentWorkflow(
     pulling_topic: input.pulling_topic,
     target_audience: input.target_audience,
     business_goal: input.business_goal,
+    hot_videos: input.hot_videos,
   };
 
   const searchTerms = generateTitleSearchTerms(context);

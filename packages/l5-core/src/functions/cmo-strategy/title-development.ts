@@ -254,6 +254,48 @@ export function recommendFromScore(
 }
 
 // ---------------------------------------------------------------------------
+// 업로드 후 제목 교체 규칙 (강의 노트 2026-06-11 — "1주일 지났는데 100회 미만이면 교체")
+// ---------------------------------------------------------------------------
+
+export interface TitleSwapMonitorConfig {
+  /** 평가 시작 시점(업로드 후 일수). 기본 7일. */
+  evaluate_after_days?: number;
+  /** 통과 기준 조회수. 기본 100회. */
+  min_views?: number;
+}
+
+export interface TitleSwapSignal {
+  action: 'keep' | 'swap_recommended' | 'too_early';
+  reason: string;
+}
+
+/**
+ * 업로드 후 제목 교체 신호 (결정론). 강의 기준: 업로드 1주일 후 100회 미만 → 교체.
+ * 임계값은 채널 규모에 따라 조정 가능(설정 주입).
+ */
+export function shouldSwapTitle(
+  input: { days_since_upload: number; views: number },
+  config: TitleSwapMonitorConfig = {},
+): TitleSwapSignal {
+  const afterDays = config.evaluate_after_days ?? 7;
+  const minViews = config.min_views ?? 100;
+
+  if (input.days_since_upload < afterDays) {
+    return {
+      action: 'too_early',
+      reason: `업로드 ${input.days_since_upload}일차 — 평가 시점(${afterDays}일) 전`,
+    };
+  }
+  if (input.views < minViews) {
+    return {
+      action: 'swap_recommended',
+      reason: `업로드 ${afterDays}일 경과 조회수 ${input.views}회 < 기준 ${minViews}회 — 제목 교체 권장`,
+    };
+  }
+  return { action: 'keep', reason: `조회수 ${input.views}회 ≥ 기준 ${minViews}회 — 유지` };
+}
+
+// ---------------------------------------------------------------------------
 // §20 상태머신 접목 — proposal.data 구조 (AC-14)
 // ---------------------------------------------------------------------------
 

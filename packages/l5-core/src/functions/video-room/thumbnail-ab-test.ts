@@ -133,6 +133,108 @@ function hasEvenWeekdayDistribution(results: AbTestResultInput[]): boolean {
   return new Set(roundedDurations).size === 1;
 }
 
+// ── 강의 노트(2026-06-11) — 업로드 후 교체 윈도우 + 모니터링 교체 신호 ────────
+
+/**
+ * 썸네일 교체는 업로드 후 1주일 안에만 유의미하다 (강의 정본).
+ * 그 이후의 교체는 알고리즘 노출 사이클상 효과가 크게 떨어진다.
+ */
+export const THUMBNAIL_SWAP_WINDOW_DAYS = 7;
+
+export interface RotationWindowCheck {
+  fits: boolean;
+  total_days: number;
+  window_days: number;
+  note: string;
+}
+
+/**
+ * 순차 로테이션 전체 기간이 교체 유효 윈도우(기본 7일) 안에 끝나는지 검사한다.
+ * 기본 설정(3개 × 2일 = 6일)은 통과. 3일/후보 × 3개 = 9일은 경고.
+ */
+export function validateRotationWindow(
+  slots: SequentialRotationSlot[],
+  windowDays: number = THUMBNAIL_SWAP_WINDOW_DAYS,
+): RotationWindowCheck {
+  const totalDays = slots.reduce((max, slot) => Math.max(max, slot.end_offset_day), 0);
+  const fits = totalDays <= windowDays;
+  return {
+    fits,
+    total_days: totalDays,
+    window_days: windowDays,
+    note: fits
+      ? `로테이션 ${totalDays}일 — 업로드 후 ${windowDays}일 교체 유효 윈도우 내 완료`
+      : `로테이션 ${totalDays}일 — ${windowDays}일 윈도우 초과. 후보 수를 줄이거나 후보당 기간을 줄여야 한다(7일 이후 교체는 효과 낮음).`,
+  };
+}
+
+export interface ThumbnailSwapMonitorConfig {
+  /**
+   * 강의 원 기준: "업로드 이후 분당 100개면 합격, 못 넘으면 교체".
+   * 신생 채널엔 비현실적이라 기본 미사용(null) — 사장님이 채널 규모에 맞게 설정.
+   */
+  views_per_minute_pass?: number | null;
+  /**
+   * 보수적 기본 기준: 윈도우(7일) 종료 시점까지 기대 조회수.
+   * 일할 계산으로 중간 평가한다. 기본 100회(제목 교체 규칙과 동일 스케일).
+   */
+  min_views_by_window_end?: number;
+  /** 교체 유효 윈도우 (기본 7일). */
+  window_days?: number;
+}
+
+export interface ThumbnailSwapSignal {
+  action: 'keep' | 'swap_recommended' | 'too_late';
+  reason: string;
+}
+
+/**
+ * 업로드 후 썸네일 교체 신호 (결정론 모니터링 규칙).
+ *
+ * - 윈도우(기본 7일) 경과 후에는 too_late — 교체 효과 낮음.
+ * - views_per_minute_pass 설정 시: 분당 조회수 기준(강의 원 기준)으로 판단.
+ * - 미설정 시: min_views_by_window_end의 일할(prorate) 기대치 미달이면 교체 권장.
+ */
+export function evaluateThumbnailSwapSignal(
+  input: { days_since_upload: number; views: number },
+  config: ThumbnailSwapMonitorConfig = {},
+): ThumbnailSwapSignal {
+  const windowDays = config.window_days ?? THUMBNAIL_SWAP_WINDOW_DAYS;
+  if (input.days_since_upload < 0) throw new Error('days_since_upload must be >= 0');
+
+  if (input.days_since_upload > windowDays) {
+    return {
+      action: 'too_late',
+      reason: `업로드 ${input.days_since_upload}일차 — 교체 유효 윈도우(${windowDays}일) 경과. 교체보다 다음 영상에 반영 권장.`,
+    };
+  }
+
+  if (config.views_per_minute_pass != null) {
+    const minutes = Math.max(1, input.days_since_upload * 24 * 60);
+    const vpm = input.views / minutes;
+    if (vpm < config.views_per_minute_pass) {
+      return {
+        action: 'swap_recommended',
+        reason: `분당 조회수 ${vpm.toFixed(2)} < 기준 ${config.views_per_minute_pass} — 썸네일 교체 권장(강의 기준)`,
+      };
+    }
+    return { action: 'keep', reason: `분당 조회수 ${vpm.toFixed(2)} ≥ 기준 ${config.views_per_minute_pass} — 합격` };
+  }
+
+  const targetByWindowEnd = config.min_views_by_window_end ?? 100;
+  const expectedSoFar = (targetByWindowEnd * input.days_since_upload) / windowDays;
+  if (input.days_since_upload > 0 && input.views < expectedSoFar) {
+    return {
+      action: 'swap_recommended',
+      reason: `업로드 ${input.days_since_upload}일차 조회수 ${input.views}회 < 기대 추세 ${Math.ceil(expectedSoFar)}회(${windowDays}일 ${targetByWindowEnd}회 기준) — 썸네일 교체 권장`,
+    };
+  }
+  return {
+    action: 'keep',
+    reason: `업로드 ${input.days_since_upload}일차 조회수 ${input.views}회 — 기대 추세 충족(윈도우 내 유지)`,
+  };
+}
+
 // ── Public functions ─────────────────────────────────────────────────────────
 
 /**

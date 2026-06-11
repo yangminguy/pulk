@@ -608,6 +608,55 @@ export type ThumbnailMatrixResult = {
   analyses: ThumbnailPsychologyAnalysis[]
   source: 'llm' | 'fallback'
 }
+// 썸네일 검수(Stage E) — 데드존/작은화면/글자수/폰트/시청층 판정은 서버(l5-core). UI는 표시만.
+export type ThumbnailAudienceFit = {
+  fit: 'match' | 'partial' | 'mismatch' | 'unknown'
+  reason?: string
+}
+export type ThumbnailReviewResult = {
+  warnings?: string[]
+  checklist?: string[]
+  audience_fit?: ThumbnailAudienceFit
+}
+// 썸네일 디벨롭 — 6기술 제안 + 문구 후보 + 개선 판정(서버 판정 결과를 표시만).
+export type ThumbnailDevelopSuggestion = {
+  technique: string
+  applicable?: boolean
+  suggestion?: string
+}
+export type ThumbnailTextCandidate = {
+  technique?: string
+  text: string
+  char_count?: number
+  over_limit?: boolean
+  warning?: string
+  shortened_candidate?: string
+}
+export type ThumbnailDevelopResult = {
+  suggestions?: ThumbnailDevelopSuggestion[]
+  text_candidates?: ThumbnailTextCandidate[]
+  improvement?: { improved?: boolean; recommendation?: string; reason?: string }
+}
+// 썸네일 레퍼런스 학습 — 학습된 패턴은 다음 매트릭스 생성에 서버가 자동 반영.
+export type ThumbnailReferenceLearningResult = {
+  patterns?: unknown[]
+  eligible_count?: number
+  notes?: string
+}
+// Hook 정합 — "썸네일 9점이면 도입부 9점" 강도 정합 판정(서버 채점, UI 표시만).
+export type HookAlignmentResult = {
+  thumbnail_score?: number
+  intro_score?: number
+  status: 'aligned' | 'intro_weaker' | 'insufficient_data'
+  warning?: string
+  recommended_action?: string
+}
+// 채널 우선 발굴 — 채널 단위 레퍼런스 탐색 결과(서버 판정, UI 표시만).
+export type ChannelFirstDiscoveryResult = {
+  channel_queries?: string[]
+  selected?: { channel_id?: string; name?: string; subscribers?: number; would_watch?: boolean; reason?: string }[]
+  notes?: string
+}
 export type ThumbnailPlanDraft = {
   content_id: string
   thumbnail_direction: string
@@ -1068,6 +1117,49 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }).then(r => unwrap(r)) as Promise<ThumbnailMatrixResult>,
+
+  // 썸네일 검수(Stage E) — 데드존/작은화면/글자수/폰트/시청층 경고 + 체크리스트. 판정은 서버(l5-core).
+  cmoReviewThumbnail: (input: {
+    project_id: string
+    candidate: { thumbnail_text: string; design_notes?: string; font_source?: string }
+    channel_audience_profile?: string
+  }) =>
+    request<{ data: { ok: boolean; data: ThumbnailReviewResult } }>('/api/cmo:reviewThumbnail', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }).then(r => unwrap(r)) as Promise<ThumbnailReviewResult>,
+
+  // 썸네일 디벨롭 — 후보 1개를 6기술로 발전 + 문구 후보 + 개선 판정. 판정은 서버(l5-core).
+  cmoDevelopThumbnailCandidate: (input: {
+    project_id: string
+    candidate: { thumbnail_text: string; image_composition?: string }
+    original?: { thumbnail_text: string; image_composition?: string }
+  }) =>
+    request<{ data: { ok: boolean; data: ThumbnailDevelopResult } }>('/api/cmo:developThumbnailCandidate', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }).then(r => unwrap(r)) as Promise<ThumbnailDevelopResult>,
+
+  // 썸네일 레퍼런스 학습 — 학습된 패턴은 다음 매트릭스 생성 시 서버가 자동 반영.
+  cmoLearnThumbnailReferences: (input: { project_id: string; query?: string }) =>
+    request<{ data: { ok: boolean; data: ThumbnailReferenceLearningResult } }>('/api/cmo:learnThumbnailReferences', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }).then(r => unwrap(r)) as Promise<ThumbnailReferenceLearningResult>,
+
+  // Hook 정합 평가 — "썸네일 9점이면 도입부 9점" 강도 정합. 채점은 서버(l5-core), UI는 배지 표시만.
+  cmoEvaluateHookAlignment: (project_id: string) =>
+    request<{ data: { ok: boolean; data: HookAlignmentResult } }>('/api/cmo:evaluateHookAlignment', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)) as Promise<HookAlignmentResult>,
+
+  // 채널 우선 발굴 — 채널 단위 레퍼런스 탐색(would_watch 판정은 서버).
+  cmoChannelFirstDiscovery: (input: { project_id: string; my_terms?: string[] }) =>
+    request<{ data: { ok: boolean; data: ChannelFirstDiscoveryResult } }>('/api/cmo:channelFirstDiscovery', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }).then(r => unwrap(r)) as Promise<ChannelFirstDiscoveryResult>,
 
   // CMO 제목 디벨롭 8단계 — Viewtrap 레퍼런스 2개 입력 → 교차조합 → 2~8단계 → 평가 → title_development 카드.
   // 레퍼런스 검증 실패 시 { ok:false, failed_references } 반환(추가 레퍼런스 요청). 도메인 로직은 서버(l5-core).

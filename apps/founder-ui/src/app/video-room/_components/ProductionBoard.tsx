@@ -25,6 +25,8 @@ export default function ProductionBoard({
   const [submittingRender, setSubmittingRender] = useState(false)
   const [deckId, setDeckId] = useState<string | null>(null)
   const [pipelineErr, setPipelineErr] = useState<string | null>(null)
+  const [checkingRender, setCheckingRender] = useState(false)
+  const [renderStatus, setRenderStatus] = useState<string | null>(null)
 
   // Voice upload state
   const [voiceUrl, setVoiceUrl] = useState('')
@@ -297,7 +299,32 @@ export default function ProductionBoard({
             >
               {submittingRender ? '제출 중...' : '렌더 제출'}
             </button>
+            <button
+              className="j-btn j-btn-secondary j-btn-sm"
+              disabled={checkingRender}
+              title="factory 산출물 기준 렌더 상태를 조회합니다. 완료면 QA 단계로 자동 진행됩니다."
+              onClick={async () => {
+                setCheckingRender(true)
+                setPipelineErr(null)
+                try {
+                  const res = await api.cmoGetRenderStatus(projectId) as { status: string; project_status: string | null }
+                  setRenderStatus(res.status)
+                  onRefresh()
+                } catch (e: unknown) {
+                  setPipelineErr(e instanceof Error ? e.message : '렌더 상태 조회 실패')
+                } finally {
+                  setCheckingRender(false)
+                }
+              }}
+            >
+              {checkingRender ? '조회 중...' : '렌더 상태 확인'}
+            </button>
           </div>
+          {renderStatus && (
+            <div style={{ fontSize: 11.5, color: renderStatus === 'completed' ? 'var(--pi-green)' : 'var(--ink-3)', fontFamily: 'var(--font-mono)' }}>
+              render: {renderStatus}{renderStatus === 'completed' ? ' → QA 단계로 진행됨' : ''}
+            </div>
+          )}
           {deckId && (
             <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontFamily: 'var(--font-mono)' }}>
               deck: {deckId}
