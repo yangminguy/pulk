@@ -39,6 +39,16 @@ export {
   type CollectImpressionsCtrOptions,
 } from './reporting/client.js';
 
+// ── 썸네일 9개 A/B(PRD cmo-thumbnail-ab-automation) — thumbnails.set + 기간 성과 ──
+export {
+  setVideoThumbnail,
+  collectThumbnailPeriodMetrics,
+  type SetVideoThumbnailParams,
+  type SetVideoThumbnailDeps,
+  type SetVideoThumbnailResult,
+  type ThumbnailPeriodMetrics,
+} from './thumbnail-ab.js';
+
 // ── CMO M1 — Viewtrap CDP 크롤링 ─────────────────────────────────────────────
 export {
   type ViewtrapGrade,
