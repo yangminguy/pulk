@@ -24,7 +24,7 @@ import type {
   ModelId,
 } from '@l5/core/dist/functions/cto-native/index.js';
 
-import { runAgentCommand } from './spawn-agent.js';
+import { runAgentCommand, runShellCommand } from './spawn-agent.js';
 import {
   createPhaseWorktree,
   mergePhaseWorktree,
@@ -36,6 +36,9 @@ const exec = promisify(execFile);
 
 /** 기본 phase wall-clock 한계 — 15분. */
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
+
+/** verify_command(tsc/jest 등) 실행 한계 — 8분. */
+const VERIFY_TIMEOUT_MS = 8 * 60 * 1000;
 
 /** 로그 tail로 보관할 최대 길이(verifier 입력). */
 const LOG_TAIL_MAX = 8 * 1024;
@@ -308,8 +311,25 @@ async function runPhaseToVerdict(
     changed_files: diff.changedFiles,
   });
 
+  let pass = verdict.verdict === 'pass';
+  let reason = verdict.reason;
+
+  // (f-2) 실제 검증 명령(verify_command) — worktree에서 tsc/jest 등을 직접 돌려
+  //   휴리스틱 verdict가 못 거르는 진짜 빌드/테스트 실패를 merge 전에 차단.
+  if (pass && phase.verify_command) {
+    console.warn(`[native-orchestrator] ${label}: verify_command 실행 — ${phase.verify_command}`);
+    const vr = await runShellCommand(phase.verify_command, cwd, VERIFY_TIMEOUT_MS);
+    if (vr.exitCode !== 0) {
+      pass = false;
+      reason = `verify_command 실패(exit ${vr.exitCode}): ${vr.outputTail.slice(-400)}`;
+      console.warn(`[native-orchestrator] ${label}: 실제 검증 실패 — 병합 보류. exit ${vr.exitCode}`);
+    } else {
+      console.warn(`[native-orchestrator] ${label}: verify_command 통과(실제 빌드/테스트 OK).`);
+    }
+  }
+
   // pass면 worktree 변경을 커밋(merge는 dispatch가 레벨 종료 후 순차로).
-  if (verdict.verdict === 'pass') {
+  if (pass) {
     try {
       await exec('git', ['-C', cwd, 'add', '-A'], { maxBuffer: 16 * 1024 * 1024 });
       await exec(
@@ -322,18 +342,18 @@ async function runPhaseToVerdict(
     }
   } else {
     console.warn(
-      `[native-orchestrator] ${label}: 검증 ${verdict.verdict}(${verdict.reason}) — 병합 보류.`,
+      `[native-orchestrator] ${label}: 검증 실패(${reason}) — 병합 보류.`,
     );
   }
 
   return {
     phase,
     wt,
-    status: verdict.verdict === 'pass' ? 'pass' : 'fail',
+    status: pass ? 'pass' : 'fail',
     agentFinal: agent,
     output: result.stdout,
     diff,
-    verdictReason: verdict.reason,
+    verdictReason: reason,
     runId,
     exhausted,
   };

@@ -12,6 +12,52 @@ export interface RunAgentResult {
   stderr: string;
 }
 
+export interface RunShellResult {
+  exitCode: number;
+  /** stdout+stderr 합본의 tail(검증 실패 사유 로깅용). */
+  outputTail: string;
+}
+
+/**
+ * 검증 명령(verify_command)을 worktree(cwd)에서 `/bin/sh -c`로 실행한다.
+ * tsc/jest 등 실제 빌드·테스트를 돌려 merge 전에 진짜 통과를 확인하는 용도.
+ * 절대 reject하지 않는다(spawn 에러는 exitCode 1). 타임아웃 시 SIGKILL + exitCode 124.
+ */
+export function runShellCommand(
+  command: string,
+  cwd: string,
+  timeoutMs: number,
+): Promise<RunShellResult> {
+  const TAIL_MAX = 8 * 1024;
+  return new Promise<RunShellResult>((resolve) => {
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn('/bin/sh', ['-c', command], { cwd, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      resolve({ exitCode: 1, outputTail: msg });
+      return;
+    }
+    let out = '';
+    let settled = false;
+    const finish = (exitCode: number) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ exitCode, outputTail: out.slice(-TAIL_MAX) });
+    };
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch { /* ignore */ }
+      out += '\n[VERIFY TIMEOUT]';
+      finish(124);
+    }, timeoutMs);
+    child.stdout?.on('data', (d) => { out += d.toString(); });
+    child.stderr?.on('data', (d) => { out += d.toString(); });
+    child.on('close', (code) => finish(code ?? 1));
+    child.on('error', (err) => { out += `\n[ERROR] ${err.message}`; finish(1); });
+  });
+}
+
 export interface RunAgentOptions {
   /** Hard wall-clock 한계(ms). 만료 시 SIGTERM→5s후 SIGKILL, exitCode 124. */
   timeoutMs: number;

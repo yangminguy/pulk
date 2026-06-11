@@ -102,7 +102,8 @@ function makeNocoSink() {
         const res = await fetch(`${base}/api/native_phase_runs:create`, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ ...rec }),
+          // status='running'으로 시작 — 진행중 행이 모니터에 '진행중'으로 보이게(완료 시 finish가 덮어씀).
+          body: JSON.stringify({ status: 'running', ...rec }),
         });
         const json = await res.json();
         const id = json?.data?.id ?? json?.id;

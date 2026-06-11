@@ -19,6 +19,11 @@ export interface CTOPhase {
    * phase에 암묵 의존(배열순 순차 유지 — 기존 동작 불변). 명시한 phase만 병렬
    * 후보가 된다. CTO Brain이 phase 분할 시 채운다. */
   depends_on?: string[];
+  /** 실제 검증 명령(예: "corepack pnpm exec tsc --noEmit && corepack pnpm exec jest <test>").
+   * 지정 시 Native Orchestrator가 결정론 verdict 통과 후 이 명령을 worktree(cwd)에서 실행하고,
+   * exit≠0이면 merge를 막는다(휴리스틱 verdict만으로 못 거르는 실제 빌드/테스트 실패 차단).
+   * 미지정 시 기존 휴리스틱 검증만(하위호환). CTO가 코드 phase에 설정한다. */
+  verify_command?: string;
 }
 
 export interface ACRIntent {

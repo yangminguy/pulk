@@ -20,6 +20,7 @@ jest.mock('../worktree.js', () => ({
 
 jest.mock('../spawn-agent.js', () => ({
   runAgentCommand: jest.fn(async () => ({ exitCode: 0, stdout: 'FULL REPORT BODY', stderr: '' })),
+  runShellCommand: jest.fn(async () => ({ exitCode: 0, outputTail: '' })),
 }));
 
 jest.mock('@l5/core', () => ({
@@ -98,6 +99,25 @@ describe('dispatchToNativeOrchestrator', () => {
     expect(finishes[0].id).toBe('run-A');
     expect(finishes[0].patch.status).toBe('merged');
     expect(finishes[0].patch.output).toBe('FULL REPORT BODY'); // 결과 본문 회수
+  });
+
+  it('verify_command 실패면 merge 안 함(실제 빌드/테스트 게이트)', async () => {
+    (spawn.runShellCommand as jest.Mock).mockResolvedValueOnce({ exitCode: 1, outputTail: 'tsc error' });
+    const p = { ...phase('A'), verify_command: 'corepack pnpm exec tsc --noEmit' };
+    const s = await dispatchToNativeOrchestrator(intent([p]), { nowIso: NOW });
+    expect(spawn.runShellCommand).toHaveBeenCalledWith(
+      'corepack pnpm exec tsc --noEmit', expect.any(String), expect.any(Number),
+    );
+    expect(worktree.mergePhaseWorktree).not.toHaveBeenCalled();
+    expect(s.mergedPhases).toBe(0);
+  });
+
+  it('verify_command 통과면 정상 merge', async () => {
+    (spawn.runShellCommand as jest.Mock).mockResolvedValueOnce({ exitCode: 0, outputTail: '' });
+    const p = { ...phase('A'), verify_command: 'corepack pnpm exec jest' };
+    const s = await dispatchToNativeOrchestrator(intent([p]), { nowIso: NOW });
+    expect(worktree.mergePhaseWorktree).toHaveBeenCalledTimes(1);
+    expect(s.mergedPhases).toBe(1);
   });
 
   it('승인 미충족 phase는 보류(실행/merge 안 함)', async () => {
