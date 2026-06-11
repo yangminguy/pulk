@@ -83,8 +83,15 @@ export async function runApprovedBatch(
   const concurrency = Math.max(1, Math.min(plan.concurrency || coreCap, coreCap));
   const nowIso = deps?.nowIso ?? new Date().toISOString();
 
-  // 공유 pools(그룹 간 갱신). 입력 deps.pools가 있으면 복제, 없으면 빈 배열(전 에이전트 available 간주).
-  let pools: AgentPoolState[] = deps?.pools ? deps.pools.map((p) => ({ ...p })) : [];
+  // 공유 pools(그룹 간 갱신). 입력 deps.pools가 있으면 복제, 없으면 전 에이전트 available 기본 풀.
+  // (빈 배열 []을 native에 넘기면 DEFAULT 폴백이 안 돼 "가용 풀 없음"으로 보류되므로 명시 주입.)
+  let pools: AgentPoolState[] = deps?.pools
+    ? deps.pools.map((p) => ({ ...p }))
+    : [
+        { agent: 'claude-code', quotaStatus: 'available' },
+        { agent: 'codex', quotaStatus: 'available' },
+        { agent: 'antigravity', quotaStatus: 'available' },
+      ];
   const exhaustedSet = new Set<MainAgent>();
   const results = new Map<string, GroupRunResult>();
   const completedPaths = new Set<string>();
