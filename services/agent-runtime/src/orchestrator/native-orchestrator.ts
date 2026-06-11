@@ -140,9 +140,16 @@ const ALL_AVAILABLE: AgentPoolState[] = [
   { agent: 'antigravity', quotaStatus: 'available' },
 ];
 
-/** 토큰 소진/실패 신호 감지(로그 휴리스틱 + 비정상 종료). */
+/**
+ * 토큰 소진 신호 감지. ★엄격한 스로틀 메시지만 매칭한다 — 과거 휴리스틱
+ * (/quota|rate.?limit|exhaust|insufficient/)은 에이전트가 작성한 정상 콘텐츠(예: 썸네일
+ * PRD가 "rate limit"을 논함)에 매칭돼 성공한 phase를 거짓 소진 처리하는 실전 버그가 있었다.
+ * 실제 CLI/API가 throttle 시 내는 구체 문구만 본다.
+ */
 function looksLikeTokenExhaustion(log: string): boolean {
-  return /quota|rate.?limit|exhaust|usage limit|429|insufficient/i.test(log);
+  return /usage limit reached|rate limit exceeded|429 too many requests|quota exceeded|insufficient[_ ]quota|overloaded_error|resource[_ ]exhausted/i.test(
+    log,
+  );
 }
 
 /** worktree에서 diff stat과 변경 파일 수를 수집(graceful — 실패 시 undefined). */
@@ -271,7 +278,8 @@ async function runPhaseToVerdict(
     buildAgentCommand({ agent, prompt, cwd, model }),
     { timeoutMs: DEFAULT_TIMEOUT_MS, onLog },
   );
-  let exhausted = looksLikeTokenExhaustion(logTail());
+  // 성공(exit 0)한 phase는 소진으로 보지 않는다 — 정상 출력의 단어 매칭 거짓양성 방지.
+  let exhausted = result.exitCode !== 0 && looksLikeTokenExhaustion(logTail());
 
   // (e) 토큰 소진/실패면 recovery로 fallback 판단 → handoff면 1회 재시도.
   const failed = result.exitCode !== 0 || exhausted;
@@ -292,7 +300,7 @@ async function runPhaseToVerdict(
         buildAgentCommand({ agent, prompt, cwd, model: decision.model }),
         { timeoutMs: DEFAULT_TIMEOUT_MS, onLog },
       );
-      exhausted = looksLikeTokenExhaustion(logTail());
+      exhausted = result.exitCode !== 0 && looksLikeTokenExhaustion(logTail());
     } else if (decision.action === 'wait') {
       console.warn(
         `[native-orchestrator] ${label}: 가용 풀 없음 — 보류(${decision.reason}).`,
