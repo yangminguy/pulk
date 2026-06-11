@@ -148,6 +148,9 @@ const {
   proposeScriptDraft,
   // 썸네일 9개 A/B(PRD cmo-thumbnail-ab-automation): 9개 매트릭스 + 심리분석 통합 진입점
   proposeThumbnailSet,
+  // §5/§7 이미지 소싱: 위험도 분류 + 출처표기
+  collectImageSources,
+  buildAttributionBlock,
   // R7 성과 재학습 루프: 완료 영상 성과(수동 입력) → 인사이트 → 다음 기획 입력
   recordVideoPerformance,
   extractCompletionInsight,
@@ -229,7 +232,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'proposeProductDefinition', 'proposeKeyContentReport', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeThumbnailMatrix', 'proposeTitleDevelopment', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'proposeProductDefinition', 'proposeKeyContentReport', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeThumbnailMatrix', 'recordImageSources', 'proposeTitleDevelopment', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -4231,6 +4234,39 @@ function registerCmoResource(app: any, db: any) {
         );
 
         ctx.body = { ok: true, data: result };
+        await next();
+      },
+
+      // POST /api/cmo:recordImageSources  { project_id, hits: RawImageHit[] }
+      // §5/§7 이미지 소싱: 제공된 이미지 후보(수동/스크래퍼 hits)에 위험도 자동 분류 + 출처표기
+      // 블록을 부여해 'image_sources' 카드로 저장. 실 스크래퍼는 엣지 어댑터(followup).
+      recordImageSources: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const hits = Array.isArray(v.hits) ? v.hits : [];
+        if (hits.length === 0) ctx.throw(400, 'hits (이미지 후보 배열) is required');
+
+        let sources: any[];
+        try {
+          // 제공된 hits를 그대로 돌려주는 인라인 어댑터로 도메인 분류 로직 재사용.
+          const adapter = { search: async () => hits };
+          sources = await collectImageSources('', hits.length, { adapter, idPrefix: project_id });
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+        const attribution_block = buildAttributionBlock(sources);
+        const payload = { sources, attribution_block };
+
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'image_sources',
+          `image_sources (${sources.length}개 · critical ${sources.filter((s: any) => s.risk_level === 'critical').length})`,
+          payload,
+        );
+
+        ctx.body = { ok: true, data: payload };
         await next();
       },
 
