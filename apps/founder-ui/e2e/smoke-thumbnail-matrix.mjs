@@ -42,6 +42,7 @@ await fetch(`${API}/api/video_room_projects:update?filterByTk=${projectId}`, {
   method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
   body: JSON.stringify({ status: 'thumbnail_pattern_extraction' }),
 })
+// (프리필은 실 워크플로우의 key_content_choice 카드에서 동작 — 스모크는 보드 렌더만 검증.)
 // matrix 카드 시드(결정론).
 const seed = await cmo(token, 'proposeThumbnailMatrix', {
   project_id: projectId, title: '광고비 90% 아끼는 자동화',
@@ -58,44 +59,46 @@ await page.addInitScript(t => localStorage.setItem('l5_token', t), token)
 
 try {
   await page.goto(`${FRONT}/video-room`, { waitUntil: 'networkidle', timeout: 20000 })
-  await page.waitForTimeout(1500)
 
-  // 로그인 폼이 뜨면 제출(프리필된 admin 계정).
-  const loginBtn = page.locator('button:has-text("로그인")')
-  if (await loginBtn.count() > 0) {
-    console.log('로그인 폼 감지 — 제출')
-    await page.locator('input[type="password"]').fill('admin123').catch(() => {})
-    await loginBtn.first().click().catch(() => {})
-    await page.waitForTimeout(2500)
-    await page.goto(`${FRONT}/video-room`, { waitUntil: 'networkidle', timeout: 20000 }).catch(() => {})
-    await page.waitForTimeout(1500)
-  }
+  // 인증 정착 대기: 앱이 admin 자동 로그인(auth-context)으로 인증될 때까지(로그인 폼 사라짐).
+  await page.waitForFunction(
+    () => !document.body.innerText.includes('운영 콘솔에 로그인'),
+    { timeout: 25000 },
+  ).catch(() => console.log('인증 대기 타임아웃(계속 진행)'))
+  await page.waitForTimeout(800)
 
-  // 프로젝트 선택(목록에서 클릭). 제목/스모크 키워드로 찾는다.
-  const pick = page.locator('text=썸네일 A/B 스모크').first()
-  if (await pick.count() > 0) { await pick.click().catch(() => {}); await page.waitForTimeout(1500) }
+  // 프로젝트 선택: ProjectSelector의 시드 프로젝트 버튼 클릭.
+  const pick = page.locator('button:has-text("썸네일 A/B 스모크")').first()
+  await pick.waitFor({ state: 'visible', timeout: 20000 })
+  await pick.click()
 
-  // 보드 제목 + 9개 후보 검증.
-  const boardTitle = await page.locator('text=썸네일 9개 A/B').count()
+  // StrategyBoard → 썸네일 9개 A/B 보드 렌더 대기.
+  await page.locator('text=썸네일 9개 A/B').first()
+    .waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
+  await page.waitForTimeout(800)
+
+  // 검증: 생성 버튼 + 후보 카드(클릭 가설) = 보드 정상 렌더. 제목/프리필은 부가 정보.
+  const boardTitle = await page.getByText('썸네일 9개 A/B', { exact: false }).count()
   const genBtn = await page.locator('button:has-text("9개 기획안")').count()
-  const slotA = await page.locator('text="A"').count()
-  const thumbText = await page.locator('text=클릭 가설').count()
+  const prefillNote = await page.getByText('확정 키 콘텐츠에서 자동 입력됨', { exact: false }).count()
+  const thumbText = await page.getByText('클릭 가설', { exact: false }).count()
+  // raw JSON 노출 회귀 점검: thumbnail_matrix 카드가 generic raw JSON으로 새지 않아야.
+  const rawJson = await page.getByText('"candidate_id"', { exact: false }).count()
 
   console.log('보드 제목 노출:', boardTitle > 0)
   console.log('생성 버튼 노출:', genBtn > 0)
+  console.log('워크플로우 자동 프리필 안내:', prefillNote > 0)
   console.log('후보 카드(클릭 가설) 노출:', thumbText > 0)
+  console.log('raw JSON 누출 없음:', rawJson === 0)
 
   await page.screenshot({ path: `${ART}.png`, fullPage: true })
   console.log('스크린샷:', `${ART}.png`)
 
-  if (boardTitle === 0) {
-    failed = true
-    console.error('❌ 보드 제목이 안 보임 — stage 게이팅/선택 확인 필요.')
-  } else if (thumbText === 0 && genBtn === 0) {
-    failed = true
-    console.error('❌ 보드는 있으나 후보/버튼 미렌더.')
+  if (genBtn > 0 && thumbText > 0 && rawJson === 0) {
+    console.log('✅ ThumbnailMatrixBoard 정상 렌더(생성 버튼 + 9개 후보, raw JSON 누출 없음).')
   } else {
-    console.log('✅ ThumbnailMatrixBoard 렌더 확인.')
+    failed = true
+    console.error('❌ 보드 미렌더 또는 raw JSON 누출.')
   }
 } catch (e) {
   failed = true

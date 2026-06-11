@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { api } from '@/lib/api'
 import type { ThumbnailMatrixResult, ThumbnailMatrixCandidate, ThumbnailPsychologyAnalysis } from '@/lib/api'
 
@@ -67,8 +67,26 @@ export default function ThumbnailMatrixBoard({
 }) {
   const [title, setTitle] = useState('')
   const [reason, setReason] = useState('')
+  const [prefilled, setPrefilled] = useState(false)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
+
+  // 워크플로우 자동 프리필: 확정 키 콘텐츠(key_content_choice) 카드에서 제목·클릭이유를 끌어온다.
+  // 사장님이 직접 타이핑하지 않아도 되게(승인중심). 비어있을 때만 1회 채운다.
+  useEffect(() => {
+    if (prefilled) return
+    const choice = [...cards].reverse().find(c => c.stage === 'key_content_choice')
+    const d = choice && (typeof choice.data === 'string' ? safeParse(choice.data) : choice.data)
+    const cd = d as { key_topic_title?: string; selected?: { title?: string; thumbnail_promise?: string; main_click_reason?: string } } | null
+    if (cd) {
+      const t = cd.key_topic_title ?? cd.selected?.title ?? ''
+      const r = cd.selected?.main_click_reason ?? cd.selected?.thumbnail_promise ?? ''
+      if (t && !title) setTitle(t)
+      if (r && !reason) setReason(r)
+      if (t || r) setPrefilled(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards])
 
   // 기존 thumbnail_matrix 카드(있으면) 렌더.
   const existing = useMemo<ThumbnailMatrixResult | null>(() => {
@@ -107,6 +125,11 @@ export default function ThumbnailMatrixBoard({
 
       {/* 생성/재생성 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+        {prefilled && (
+          <div style={{ fontSize: 12, color: 'var(--green-press)', fontFamily: 'var(--font-mono)' }}>
+            ✓ 확정 키 콘텐츠에서 자동 입력됨 — 필요하면 수정 후 생성하세요.
+          </div>
+        )}
         <input className="j-input" placeholder="확정 영상 제목" value={title} onChange={e => setTitle(e.target.value)} />
         <input className="j-input" placeholder="이 영상을 클릭해야 하는 단 하나의 이유" value={reason} onChange={e => setReason(e.target.value)} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

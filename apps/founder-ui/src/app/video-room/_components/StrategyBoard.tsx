@@ -115,7 +115,7 @@ export default function StrategyBoard({
 
       {strategyCards
         // 키 콘텐츠 v3 카드는 raw JSON으로 노출하지 않는다 — 전용 보드(KeyContentPlanBoard)가 렌더.
-        .filter(card => !['product_definition', 'key_content_draft', 'key_content_candidates', 'key_content_choice', 'key_content', 'key_content_report', 'pulling_candidates', 'pulling_plan', 'thumbnail_plan', 'thumbnail_choice', 'title_development'].includes(card.stage))
+        .filter(card => !['product_definition', 'key_content_draft', 'key_content_candidates', 'key_content_choice', 'key_content', 'key_content_report', 'pulling_candidates', 'pulling_plan', 'thumbnail_plan', 'thumbnail_choice', 'title_development', 'thumbnail_matrix', 'image_sources'].includes(card.stage))
         .map(card => {
           if (card.stage === 'intro_30s') {
             return <Intro30sCard key={card.id} card={card} />
