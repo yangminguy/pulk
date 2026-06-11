@@ -20,6 +20,17 @@
 - [~] **R6. 전략 패키지 → CMO Brief → Slide Factory → 영상 렌더** — (부분완료 2026-06-09) plugin `generateVideoExecutionBrief` 시그니처 버그 수정(script_draft+proj→buildStrategyBriefFromCards→buildVideoExecutionBrief→validate→prepareFactoryHandoff) + 누락된 `sendBriefToFactory` 액션 신설(sendToFactory; transport=video factory submitJob 재사용/결정론 스텁). ACL+dist 패치. 검증: l5-core tsc0 / jest30 GREEN / 파이프라인 node 검증 / founder-ui tsc0 / dist node--check OK. **(2026-06-09 실 factory 연결 완료)** `video-factory-transport.ts`에 `submitBrief(brief)` 신설 — `${VIDEO_FACTORY_DIR}/briefs/<slug>.json`(slug=content_card_id||title, path-traversal 가드)에 brief JSON write + `validate:brief`(runValidateBrief→validate-brief.ts) 실행; 성공 `{ok,data:{brief_path,validated:true}}`, 실패해도 파일은 남기고 `{ok:false,error}`. `sendBriefToFactory`의 transport.send 스텁 → `_videoFactoryTransport.submitBrief` 호출(transport null=factory dir 미존재면 graceful stub, 응답 data에 brief_path/stub 표기). dist는 **별도 파일 `dist/video-factory-transport.js`**(인라인 아님)에 patch + plugin.js send patch(번들 네임스페이스 import_fs/import_path/import_child_process 사용). 검증: dist node--check OK + 실 factory dir 대상 submitBrief 스모크(briefs/에 JSON 생성 + validate:brief 통과 확인). 남은: 라이브 HTTP E2E(적합 프로젝트 시), buildSlideDeck이 brief 직접 참조, getRenderJobStatus 폴링.
 - [ ] **R7. 성과 재학습 루프** — cmo-strategy-watch 활용, 영상 성과 → 다음 기획 반영.
 
+**원격 운영 통로 (2026-06-11):**
+- [x] **배포→로컬 통로 복구·E2E 검증** — 좀비 quick tunnel 재기동, Vercel env+prod 재배포(parity 20+ 커밋 반영), 터널 경유 read/write(승인게이트 task 생성→로컬 큐 적재→정리) 실증. HANDOFF 참조.
+- [x] **터널 liveness 자동복구** — keeper에 주기 감시 내장(3분 probe, 공용 DNS 8.8.8.8→1.1.1.1 폴백, 연속 3회 실패 시 cloudflared SIGTERM→10s 후 SIGKILL+exit → launchd 재기동→새 URL 자동 sync). 라이브 가동·오탐 0 확인 (2026-06-11).
+- [ ] (선택) **named tunnel 전환** — 고정 도메인으로 URL 변경→재배포 갭(~2분) 제거.
+
+**임원 호출 인터페이스 (2026-06-11):**
+- [x] **임원 서브에이전트 9종** — `.claude/agents/{ceo,cmo,cto,cpo,cro,coo,cfo,chief-of-staff,risk-qa}.md`. 이 세션에서 `@임원`으로 호출. agent-runtime SYSTEM_PROMPT + rules 반영.
+- [x] **인바운드 텔레그램 게이트웨이** — `services/telegram-gateway`. 텔레그램 `@임원` → 헤드리스 claude 서브에이전트 → 결과/파일 회신. 검증: tsc0 / build / jest router 10/10.
+- [~] **텔레그램 게이트웨이 라이브 실증** — 사장님 맥에서 `pnpm --filter @l5/telegram-gateway build` + `TELEGRAM_BOT_TOKEN/CHAT_ID` 설정 후 `scripts/install.sh` → 텔레그램 `@cto …` end-to-end 확인 필요. (샌드박스 미실증)
+- [ ] (선택) 게이트웨이가 ACR/orchestrator 실행 레일과 직접 연동(현재는 claude 서브에이전트 경유).
+
 **운영/정리(상시):**
 - [ ] 미커밋 변경(키콘텐츠 3후보 등) 커밋 — 트랙 A HANDOFF 혼입 hunk 분리.
 - [ ] 데모 산출물 정리: `apps/founder-ui/e2e/live-demo-keycontent.mjs`(임시), 라이브 DB 테스트 프로젝트들.
@@ -1650,4 +1661,5 @@ L5 Business OS
 - [x] **M2 호랑이 두뇌**: `l5-core/.../tiger/analysis.ts`(prepareCandidates·selectModel 적응형 opus/sonnet·buildTigerPrompt·parseTigerOutput·card매핑) + `hermes/src/api/claude-cli.ts`(spawn-agent 이식, OpenAI 0) + `night-bpr-loop.ts` 본체(후보→Claude→카드→BPRLog/WIP/Memory 저장+텔레그램). repo는 source_ref `tiger:<target_id>` 인코딩. l5 24 + hermes 6 GREEN.
 - [x] **M3 self-improve 페이지**: `founder-ui/src/app/self-improve/page.tsx`(체크박스+전체선택+일괄승인+문제/원인/해결/대상repo 배지) + api.ts(SelfImproveCard/bulkApproveSelfImprove 계약) + Sidebar NAV. tsc0.
 - [x] **M4 디스패치+학습+launchd**: `l5-core/.../tiger/proposal-to-task`·`phase-result-to-memory` + `cto-native/batch-plan`(repo별 ACRIntent 그룹핑+위상정렬) + `agent-runtime/.../batch-runner.ts`(코어수-2 세마포어 병렬) + `hermes/.../tiger-dispatch-loop.ts`(승인분만=게이트 보존) + gateway/runner 등록 + plist 2종 작성. l5 17 + agent-rt 6 + hermes 7 GREEN.
-- [ ] ⚠️ **런타임 배선(사장님/다음 세션)**: (a) **plugin-executive-monitor 백엔드 핸들러 2개**(`/api/monitor:selfImproveCards`·`bulkApproveSelfImprove`) 미구현 → UI가 빈배열. (b) NocoBase `bpr_logs`/`workflow_improvement_proposals` 컬렉션 실재 검증(없으면 정의 추가). (c) launchd `com.l5.hermes.{night-bpr-loop,tiger-dispatch}.plist` 토큰주입+`launchctl bootstrap`. (d) M1-A 도구 구조화 로그 심기. (e) 런타임 E2E.
+- [x] ✅ **런타임 배선 완료 (라이브, 커밋 3fe957e)**: plugin 핸들러 2개(`monitor:selfImproveCards`·`bulkApproveSelfImprove`)+컬렉션 3개+DDL+ACL 구현·재빌드·재기동, e2e 스모크 통과 / launchd night-bpr **03:00** / tiger-dispatch **매시** bootstrap / night-bpr↔collector 연결(무인 자율) / founder-ui `/self-improve`(200). **end-to-end 실증**: night-bpr 수동 실행 → `ai-slide-video-factory`(외부 repo) 로그 cross-repo 수집 → Claude opus 분석 → **개선 카드 5건 발행** → surface 조회 확인.
+- [ ] **followup**: (1) collector 신호 필터 튜닝 — 정상 로그(`warnings:[]`/`fail_count:0`)를 병목으로 오탐 → 카드 노이즈. (2) M1-A 도구 구조화 실패로그(jsonl) 심기(현재 ai-slide outputs json 추정 glob만). (3) tiger-dispatch 실제 코딩 경로 런타임 검증(approved 카드 → native-orchestrator 병렬).

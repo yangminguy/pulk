@@ -3,6 +3,64 @@
 > 최종 업데이트: 2026-06-11. 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
 > 300줄 넘으면 오래된 항목을 `docs/archive/`로 이관하고 요약만 남긴다.
 
+## 🟢 2026-06-12 — 마스터 HTML §14 전수 구현 + B1~B7 + 신규 프로젝트 라이브 E2E 업로드 직전 관통
+
+사장님 지시("HTML 정리 내용 빠짐없이 기능 + 7가지 보강 + 새 프로젝트 E2E 업로드 직전까지, 오류는 그 자리에서 수정") 완수.
+
+**구현 (4개 병렬 워크스트림)**
+- **B1~B7 (l5-core `video-room/thumbnail-develop.ts` 신규)**: 이미지 디벨롭 6기술(`developThumbnailImage`·`learnThumbnailPatternsFromReferences`=레퍼런스 자동 학습) · 채널 시청층 정합(`channel_audience_profile`+`judgeThumbnailAudienceFit`) · 문구에 제목기술 재적용(`developThumbnailTextWithTitleTechniques`) · 썸네일↔도입부 강도 연동(`scoreIntroHookStrength`+`evaluateHookIntensityAlignment`) · 디벨롭 자가 재귀 점검(`evaluateDevelopImprovement`) · 채널 우선 발굴(`buildChannelFirstDiscoveryPlan`+`selectAudienceChannels`) · 폰트 라이선스 검수. jest 신규 41 + 회귀 189 GREEN.
+- **@l5/youtube**: `uploadVideo`(videos.insert resumable, **자동 호출 금지** 주석) · `updateVideoMetadata`(제목 교체용) · `collectHotVideoCandidates`(핫비디오 프록시) · `collectThumbnailReferences` · `searchChannels`/`getChannelTopVideos`. jest 90/90.
+- **plugin 배선**: `proposeTitleDevelopment` 레퍼런스 자동 발굴+hot_videos 주입(갭#2/#3) · 신규 7액션 `learnThumbnailReferences`/`developThumbnailCandidate`/`reviewThumbnail`/`channelFirstDiscovery`/`evaluateHookAlignment`/`checkSwapSignals`(갭#10+#11, 텔레그램)/`publishUpload`(갭#9, confirm+status 가드, D3) · `proposeThumbnailMatrix`에 시청층 프로필+학습 패턴 자동 로드.
+- **founder-ui**: `HookApprovalBoard`(승인③ 제목+썸네일+도입부 통합, 갭#5) · ThumbnailMatrixBoard 검수/디벨롭/레퍼런스 학습 버튼(갭#6) · api 5함수.
+
+**라이브 E2E (신규 프로젝트 7e30e253, `apps/founder-ui/e2e/full-pipeline-live.mjs`)**
+`createProject → loadPTContext → 상품정의 → 키 보고서(실검색) → 승인① → 풀링 보고서 → 승인② → 제목 디벨롭(자동 발굴+2차 확장) → 레퍼런스 학습 → 9개 매트릭스 → 썸네일 커밋 → hook 정렬 → 승인③ → 원고 → 승인④ → 녹음(say) → 슬라이드덱 → 실 렌더(Remotion, video.mp4 548KB) → QA → 승인⑤ → 업로드 초안(private) → **upload_approval 도달**`. publishUpload 미호출(승인⑥ 대기 = 업로드 직전 정지).
+
+**E2E 중 발견·수정한 오류 (7건)**
+1. `loadPTContext` rules 미입력 400 전체 정지 → l5-core `derivePTRules`(LLM→강의 기본 규칙 폴백) + source_refs 3개 미만 보충. jest 3/3.
+2. **CDP RPC 무한 대기(30분 행 근본 원인)** — `RawCdpConnection.send` pending에 타임아웃 없음 → 60s 타임아웃 + ws close 시 전체 reject (`CDP_RPC_TIMEOUT_MS`). viewtrap jest 31/31.
+3. HTTP 5분 단절(undici/서버) 시 클라이언트만 죽음 → E2E `callOrPoll`(fetch 실패/409 → 기대 카드 폴링 회수).
+4. 제목 레퍼런스 자동 발굴 후보 1개 실패 → `discoverTitleReferences`에 **2차 의미범위 확장**(`deps.expandQueries`, plugin은 sonnet 주입). jest 15/15.
+5. 드라이버 thumbnail plan `candidate_id` 키 매핑.
+6. 동기 자식 실행 후 keep-alive 끊김 fetch failed → 1회 재시도.
+7. `createUploadDraft` brief 부재 시 title 필요 → 확정 제목 전달.
+
+**잔여(마이너)**: ① `generateVideoExecutionBrief`/`sendBriefToFactory` 400(연구팩 의존 추정 — 슬라이드덱은 script_draft 폴백 정상, 후속 확인) ② `learnThumbnailReferences` 해당 주제 적격 0건(graceful) ③ CTR은 구글 리포트 백필 대기 ④ 실 썸네일 이미지 제작·이미지 크롤러는 MVP 밖 유지 ⑤ founder-ui 신규 보드 Playwright 스모크 권장.
+
+## 🟢 2026-06-11 — E2E 전체 워크플로우 마스터 HTML 작성 (PRD 6종 전수 + 구현 대조, 코드 무수정)
+
+사장님 요청: CMO가 PRD별로 연결해둔 워크플로우의 원본 PRD를 전수 확인하고, 상품 정의→키→풀링→제목·썸네일→원고→영상→유튜브 업로드→A/B·재학습까지 전 과정을 하나의 HTML 정본으로 정리.
+- **산출물**: `docs/cmo/CMO_E2E_WORKFLOW_MASTER.html` — ① 구현 기준 상태머신 23단계 표(액션 매핑 포함) ② 단계별 상세(상품정의 8섹션 / 키 11스텝+실검색 보고서 / 풀링 12스텝 / 제목 8단계 / 썸네일 9개 매트릭스+이미지 위험도 / 도입부 / Script Room 조사5종+QA게이트 / 녹음·Brief·렌더·QA / 업로드 / A/B G1~G4 / 재학습) ③ 승인 지점 총정리 ④ **오류·제한 16건 전수 표 + P0~P2 처리 순서**.
+- 근거 PRD 6종 전부 정독: content-strategy-v3 · title-development · thumbnail-ab-automation · title-thumbnail-develop-notes.SOURCE · SCRIPT_ROOM_PRD · video_room_prd_v1.1. 구현 대조: types.ts 상태머신(25→23 괴리 명시), plugin cmo 액션 43종, services/youtube(videos.insert 미존재 = 실 업로드 수동 확인).
+- 핵심 갭(요약): P0=재기동·라이브 E2E 관통 / P1=레퍼런스 자동발굴·핫비디오 실데이터·승인③ 통합보드 배선 / P2=videos.insert 업로드 배선·교체 모니터링 알림·CTR 배선·렌더 워처. 상세는 HTML §14.
+
+## 🟢 2026-06-11 — 제목·썸네일 디벨롭 강의 방법론 도메인 반영 (배선은 후속)
+
+사장님 강의 노트(5주차 제목/6주차 썸네일) + 지시(레퍼런스 자동 발굴·핫비디오 실데이터·게이트 통합 표시)를 l5-core 도메인에 반영. **plugin/UI 배선은 다른 세션의 plugin.ts/StrategyBoard 동시 작업 충돌을 피해 의도적으로 보류** — 후속 목록은 [TASKS.md](./TASKS.md) "배선 후속".
+- **SOURCE 반입**: `docs/cmo/prd/cmo-title-thumbnail-develop-notes.SOURCE.md`(강의 노트 원문 + 요구 분해 + 임계값 결정 근거).
+- **제목**: 신규 `cmo-strategy/title-reference-discovery.ts` `discoverTitleReferences` — YouTube API 같은 주제·조회수 상위 2개 자동 발굴(5만+ 필터, 등급 실측 시 Good/Great 필터, 채널 다양성, `validateTitleReferences` 재통과, 미실측은 selected_reason에 명시·조작 금지). `title-development-llm.ts`에 `hot_videos`(뷰트랩 실측) → **5·7단계 프롬프트 주입**(미주입 시 HOT_VIDEO_MISSING_NOTE), STEP_GUIDANCE 강의 디테일 보강(일상어 자가점검 3·조회수 합계 기준·부정의 부정 원고 근거·35자 시 조사→수식어 제거·정보 누락=욕구 기반·8단계는 대형 채널용). `shouldSwapTitle`(7일 100회, 설정형).
+- **썸네일**: `thumbnail-matrix.ts`에 45/45/10 비중 상수 + 검수 체크리스트(데드존 4종·작은 화면·무게중심·글자수) + `reviewThumbnailCandidate` + 매트릭스 프롬프트 8규칙(이미지·문구 집중/공감=원하면서 피해 막거나 이득/16자/왼쪽 위/벤치마킹 이유 이미지vs제목, 모르면 둘 다). `thumbnail-ab-test.ts`에 **7일 교체 윈도우**(`validateRotationWindow` — 기본 3×2일=6일 OK, 3×3일=9일 경고) + `evaluateThumbnailSwapSignal`(분당 조회수=강의 원기준은 옵션, 기본은 7일 100회 일할 추세 — 사장님 확인: 설정형 임계).
+- **검증**: l5-core tsc 0 · 신규 jest 30/30 · 회귀 title-development 4스위트 59/59 + thumbnail 5스위트 60/60 + cmo-orchestrator(skill·v3-e2e) 9/9 — 0실패. 기존 타입(PRD §19) 무변경(컨텍스트/신규 함수만 추가).
+
+## 🟢 2026-06-11 — 제목 디벨롭 8단계 + 썸네일 9개 A/B 작동 검증 (코드 무수정)
+
+사장님 요청으로 두 디벨롭 워크플로우 작동 재검증 + 정확한 동작 흐름 HTML 보고서 작성. **코드 변경 없음(검증·문서만)**.
+- jest: 제목 디벨롭 55/55(결정론·LLM·스킬 3스위트) · 썸네일 49/49(matrix 19·ab-flow 4·ab-test 13·e2e 6·image-sourcing 7) · youtube thumbnail-ab 6/6 — **총 110/110, 0실패**.
+- 라이브 배선: dist/plugin.js에 `proposeTitleDevelopment`/`proposeThumbnailMatrix`/`recordImageSources` 심볼+ACL 확인(dist는 커밋 5265927 이후 빌드본). StrategyBoard 3보드(thumbnail 상세/9개 A/B/제목 디벨롭) `thumbnail_pattern_extraction→hook_draft_approval` 게이팅 확인. 썸네일 보드는 당일 Playwright 스모크 PASS(5265927).
+- **잔여**: 제목 디벨롭 라이브 HTTP 1회 미실행(thumbnail 단계 프로젝트 + 레퍼런스 2개 필요) · 결과 카드 `fallback_count` 관찰 권장.
+- 산출물: `docs/cmo/CMO_DEVELOP_WORKFLOWS_VERIFICATION.html`(검증 결과 + 두 워크플로우 단계별 흐름).
+
+## 🔴→🟢 2026-06-11 — 풀링 이후 전 구간 자동 진행 배선 (멈춤 지점 3곳 해소, 정책: 게이트만 수동)
+
+풀링 이후 단계 전수 점검 결과 **자동으로 못 굴러가는 끊김 3곳** 발견 → 전부 배선. 정책 확정: **승인 게이트(훅/원고/QA/업로드)만 사장님 수동, 비-게이트 단계는 액션 성공 시 자동 전진.**
+
+1. **intro_30s_analysis 영구 정지** — commitThumbnailPlan이 +1만 전진해 intro_30s_analysis(전진 트리거 0개인 비-게이트)에서 멈춤. → plugin에 공용 헬퍼 `advanceProjectUntilGate(project_id, onlyFrom)`(다음 게이트까지 연속 전진, 최대 8스텝, onlyFrom 멱등 가드) 신설, commitThumbnailPlan이 hook_draft_approval까지 전진. commitScriptDraft도 동일 적용(기존엔 승인 버튼 2번 눌러야 script_approval 도달).
+2. **pulling_plan 카드 미생성** — 새 풀링 보고서 경로(PullingReportBoard 승인)는 commitPullingPlan을 안 거쳐 `pulling_plan` 카드가 없음 → proposeTitleDevelopment 자동 주제(400) 등 downstream 끊김(아침에 고친 key_content_choice 누락과 동일 패턴). → `proposePullingReport`가 보고서 저장 직후 report.topics를 PullingCandidate 형태(id/order/title/selection_reasons 4종, bridge_to_key 비공백 보장)로 변환해 **pulling_plan 카드 자동 커밋**(source:'pulling_content_report', 실패해도 응답 안 막음).
+3. **제작·발행 구간 전진 배선 0개** — attachVoice/submitRender/getRenderStatus/runQA/createUploadDraft 전부 status를 안 올리고 UI에도 전진 버튼 없음 → 원고 승인 후 전 구간 정지. → 공용 헬퍼 `advanceProjectFrom(project_id, from)`(현재 status가 from일 때만 +1, 멱등) 신설 후: attachVoice(voice_recording→slide_deck) · submitRender(slide_deck→rendering) · getRenderStatus 완료 관측(rendering→qa) · runQA pass(qa→video_qa_approval) · createUploadDraft(upload_draft→upload_approval). fail QA는 전진 안 함.
+- **founder-ui**: `api.cmoGetRenderStatus` 신설(기존 미존재 — rendering→qa 전이가 영영 안 일어나던 원인) + ProductionBoard에 "렌더 상태 확인" 버튼/상태 표시. `phases.ts`에서 백엔드에 없는 고아 status 2개(reference_analysis, second_brain_insight_merge) 제거(25→23, 좌측 레일 도달불가 단계 제거. video_room_cards의 stage='reference_analysis'는 카드명이라 무관).
+- **dist**: 샌드박스에서 rollup 네이티브 불가 → **dist/plugin.js 직접 패치**(rule 60 컨벤션, node --check OK). ⚠️ **활성화 필요**: founder-ui `next build`+재기동, NocoBase 재기동(권장: 정식 `corepack yarn build @l5/plugin-orchestration` 후 kickstart).
+- **잔여**: ① 제목 디벨롭 레퍼런스 2개는 여전히 수동 입력(자동화는 별도 결정 대기) ② 라이브 E2E(풀링 승인→썸네일→훅 게이트) 재검증 필요.
+
 ## 🔴→🟢 2026-06-11 — 보고서 승인→풀링 진입 흐름 2개 버그 수정 (게이트 분기 + 풀링 입력 배선)
 
 사장님이 보고서 "이대로 확정 → 다음 단계" 눌렀더니 `400 approval gate must be cleared`. 점검 결과 흐름에 2개 갭:

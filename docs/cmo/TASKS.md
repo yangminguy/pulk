@@ -37,6 +37,16 @@
 
 ## ✍️ 제목/썸네일 기획 (Phase 7)
 
+- [x] **제목·썸네일 디벨롭 강의 방법론 도메인 반영** *(2026-06-11 도메인 완료)*: SOURCE = `docs/cmo/prd/cmo-title-thumbnail-develop-notes.SOURCE.md`.
+  - 제목: `cmo-strategy/title-reference-discovery.ts`(신규) — `discoverTitleReferences(input, deps)` 레퍼런스 2개 YouTube API 자동 발굴(5만+ 필터·등급 실측 시 Good/Great 필터·채널 다양성·기존 검증 재통과·미실측 투명 표기). `title-development-llm.ts` — `hot_videos`(뷰트랩 실측) 컨텍스트 → 5단계(수식어)·7단계(구조 치환) 프롬프트 주입, 미주입 시 `HOT_VIDEO_MISSING_NOTE`. STEP_GUIDANCE 2~8단계 강의 디테일 보강(잘못하는 경우/조회수 합계 기준/조사→수식어 제거 순서 등). `shouldSwapTitle`(업로드 7일 100회 미만→교체, 설정형).
+  - 썸네일: `thumbnail-matrix.ts` — `THUMBNAIL_COMPONENT_WEIGHTS`(45/45/10)·`THUMBNAIL_REVIEW_CHECKLIST`(데드존/작은화면/무게중심)·`reviewThumbnailCandidate`(글자수·디자인 과투자 경고), 매트릭스 프롬프트 8규칙(공감 중심/16자/왼쪽 위/벤치마킹 이유 분석). `thumbnail-ab-test.ts` — `THUMBNAIL_SWAP_WINDOW_DAYS=7`·`validateRotationWindow`(로테이션 7일 내 완료 검사)·`evaluateThumbnailSwapSignal`(설정형 임계: 분당 조회수=강의 원기준 옵션 + 보수적 일할 추세 기본).
+  - 검증: tsc 0 · 신규 jest 30/30(title-reference-discovery 11 + hotvideo 4 + title swap 4(통합) + thumbnail-develop-rules 14) · 회귀 title-development 59/59 + thumbnail 5스위트 60/60 + cmo-v3-e2e 4/4.
+- [ ] **배선 후속 (다른 세션 plugin.ts/StrategyBoard 작업 종료 후)**:
+  - ① `cmo:proposeTitleDevelopment`가 references 미입력 시 `discoverTitleReferences` 자동 발굴(@l5/youtube search/stats + 확장 scrapeGrades graceful 주입), `hot_videos`는 뷰트랩 CDP(구독자 적은 순·Good/Great·10만+) 수집해 주입.
+  - ② 승인③(hook_draft_approval) 화면에서 **제목 후보(final_candidates) + 썸네일 9개 후보를 한 보드에서** 사장님 최종 택1(통합 승인 뷰).
+  - ③ 업로드 후 모니터링: `shouldSwapTitle`/`evaluateThumbnailSwapSignal`을 성과 수집(M5) 경로에 연결해 교체 권장 알림(텔레그램).
+  - ④ 검수(Stage E) UI에 `reviewThumbnailCandidate` 경고·체크리스트 표시.
+
 - [x] **제목 디벨롭 8단계 워크플로우** *(2026-06-10 완성)*: PRD = `docs/prd/cmo-title-development.md`. 기능 문서 = [features/title-development-workflow](./features/title-development-workflow.md).
   - 도메인 = `l5-core/cmo-strategy/title-development{,-types,-llm}.ts`(레퍼런스 검증→4교차조합→어색함→2~8단계→100점 평가). AC-01~15 매핑, jest 59/59.
   - 오케스트레이터 스킬 `cmo.title.development`(pulling→title→script 체인) + `cmo-skill-registry` 등록(e2e 통과).
@@ -69,6 +79,32 @@
 - [x] **M8. 라이브 HTTP E2E + 정리** *(2026-06-10 완료)*: 플러그인 dist 재빌드(`corepack yarn build @l5/plugin-orchestration`, 신규 심볼 runDiscovery/getRenderStatus/buildSlideDeckSpecFromBrief grep 확인 + node --check) + NocoBase 재기동(`launchctl kickstart`) → `app:getInfo` **200**. **라이브 HTTP E2E PASS**: ① `cmo:sendBriefToFactory` 200 → `handoff_status=sent`, stub=false, factory `briefs/1b0c2e9c….json` **실파일 생성 확인**(R6 경로). ② `cmo:runDiscovery` 200 → 실 YouTube 검색+stats 라이브(provenance searched/stats=true), **후보 3개**(최고 112,661회 verdict=fit). 스크립트=`apps/founder-ui/e2e/m8-live-http-e2e.mjs`(재현 가능). **단 Sonnet 분류는 서버(launchd) 컨텍스트에서 폴백**(classified=false, "10개 영상 폴백(ambiguous)") — claude CLI cold-spawn 제약. 셸 컨텍스트 `verify-live-discovery.mjs`는 분류 라이브됨. 정리: `/tmp/cdp-*.mjs`+`oauth-token.json` 47개 → `/tmp/_archive/m8-cdp-tmp/`(핵심 로직은 `services/youtube/src/{token,credentials,viewtrap/cdp}.ts`에 이관 확인 후), M4 스모크(`jobs/l5-l5-m4-smoke.json`·`outputs/l5-m4-smoke/`) 삭제, demo-3min 등 기존 산출물 보존.
 
 - [x] **M8 후속. runDiscovery 서버 CDP 라이브 2·3단계 주입** *(2026-06-10 완료)*: `plugin.ts runDiscovery`가 launchd 9222 CDP에 서버에서 붙어 `createExtensionScraperAdapter`(2단계 기본)·`createViewtrapScraperAdapter`(3단계 옵션 `use_viewtrap`, resolveExposure)를 `createLiveDiscoveryDeps`에 주입. graceful 폴백(CDP 실패→1단계+classify, throw 금지) + `provenance`/`degraded`/`live_notes` 응답 + in-process lock(409 직렬화) + 세션 close(크롬 유지). 검증: tsc 0 · jest 60/60 · dist 재빌드(신규 심볼 grep) · 재기동 getInfo 200 · 라이브 E2E (a)2단계 후보5·scraped+classified true (b)`use_viewtrap` 3단계 후보6·1회만 차감 (c)동시 409. 상세 = HANDOFF 상단.
+
+## 🖼️ 6주차 썸네일 강의·컨설팅 보강 백로그 (2026-06-11, Notion 원문 재대조)
+
+소스 = Notion 「비즈니스 pt 6주차 강의」(37a37e66) + 「6주차 컨설팅」(37b37e66). 기반영(45/45/10·9개·7일 윈도우·데드존·16자·임계 설정형) 제외, 미반영분만:
+
+> ✅ B1~B7 전부 구현 완료 (2026-06-12, `l5-core/video-room/thumbnail-develop.ts` + plugin/UI 배선 — 상세 HANDOFF 최상단).
+
+- [x] **B1. 이미지 디벨롭 6기술 완비** — 매트릭스는 ①확대②증거④공감만. ⑤시청층 선호 이미지 전환, ⑥뷰트랩 성과 썸네일 구성 반복 학습이 빠짐. ⑥은 **썸네일 레퍼런스 자동 학습**: 같은 카테고리(완전 동일 주제 불요) 성과도·기여도 Good↑ 영상의 썸네일 구성 학습 → `reference_patterns` 자동 주입(현재 수동). runDiscovery 후보의 썸네일 URL 재사용.
+- [x] **B2. "내 채널에 모인 사람" 기준** — `ThumbnailMatrixInput`에 채널 시청층 프로필 입력 + `reviewThumbnailCandidate`에 "채널 시청층 정합" 경고(살빠지는/살찌는 음식 동시 운영 = 주제 매몰 실수 방지). 키 콘텐츠 `identity_match` 데이터 재사용.
+- [x] **B3. 썸네일 문구에 5주차 제목 기술 재적용** — "제목에서 배운 방식 그대로": 문구 후보에 제목 디벨롭 2(쉬운 단어)·5(수식어)·6(질문 생기게) 1패스 추가 후 16자 검수.
+- [x] **B4. 썸네일↔도입부 강도 연동** — "썸네일이 9점이면 도입부도 9점": intro_30s 단계에 썸네일 기대 강도 대비 도입부 강도 점검 + 승인③에서 함께 표시.
+- [x] **B5. 디벨롭 후 자가 재귀 점검(컨설팅)** — "디벨롭 다 하고 다시: 더 후킹되게 됐나? 왜 후킹 된 거지?" — 원본 레퍼런스 대비 후킹 개선 비교 평가, 개선 없으면 해당 단계 재실행. 제목 7단계·썸네일 공통 게이트.
+- [x] **B6. 타깃 채널 우선 발굴(컨설팅)** — 영상 검색 전에 "내 타깃(대표님)이 볼만한 채널 먼저 찾기(네이버/메타 포함) → 내 용어로 변환 → 재검색 → 잘된 채널 기반 확인". discovery에 채널 단위 경로 추가, 썸네일 레퍼런스 풀(B1)과 연계.
+- [x] **B7. 폰트 소스·라이선스(눈누)** — 후보 design_notes/검수 체크리스트에 폰트 출처(눈누 라이선스 확인) 항목 추가. 이미지 분쟁 시 즉시 교체 원칙은 attribution 시스템에 기반영.
+
+## 📜 E2E 워크플로우 정본 (2026-06-11)
+
+- [x] **전체 워크플로우 마스터 HTML** *(2026-06-11)*: PRD 6종 전수 + 구현 대조 → `docs/cmo/CMO_E2E_WORKFLOW_MASTER.html`. 오류·제한 16건 표 + P0~P2 순서 포함. 이후 배선 작업은 이 문서 §14 기준으로 진행.
+- [x] **P0. 활성화 + 라이브 E2E 관통** *(2026-06-12)*: 신규 프로젝트로 strategy_chat→**upload_approval** 전 구간 라이브 관통(`e2e/full-pipeline-live.mjs`, 실 렌더 포함). 발견 오류 7건 즉시 수정(CDP RPC 타임아웃·PT규칙 도출·2차 확장검색 등 — HANDOFF).
+- [x] **P2. 실제 YouTube 업로드 배선** *(2026-06-12)*: `cmo:publishUpload`(videos.insert resumable, confirm+status 가드, D3, 자동 트리거 0). 라이브 호출은 사장님 승인⑥ 후에만 — E2E에서는 의도적으로 미호출.
+- [ ] **후속**: ① generateVideoExecutionBrief 400 원인(연구팩 의존) 확인 ② CTR 리포트 백필 후 실수신 확인 ③ 신규 보드 Playwright 스모크 ④ 렌더 자동 워처(현재 오케스트레이터 실행).
+
+## 🔁 풀링 이후 자동 진행 (2026-06-11)
+
+- [x] **자동 진행 배선 — 멈춤 3곳 해소** *(2026-06-11)*: intro_30s 정지(`advanceProjectUntilGate`) · pulling_plan 자동 커밋(proposePullingReport) · 제작/발행 구간 단계별 전진(`advanceProjectFrom` 5개 액션) + `cmoGetRenderStatus` API/버튼 신설 + phases.ts 고아 status 제거. 상세 = HANDOFF 최상단. **재기동·라이브 E2E 후속.**
+- [ ] **제목 디벨롭 레퍼런스 자동화**: Viewtrap 레퍼런스 2개 수동 입력을 발굴 결과 자동 선택으로 — 사장님 결정 대기.
 
 ## 구현 순서
 

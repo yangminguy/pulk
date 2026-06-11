@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMO 디벨롭 워크플로우 — 제목 8단계 + 썸네일 9개 A/B 검증 보고서</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2d333b;
+    --text:#e6edf3; --dim:#9da7b3; --green:#56d364; --yellow:#e3b341;
+    --red:#f47067; --blue:#6cb6ff; --purple:#d2a8ff; --orange:#f0883e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 20px;background:var(--bg);color:var(--text);
+    font-family:'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif;line-height:1.6}
+  .wrap{max-width:1000px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 6px}
+  h2{font-size:20px;margin:40px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:16px;margin:24px 0 8px}
+  .lead{color:var(--dim);margin:0 0 20px}
+  .badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;vertical-align:middle}
+  .b-green{background:#1a3a2a;color:var(--green)} .b-yellow{background:#3a321a;color:var(--yellow)}
+  .b-blue{background:#1a2a3a;color:var(--blue)} .b-purple{background:#2a1a3a;color:var(--purple)}
+  .b-red{background:#3a1a1a;color:var(--red)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);font-weight:700}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0}
+  .flow{display:flex;flex-direction:column;gap:0;margin:14px 0}
+  .step{display:flex;gap:12px;align-items:flex-start}
+  .step .dot{flex:0 0 28px;height:28px;border-radius:50%;background:var(--panel2);border:2px solid var(--blue);
+    color:var(--blue);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .step.gate .dot{border-color:var(--yellow);color:var(--yellow)}
+  .step.llm .dot{border-color:var(--purple);color:var(--purple)}
+  .step .body{flex:1;padding:2px 0 18px;border-left:0}
+  .step .body b{font-size:14.5px}
+  .step .body .sub{color:var(--dim);font-size:13px;margin-top:2px}
+  .vline{width:2px;background:var(--line);margin-left:13px;height:14px;margin-top:-14px}
+  code{background:var(--panel2);padding:1px 6px;border-radius:4px;font-size:12.5px;
+    font-family:'SF Mono',Menlo,monospace;color:var(--blue)}
+  .legend{font-size:12.5px;color:var(--dim);margin-top:6px}
+  .legend span{margin-right:14px}
+  .dot-mini{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle}
+  .grid9{display:grid;grid-template-columns:90px repeat(3,1fr);gap:6px;margin:12px 0;font-size:12.5px}
+  .grid9 .hd{background:var(--panel2);border-radius:6px;padding:8px;font-weight:700;text-align:center}
+  .grid9 .cell{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px}
+  .grid9 .cell b{color:var(--blue)}
+  .statebar{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:10px 0;font-size:12px}
+  .statebar .node{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+  .statebar .node.hot{border-color:var(--orange);color:var(--orange);font-weight:700}
+  .statebar .arr{color:var(--dim)}
+  .ok{color:var(--green);font-weight:700} .warn{color:var(--yellow);font-weight:700}
+  .foot{margin-top:48px;padding-top:14px;border-top:1px solid var(--line);color:var(--dim);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>CMO 디벨롭 워크플로우 검증 보고서</h1>
+<p class="lead">제목 디벨롭 8단계(6/10 추가) + 썸네일 9개 A/B 디벨롭(6/11 추가) — 작동 검증 결과와 정확한 동작 흐름. 검증일 2026-06-11.</p>
+
+<!-- ════════════════ 1. 검증 결과 ════════════════ -->
+<h2>1. 검증 결과 요약 <span class="badge b-green">전체 통과</span></h2>
+
+<table>
+  <tr><th>워크플로우</th><th>테스트 스위트</th><th>결과</th><th>테스트 수</th></tr>
+  <tr><td rowspan="3"><b>제목 디벨롭 8단계</b></td>
+    <td><code>title-development.test.ts</code> (결정론 함수)</td><td class="ok">PASS</td><td class="num" rowspan="3">55 / 55</td></tr>
+  <tr><td><code>title-development-llm.test.ts</code> (LLM 실행기+폴백)</td><td class="ok">PASS</td></tr>
+  <tr><td><code>title-development-skill.test.ts</code> (오케스트레이터 스킬)</td><td class="ok">PASS</td></tr>
+  <tr><td rowspan="6"><b>썸네일 9개 A/B</b></td>
+    <td><code>thumbnail-matrix.test.ts</code> (9개 매트릭스+심리분석)</td><td class="ok">PASS</td><td class="num">19 / 19</td></tr>
+  <tr><td><code>thumbnail-ab-flow.test.ts</code> (플로우 glue)</td><td class="ok">PASS</td><td class="num">4 / 4</td></tr>
+  <tr><td><code>thumbnail-ab-test.test.ts</code> (점수식·신뢰도·로테이션)</td><td class="ok">PASS</td><td class="num">13 / 13</td></tr>
+  <tr><td><code>thumbnail-ab-e2e.test.ts</code> (매트릭스→A/B 전체 체인)</td><td class="ok">PASS</td><td class="num">6 / 6</td></tr>
+  <tr><td><code>image-sourcing.test.ts</code> (이미지 수집·위험도)</td><td class="ok">PASS</td><td class="num">7 / 7</td></tr>
+  <tr><td>youtube <code>thumbnail-ab.test.ts</code> (thumbnails.set 클라이언트)</td><td class="ok">PASS</td><td class="num">6 / 6</td></tr>
+  <tr><th colspan="2">합계</th><th class="ok">0 실패</th><th class="num">110 / 110</th></tr>
+</table>
+
+<div class="panel">
+  <b>라이브 배선 상태</b>
+  <table>
+    <tr><th>항목</th><th>상태</th><th>근거</th></tr>
+    <tr><td>plugin 액션 <code>cmo:proposeTitleDevelopment</code></td><td class="ok">dist 반영</td><td>dist/plugin.js에 심볼 3곳 + ACL 등록 확인</td></tr>
+    <tr><td>plugin 액션 <code>cmo:proposeThumbnailMatrix</code> · <code>cmo:recordImageSources</code></td><td class="ok">dist 반영</td><td>dist/plugin.js에 심볼 각 3곳, dist는 오늘 마지막 커밋 이후 재빌드본</td></tr>
+    <tr><td>UI 보드 3종 (썸네일 상세 / 썸네일 9개 A/B / 제목 디벨롭)</td><td class="ok">배선됨</td><td>StrategyBoard에 <code>thumbnail_pattern_extraction → hook_draft_approval</code> 구간으로 게이팅</td></tr>
+    <tr><td>썸네일 보드 라이브 화면 검증</td><td class="ok">통과</td><td>오늘(6/11) Playwright 스모크 — 생성버튼 + 9개 후보 그리드 + raw JSON 누출 없음, 제목·클릭이유 자동 프리필</td></tr>
+    <tr><td>제목 디벨롭 라이브 HTTP 스모크</td><td class="warn">미실행</td><td>코드·dist·재기동까지 확인됨. 실제 호출은 thumbnail 단계 도달 프로젝트에서 레퍼런스 2개 입력 시 1회 확인 권장</td></tr>
+  </table>
+  <div class="legend">주의 지표: LLM 단계는 실패 시 그 단계만 결정론 폴백 — 결과의 <code>fallback_count</code>가 크면 품질 빈약 신호 (UI에 "N개 단계 폴백" 표기).</div>
+</div>
+
+<!-- ════════════════ 2. 워크플로우 위치 ════════════════ -->
+<h2>2. CMO 전체 워크플로우에서의 위치</h2>
+<p>두 디벨롭 모두 새 상태 추가 없이 <b>썸네일 구성 단계(<code>thumbnail_pattern_extraction</code>) 안</b>에서 수행되고, <b>승인③(<code>hook_draft_approval</code>)</b>에서 사장님이 함께 승인합니다.</p>
+<div class="statebar">
+  <span class="node">풀링 세트 승인</span><span class="arr">→</span>
+  <span class="node hot">썸네일 구성 + 제목 디벨롭<br><small>← 여기서 두 디벨롭 실행</small></span><span class="arr">→</span>
+  <span class="node">원고 도입부 30초</span><span class="arr">→</span>
+  <span class="node hot">승인③ 썸네일/제목/도입부</span><span class="arr">→</span>
+  <span class="node">원고 기획·작성·승인④</span><span class="arr">→</span>
+  <span class="node">녹음→렌더→QA→업로드</span><span class="arr">→</span>
+  <span class="node">완료 + 성과 재학습</span>
+</div>
+<p class="legend">썸네일 A/B의 Stage F~H(순차 테스트·승자판단·패배원인 디벨롭)는 <b>업로드 이후(post-publish)</b> 구간에서 돌고, 결과가 성과 재학습(R7) 루프로 들어가 다음 라운드 썸네일을 진화시킵니다.</p>
+
+<!-- ════════════════ 3. 제목 디벨롭 8단계 ════════════════ -->
+<h2>3. 제목 디벨롭 8단계 <span class="badge b-blue">6/10 추가</span></h2>
+<p class="lead">감으로 짓던 제목을 "Viewtrap에서 검증된 레퍼런스 2개 → 교차 조합 → 8단계 디벨롭 → 100점 평가"의 검증 가능한 파이프라인으로 교체.</p>
+
+<div class="legend">
+  <span><span class="dot-mini" style="background:var(--blue)"></span>결정론(코드)</span>
+  <span><span class="dot-mini" style="background:var(--purple)"></span>LLM(Sonnet, 실패 시 그 단계만 폴백)</span>
+  <span><span class="dot-mini" style="background:var(--yellow)"></span>사장님 승인/입력</span>
+</div>
+
+<div class="flow">
+  <div class="step gate"><div class="dot">입</div><div class="body"><b>입력 — 풀링 주제 + Viewtrap 검증 레퍼런스 2개</b>
+    <div class="sub">사장님이 같은 주제/의미 범위의 레퍼런스 2개 입력. 조건: 조회수 5만+ · 성과도/기여도 Good·Great. 풀링 주제 미입력 시 최신 풀링 플랜의 첫 주제 자동 사용.</div></div></div>
+  <div class="vline"></div>
+  <div class="step"><div class="dot">검</div><div class="body"><b>레퍼런스 검증</b>
+    <div class="sub">조회수·등급·주제 유사도 검사. 불합격 시 <code>failed_references</code>(사유 포함) 반환하고 중단 — 잘못된 재료로 디벨롭하지 않음.</div></div></div>
+  <div class="vline"></div>
+  <div class="step"><div class="dot">조</div><div class="body"><b>4종 교차 조합 생성</b>
+    <div class="sub">레퍼런스 2개의 제목·썸네일을 교차: (제목1×썸네일1) (제목1×썸네일2) (제목2×썸네일1) (제목2×썸네일2).</div></div></div>
+  <div class="vline"></div>
+  <div class="step llm"><div class="dot">1</div><div class="body"><b>1단계 — 어색함 판단</b>
+    <div class="sub">각 조합을 LLM이 감점 누적 방식으로 판단(0점=정상). 어색한 조합은 사유와 함께 탈락 기록.</div></div></div>
+  <div class="vline"></div>
+  <div class="step llm"><div class="dot">2~8</div><div class="body"><b>2~8단계 — 제목 디벨롭 (단계당 LLM 1콜, 입력/출력/탈락이유 저장)</b>
+    <div class="sub">② 쉬운 단어로 전환 → ③ 상위어로 전환 → ④ 부정어/반대 구조 → ⑤ 수식어 추가(35자 제한) → ⑥ 답이 보이는 제목을 질문이 생기게 → ⑦ 핫비디오 구조로 갈아끼우기 → ⑧ 강한 단어로 변경. 각 단계는 원고 내용과의 일치를 확인하며 진행.</div></div></div>
+  <div class="vline"></div>
+  <div class="step"><div class="dot">평</div><div class="body"><b>최종 100점 평가 (6항목)</b>
+    <div class="sub">타깃 적합 20 + 욕망 선명도 20 + 문제 지적 20 + 호기심 갭 15 + 원고 일치도 15 + 썸네일 결합도 10. <b>≥85 업로드 후보</b> / 70~84 수정 / ≤69 레퍼런스 재검색.</div></div></div>
+  <div class="vline"></div>
+  <div class="step gate"><div class="dot">승</div><div class="body"><b>승인③ — Founder 승인 전 외부 게시 금지</b>
+    <div class="sub"><code>title_development</code> 카드로 저장(<code>approval_status='draft'</code>) + 세컨브레인 요약. 확정 제목은 승인④(원고 확인) 화면에도 노출되어 "원고가 제목의 약속을 회수하는지" 검토.</div></div></div>
+</div>
+
+<div class="panel">
+  <b>코드 경로</b> — 도메인 <code>l5-core/cmo-strategy/title-development{,-types,-llm}.ts</code> · 스킬 <code>cmo.title.development</code> (pulling.plan 의존 → script.write로 연결) · 액션 <code>POST /api/cmo:proposeTitleDevelopment</code> · UI <code>TitleDevelopmentBoard.tsx</code>(표시 전용, 도메인 로직 없음)
+</div>
+
+<!-- ════════════════ 4. 썸네일 9개 A/B ════════════════ -->
+<h2>4. 썸네일 9개 A/B 디벨롭 <span class="badge b-purple">6/11 추가</span></h2>
+<p class="lead">썸네일을 1회성 제작물이 아니라 "클릭 이유 가설을 실험하고, 성과 데이터로 계속 진화시키는" 자동화 루프로 전환. 승인 게이트 4개(G1~G4) 외에는 전부 AI 자동 초안.</p>
+
+<h3>Stage A — 9개 매트릭스 생성 (이미지전략 3 × 문구전략 3)</h3>
+<div class="grid9">
+  <div class="hd"></div><div class="hd">이득 문구</div><div class="hd">손해 회피 문구</div><div class="hd">궁금증 문구</div>
+  <div class="hd">확대<br>이미지</div>
+  <div class="cell"><b>A</b> 주인공이 명확하면 클릭</div>
+  <div class="cell"><b>B</b> 위험을 느끼면 클릭</div>
+  <div class="cell"><b>C</b> 뭔지 궁금하면 클릭</div>
+  <div class="hd">증거<br>이미지</div>
+  <div class="cell"><b>D</b> 결과가 보이면 클릭</div>
+  <div class="cell"><b>E</b> 손실의 증거가 보이면 클릭</div>
+  <div class="cell"><b>F</b> 증거 일부만 보이면 확인하러 클릭</div>
+  <div class="hd">공감<br>이미지</div>
+  <div class="cell"><b>G</b> 내 상황의 해결책처럼 보이면 클릭</div>
+  <div class="cell"><b>H</b> 내 문제를 건드리면 클릭</div>
+  <div class="cell"><b>I</b> 내 상황인데 답이 숨겨져 있으면 클릭</div>
+</div>
+<p class="legend">규칙: 9개는 반드시 서로 다른 클릭 가설 / 제목·문구·이미지가 같은 클릭 이유를 강화 / 제목과 썸네일 문구의 중복 금지 / 레퍼런스는 구조만 참고(복사 금지). 입력의 제목·클릭이유는 확정 키 콘텐츠 카드에서 <b>자동 프리필</b>(오늘 정상화).</p>
+
+<div class="flow">
+  <div class="step llm"><div class="dot">A</div><div class="body"><b>Stage A — 9개 매트릭스 생성</b> <code>buildThumbnailMatrix9</code>
+    <div class="sub">위 3×3 조합으로 후보 9개(문구·이미지구성·디자인노트 포함) 생성.</div></div></div>
+  <div class="vline"></div>
+  <div class="step llm"><div class="dot">B</div><div class="body"><b>Stage B — 클릭 이유 심리분석 3단계</b> <code>analyzeThumbnailPsychology</code>
+    <div class="sub">후보별 ① 문구 구조(이득/손해/비밀/반전/증거/비교/금지/숫자) → ② 이미지 연상(얼굴/제품/결과화면/전후비교/실패장면/플로우) → ③ 결합 심리("문구+이미지가 합쳐지면 어떤 감정이 생기고, 클릭 이유가 한 방향인가").</div></div></div>
+  <div class="vline"></div>
+  <div class="step"><div class="dot">C</div><div class="body"><b>Stage C — 이미지 소스 수집 + 출처·위험도</b> <code>collectImageSources</code> · <code>classifyImageRisk</code>
+    <div class="sub">소스 우선순위: 직접촬영(Low) → 무료스톡/CC(Medium) → 구글/뉴스·블로그(High). <b>Critical(민감·사생활·미성년자)은 사용 차단(D4)</b>, High 최종 사용은 사장님 승인(D3). 출처표기 블록 자동 생성(<code>buildAttributionBlock</code>) — 영상 설명란에 삽입.</div></div></div>
+  <div class="vline"></div>
+  <div class="step gate"><div class="dot">G1</div><div class="body"><b>승인 G1 — 9개 기획안 세트 + 이미지 후보</b>
+    <div class="sub"><code>thumbnail_matrix</code>·<code>image_sources</code> 카드로 저장 → ThumbnailMatrixBoard에서 9개 그리드로 확인·승인.</div></div></div>
+  <div class="vline"></div>
+  <div class="step"><div class="dot">D·E</div><div class="body"><b>Stage D·E — 제작 + 검수</b>
+    <div class="sub">기존 <code>buildThumbnailPlan</code> 확장으로 제작 후보화 + 모바일 가독성·데드존 검수. 이후 도입부 30초 → 승인③ → 원고 → 업로드의 기존 흐름으로 합류.</div></div></div>
+</div>
+
+<h3>업로드 이후 — 순차 A/B 테스트 루프 (Track B = 정본)</h3>
+<div class="flow">
+  <div class="step gate"><div class="dot">G2</div><div class="body"><b>승인 G2 — A/B 시작: 9개 중 3개 선택 + 기간(기본 2일/후보)</b>
+    <div class="sub">1차 라운드는 클릭 이유가 다른 3개(확대형 vs 증거형 vs 공감형) 권장.</div></div></div>
+  <div class="vline"></div>
+  <div class="step"><div class="dot">F</div><div class="body"><b>Stage F — 순차 로테이션</b> <code>buildSequentialRotationPlan</code> → <code>thumbnails.set</code>(D3)
+    <div class="sub">A 적용 → 2~3일 → Analytics 수집 → B 적용 → 수집 → C 적용 → 수집. 공식 Studio A/B는 API로 버전별 지표 추출 불가 → Track A(수동 입력)는 보조 경로.</div></div></div>
+  <div class="vline"></div>
+  <div class="step"><div class="dot">G</div><div class="body"><b>Stage G — 승자 판단 점수식</b> <code>scoreAbTestResults</code> + <code>computeConfidenceLevel</code>
+    <div class="sub">score = CTR 0.35 + 시청시간 0.35 + 평균시청률 0.20 + 노출안정성 0.10 (라운드 내 min-max 정규화). <b>CTR 단독 판단 금지</b> — CTR null이면 가중치를 시청시간에 재분배(0.525/0.35/0.125). 신뢰도: high(노출 5천+·3일+) / medium / low / insufficient(테스트 연장).</div></div></div>
+  <div class="vline"></div>
+  <div class="step gate"><div class="dot">G3</div><div class="body"><b>승인 G3 — 승자 썸네일 적용</b></div></div>
+  <div class="vline"></div>
+  <div class="step"><div class="dot">H</div><div class="body"><b>Stage H — 패배 원인별 디벨롭 → 다음 라운드</b> <code>evaluateAbRound</code>
+    <div class="sub">패배 원인 → 다음 액션 규칙: 클릭이유 불명확→이유 통일 / 주인공 불명확→이미지 확대 / 증거 부족→숫자·Before/After / 궁금증 부족→정보 숨기기 / 공감 부족→현실 이미지 / 문구 약함→이득·손해·궁금증 재작성 / 모바일 가독성→글자 축소·대비 강화. 결과는 R7 성과 루프(<code>extractCompletionInsight</code>, usage='thumbnail_ab')로 저장.</div></div></div>
+  <div class="vline"></div>
+  <div class="step gate"><div class="dot">G4</div><div class="body"><b>승인 G4 — 다음 라운드 3개 시작 (선택)</b>
+    <div class="sub">3라운드 운영: 1차 가설 비교 → 2차 승자 방향 세분화 → 3차 미세 조정(문구축약/이미지확대/대비강화).</div></div></div>
+</div>
+
+<div class="panel">
+  <b>코드 경로</b> — 도메인 <code>l5-core/video-room/thumbnail-matrix.ts · image-sourcing.ts · thumbnail-ab-flow.ts · thumbnail-ab-test.ts</code> · 클라이언트 <code>services/youtube/thumbnail-ab.ts</code>(thumbnails.set) · 액션 <code>cmo:proposeThumbnailMatrix</code> · <code>cmo:recordImageSources</code> · UI <code>ThumbnailMatrixBoard.tsx</code>
+</div>
+
+<!-- ════════════════ 5. 남은 것 ════════════════ -->
+<h2>5. 남은 것 / 주의</h2>
+<table>
+  <tr><th>항목</th><th>내용</th></tr>
+  <tr><td class="warn">제목 디벨롭 라이브 1회 확인</td><td>thumbnail 단계에 도달한 프로젝트에서 레퍼런스 2개를 넣고 <code>proposeTitleDevelopment</code> 실호출 1회 확인 권장 (코드·dist·테스트는 전부 검증됨).</td></tr>
+  <tr><td class="warn">fallback_count 관찰</td><td>LLM 단계가 매번 폴백이면 "통과처럼 보이지만 빈약". 결과 카드의 폴백 수가 0~1인지 확인.</td></tr>
+  <tr><td class="warn">A/B Stage F 실운전</td><td>순차 교체(thumbnails.set)는 실제 업로드된 영상이 생긴 뒤에 라운드를 시작할 수 있음. CTR·노출수는 Reporting API 리포트 백필 후 채워짐(없으면 가중치 자동 재분배로 동작).</td></tr>
+</table>
+
+<div class="foot">
+  검증: l5-core jest 110/110 (제목 55 + 썸네일 49) + services/youtube jest 6/6 · dist 심볼 grep · StrategyBoard 배선 확인 · Playwright 썸네일 스모크(6/11 라이브 PASS).<br>
+  정본 문서: <code>docs/cmo/features/title-development-workflow.md</code> · <code>docs/cmo/prd/cmo-thumbnail-ab-automation.md</code> · 생성일 2026-06-11
+</div>
+
+</div>
+</body>
+</html>

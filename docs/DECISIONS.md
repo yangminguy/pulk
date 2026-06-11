@@ -1,5 +1,17 @@
 # DECISIONS — L5 Business OS
 
+## 2026-06-11 — 임원 호출 = `.claude/agents` 서브에이전트, 텔레그램 실행기 = 헤드리스 claude CLI
+
+**컨텍스트**: 사장님 요구 — `@cto`/`@cmo`로 임원을 호출해 "실제 작업 + 파일 회신"을, 이 세션뿐 아니라 **텔레그램에서**도. 기존 자산: `services/agent-runtime/src/agents/*.ts`(임원별 SYSTEM_PROMPT, 단 `runXAgent()`는 판단 JSON만 반환), CMO 영상 풀 파이프라인(`packages/l5-core/.../video-room/`, 실제 `video.mp4`까지 — 단 렌더는 외부 `ai-slide-video-factory`가 `npm run render`로 수행), 텔레그램 **아웃바운드만**(`hermes-runtime/.../notifier/telegram.ts`).
+
+**결정 1 — 임원 호출 = Claude Code 서브에이전트**: `.claude/agents/<id>.md` 9종(ceo/cmo/cto/cpo/cro/coo/cfo/chief-of-staff/risk-qa)으로 정의. 각 페르소나는 agent-runtime SYSTEM_PROMPT + rules 가드레일을 반영. 이유: 서브에이전트는 파일 생성·bash·영상 렌더·ACR 디스패치 등 **실제 작업**이 가능(runXAgent의 JSON-only 한계 회피). 도메인 로직은 l5-core/agent-runtime에 그대로 두고, 서브에이전트는 그 위의 대화·실행 인터페이스 레이어로 한정(UI/플러그인에 도메인 하드코딩 금지 규칙 유지).
+
+**결정 2 — 텔레그램 인바운드 실행기 = 헤드리스 `claude -p`**: 신규 `services/telegram-gateway`가 getUpdates 폴링→`@임원` 파싱→`claude -p`로 해당 서브에이전트 구동→결과/파일 회신. 대안(텔레그램→`runXAgent()` 직접 호출)은 판단 JSON만 나와 "실제 작업+파일" 미충족이라 배제. 봇은 사장님 맥 상시 구동(launchd KeepAlive) — 레포·claude CLI·영상 팩토리가 그 맥에 있어야 실행 가능. 허용 chat id 밖 메시지는 무시(보안). 시크릿은 env 전용(plist 하드코딩 금지).
+
+**결정 3 — `.claude/agents/` git 추적**: 기존 `.gitignore`는 `.claude/*` 전부 무시(+`rules/`만 예외). 임원 정의는 팀 공유 설정이므로 `!.claude/agents/` 예외 추가해 추적. `.telegram-runs/`(런별 산출물 임시)는 무시.
+
+**검증**: telegram-gateway tsc 0 / build OK / jest router 10/10. **라이브 end-to-end(실 봇 토큰)는 사장님 맥에서 install.sh 후 확인 필요**(샌드박스 제약).
+
 ## 2026-06-09 — CMO PRD v3 정본: video-room 도메인 유지 + orchestrator 얇은 레이어 (트랙 B)
 
 **컨텍스트**: CMO 콘텐츠 전략 시스템 v3(PRD `docs/prd/cmo-content-strategy-v3.md`, 10 Phase)를 ACR로 구현하다 "built-but-not-wired"로 멈춤. 코드 조사 결과 **두 갈래가 중복 병존**: 기존 `video-room/`(25단계 v3.1, 509테스트, thumbnail/intro/script/voice/brief 등 도메인 함수·타입 대부분 완비)와 신규 `cmo-orchestrator/`(PRD v3 재설계, 인프라 + PoC 스킬 2개만). Key Content 11스텝은 video-room에 구현됐으나 orchestrator에 미등록(고립), types 5/10. **정본을 안 정하면 트랙 B가 또 중복 생산.**
