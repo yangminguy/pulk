@@ -24,6 +24,7 @@ const NAV_TOOLS = [
   { href: '/control-room', label: 'Control Room', icon: 'sliders' },
   { href: '/tool-requests', label: 'Tool Requests', icon: 'wrench' },
   { href: '/self-improve', label: '🐯 자가개선', icon: 'refresh' },
+  { href: '/incidents', label: '🔔 장애 감시', icon: 'activity' },
 ]
 
 function navItemStyle(active: boolean, hover: boolean): React.CSSProperties {

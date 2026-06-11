@@ -285,3 +285,81 @@ export async function updateWorkflowImprovementProposalStatus(
   });
 }
 
+/** 호랑이 실시간 감시 — 미종료 native_phase_runs 조회(어댑터가 heartbeat/스냅샷으로 가공). */
+export async function fetchNativePhaseRuns(): Promise<any[]> {
+  const data = await apiFetch(
+    "/api/native_phase_runs:list?filter[ended_at][$empty]=true&sort=-started_at&pageSize=300",
+  );
+  return (data.data ?? []) as any[];
+}
+
+/**
+ * 호랑이 실시간 감시 — 감지된 Incident를 tiger_incidents 컬렉션에 영속화(REST :create).
+ * 컬렉션명/필드는 founder-ui 벨·승인 카드 영역과 계약 공유(status=detected로 시작).
+ * id는 incident_key 기반(같은 작업 재감지 시 upsert 의도 — :create 멱등성은 호출측 dedup가 보장).
+ */
+export async function createTigerIncident(
+  rec: { source_ref: string; detected_at: string } & Record<string, unknown>,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await apiFetch("/api/tiger_incidents:create", {
+    method: "POST",
+    body: JSON.stringify({
+      id: randomUUID(),
+      ...rec,
+      created_at: now,
+      updated_at: now,
+      createdAt: now,
+      updatedAt: now,
+    }),
+  });
+}
+
+/**
+ * 호랑이 자동복구 — 사장님이 승인한(status=approved) tiger_incidents 조회. tiger-recovery 입력.
+ * 승인 게이트: approved만 반환(detected는 절대 복구 dispatch 금지). 재시도분(루프가 fixing→approved로
+ * 되돌린 항목)도 여기서 다시 잡힌다. RecoveryIncident shape에 맞춰 평탄화한다.
+ */
+export async function fetchApprovedTigerIncidents(): Promise<
+  Array<{
+    id: string;
+    status: string;
+    attempt_count: number;
+    target_repo?: string | null;
+    task_label?: string | null;
+    task_ref?: string | null;
+    incident_type?: string | null;
+    error_summary?: string | null;
+    diagnosis?: string | null;
+    proposed_fix?: string | null;
+  }>
+> {
+  const data = await apiFetch(
+    "/api/tiger_incidents:list?filter[status]=approved&sort=-detected_at&pageSize=100",
+  );
+  return ((data.data ?? []) as any[]).map((r) => ({
+    id: String(r.id),
+    status: String(r.status ?? "approved"),
+    attempt_count: typeof r.attempt_count === "number" ? r.attempt_count : Number(r.attempt_count ?? 0) || 0,
+    target_repo: (r.target_repo as string | null) ?? null,
+    task_label: (r.task_label as string | null) ?? null,
+    task_ref: (r.task_ref as string | null) ?? null,
+    incident_type: (r.incident_type as string | null) ?? null,
+    error_summary: (r.error_summary as string | null) ?? null,
+    diagnosis: (r.diagnosis as string | null) ?? null,
+    proposed_fix: (r.proposed_fix as string | null) ?? null,
+  }));
+}
+
+/** 호랑이 자동복구 — tiger_incidents 상태/시도횟수 패치(:update). UI는 이 전이를 그대로 표시. */
+export async function updateTigerIncident(
+  id: string,
+  patch: { status: string; attempt_count: number },
+): Promise<void> {
+  const now = new Date().toISOString();
+  await apiFetch(`/api/tiger_incidents:update?filterByTk=${encodeURIComponent(id)}`, {
+    method: "POST",
+    body: JSON.stringify({ ...patch, updated_at: now, updatedAt: now }),
+  });
+}
+

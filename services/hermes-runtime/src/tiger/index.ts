@@ -2,3 +2,4 @@
 export * from './log-adapter.js';
 export * from './manual-reports.js';
 export * from './tiger-collector.js';
+export * from './liveness-watcher.js';

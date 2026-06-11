@@ -22,6 +22,8 @@ import {
   runCmoStrategyWatchLive,
   runTaskArchiverLive,
   runTigerDispatchLive,
+  runTigerWatchLive,
+  runTigerRecoveryLive,
 } from "./runner.js";
 import { runNightBPRLoop } from "./loops/night-bpr-loop.js";
 
@@ -40,6 +42,10 @@ const TASK_RUNNERS: Record<string, () => Promise<unknown>> = {
   "night-bpr-loop": () => runNightBPRLoop({}),
   // 호랑이 디스패치(일괄 승인분 → repo별 병렬 실행 + 학습축적). 승인분만 처리.
   "tiger-dispatch": runTigerDispatchLive,
+  // 호랑이 실시간 감시(승인 대기 작업 liveness probe → 장애 감지·알림). 1~2분 주기.
+  "tiger-watch": runTigerWatchLive,
+  // 호랑이 실시간 자동복구(승인된 장애 → CTO 수정 + 호랑이 검증 + 4회 루프/에스컬). 2~5분 주기.
+  "tiger-recovery": runTigerRecoveryLive,
 };
 
 

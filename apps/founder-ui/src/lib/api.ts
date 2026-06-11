@@ -137,6 +137,31 @@ export type SelfImproveCard = {
   created_at: string
 }
 
+// 🔔 호랑이 실시간 장애 — 백그라운드 실행이 멈추거나 실패한 것을 사장님이 모른 채
+// 기다리지 않도록 surface한다. 프론트 자체 정의(백엔드 monitor:incidents 응답과 1:1).
+export type TigerIncidentStatus =
+  | 'detected'   // 호랑이가 감지, 사장님 승인 대기
+  | 'approved'   // 사장님 승인됨 → CTO 수정 dispatch 대상
+  | 'fixing'     // CTO 수정 중
+  | 'testing'    // 호랑이가 재현·검증 중
+  | 'resolved'   // 고침 — 다시 시도 가능
+  | 'escalated'  // 4회 실패 — 사람이 봐야 함
+
+export type TigerIncident = {
+  id: string
+  task_ref: string | null      // 감시 대상 작업 식별자
+  task_label: string | null    // 사장님이 알아볼 작업명(키콘텐츠/영상룸 등)
+  incident_type: string | null // 'failed' | 'stalled' | 'error'
+  error_summary: string | null // 오류 요지
+  diagnosis: string | null     // 호랑이 진단
+  proposed_fix: string | null  // "CTO에게 이렇게 고치게 하겠다" 수정 계획
+  target_repo: string | null   // 수정 대상 repo
+  status: TigerIncidentStatus
+  attempt_count: number        // 6↔7 루프 시도 횟수(상한 4)
+  detected_at: string | null
+  source_ref: string | null
+}
+
 export type BulkApproveResult = {
   dispatched: Array<{ proposal_id: string; self_mod_task_id: string; status: 'sent' }>
   // intent 게이트(보호영역 수정 시사)에 걸려 차단된 카드 — UI는 빨강 배지로 표시
@@ -836,6 +861,12 @@ export const api = {
       body: JSON.stringify({ project_id, slide_deck_spec_id }),
     }).then(r => unwrap(r)),
 
+  cmoGetRenderStatus: (project_id: string, opts?: { slug?: string; render_job_id?: string }) =>
+    request<{ data: { ok: boolean; data: { render_job_id: string; slug: string; status: string; render_qa: unknown; project_status: string | null } } }>('/api/cmo:getRenderStatus', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, ...(opts ?? {}) }),
+    }).then(r => unwrap(r)),
+
   cmoRunQA: (project_id: string, render_job_id: string, checks?: Record<string, string>) =>
     request<{ data: { ok: boolean; data: { qa_result_id: string; result: unknown } } }>('/api/cmo:runQA', {
       method: 'POST',
@@ -1288,6 +1319,21 @@ export const api = {
     )
       .then(r => unwrap(r) as ToolRequestItem[])
       .catch(() => [] as ToolRequestItem[]),
+
+  // 🔔 호랑이 실시간 장애 목록 (미해결 status만 default; all=전체).
+  listIncidents: (status?: string) =>
+    request<{ data: { ok: boolean; data: TigerIncident[] } }>(
+      `/api/monitor:incidents${status && status !== 'all' ? `?status=${encodeURIComponent(status)}` : ''}`
+    )
+      .then(r => unwrap(r) as TigerIncident[])
+      .catch(() => [] as TigerIncident[]),
+
+  // 장애 수정 승인 게이트 — detected → approved. 승인 전 코딩 금지(안전 게이트).
+  approveIncidentFix: (id: string) =>
+    request<{ data: { ok: boolean; data: { id: string; status: string; changed: boolean } } }>('/api/monitor:approveIncidentFix', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }).then(r => unwrap(r)) as Promise<{ id: string; status: string; changed: boolean }>,
 
   // 호랑이 자가개선 카드 목록 (미해결 status만 default).
   listSelfImproveCards: (status?: string) =>

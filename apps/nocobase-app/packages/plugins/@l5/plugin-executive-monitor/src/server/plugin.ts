@@ -1564,6 +1564,60 @@ async function ensureTigerTables(db: any) {
   }
 }
 
+// ── 호랑이(Tiger) 실시간 장애 감시 컬렉션 + 핸들러 ──────────────────────────
+// reactive 감시 루프(hermes)가 REST :create로 tiger_incidents를 적재하고,
+// monitor:incidents가 미해결 장애를 founder-ui 벨/장애 목록으로 surface한다.
+// monitor:approveIncidentFix가 승인 게이트(status=approved → CTO 수정 dispatch 허용).
+function registerTigerIncidentsCollection(db: any) {
+  db.collection(defineCollection({
+    name: 'tiger_incidents',
+    title: 'Tiger Incidents',
+    fields: [
+      { name: 'id', type: 'uuid', primaryKey: true },
+      { name: 'task_ref', type: 'string' },       // 감시 대상 작업 식별(l5_task_id/run_id/phase_run id 등)
+      { name: 'task_label', type: 'string' },      // 사장님이 알아볼 작업명(키콘텐츠/영상룸 등)
+      { name: 'incident_type', type: 'string' },   // failed | stalled | error
+      { name: 'error_summary', type: 'text' },      // 오류 요지(메시지/스택 발췌)
+      { name: 'diagnosis', type: 'text' },          // 호랑이 진단
+      { name: 'proposed_fix', type: 'text' },       // "CTO에게 이렇게 고치게 하겠다" 수정 계획
+      { name: 'target_repo', type: 'string' },     // 수정 대상 repo 절대경로
+      { name: 'status', type: 'string', defaultValue: 'detected' }, // detected|approved|fixing|testing|resolved|escalated
+      { name: 'attempt_count', type: 'integer', defaultValue: 0 },
+      { name: 'detected_at', type: 'date' },
+      { name: 'source_ref', type: 'string' },       // 원 신호 출처(native_phase_runs:<id> 등)
+    ],
+  }));
+}
+
+// defineCollection은 모델만 등록 → 물리 테이블 DDL 필요(native_phase_runs와 동일 규약). idempotent.
+async function ensureTigerIncidentsTable(db: any) {
+  const dialect = db.sequelize?.getDialect?.();
+  if (dialect === 'sqlite') return;
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS tiger_incidents (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        task_ref text,
+        task_label text,
+        incident_type text,
+        error_summary text,
+        diagnosis text,
+        proposed_fix text,
+        target_repo text,
+        status text DEFAULT 'detected',
+        attempt_count int DEFAULT 0,
+        detected_at timestamptz,
+        source_ref text,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure tiger_incidents table: ${message}`);
+  }
+}
+
 // pulk 레포 루트(레지스트리 pulk-relative repo_path 절대화용). l5-core require와 동일 베이스.
 const TIGER_PULK_ROOT =
   process.env.L5_PULK_ROOT ?? path.resolve(__dirname, '../../../../../../..');
@@ -1666,6 +1720,73 @@ async function bulkApproveSelfImprove(ctx: MonitorContext) {
   ctx.body = { ok: true, data: { dispatched, blocked } };
 }
 
+// 🔔 실시간 장애 surface: 미해결(resolved/escalated 제외) tiger_incidents → 벨 배지 + 장애 목록.
+// status 쿼리로 필터 가능(all=전체). 최신 detected 우선.
+async function incidents(ctx: MonitorContext) {
+  const db = ctx.db || ctx.app.db;
+  const rawQuery = (ctx as any).request?.query ?? (ctx as any).query ?? {};
+  const status = rawQuery['status'] ? String(rawQuery['status']) : undefined;
+  const whereStatus =
+    status && status !== 'all'
+      ? `WHERE status = :status`
+      : `WHERE status NOT IN ('resolved', 'escalated')`;
+  const rows = (await db.sequelize.query(
+    `SELECT * FROM tiger_incidents ${whereStatus}
+       ORDER BY COALESCE(detected_at, "createdAt") DESC`,
+    {
+      replacements: status && status !== 'all' ? { status } : {},
+      type: db.sequelize.QueryTypes.SELECT,
+    },
+  )) as any[];
+
+  ctx.body = {
+    ok: true,
+    data: rows.map((r: any) => ({
+      id: String(r.id),
+      task_ref: r.task_ref ?? null,
+      task_label: r.task_label ?? null,
+      incident_type: r.incident_type ?? null,
+      error_summary: r.error_summary ?? null,
+      diagnosis: r.diagnosis ?? null,
+      proposed_fix: r.proposed_fix ?? null,
+      target_repo: r.target_repo ?? null,
+      status: r.status ?? 'detected',
+      attempt_count: r.attempt_count ?? 0,
+      detected_at: r.detected_at ?? r.createdAt ?? r.created_at ?? null,
+      source_ref: r.source_ref ?? null,
+    })),
+  };
+}
+
+// 장애 수정 승인 게이트: status=detected인 장애를 approved로 전환 → reactive 루프가
+// 집어 CTO 수정 dispatch. 승인 전 코딩 금지(안전 게이트)이므로 여기서만 approved로 올린다.
+async function approveIncidentFix(ctx: MonitorContext) {
+  const db = ctx.db || ctx.app.db;
+  const { id } = requestValues(ctx) as { id?: string };
+  if (!id) {
+    (ctx as any).status = 400;
+    ctx.body = { ok: false, error: 'id is required' };
+    return;
+  }
+  const repo = db.getRepository('tiger_incidents');
+  const incident = await repo.findOne({ filter: { id } });
+  if (!incident) {
+    (ctx as any).status = 404;
+    ctx.body = { ok: false, error: 'incident not found' };
+    return;
+  }
+  // detected에서만 승인 가능(이미 진행/완료된 건 멱등 무시).
+  if (incident.status !== 'detected') {
+    ctx.body = { ok: true, data: { id: String(id), status: incident.status, changed: false } };
+    return;
+  }
+  await repo.update({
+    filter: { id },
+    values: { status: 'approved', updatedAt: new Date(), updated_at: new Date() },
+  });
+  ctx.body = { ok: true, data: { id: String(id), status: 'approved', changed: true } };
+}
+
 export default class PluginExecutiveMonitorServer extends Plugin {
   async load() {
     this.app.logger.info('PluginExecutiveMonitorServer loaded');
@@ -1674,6 +1795,8 @@ export default class PluginExecutiveMonitorServer extends Plugin {
     await ensureNativePhaseRunsTable(this.db);
     registerTigerCollections(this.db);
     await ensureTigerTables(this.db);
+    registerTigerIncidentsCollection(this.db);
+    await ensureTigerIncidentsTable(this.db);
     await ensureBusinessIdIndex(this.db);
     await ensureCurationColumns(this.db);
     startHermesScheduler(this.db, this.app.logger);
@@ -1774,6 +1897,14 @@ export default class PluginExecutiveMonitorServer extends Plugin {
           await retryRun(ctx);
           await next();
         },
+        incidents: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await incidents(ctx);
+          await next();
+        },
+        approveIncidentFix: async (ctx: MonitorContext, next: () => Promise<void>) => {
+          await approveIncidentFix(ctx);
+          await next();
+        },
       },
     });
 
@@ -1821,6 +1952,7 @@ export default class PluginExecutiveMonitorServer extends Plugin {
     registerGetRoute(this.app, '/api/monitor/liveStatus', liveStatus);
     registerGetRoute(this.app, '/api/monitor/nativeRuns', nativePhaseRuns);
     registerGetRoute(this.app, '/api/monitor/controlRoomTree', controlRoomTree);
+    registerGetRoute(this.app, '/api/monitor/incidents', incidents);
 
     this.app.acl.allow('monitor', [
       'currentTasks',
@@ -1845,12 +1977,16 @@ export default class PluginExecutiveMonitorServer extends Plugin {
       'retryRun',
       'selfImproveCards',
       'bulkApproveSelfImprove',
+      'incidents',
+      'approveIncidentFix',
     ], 'loggedIn');
     // 데몬이 native_phase_runs를 표준 REST(:create/:update/:list)로 기록·조회.
     this.app.acl.allow('native_phase_runs', ['create', 'update', 'list', 'get'], 'loggedIn');
     // night-bpr-loop가 호랑이 카드를 표준 REST로 적재/조회/갱신.
     this.app.acl.allow('workflow_improvement_proposals', ['create', 'update', 'list', 'get'], 'loggedIn');
     this.app.acl.allow('bpr_logs', ['create', 'update', 'list', 'get'], 'loggedIn');
+    // reactive 감시 루프가 tiger_incidents를 표준 REST로 적재/갱신/조회.
+    this.app.acl.allow('tiger_incidents', ['create', 'update', 'list', 'get'], 'loggedIn');
     this.app.acl.allow('memory_entries', ['create', 'update', 'list', 'get'], 'loggedIn');
     this.app.acl.allow('roadmap', ['list'], 'loggedIn');
     this.app.acl.allow('discovery', ['today'], 'loggedIn');
