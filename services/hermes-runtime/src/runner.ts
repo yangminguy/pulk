@@ -19,6 +19,7 @@ import {
   fetchApprovedTigerIncidents,
   updateTigerIncident,
 } from "./api/nocobase-client.js";
+import { runClaudeCommand } from "./api/claude-cli.js";
 import { runApprovedBatch, dispatchToNativeOrchestrator } from "@l5/agent-runtime";
 import {
   decodeTargetRef,
@@ -262,6 +263,8 @@ export async function runTigerWatchLive() {
       fetchNativePhaseRuns: () => fetchNativePhaseRuns(),
       fetchAgentTasks: () => fetchAgentTasks() as unknown as Promise<any[]>,
       persistIncident: (rec) => createTigerIncident({ ...rec }),
+      runClaude: (cmd, timeoutMs) =>
+        runClaudeCommand(cmd, { timeoutMs, onLog: (l) => console.log("[tiger-watch]", l) }),
     },
   );
 }

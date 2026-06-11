@@ -16,12 +16,19 @@ import { join } from 'path';
 import {
   detectIncidents,
   WATCH_TARGET_REGISTRY,
+  selectDiagnosisModel,
+  buildIncidentDiagnosisPrompt,
+  parseIncidentDiagnosis,
   type Incident,
   type WorkSnapshot,
   type WatchTarget,
 } from '@l5/core';
 import { createTelegramClient } from '../notifier/telegram.js';
 import type { TelegramClient } from '../notifier/telegram.js';
+import type { ClaudeCliCommand, RunClaudeResult } from '../api/claude-cli.js';
+
+/** 장애 1건당 Claude 정밀 진단 타임아웃. */
+const DIAG_TIMEOUT_MS = 120_000;
 
 /** native_phase_runs 1행(읽기 — 어댑터가 필요로 하는 필드만). */
 export interface NativePhaseRunRow {
@@ -92,6 +99,11 @@ export interface LivenessWatcherDeps {
   now?: string;
   /** founder-ui base(알림 링크). 기본 FOUNDER_UI_BASE_URL env. */
   founderUIBaseUrl?: string;
+  /** Claude CLI 실행기(정밀 진단용). 주입 시 감지 incident를 Claude로 진단해 diagnosis/proposed_fix를
+   *  채운다. 미주입/실패 시 룰 기반 기본 진단 유지(never-throw). */
+  runClaude?: (cmd: ClaudeCliCommand, timeoutMs: number) => Promise<RunClaudeResult>;
+  /** Claude 실행 cwd(진단은 repo 무관). 기본 PULK_ROOT/cwd. */
+  cwd?: string;
 }
 
 export interface LivenessWatcherResult {
@@ -292,23 +304,55 @@ export async function runLivenessWatcher(
   const founderUIBase = deps.founderUIBaseUrl ?? process.env.FOUNDER_UI_BASE_URL ?? 'http://localhost:3002';
 
   for (const inc of fresh) {
+    const incidentType: 'failed' | 'stalled' | 'error' =
+      inc.kind === 'failed' ? 'failed' : inc.kind === 'stall' ? 'stalled' : 'error';
+    // 룰 기반 기본 진단(Claude 미주입/실패 시 폴백).
+    let diagnosis =
+      `${inc.target_label}이(가) ${KIND_LABEL[inc.kind]} 상태로 진행이 멈췄습니다. ` +
+      `감지 근거: ${inc.heartbeat_evidence}.` +
+      (inc.error_excerpt ? ` 오류: ${inc.error_excerpt}` : '');
+    let proposedFix =
+      `CTO가 ${inc.repo_path}에서 원인을 분석해 ${inc.target_label}이(가) 다시 진행되도록 수정합니다. ` +
+      `승인 시 오류 전후 사정을 전달받아 코딩하고, 호랑이가 테스트로 검증합니다.`;
+    // 호랑이(Claude) 정밀 진단 — 주입 시 룰 기본값을 대체. 실패해도 never-throw.
+    if (deps.runClaude) {
+      try {
+        const dInc = {
+          target_label: inc.target_label,
+          incident_type: incidentType,
+          error_summary: inc.error_excerpt,
+          heartbeat_evidence: inc.heartbeat_evidence,
+          target_repo: inc.repo_path,
+        };
+        const cwd = deps.cwd ?? process.env.PULK_ROOT ?? process.cwd();
+        const res = await deps.runClaude(
+          {
+            cmd: 'claude',
+            args: ['-p', buildIncidentDiagnosisPrompt(dInc), '--model', selectDiagnosisModel(dInc)],
+            cwd,
+            stdinNull: false,
+          },
+          DIAG_TIMEOUT_MS,
+        );
+        const parsed = parseIncidentDiagnosis(res.stdout ?? '');
+        if (parsed) {
+          diagnosis = parsed.diagnosis;
+          proposedFix = parsed.proposed_fix;
+        }
+      } catch (err) {
+        errors.push(`diagnose(${inc.incident_key}): ${(err as Error).message}`);
+      }
+    }
     // 영속화(tiger_incidents). 실패해도 알림은 진행.
     if (persist) {
       try {
-        const incidentType =
-          inc.kind === 'failed' ? 'failed' : inc.kind === 'stall' ? 'stalled' : 'error';
         await persist({
           task_ref: inc.work_id,
           task_label: inc.target_label,
           incident_type: incidentType,
           error_summary: inc.error_excerpt,
-          diagnosis:
-            `${inc.target_label}이(가) ${KIND_LABEL[inc.kind]} 상태로 진행이 멈췄습니다. ` +
-            `감지 근거: ${inc.heartbeat_evidence}.` +
-            (inc.error_excerpt ? ` 오류: ${inc.error_excerpt}` : ''),
-          proposed_fix:
-            `CTO가 ${inc.repo_path}에서 원인을 분석해 ${inc.target_label}이(가) 다시 진행되도록 수정합니다. ` +
-            `승인 시 오류 전후 사정을 전달받아 코딩하고, 호랑이가 테스트로 검증합니다.`,
+          diagnosis,
+          proposed_fix: proposedFix,
           target_repo: inc.repo_path,
           status: 'detected',
           attempt_count: 0,
