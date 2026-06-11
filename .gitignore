@@ -50,9 +50,26 @@ storage/
 # Hermes runtime cron/state artifacts (contain tokens/PII — never commit)
 apps/nocobase-app/cron_*
 
-# Claude Code agent working dirs (ephemeral locks/state)
-.claude/
-**/.claude/
+# Claude Code agent working dirs (ephemeral locks/state).
+# Track ONLY the shared context packs (rules/). Personal/ephemeral files
+# (settings.json enabledPlugins, settings.local.json, locks, session data)
+# stay ignored.
+.claude/*
+!.claude/rules/
+!.claude/rules/**
+# Executive subagents (@ceo/@cmo/@cto …) are shared team config — track them.
+!.claude/agents/
+!.claude/agents/**
+# Nested per-package .claude dirs stay fully ignored.
+apps/**/.claude/
+packages/**/.claude/
+services/**/.claude/
 
 # 별도 GitHub repo를 pulk 폴더에 붙여넣은 것 — pulk 추적/정리 대상 아님 (보호)
 ai-slide-video-factory/
+
+# YouTube API 자격증명 (절대 커밋 금지)
+services/youtube/.credentials.json
+
+# Telegram gateway per-run deliverables (ephemeral; shipped to Telegram then disposable)
+.telegram-runs/

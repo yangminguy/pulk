@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>NOCOBASE_TOKEN</key>
+		<string>REPLACE_WITH_NOCOBASE_TOKEN</string>
+		<key>NOCOBASE_URL</key>
+		<string>http://localhost:13000</string>
+		<key>NODE_ENV</key>
+		<string>production</string>
+		<key>PULK_ROOT</key>
+		<string>/Users/wonminyang/Desktop/pulk</string>
+		<key>FOUNDER_UI_BASE_URL</key>
+		<string>http://localhost:3002</string>
+		<key>TELEGRAM_BOT_TOKEN</key>
+		<string>REPLACE_WITH_TELEGRAM_BOT_TOKEN</string>
+		<key>TELEGRAM_CHAT_ID</key>
+		<string>REPLACE_WITH_TELEGRAM_CHAT_ID</string>
+	</dict>
+	<key>Label</key>
+	<string>com.l5.hermes.tiger-watch</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/node</string>
+		<string>/Users/wonminyang/Desktop/pulk/services/hermes-runtime/dist/gateway.js</string>
+		<string>tiger-watch</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/Users/wonminyang/Library/Logs/l5-hermes/tiger-watch.err</string>
+	<key>StandardOutPath</key>
+	<string>/Users/wonminyang/Library/Logs/l5-hermes/tiger-watch.log</string>
+	<key>StartInterval</key>
+	<integer>90</integer>
+	<key>WorkingDirectory</key>
+	<string>/Users/wonminyang/Desktop/pulk/services/hermes-runtime</string>
+</dict>
+</plist>

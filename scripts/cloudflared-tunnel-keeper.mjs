@@ -5,6 +5,12 @@
 // - If URL changed since last run, updates Vercel NEXT_PUBLIC_API_BASE
 //   (production) and redeploys --prod
 // - Exits when cloudflared dies so launchd respawns
+// - ZOMBIE GUARD (2026-06-11): cloudflared can stay alive while the edge
+//   session dies (domain goes NXDOMAIN even on public DNS) — observed live.
+//   After the initial sync we keep probing reachability every
+//   LIVENESS_INTERVAL_MS; after LIVENESS_MAX_FAILS consecutive failures we
+//   kill cloudflared so launchd respawns a fresh session (new URL → auto
+//   Vercel sync). Consecutive threshold absorbs flaky DNS lookups.
 
 import { spawn, spawnSync, execSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs'
@@ -15,6 +21,9 @@ const STATE_FILE = '/Users/wonminyang/Library/Application Support/L5/cloudflared
 const PROJECT_DIR = '/Users/wonminyang/Desktop/pulk/apps/founder-ui'
 const NOCO_PORT = 13000
 const URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/
+const LIVENESS_INTERVAL_MS = 3 * 60_000 // probe every 3 min
+const LIVENESS_MAX_FAILS = 3 // ~9 min of consecutive failures → respawn
+const DNS_SERVERS = ['8.8.8.8', '1.1.1.1'] // local resolver NXDOMAINs trycloudflare
 
 const PATH_EXTRA = [
   '/opt/homebrew/bin',
@@ -77,15 +86,48 @@ async function main() {
   // the host via public DNS (8.8.8.8) — the local router resolver NXDOMAINs fresh
   // trycloudflare subdomains — then curl via that IP. HTTP <500 = tunnel forwarding
   // (530/000 = dead). Avoids both the local-DNS false-negative and dead-tunnel sync.
+  function resolveIp(host) {
+    for (const ns of DNS_SERVERS) {
+      try {
+        const ip = execSync(`nslookup ${host} ${ns} 2>/dev/null | awk '/^Address: /{print $2}' | head -1`, { encoding: 'utf8' }).trim()
+        if (ip) return ip
+      } catch { /* try next resolver */ }
+    }
+    return ''
+  }
   function tunnelLive(u) {
     try {
       const host = u.replace(/^https?:\/\//, '')
-      const ip = execSync(`nslookup ${host} 8.8.8.8 2>/dev/null | awk '/^Address: /{print $2}' | head -1`, { encoding: 'utf8' }).trim()
+      const ip = resolveIp(host)
       if (!ip) return false
       const code = execSync(`curl -s -m 8 -o /dev/null -w '%{http_code}' --resolve ${host}:443:${ip} https://${host}`, { encoding: 'utf8' }).trim()
       const n = Number(code)
       return n > 0 && n < 500
     } catch { return false }
+  }
+  // ZOMBIE GUARD: periodic reachability probe after initial sync.
+  // Consecutive failures (not one-off DNS flakes) → kill cloudflared → launchd respawn.
+  let livenessTimer = null
+  function startLivenessMonitor(u) {
+    if (livenessTimer) return
+    let fails = 0
+    log(`liveness monitor started (every ${LIVENESS_INTERVAL_MS / 60000}min, max ${LIVENESS_MAX_FAILS} consecutive fails)`)
+    livenessTimer = setInterval(() => {
+      if (tunnelLive(u)) {
+        if (fails > 0) log(`liveness recovered after ${fails} fail(s)`)
+        fails = 0
+        return
+      }
+      fails += 1
+      log(`liveness FAIL ${fails}/${LIVENESS_MAX_FAILS} (${u})`)
+      if (fails >= LIVENESS_MAX_FAILS) {
+        log('zombie tunnel detected (edge unreachable) — killing cloudflared for respawn')
+        clearInterval(livenessTimer)
+        try { cf.kill('SIGTERM') } catch {}
+        // safety net: if SIGTERM is ignored, force exit so launchd respawns
+        setTimeout(() => { try { cf.kill('SIGKILL') } catch {}; process.exit(1) }, 10_000).unref()
+      }
+    }, LIVENESS_INTERVAL_MS)
   }
   // trycloudflare prints the URL BEFORE the edge connection registers, and some
   // sessions never register. Verify external reachability before syncing; if it
@@ -103,6 +145,7 @@ async function main() {
           } else {
             log(`URL unchanged — no Vercel action`)
           }
+          startLivenessMonitor(u)
           return
         }
       } catch { /* not up yet */ }
@@ -129,6 +172,7 @@ async function main() {
   cf.stderr.on('data', onChunk)
 
   cf.on('exit', (code, signal) => {
+    if (livenessTimer) clearInterval(livenessTimer)
     log(`cloudflared exited code=${code} signal=${signal} — keeper exiting for launchd respawn`)
     process.exit(code ?? 1)
   })

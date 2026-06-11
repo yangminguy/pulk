@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.l5.telegram-gateway</string>
+
+  <!-- Persistent long-poll process. Substitute __NODE_PATH__ / __GATEWAY_DIR__ / __LOG_DIR__. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE_PATH__</string>
+    <string>__GATEWAY_DIR__/dist/index.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__GATEWAY_DIR__</string>
+
+  <!-- Start on load and keep alive (auto-restart on boot / crash). -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/telegram-gateway.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/telegram-gateway.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <!-- Secrets/config are read from the user environment. Never hardcode here.
+         Required:  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+         Optional:  PULK_DIR, TELEGRAM_AGENT_MODEL, TELEGRAM_CLAUDE_ARGS,
+                    TELEGRAM_RUN_TIMEOUT_MS, CLAUDE_BIN
+         To inject here, add <key>TELEGRAM_BOT_TOKEN</key><string>...</string> after substitution. -->
+  </dict>
+</dict>
+</plist>

@@ -5,7 +5,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 
 // Isolate all file writes to a fresh tmp dir per test so the real repo
-// (docs/cto-tool-catalog.md, .omc/state) is never touched.
+// (docs/cto/cto-tool-catalog.md, .omc/state) is never touched.
 let opts: SelfLearningOptions;
 beforeEach(async () => {
   const base = await fs.mkdtemp(join(tmpdir(), 'self-learning-'));

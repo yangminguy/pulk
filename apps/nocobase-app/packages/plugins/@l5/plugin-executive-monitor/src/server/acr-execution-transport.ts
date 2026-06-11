@@ -29,6 +29,13 @@ export interface AcrExecTask {
 export interface AcrExecutionTransport {
   /** Returns [] on any failure / when ACR is unreachable or not yet deployed. */
   fetchExecution(acrProjectId: string): Promise<AcrExecTask[]>;
+  /**
+   * Re-run a settled ExecutionRun by run_id (PRD §18.1 control-room retry).
+   * POSTs to ACR `/api/execution-runs/:run_id/retry`. Returns the new run_id, or
+   * null on any failure (ACR down / disabled / 4xx). Never throws — the UI shows
+   * a graceful "ACR 미연결" message when null.
+   */
+  retryRun(runId: string, agent?: string): Promise<{ run_id: string } | null>;
 }
 
 export function makeAcrExecutionTransport(): AcrExecutionTransport | null {
@@ -70,6 +77,31 @@ export function makeAcrExecutionTransport(): AcrExecutionTransport | null {
       } catch {
         // ACR down / 401 / timeout / parse error → degraded mode.
         return [];
+      }
+    },
+
+    async retryRun(runId: string, agent?: string): Promise<{ run_id: string } | null> {
+      if (!runId) return null;
+      try {
+        const res = await fetch(
+          `${baseUrl}/api/execution-runs/${encodeURIComponent(runId)}/retry`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(secret ? { 'x-l5-shared-secret': secret } : {}),
+            },
+            body: JSON.stringify(agent ? { agent } : {}),
+            signal: (AbortSignal as any).timeout?.(5000),
+          },
+        );
+        if (!res.ok) return null;
+        const json: any = await res.json();
+        const newId = typeof json?.run_id === 'string' ? json.run_id : null;
+        return newId ? { run_id: newId } : null;
+      } catch {
+        // ACR unreachable / timeout / parse error → null (UI shows degraded msg).
+        return null;
       }
     },
   };

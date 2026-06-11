@@ -79,6 +79,17 @@ describe('buildControlRoomTree', () => {
     expect(dt.log_tail).toBe('last lines');
   });
 
+  it('echoes CTO Harness complexity when ACR reports it; null otherwise', () => {
+    const args = baseArgs();
+    args.ctoTasks = [task({ id: 't1' }), task({ id: 't2', project_id: 'p1', business_id: 'b1' })];
+    args.acrByTaskId = { t1: { acr_task_id: 't1', complexity: 'C3' } };
+    const tasks = buildControlRoomTree(args)[0].projects[0].dev_tasks;
+    const dt1 = tasks.find((d) => d.task_id === 't1')!;
+    const dt2 = tasks.find((d) => d.task_id === 't2')!;
+    expect(dt1.complexity).toBe('C3');
+    expect(dt2.complexity).toBeNull(); // ACR record absent → degraded
+  });
+
   it('merges measured token usage + cost when ACR reports it', () => {
     const args = baseArgs();
     args.ctoTasks = [task({ id: 't1' })];
@@ -121,6 +132,51 @@ describe('buildControlRoomTree', () => {
     const dt = buildControlRoomTree(args)[0].projects[0].dev_tasks[0];
     expect(dt.exec_status).toBe('planned');
     expect(dt.phase_label).toBeNull();
+  });
+
+  it('passes through checks, next_action, recommendation, run_id and run_history', () => {
+    const args = baseArgs();
+    args.ctoTasks = [task({ id: 't1' })];
+    args.acrByTaskId = {
+      t1: {
+        acr_task_id: 't1',
+        run_id: 'run_001',
+        checks: { typecheck: 'pass', build: 'fail', playwright: 'skipped' },
+        next_action: 'Human review recommended before merge.',
+        recommendation: 'human_review',
+        run_history: [
+          { run_id: 'run_000', status: 'failed', agent: 'claude-code', checks: { typecheck: 'fail' } },
+        ],
+      },
+    };
+    const dt = buildControlRoomTree(args)[0].projects[0].dev_tasks[0];
+    expect(dt.run_id).toBe('run_001');
+    expect(dt.checks).toEqual({ typecheck: 'pass', build: 'fail', playwright: 'skipped' });
+    expect(dt.next_action).toBe('Human review recommended before merge.');
+    expect(dt.recommendation).toBe('human_review');
+    expect(dt.run_history).toHaveLength(1);
+    expect(dt.run_history[0].run_id).toBe('run_000');
+  });
+
+  it('leaves run axes null/empty when ACR omits them (degraded view)', () => {
+    const args = baseArgs();
+    args.ctoTasks = [task({ id: 't1' })];
+    args.acrByTaskId = { t1: { acr_task_id: 't1', branch: 'b' } };
+    const dt = buildControlRoomTree(args)[0].projects[0].dev_tasks[0];
+    expect(dt.run_id).toBeNull();
+    expect(dt.checks).toBeNull();
+    expect(dt.next_action).toBeNull();
+    expect(dt.recommendation).toBeNull();
+    expect(dt.run_history).toEqual([]);
+  });
+
+  it('leaves run axes null/empty when ACR record absent entirely', () => {
+    const args = baseArgs();
+    args.ctoTasks = [task({ id: 't1' })];
+    const dt = buildControlRoomTree(args)[0].projects[0].dev_tasks[0];
+    expect(dt.run_id).toBeNull();
+    expect(dt.checks).toBeNull();
+    expect(dt.run_history).toEqual([]);
   });
 
   it('handles multiple businesses', () => {

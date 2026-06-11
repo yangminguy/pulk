@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMO 제목 디벨롭 8단계 — 통합 · 모니터링 · CTO/ACR 실행 계획</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --line:#2d333b;
+    --tx:#e6edf3; --mut:#8b949e; --acc:#58a6ff; --grn:#3fb950; --yel:#d29922;
+    --red:#f85149; --pur:#bc8cff; --cy:#39c5cf;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo",sans-serif;
+    line-height:1.65;font-size:15px}
+  .wrap{max-width:1100px;margin:0 auto;padding:40px 28px 80px}
+  h1{font-size:27px;margin:0 0 6px;letter-spacing:-.4px}
+  h2{font-size:20px;margin:44px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line);display:flex;align-items:center;gap:10px}
+  h3{font-size:16px;margin:24px 0 10px;color:var(--acc)}
+  .sub{color:var(--mut);font-size:14px;margin-bottom:8px}
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;vertical-align:middle}
+  .t-p0{background:#3b1518;color:#ff8d85} .t-mvp{background:#15301c;color:#56d364}
+  .t-risk{background:#3a2e10;color:#e3b341} .t-new{background:#1c2b4a;color:#79b8ff}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:14px 0}
+  .card.acc{border-left:3px solid var(--acc)} .card.grn{border-left:3px solid var(--grn)}
+  .card.yel{border-left:3px solid var(--yel)} .card.red{border-left:3px solid var(--red)}
+  .card.pur{border-left:3px solid var(--pur)}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0;font-size:13px}
+  .node{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:7px 12px;white-space:nowrap}
+  .node.hot{border-color:var(--grn);background:#13261a;color:#7ee787;font-weight:600}
+  .node.cur{border-color:var(--yel);background:#2a2410}
+  .arr{color:var(--mut)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+  td code,p code,li code{background:#22272e;padding:1px 6px;border-radius:5px;font-size:12.5px;color:var(--cy)}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  pre{background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;font-size:12.5px;line-height:1.5;margin:10px 0}
+  pre .c{color:var(--mut)} pre .k{color:var(--pur)} pre .s{color:var(--grn)} pre .f{color:var(--acc)}
+  ul,ol{margin:8px 0;padding-left:22px} li{margin:5px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .pill{font-size:11px;padding:1px 7px;border-radius:5px;font-weight:600}
+  .c0{background:#1a3a2a;color:#56d364}.c2{background:#2a2410;color:#e3b341}.c3{background:#3b1518;color:#ff8d85}
+  .lead{font-size:15px;color:var(--mut);border-left:3px solid var(--acc);padding:4px 0 4px 16px;margin:14px 0}
+  .kv{display:grid;grid-template-columns:130px 1fr;gap:4px 14px;font-size:13.5px;margin:8px 0}
+  .kv dt{color:var(--mut)} .kv dd{margin:0}
+  .warn{background:#2a1d10;border:1px solid #5c3d12;border-radius:8px;padding:12px 16px;margin:12px 0;font-size:13.5px}
+  .ok{background:#0f2417;border:1px solid #1f5132;border-radius:8px;padding:12px 16px;margin:12px 0;font-size:13.5px}
+  .num{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--acc);color:#08111f;font-weight:700;font-size:12px;align-items:center;justify-content:center;margin-right:8px}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--mut);font-size:12.5px}
+  .mini{font-size:12px;color:var(--mut)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>CMO 제목 디벨롭 8단계 — 통합 · 모니터링 · CTO/ACR 실행 계획</h1>
+<div class="sub">PRD: <span class="mono">PRD_CMO_Title_Development_Workflow.md</span> v1.0 · 작성 2026-06-10 · 대상 business #6 (CMO 콘텐츠 전략 v3, repo=<span class="mono">/Users/wonminyang/Desktop/pulk</span>)</div>
+<p class="lead">제목을 감으로 만들던 CMO를 <b>Viewtrap 검증 레퍼런스 2개 → 교차 조합 → 8단계 디벨롭 → 점수 평가 게이트 → Founder 승인</b> 파이프라인으로 바꾼다. 이 문서는 ① 기존 CMO 워크플로우의 <b>어디에 어떻게 붙이는지</b>, ② <b>CTO→ACR로 어떻게 굴리는지</b>(Work Order 분해), ③ 실행 중 <b>무엇을 모니터링</b>하는지를 정의한다.</p>
+
+<!-- ───────────────── 1. WHERE ───────────────── -->
+<h2>① 어디에 붙는가 — 통합 지점</h2>
+
+<p>현재 CMO Video Room 상태머신(25단계) 중 이 구간을 세분화한다. PRD 권고: <b>MVP는 새 상태를 추가하지 않고 <span class="mono">thumbnail_pattern_extraction</span> 내부에서 수행</b>(상태머신 변경 부담·회귀 위험 최소).</p>
+
+<div class="flow">
+  <span class="node">pulling_content_set_approval</span><span class="arr">→</span>
+  <span class="node cur">thumbnail_pattern_extraction<br><span class="mini">＝제목 디벨롭 8단계를 여기 안에서</span></span><span class="arr">→</span>
+  <span class="node">intro_30s_analysis</span><span class="arr">→</span>
+  <span class="node">hook_draft_approval<br><span class="mini">＝최종 제목·썸네일 승인 게이트</span></span>
+</div>
+
+<div class="card acc">
+<h3 style="margin-top:0">정확한 파일 매핑 (검증 완료)</h3>
+<table>
+<thead><tr><th>레이어</th><th>파일</th><th>작업</th></tr></thead>
+<tbody>
+<tr><td>l5-core 타입 <span class="tag t-new">신규</span></td><td class="mono">cmo-strategy/title-development-types.ts</td><td>PRD §19의 5개 타입 (<code>TitleDevelopmentReference</code> 외)</td></tr>
+<tr><td>l5-core 로직 <span class="tag t-new">신규</span></td><td class="mono">cmo-strategy/title-development.ts</td><td>7개 함수 (검증·교차조합·8단계·평가·세컨브레인)</td></tr>
+<tr><td>STAGE_SCRIPT</td><td class="mono">cmo-strategy/stage-script.ts:65</td><td><code>thumbnail_pattern_extraction</code>의 focus/prompt 확장</td></tr>
+<tr><td>기존 자산 재사용</td><td class="mono">video-room/thumbnail-plan.ts</td><td><code>buildThumbnailPlan</code>/<code>ThumbnailCandidate</code> — 썸네일 방향 산출 연결</td></tr>
+<tr><td>기존 자산 재사용</td><td class="mono">video-room/viewtrap-tools.ts</td><td>레퍼런스 검증·핫비디오 구조(7단계) 입력</td></tr>
+<tr><td>plugin 배선</td><td class="mono">plugin-orchestration/.../plugin.ts:3882~</td><td>R4 썸네일 액션 옆에 <code>cmo:*</code> 제목 디벨롭 액션 추가 (src+dist)</td></tr>
+<tr><td>founder-ui <span class="tag t-new">신규</span></td><td class="mono">founder-ui/.../_components/TitleDevelopmentCard.tsx</td><td>레퍼런스 입력 → 조합 보드 → 8단계 타임라인 → 평가 패널</td></tr>
+</tbody>
+</table>
+<p class="mini">※ PRD §27은 <span class="mono">cmo-strategy/</span> 배치를 권고(기존 video-room/types.ts가 이미 큼). 단 Viewtrap·ThumbnailPattern 타입은 video-room에 있으므로 <b>배럴 import로 재사용</b>하고 신규는 cmo-strategy에 둔다 — 두 도메인이 index.ts로만 연결되는 기존 경계 유지.</p>
+</div>
+
+<div class="ok">
+<b>왜 이 방식이 안전한가:</b> 신규 작업의 ~70%가 <b>새 파일</b>(타입·로직·UI 카드)이라 기존 라이브 코드와 충돌면이 작다. 상태머신·DB 스키마 무변경. 8단계 LLM은 기존 <span class="mono">key-content-draft.ts</span>의 <b>"LLM 주입 + retry + 결정론 폴백"</b> 패턴을 그대로 복제 → 검증된 레일.
+</div>
+
+<!-- ───────────────── 2. HOW CTO/ACR ───────────────── -->
+<h2>② 어떻게 굴리나 — CTO → ACR Work Order 분해</h2>
+
+<p>이 작업의 정본 business는 <b>#6 (repo = pulk 자체)</b>다. 따라서 새 격리 repo가 아니라 <b>pulk repo 위에서 ACR worktree 격리</b>로 실행한다. 핵심 리스크는 <b>미커밋 CMO/video-room WIP 파일 불가침</b>(rule 00-global) — ACR이 이를 건드리면 안 된다.</p>
+
+<div class="warn">
+<b>⚠ WIP 충돌 가드 (필수 선행):</b> 현재 pulk에 미커밋 변경 다수(<span class="mono">script-room-types.ts</span>, docs 등). ACR dispatch 전에 ① 작업 대상 외 WIP를 <b>커밋 또는 stash</b>하거나 ② Work Order <span class="mono">allowedFiles</span>를 <b>신규 파일 + 명시 파일로만 화이트리스트</b>. worktree 정책상 base branch 직접 수정은 차단되지만, dirty cwd는 과거 실험에서 <span class="mono">409 "uncommitted changes"</span>로 phase 전체를 막았다(직전 실험 핵심 실패 원인).
+</div>
+
+<h3>Work Order 4개 — 의존 순서대로</h3>
+
+<div class="card grn">
+<b><span class="num">1</span>WO-1 · l5-core 타입 + 순수 함수</b> <span class="pill c2">C2</span> <span class="pill" style="background:#1a3a2a;color:#56d364">D0</span>
+<div class="kv">
+<dt>산출</dt><dd>title-development-types.ts (5타입) + title-development.ts 중 <b>결정론 함수</b>(generateTitleSearchTerms, validateTitleReferences, generateCrossCombinations, judgeCombinationAwkwardness, evaluateFinalTitles)</dd>
+<dt>수용 기준</dt><dd>PRD §24 AC-01~08, AC-11~12를 <b>jest 단위테스트로</b>(레퍼런스 2개 미만 차단, 조회수 5만/Good·Great 검증, 4개 조합 생성, 69점 이하 재실행). NocoBase 없이 통과.</dd>
+<dt>ACR 강점</dt><dd>순수 TS + jest = ACR이 가장 잘 하는 영역. LLM 불요. <b>여기서 NO-SKIP 주입 검증</b>(타입만 만들고 "완료"하는 E1 스킵 차단).</dd>
+</div>
+</div>
+
+<div class="card grn">
+<b><span class="num">2</span>WO-2 · 8단계 디벨롭 LLM 실행기</b> <span class="pill c2">C2</span> <span class="pill" style="background:#1a3a2a;color:#56d364">D0</span>
+<div class="kv">
+<dt>산출</dt><dd><code>runTitleDevelopmentSteps</code> + <code>buildSecondBrainSummary</code> — LLM 주입형(2~8단계 각각 이전 단계 산출물을 컨텍스트로). PRD §10~16 단계 규칙.</dd>
+<dt>패턴</dt><dd><span class="mono">key-content-draft.ts runKeyContentWorkflow</span> 복제: 스텝별 retry, 실패 시 그 스텝만 결정론 폴백(전체 폴백 아님), 단계별 입력/출력/탈락이유 저장(AC-09·10).</dd>
+<dt>의존</dt><dd>WO-1 (조합 후보를 입력으로 받음)</dd>
+</div>
+</div>
+
+<div class="card yel">
+<b><span class="num">3</span>WO-3 · plugin 액션 배선 + stage-script + <span class="t-mvp tag">integrate</span></b> <span class="pill c3">C3</span> <span class="pill c2">D1</span>
+<div class="kv">
+<dt>산출</dt><dd>plugin.ts에 <code>cmo:proposeTitleDevelopment</code> 등 액션(buildLLMClient=Claude CLI 주입) → <code>proposal.data.title_development_workflow</code> 카드 upsert. stage-script focus/prompt 확장. ACL + <b>dist 직접 패치</b>.</dd>
+<dt>수용 기준</dt><dd><b>integrate phase 합격 기준</b>: 진입점 등록(액션이 라우팅됨)·기존 thumbnail_plan 카드 흐름과 정렬·고립 금지. <code>modified_existing_files&gt;0</code> 강제(새 파일만이면 orphaned fail).</dd>
+<dt>검증 포인트</dt><dd>이번 실험의 <b>integrate phase 실작동</b> 확인 지점 — 빌드만 GREEN이고 미배선되는 "고립 완료" 재발 여부.</dd>
+</div>
+</div>
+
+<div class="card yel">
+<b><span class="num">4</span>WO-4 · founder-ui Title Development Card</b> <span class="pill c2">C2</span> <span class="pill" style="background:#1a3a2a;color:#56d364">D0</span>
+<div class="kv">
+<dt>산출</dt><dd>TitleDevelopmentCard(레퍼런스 입력→검증→4조합 보드→8단계 타임라인→평가 패널) + api.ts 헬퍼. hook_draft_approval 게이트 연결.</dd>
+<dt>검증</dt><dd>UI = typecheck + next build + <b>Playwright smoke</b>(rule 50). 도메인 로직 UI 하드코딩 금지(rule 00) — 카드는 l5-core 산출물 표시만.</dd>
+<dt>의존</dt><dd>WO-3 (액션 라우팅 후)</dd>
+</div>
+</div>
+
+<div class="card pur">
+<h3 style="margin-top:0">dispatch 경로 (메모리 검증)</h3>
+<div class="flow">
+  <span class="node">PRD/지시</span><span class="arr">→</span>
+  <span class="node mono">cto:planMessage</span><span class="arr">→</span>
+  <span class="node mono">cto:approvePlan</span><span class="arr">→</span>
+  <span class="node">task-dispatcher (launchd)</span><span class="arr">→</span>
+  <span class="node hot">ACR worktree 격리 실행</span><span class="arr">→</span>
+  <span class="node">result packet</span><span class="arr">→</span>
+  <span class="node">pulk task 상태 회수</span>
+</div>
+<p class="mini">CTO는 코드를 직접 쓰지 않고 Work Order만 생성(rule 10). 실행/검사/반환은 ACR(rule 20). 커밋·머지는 오케스트레이터 소유, 에이전트 금지(rule 30).</p>
+</div>
+
+<!-- ───────────────── 3. MONITORING ───────────────── -->
+<h2>③ 무엇을 모니터링하나</h2>
+
+<p>모니터링 환경은 점검 완료. 전 서비스 가동(NocoBase :13000 / founder-ui :3002 / phase-runner 데몬 PID 765 / acr-web). 인증 토큰은 <span class="mono">~/Library/LaunchAgents/com.l5.hermes.*.plist</span>의 <span class="mono">NOCOBASE_TOKEN</span>에서 확보.</p>
+
+<div class="grid2">
+<div class="card">
+<h3 style="margin-top:0">실시간 추적 채널</h3>
+<table>
+<tbody>
+<tr><td>task 상태</td><td class="mono">GET /api/agent_tasks?filter=business_id</td></tr>
+<tr><td>ACR phase 로그</td><td class="mono">agent_control_room_docs/data/<br>execution-logs.json</td></tr>
+<tr><td>phase별 결과</td><td>exit_code · changedFiles · headAdvanced · status</td></tr>
+<tr><td>큐 깊이</td><td class="mono">data/phase-runner-queue.json</td></tr>
+<tr><td>러너 로그</td><td class="mono">~/Library/Logs/l5/<br>acr-phase-runner.{out,err}.log</td></tr>
+<tr><td>산출 카드</td><td class="mono">video_room_cards (stage 별)</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="card">
+<h3 style="margin-top:0">개선 검증 지표 (직전 실험 대비)</h3>
+<table>
+<thead><tr><th>지표</th><th>직전</th><th>이번 기대</th></tr></thead>
+<tbody>
+<tr><td>완주율</td><td>11중 1</td><td>WO별 완주</td></tr>
+<tr><td>E1 스킵</td><td>changed=0 가짜✅</td><td><b>NO-SKIP 차단</b></td></tr>
+<tr><td>고립 완료</td><td>빌드OK 미배선</td><td><b>integrate fail→retry</b></td></tr>
+<tr><td>과분해</td><td>MD 1개→4 phase</td><td>TINY 라우팅</td></tr>
+<tr><td>scope-creep</td><td>에셋 생성 샘</td><td>allowedFiles 가드</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<div class="card red">
+<h3 style="margin-top:0">새로 주시할 오류 (이번 작업 특이)</h3>
+<ul>
+<li><b>409 dirty cwd</b> — WIP 미정리 시 phase 전체 차단. dispatch 전 stash/커밋으로 선제 차단.</li>
+<li><b>dist 패치 누락</b> — plugin src만 고치고 dist 미반영 시 라이브 무변화(메모리: dist/plugin.js 직접 패치 필수).</li>
+<li><b>LLM 결정론 폴백 무한</b> — 8단계 LLM이 매번 폴백으로 빠지면 "통과처럼 보이나 빈약". progress 카드의 실 LLM 호출 횟수로 검증.</li>
+<li><b>도메인 로직 UI 누수</b> — WO-4에서 점수 계산·검증을 카드에 하드코딩하면 rule 위반(l5-core로 회수).</li>
+</ul>
+</div>
+
+<!-- ───────────────── 4. NEXT ───────────────── -->
+<h2>④ 실행 순서 (승인 후)</h2>
+<ol>
+<li><b>WIP 정리</b> — 작업 무관 미커밋 변경 stash/커밋 (409 선제 차단).</li>
+<li><b>CTO에 PRD dispatch</b> — <span class="mono">cto:planMessage</span>로 4개 WO 의존 그래프 생성 → <span class="mono">approvePlan</span>.</li>
+<li><b>WO-1 먼저 단독 실행</b> — 가장 안전(순수+테스트). 여기서 <b>NO-SKIP·과분해 차단 실작동</b>을 먼저 관측.</li>
+<li><b>모니터링 루프</b> — task 상태·execution-logs·큐를 폴링하며 phase별 exit/changed_files 기록, 개선 지표 대조.</li>
+<li><b>WO-2→3→4 순차</b> — WO-3에서 <b>integrate phase 고립 판정</b> 집중 관측.</li>
+<li><b>완료 게이트</b> — l5-core jest GREEN + founder-ui build + Playwright smoke + 라이브 액션 401/200 확인 후 done 선언(rule 40 "agent says done ≠ done").</li>
+</ol>
+
+<div class="ok">
+<b>이 실험의 이중 목적:</b> ⑴ CMO 제목 디벨롭 기능을 실제 구현하고, ⑵ 그 과정에서 직전에 <b>코드로만 박아둔 CTO/ACR 개선</b>(NO-SKIP / integrate phase / 과분해 차단 M9.8)이 <b>라이브에서 실작동하는지</b> 검증한다. 기능 산출물과 파이프라인 개선 검증을 한 번에 회수.
+</div>
+
+<footer>
+생성: 2026-06-10 · 정본 문서 패턴 = <span class="mono">docs/cmo/</span> · 구현 착수 시 <span class="mono">docs/cmo/features/title-development-workflow.md</span>로 기능 문서 분리 · 본 계획서는 dispatch 전 검토용.
+</footer>
+
+</div>
+</body>
+</html>

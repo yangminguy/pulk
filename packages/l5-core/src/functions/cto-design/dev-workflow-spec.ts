@@ -7,11 +7,18 @@
  *
  * Classification-to-phase mapping:
  *   SMALL_FIX:  repro → fix → regress → commit
- *   FEATURE:    research → spec → test → implement → review → commit
- *   BIG_CHANGE: rfc → spec → test → implement → review → commit
+ *   FEATURE:    research → spec → test → implement → integrate → review → commit
+ *   BIG_CHANGE: rfc → spec → test → implement → integrate → review → commit
  *   OPS:        backup → implement → smoke → commit
  *   RESEARCH:   research
  *   REFACTOR:   regress → refactor → regress → commit
+ *
+ * The `integrate` phase (FEATURE/BIG_CHANGE only) exists to prevent the
+ * "built but not wired" failure mode: an implement phase can land a new file
+ * that passes its own tests yet is never registered with the orchestrator,
+ * exported from the barrel, or reachable from an existing entry point. Without
+ * an explicit wiring step the build stays green while the deliverable sits
+ * orphaned. integrate forces that connection before review/commit.
  *
  * This module is intentionally pure — no NocoBase, no network, no LLM. The
  * CTO agent (in services/agent-runtime) wires it into the runtime.
@@ -31,6 +38,7 @@ export type DevPhaseKind =
   | 'spec'
   | 'test'
   | 'implement'
+  | 'integrate'
   | 'review'
   | 'commit'
   | 'repro'
@@ -73,7 +81,7 @@ export const DEV_WORKFLOW_TEMPLATES: Record<TaskClass, DevPhaseTemplate[]> = {
       runtime: 'claude',
       read_only: false,
       acceptance_criteria: [
-        '요청한 변경이 실제 코드로 구현되었다',
+        '요청한 변경이 실제 산출물(코드 또는 문서/콘텐츠)로 구현되었다',
         '변경 범위가 요청에 한정되어 있다 (surgical)',
         '기존 테스트 회귀가 없다',
       ],
@@ -201,16 +209,32 @@ export const DEV_WORKFLOW_TEMPLATES: Record<TaskClass, DevPhaseTemplate[]> = {
         '직전 단계에서 작성된 실패 테스트가 통과한다 (green)',
         '기존 테스트가 회귀 없이 통과한다',
         '변경 범위는 spec에 명시된 파일/모듈에 한정된다',
+        '동일 책임의 기존 자산을 우선 재활용하고 중복 구현을 새로 만들지 않는다',
       ],
       verifier_hint:
-        '`pnpm test`가 green 상태인지, 변경된 파일이 spec 영향 범위 안에 있는지 확인한다.',
+        '`pnpm test`가 green 상태인지, 변경된 파일이 spec 영향 범위 안에 있는지, 기존 자산과 중복된 구현을 만들지 않았는지 확인한다.',
+    },
+    {
+      kind: 'integrate',
+      name: '통합·배선',
+      runtime: 'claude',
+      read_only: false,
+      dependsOn: ['implement'],
+      acceptance_criteria: [
+        '신규 산출물이 기존 진입점(orchestrator/registry/배럴 export/라우터)에 실제로 등록·연결되었다',
+        '기존 자산과 중복 없이 정렬되었다 (구버전이 병존하면 대체 또는 위임을 명시한다)',
+        '신규 기능이 기존 통합/E2E 경로에서 호출 가능함이 확인된다',
+        '새 파일만 추가되고 기존 진입점 파일 수정이 0인 고립 상태가 아니다',
+      ],
+      verifier_hint:
+        '신규 export가 기존 진입점 파일에서 실제로 import·등록되었는지, 새 파일만 추가되고 기존 파일 수정이 0인 고립 상태가 아닌지 확인한다.',
     },
     {
       kind: 'review',
       name: '리뷰',
       runtime: 'claude',
       read_only: true,
-      dependsOn: ['implement'],
+      dependsOn: ['integrate'],
       acceptance_criteria: [
         'diff 전체를 검토한 결과가 LGTM 또는 수정 사항 리스트로 명시되어 있다',
         '리뷰 코멘트는 어떤 라인/파일에 대한 것인지 식별 가능하다',
@@ -284,16 +308,32 @@ export const DEV_WORKFLOW_TEMPLATES: Record<TaskClass, DevPhaseTemplate[]> = {
         '직전 단계에서 작성된 실패 테스트가 통과한다 (green)',
         '기존 테스트가 회귀 없이 통과한다',
         '변경 범위는 spec에 명시된 파일/모듈에 한정된다',
+        '동일 책임의 기존 자산을 우선 재활용하고 중복 구현을 새로 만들지 않는다',
       ],
       verifier_hint:
-        '`pnpm test`가 green 상태인지, 변경된 파일이 spec 영향 범위 안에 있는지 확인한다.',
+        '`pnpm test`가 green 상태인지, 변경된 파일이 spec 영향 범위 안에 있는지, 기존 자산과 중복된 구현을 만들지 않았는지 확인한다.',
+    },
+    {
+      kind: 'integrate',
+      name: '통합·배선',
+      runtime: 'claude',
+      read_only: false,
+      dependsOn: ['implement'],
+      acceptance_criteria: [
+        '신규 산출물이 기존 진입점(orchestrator/registry/배럴 export/라우터)에 실제로 등록·연결되었다',
+        '기존 자산과 중복 없이 정렬되었다 (구버전이 병존하면 대체 또는 위임을 명시한다)',
+        '신규 기능이 기존 통합/E2E 경로에서 호출 가능함이 확인된다',
+        '새 파일만 추가되고 기존 진입점 파일 수정이 0인 고립 상태가 아니다',
+      ],
+      verifier_hint:
+        '신규 export가 기존 진입점 파일에서 실제로 import·등록되었는지, 새 파일만 추가되고 기존 파일 수정이 0인 고립 상태가 아닌지 확인한다.',
     },
     {
       kind: 'review',
       name: '리뷰',
       runtime: 'claude',
       read_only: true,
-      dependsOn: ['implement'],
+      dependsOn: ['integrate'],
       acceptance_criteria: [
         'diff 전체를 검토한 결과가 LGTM 또는 수정 사항 리스트로 명시되어 있다',
         '리뷰 코멘트는 어떤 라인/파일에 대한 것인지 식별 가능하다',
@@ -537,8 +577,8 @@ export interface DevWorkflowValidationResult {
 const CLASS_EXPECTED_ORDER: Record<TaskClass, DevPhaseKind[]> = {
   TINY:       ['implement', 'commit'],
   SMALL_FIX:  ['repro', 'fix', 'regress', 'commit'],
-  FEATURE:    ['research', 'spec', 'test', 'implement', 'review', 'commit'],
-  BIG_CHANGE: ['rfc', 'spec', 'test', 'implement', 'review', 'commit'],
+  FEATURE:    ['research', 'spec', 'test', 'implement', 'integrate', 'review', 'commit'],
+  BIG_CHANGE: ['rfc', 'spec', 'test', 'implement', 'integrate', 'review', 'commit'],
   OPS:        ['backup', 'implement', 'smoke', 'commit'],
   RESEARCH:   ['research'],
   REFACTOR:   ['regress', 'refactor', 'regress', 'commit'],
@@ -560,7 +600,8 @@ const CLASS_EXPECTED_DEPENDS_ON: Record<TaskClass, Record<string, DevPhaseKind[]
     spec: ['research'],
     test: ['spec'],
     implement: ['test'],
-    review: ['implement'],
+    integrate: ['implement'],
+    review: ['integrate'],
     commit: ['review'],
   },
   BIG_CHANGE: {
@@ -568,7 +609,8 @@ const CLASS_EXPECTED_DEPENDS_ON: Record<TaskClass, Record<string, DevPhaseKind[]
     spec: ['rfc'],
     test: ['spec'],
     implement: ['test'],
-    review: ['implement'],
+    integrate: ['implement'],
+    review: ['integrate'],
     commit: ['review'],
   },
   OPS: {
@@ -602,15 +644,36 @@ const NAME_TO_KIND: Array<{ pattern: RegExp; kind: DevPhaseKind }> = [
   { pattern: /smoke|스모크/i, kind: 'smoke' },
   { pattern: /spec|스펙|명세|설계/i, kind: 'spec' },
   { pattern: /test|테스트/i, kind: 'test' },
+  { pattern: /integrate|integration|통합|배선|wiring|등록|배럴/i, kind: 'integrate' },
   { pattern: /implement|구현|개발/i, kind: 'implement' },
   { pattern: /review|리뷰|검토/i, kind: 'review' },
   { pattern: /commit|커밋|배포/i, kind: 'commit' },
 ];
 
 const ALL_KINDS: DevPhaseKind[] = [
-  'spec', 'test', 'implement', 'review', 'commit',
+  'spec', 'test', 'implement', 'integrate', 'review', 'commit',
   'repro', 'fix', 'regress', 'research', 'rfc', 'refactor', 'backup', 'smoke',
 ];
+
+/**
+ * Phases that MUST produce file changes in the worktree. The CTO agent injects a
+ * NO-SKIP directive into these phases' prompts.
+ *
+ * Rationale (from execution-logs.json, 424 runs): ACR workers repeatedly skipped
+ * work as "이미 완료/이미 존재/clean branch" (~25 skip signatures; ≥10 of 33
+ * review_blocked) because the worktree's base already carried prior commits, so
+ * the agent judged there was "nothing to do" and ticked acceptance_criteria as
+ * met without changing anything. For these kinds, zero changes is a failure, not
+ * a no-op. `commit`/`smoke`/`backup`/read-only phases are excluded (they may
+ * legitimately produce no new source).
+ */
+const CODE_PRODUCING_KINDS: DevPhaseKind[] = [
+  'implement', 'integrate', 'test', 'fix', 'refactor', 'repro',
+];
+
+export function isCodeProducingKind(kind: DevPhaseKind): boolean {
+  return CODE_PRODUCING_KINDS.includes(kind);
+}
 
 function inferKind(phase: DevWorkflowPhaseLike): DevPhaseKind | null {
   if (typeof phase.kind === 'string') {
@@ -756,6 +819,39 @@ export interface DeterministicDevPhase extends DevPhaseTemplate {
   risk_level: 'D1' | 'D2' | 'D3' | 'D4' | 'D5';
 }
 
+/**
+ * Per-task progress-note path (M9.8). Cross-phase continuity flows through this
+ * repo doc instead of re-injecting the prior phase's raw output/diff into every
+ * cold phase. Stable across phases of one task (same taskTitle → same slug), so
+ * a phase reads what prior phases recorded and the next phase reads what it wrote.
+ */
+export function progressNotePath(taskTitle: string): string {
+  const slug =
+    taskTitle
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'task';
+  return `docs/_acr-progress/${slug}.md`;
+}
+
+/**
+ * Build a phase's prompt packet (M9.8). Every phase is told to (1) understand the
+ * project from its OWN dev docs before working, and (2) — for mutating phases —
+ * record what it did in the per-task progress note so the next phase continues
+ * without raw context re-injection. Read-only phases (D1) only read: writing the
+ * note would be a repo mutation the verifier flags, so the record step is gated.
+ */
+function buildPhasePromptPacket(t: DevPhaseTemplate, taskTitle: string): string {
+  const note = progressNotePath(taskTitle);
+  const grounding = `[프로젝트 이해 — 작업 전 필수]\n- 코드/문서를 쓰기 전에 repo의 개발 문서를 먼저 읽어 구조·규칙·컨벤션을 파악하라: README.md, CLAUDE.md, AGENTS.md, docs/ARCHITECTURE.md, 그리고 이 작업과 직접 관련된 docs/*.md·기존 SKILL.md.\n- 직전 phase 컨텍스트를 raw로 기다리지 말고, 진행 노트 ${note} 가 있으면 먼저 읽어 지금까지의 진행·결정·남은 할 일을 파악하라.`;
+  const record = `[작업 기록 — 완료 후 필수]\n- 한 일, 변경·생성한 파일, 내린 결정, 다음 phase가 알아야 할 점을 ${note} 에 간결히 append 하라(없으면 생성). 다음 phase가 컨텍스트 재주입 없이 이어갈 수 있도록 핵심만 남겨라.`;
+  const body = `[${t.kind}] ${t.name} — task: ${taskTitle}\n\n${grounding}\n\nacceptance:\n${t.acceptance_criteria
+    .map((c) => `- ${c}`)
+    .join('\n')}\nverifier_hint: ${t.verifier_hint}`;
+  return t.read_only ? body : `${body}\n\n${record}`;
+}
+
 export function buildDeterministicDevPhases(
   taskTitle: string,
   taskClass: TaskClass = 'FEATURE',
@@ -763,9 +859,7 @@ export function buildDeterministicDevPhases(
   const templates = DEV_WORKFLOW_TEMPLATES[taskClass];
   return templates.map((t) => ({
     ...t,
-    prompt_packet: `[${t.kind}] ${t.name} — task: ${taskTitle}\nacceptance:\n${t.acceptance_criteria
-      .map((c) => `- ${c}`)
-      .join('\n')}\nverifier_hint: ${t.verifier_hint}`,
+    prompt_packet: buildPhasePromptPacket(t, taskTitle),
     expected_output: t.acceptance_criteria.join('; '),
     // Read-only stages are safe (D1); mutating stages stay at D2 by default.
     risk_level: t.read_only ? 'D1' : 'D2',
@@ -801,8 +895,14 @@ export function classifyTask(
   title: string,
   rationale: string,
   hints: ClassifyTaskHints = {},
+  expectedOutput: string = '',
 ): TaskClass {
   const text = `${title} ${rationale}`.toLowerCase();
+  // Content/code detection also scans expected_output, which names the actual
+  // deliverable file(s). A task titled "Quality Gate Engine" whose deliverable is
+  // "10-reels-quality-gate-agent.md" is markdown authoring, not code — the title
+  // word alone misclassifies it as a 7-phase FEATURE. (M9.8.1)
+  const deliverableText = `${title} ${rationale} ${expectedOutput}`.toLowerCase();
 
   // Keyword-based initial classification.
   if (/refactor|리팩터|리팩토링/.test(text)) {
@@ -841,6 +941,32 @@ export function classifyTask(
     !hints.schemaChange &&
     !hints.apiBreaking;
   if ((trivialKeyword || trivialHints) && escalationScore === 0) {
+    return 'TINY';
+  }
+
+  // CONTENT authoring (M9.8) — pure documentation/markdown/prompt/copy work
+  // (SKILL.md, agent prompts, captions, routing docs) is NOT code and must NOT
+  // run the repro→fix→regress bug ceremony or the 7-phase FEATURE ceremony.
+  // Observed waste: a "SKILL.md 작성" task ran 4 cold phases (~7min) for what is
+  // one markdown file. Route such work to TINY (implement→commit, 2 phases).
+  // Conservative gate: a content signal must be present AND no code signal AND no
+  // escalation — so genuine code work (engine/generator/schema/.ts/component) is
+  // never under-served. Under-routing risk biases toward heavier (safe) class.
+  // Content signal scans the DELIVERABLE (expected_output), not just the title:
+  // a ".md" deliverable is markdown/prompt authoring regardless of a title word
+  // like "Engine"/"Generator" (those describe what the prompt does, not the file).
+  const contentKeyword =
+    /\.md\b|markdown|마크다운|prompt\b|프롬프트|skill\.?md|문서\s*(작성|화|추가|업데이트)|캡션|caption|해시태그|hashtag|카피라이팅|문구\s*작성|대본\s*작성|readme|라우팅\s*(작성|추가|업데이트)|agent\s*prompt/i.test(
+      deliverableText,
+    );
+  // HARD code signals only — real TS/code work. Title-descriptive words
+  // (engine/generator/schema) are NOT here: a "*-agent.md" deliverable titled
+  // "Generator" is still markdown. Genuine code shows .ts/함수/컴포넌트/src/zod.
+  const codeSignal =
+    /\.tsx?\b|\.py\b|\bfunction\b|함수|컴포넌트|component|endpoint|\brenderer\b|interface|인터페이스|구현체|src\/|\bzod\b|\bclass\b/i.test(
+      deliverableText,
+    );
+  if (contentKeyword && !codeSignal && escalationScore === 0) {
     return 'TINY';
   }
 

@@ -1,6 +1,415 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-05 (CMO Video Room Phase 3 잔여 — 원고 beat 편집 + 팩토리 Scene JSON 전달, E2E 27/27)
+최종 업데이트: 2026-06-12 (git 위생 정리 — 1주치 미푸시 87커밋 + 미커밋 WIP 전부 커밋·origin 푸시. 배포 parity 검증: Vercel 번들에 최신 코드 포함 확인)
+
+> 📁 **영역별 개발 문서 분리 중** (2026-06-10~): 기능별 문서는 250~300줄로 관리.
+> - **CMO**: [docs/cmo/](./cmo/CLAUDE.md) — 콘텐츠 마케팅 (라우터·HANDOFF·TASKS·기능 문서). CMO 작업은 이쪽 갱신.
+> - CTO / 전체 pulk: 추후 같은 패턴(`docs/cto/`)으로 분리 예정. 이 파일은 그때까지 전역 이력 유지.
+
+## 🟢 2026-06-11 — 원격 운영 통로 복구·검증 (배포 사이트 → 터널 → 로컬 백엔드, 모바일 운영 가능)
+
+**무엇**: "배포 사이트(Vercel founder-ui)에서 지침 → 로컬에서 실행" 통로 점검. **좀비 터널 발견·복구 + parity 재배포 + E2E 검증 완료.**
+**발견**: cloudflared 프로세스는 6/10부터 생존했지만 quick tunnel 도메인이 공용 DNS에서도 NXDOMAIN — **엣지 세션만 죽은 좀비 상태**. 그동안 배포 사이트는 로컬 백엔드에 못 닿았음. 또한 마지막 배포(6/9)는 이후 20+ 커밋(tiger watchdog UI, 썸네일 A/B 보드 등) 미반영.
+**조치**: founder-ui 로컬 빌드 통과 확인 → cloudflared kill → launchd keeper 자동 재기동 → 새 터널 `sunset-min-join-accommodation.trycloudflare.com` 등록 → keeper가 Vercel `NEXT_PUBLIC_API_BASE` 갱신 + `--prod` 재배포(47s, 최신 코드 반영). 배포 JS 청크에 새 터널 URL 베이크 확인, localhost 폴백 없음.
+**E2E 실증**: ① 터널→`app:getInfo` 200 ② 배포 토큰(root, 장기)으로 `agent_tasks:list` 조회 ③ **원격 create**(approval_required=true, FK: 실존 instruction/interpretation 필요) → 로컬 큐 `queued` 적재 확인 → destroy 정리. 승인 게이트 덕에 dispatcher 미실행(설계대로).
+**모바일 운영**: 폰에서 `https://pulk-founder-ui.vercel.app` 접속 → 지침/승인 → 로컬 hermes task-dispatcher(60s)가 실행. 맥 켜두면 keeper(KeepAlive)가 터널 유지.
+**함정/잔여**: (1) ~~좀비 재발 가능~~ → **해결(같은 날)**: keeper에 ZOMBIE GUARD 내장 — 초기 sync 후 3분마다 공용 DNS(8.8.8.8→1.1.1.1 폴백) 도달성 probe, **연속 3회 실패(~9분) 시 cloudflared SIGTERM(+10s SIGKILL 안전망)** → launchd 재기동 → 새 URL 자동 sync. 연속 임계치로 DNS 일시 플레이크 흡수. 라이브 가동 + 첫 사이클 오탐 0 확인. 좀비 감지 경로는 실좀비 미발생으로 코드리뷰 수준(주의). (2) URL이 재기동마다 바뀌어 재배포 갭(~2분) 발생 — named tunnel(고정 도메인) 전환 시 해소. (3) zsh에서 `--resolve $VAR` 통변수 전달 금지(단어분리 안 됨 — 인라인로).
+
+## 🟢 2026-06-11 — 임원 서브에이전트(@CEO~@Risk/QA) + 인바운드 텔레그램 게이트웨이
+
+**무엇**: 사장님이 `@cto`/`@cmo` 처럼 임원을 호출해 (1) 이 Claude/Cowork 세션에서, (2) **텔레그램에서** 직접 작업을 시키고 결과·파일을 받게 함.
+**임원 서브에이전트**: `.claude/agents/{ceo,cmo,cto,cpo,cro,coo,cfo,chief-of-staff,risk-qa}.md` 9종. 각 정의는 `services/agent-runtime/src/agents/*.ts`의 SYSTEM_PROMPT + `.claude/rules/` 가드레일 반영(한국어 응답, 승인 게이트, 위험도). CMO는 영상 풀 파이프라인(brief→script→slide deck→factory render job→`npm run render`→video.mp4 검증·전달)까지 지시받도록 작성. `.gitignore`에서 `.claude/agents/`는 추적되도록 예외 추가(기존 `.claude/*` 무시였음).
+**인바운드 게이트웨이**: 신규 서비스 `services/telegram-gateway`. getUpdates 롱폴링 → 허용 chat 확인 → `@임원` 파싱(router.ts, 영문+한국어 별칭) → 헤드리스 `claude -p`로 해당 서브에이전트 구동(executor.ts, 실제 작업) → 결과 텍스트 + `.telegram-runs/<runId>/` 산출물을 sendMessage/sendDocument로 회신. **왜 claude CLI**: agent-runtime runXAgent()는 판단 JSON만 반환 → 실제 파일/렌더/디스패치는 `.claude/agents` 페르소나를 헤드리스 구동해야 가능.
+**구성**: config.ts(env 전용, 시크릿 하드코딩 금지), telegram-api.ts(fetch/FormData, 비throw), launchd `com.l5.telegram-gateway.plist`(RunAtLoad+KeepAlive 상시), scripts/install.sh(PlistBuddy로 토큰 주입), README. env: `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`(+선택 `PULK_DIR`/`TELEGRAM_AGENT_MODEL`/`TELEGRAM_CLAUDE_ARGS`).
+**검증**: telegram-gateway `tsc --noEmit` 0, build dist OK, jest router 10/10 GREEN. **미실증(맥 라이브)**: 실제 봇 토큰으로 텔레그램→게이트웨이→claude end-to-end는 사장님 맥에서 `install.sh` 후 확인 필요(샌드박스는 pulk만 마운트, claude CLI·봇 토큰 없음).
+**보안/주의**: 허용목록(chat id) 밖 메시지 무시. 외부 발행/결제는 서브에이전트 승인 게이트 의존. 게이트웨이는 사장님 맥에서 상시 구동 필요(레포·claude CLI·영상 팩토리가 거기 있음). 기본 권한 `--permission-mode acceptEdits`; bash/렌더 완전 자율은 `TELEGRAM_CLAUDE_ARGS=--dangerously-skip-permissions`.
+
+## 🟢 2026-06-11 — 호랑이(Tiger) 실시간 장애 감시·자동복구 (watchdog) 라이브 (커밋 faf1bff)
+
+**무엇**: 펄크가 백그라운드 오류/멈춤으로 막히면 사장님이 모른 채 기다리지 않게 호랑이가 감시→알림→복구하는 reactive 모드(기존 야간 병목 분석 proactive와 별개). subagent team workflow 구현 + 메인 통합/라이브.
+**핵심 설계**: 멈춤 판정 = **작업별 liveness probe**(고정 타임아웃 금지 — heartbeat로 "로딩중 vs 진짜 멈춤" 확인). 재시도 **4회** 상한 + 텔레그램 에스컬레이션. 승인 게이트(승인 전 코딩 금지).
+**구현**: l5-core `functions/tiger/liveness.ts`(WatchTarget 레지스트리+detectIncidents)·`recovery.ts`(상태머신 detected→approved→fixing→testing→resolved|escalated, attempt≤4+buildRecoveryFixIntent). hermes `tiger/liveness-watcher.ts`+`loops/tiger-watch-loop.ts`(90s)·`tiger-recovery-loop.ts`(180s). plugin `tiger_incidents` 컬렉션+`monitor:incidents`/`approveIncidentFix`+ACL. founder-ui `Bell.tsx`(🔔)+`/incidents`+layout/Sidebar/api.
+**배선**: l5-core/hermes dist 빌드 + nocobase build + NocoBase 재기동 + founder-ui 빌드+재기동 + launchd `com.l5.hermes.{tiger-watch,tiger-recovery}` bootstrap. plist는 night-bpr 복사(토큰 상속).
+**검증**: l5-core tiger 99/99, hermes tiger 34/34, founder-ui tsc0. **watcher↔컬렉션 스키마 불일치(병렬 작업 갭) 통합 수정**(target_label/kind/error_excerpt→task_label/incident_type/error_summary). **🎉 라이브 실증**: failed native_phase_run 삽입 → watcher 감지 → incident(진단+수정계획 자동) → monitor:incidents 조회 → approveIncidentFix(detected→approved) e2e 통과.
+**함정 기록**: 수동 실행 시 `NOCOBASE_URL`은 base(`http://localhost:13000`, **/api 붙이지 말 것** — apiFetch가 /api 추가). NocoBase 재기동 후 기동 느릴 수 있음(폴링 TIMEOUT나도 곧 200). git index.lock stale 충돌 시 git 프로세스 확인 후 제거.
+**승인 전 Claude 정밀 진단(커밋 943c11c)**: watchdog 감지 시 호랑이(Claude)가 오류 분석 → 정밀 diagnosis/proposed_fix(룰 기본 대체). l5-core `tiger/diagnosis.ts`(selectDiagnosisModel 적응형+buildIncidentDiagnosisPrompt+parseIncidentDiagnosis) + liveness-watcher persist 전 deps.runClaude 진단 + runner 주입. 라이브 실증: failed run(TypeError) → 20초 → 근본원인+구체 수정계획 작성 확인. diagnosis 8/8.
+**🎉 복구 루프 전체 라이브 실증 완료(커밋 ae54a68 + a121ecc, 2026-06-11)**: 작업별 verify_command 배선(WatchTarget→incident→recovery; runner map 누락 수정). 호랑이가 발견한 collector 오탐(빈 warnings/fail_count:0)을 incident로 승인 → CTO가 worktree에서 collector.ts에 오탐 필터+테스트 추가 → 호랑이 테스트(`cd packages/l5-core && npx tsc --noEmit`) 통과 → merge(a121ecc, collector +36/test +61) → incident resolved. CTO 수정 검증: collector jest 42/42·tsc0. **승인→CTO수정→호랑이테스트→통과→해결 전 경로 동작.** 함정: verify_command 루트 tsc 고정이면 서브패키지 검증 실패→작업 repo `cd <pkg> && tsc` 필요; runner fetchApprovedIncidents map이 필드 누락하기 쉬움.
+**followup(잔여)**: dist 미커밋(로컬 빌드). 4회 소진→escalated 텔레그램 경로는 미실증(통과해서 도달 안 함).
+
+## 🟢 2026-06-11 — 호랑이(Tiger) 자가개선 루프: 라이브 가동 (end-to-end 실증 PASS)
+
+**무엇**: M1~M4 코드를 실제 운영 라이브까지 배선. 커밋 `3fe957e`(src) + `d6ed03f`(M1~M4 코드).
+**라이브 배선**: (1) plugin-executive-monitor에 컬렉션 3개(`workflow_improvement_proposals`/`bpr_logs`/`memory_entries`)+DDL+핸들러 2개(`monitor:selfImproveCards` 레지스트리연동·source_ref decode·current_process 파싱 매핑 / `monitor:bulkApproveSelfImprove` status=approved+intent게이트)+ACL → `nocobase build` 재빌드 → 재기동. (2) night-bpr-loop가 `runTigerCollector`를 먼저 호출하도록 연결(무인 자율 한 잡). (3) launchd `com.l5.hermes.night-bpr-loop`(03:00)·`tiger-dispatch`(매시) bootstrap. (4) founder-ui 재빌드 → `/self-improve`(200).
+**🎉 end-to-end 실증**: night-bpr 수동 실행 → collector가 **외부 repo `/Users/wonminyang/ai-slide-video-factory`** 로그 cross-repo 수집 → **Claude opus(적응형)** 분석 → **개선 카드 5건 발행** → NocoBase 저장 → `selfImproveCards` 조회·매핑 확인. e2e 스모크(proposal 생성→조회→승인→삭제)도 통과.
+**잔여(followup, 라이브엔 지장 없음)**: collector 신호필터 튜닝(정상 로그 `warnings:[]`/`fail_count:0` 오탐 → 카드 노이즈 5건 중 일부) · M1-A 도구 구조화 로그 심기 · tiger-dispatch 실제 코딩경로 런타임 검증. **dist는 로컬 빌드(미커밋)**.
+**주의**: 실증으로 생성된 카드 5건이 `/self-improve` surface에 떠 있음(노이즈성 — 사장님이 보류/승인 판단 가능). 정본 SPEC: docs/TIGER_SELF_IMPROVE_SPEC.md. 메모리 [[tiger-self-improve-loop]].
+
+## 🟢 2026-06-11 — 호랑이(Tiger) 자가개선 루프: M1~M4 코드 구현 + 정적검증 완료 (런타임 배선 잔여)
+
+**무엇**: SPEC(아래 섹션) 기반으로 M1~M4를 subagent team workflow(2병렬+2순차)로 구현. 레지스트리→수집기→두뇌(Claude)→디스패치 전 층.
+**한 것**: (M1) `l5-core/functions/tiger/`(types/tool-registry/collector/analysis/proposal-to-task/phase-result-to-memory) + `hermes-runtime/src/tiger/`(log-adapter/manual-reports/tiger-collector). (M2) `hermes/src/api/claude-cli.ts`(spawn-agent 이식, OpenAI 0) + `loops/night-bpr-loop.ts` 본체(적응형 opus/sonnet → 카드 → BPRLog/WIP/Memory 저장+텔레그램). (M3) `founder-ui/src/app/self-improve/page.tsx`(체크박스 일괄승인+문제/원인/해결/대상repo) + api.ts + Sidebar NAV. (M4) `cto-native/batch-plan`(repo별 ACRIntent 그룹핑+위상정렬) + `agent-runtime/orchestrator/batch-runner.ts`(코어수-2 세마포어 병렬) + `hermes/loops/tiger-dispatch-loop.ts`(승인분만=게이트 보존) + gateway/runner 등록 + plist 2종 작성.
+**검증(직접 재확인, agent 자기보고 불신)**: l5-core **tsc0 · tiger 66 · cto-native 92**, hermes-runtime **tsc0 · tiger+night-bpr 21**, agent-runtime **tsc0 · batch-runner+orchestrator 29**, founder-ui **tsc0**. 신규 단위테스트 전부 목 주입 결정론.
+**⚠️ 런타임 배선 잔여(코드밖, 라이브 전 필수)**: (a) **plugin-executive-monitor 백엔드 핸들러 2개 미구현**(`monitor:selfImproveCards`·`bulkApproveSelfImprove`) → 현재 UI 빈배열. (b) NocoBase `bpr_logs`/`workflow_improvement_proposals` 컬렉션 실재 검증(없으면 정의+마이그레이션). (c) launchd `com.l5.hermes.{night-bpr-loop,tiger-dispatch}.plist` 토큰주입+`launchctl bootstrap`(파일은 작성됨). (d) M1-A 도구 구조화 로그 심기(무인자율 완성). (e) 런타임 E2E. **아직 미커밋(브랜치 cmo/content-strategy-v3).**
+**정본 SPEC**: docs/TIGER_SELF_IMPROVE_SPEC.md. 메모리: [[tiger-self-improve-loop]].
+
+## 🟡 2026-06-11 — 호랑이(Tiger) 자가개선 루프: 정식 SPEC 작성 (구현 착수 전)
+
+**무엇**: Nous Hermes 외부 에이전트(OpenAI 기반)의 "알아서 축적·개선" 자가개선 루프를 **OpenAI 없이** pulk 안에서 재현하는 기능 기획. 코드네임 **호랑이**. 매일 밤 전 임원(CMO·CTO 등) 워크플로우의 오류·병목을 **cross-repo**(외부 도구 `ai-slide-video-factory` 포함)로 수집 → **Claude가 분석**해 "문제→원인→해결예정→대상repo" 개선 카드 작성 → 사이드바 `/self-improve`에서 **체크박스 일괄 승인** → CTO가 **repo별 병렬 코딩→merge→e2e→QA** → 결과를 MemoryEntry로 축적(자가개선).
+**확정**: 두뇌=Claude 전담(OpenAI 0), 범위=전 임원·cross-repo, 수집=도구 repo 로그/실행기록+사장님 수동제보, 승인=일괄, 실행기=Native Orchestration(**ACR 은퇴 확정, 미사용**).
+**산출물**: `docs/TIGER_SELF_IMPROVE_SPEC.md`(1,257줄). subagent team workflow 6병렬 설계(registry/collector/brain/ui/cto/safety)→메인 종합. 실코드 기반(타입·경로·함수명 검증). 신규 4개(레지스트리·수집기·night-bpr-loop 본체·self-improve 페이지), 핵심파일 55개, **미해결 질문 23개**(SPEC 말미) — 로그 경로 미확정/repo_path 필드 부재/NocoBase 컬렉션 존재여부/Claude CLI 이식방식/야간잡 시각/분석모델 등.
+**남음**: 미해결 질문 핵심 결정 → M1(레지스트리+수집기, l5-core 순수함수+단위테스트)부터 착수. 아직 코드 변경 0(기획만).
+
+## 🟢 2026-06-11 — Native Orchestration: 병렬+budget+사업별 모니터+결과회수 마감 (정적검증·데몬 드라이런 PASS)
+
+**무엇**: 이전 세션 남은 4종을 마감. (1) **다중 phase 병렬**: `CTOPhase.depends_on` + `cto-native/parallelize.ts`(`planPhaseLevels`, 8 tests) — 레벨 단위 `Promise.all` 병렬 실행 + **merge는 레벨 종료 후 순차**(`runPhaseToVerdict`/`finalizePhase` 분리, 동시 머지 충돌 방지). 미지정=직전 phase 암묵 의존(기존 순차 보존). (2) **budget 루프**: `cto-native/budget.ts`(`applyPoolOutcome`, 6 tests) + 데몬 `runIntent` 실루프(`pools.json` 추적 + `NativeRunSummary`→`planNextPoll`). (3) **사업별 모니터**: `ACRIntent.business_id` + `PhaseRunSink` + plugin `native_phase_runs` 테이블/`monitor:nativeRuns` 액션/ACL(src+dist 패치) + founder-ui 전용 뷰(Workflow로 구현, tsc 0+build). (4) **결과 회수**: phase 프롬프트에 "마지막 출력에 전체 보고서 본문" + stdout 전체 `output` 영속화.
+**검증**: l5-core cto-native 76/76(+parallelize 8/budget 6), agent-runtime 41/41(+orchestrator native 4), founder-ui tsc 0+build, plugin dist node --check OK. **l5-core 4건 실패는 cto-design/model-routing baseline 드리프트(내 변경 무관)**.
+**🐞 데몬 드라이런이 잡은 실버그**: dist `native-orchestrator.js`의 cto-native **디렉토리 임포트**가 ESM에서 `ERR_UNSUPPORTED_DIR_IMPORT`로 데몬 기동 실패(jest CJS라 통과) → `/index.js` 명시로 수정. 데몬 첫 실기동에서 발견.
+**남음(사장님 손, 라이브 활성화)**: NocoBase 재기동(패치 plugin 로드) → 데몬 plist에 `NATIVE_ORCHESTRATION`/`NOCOBASE_TOKEN` 주입(PlistBuddy, 커밋 금지)+`launchctl bootstrap`+TCC(`~/Desktop`→레포밖 복사본) → queue.json 스모크. 상세: `docs/cto/CTO_NATIVE_ORCHESTRATION_IMPL.md` 남은 일.
+**커밋**: `fe3ea4e`(docs 재구성) + 본 세션 CTO 코드/문서 커밋. CMO/video-room WIP·HANDOFF/TASKS(혼재)는 불가침으로 미스테이징.
+
+## 🟡 2026-06-10 — CTO Native Orchestration: ACR 은퇴 본구현 S2~S4 (정적검증 완료, 라이브 스모크 중)
+
+**무엇**: ACR(별도 Next.js 앱)을 은퇴시키고 CTO가 나눈 phase를 Claude Code가 직접 실행하는 경로 구현. CTO Brain은 무변경 — dispatch 경계(`agents/cto.ts:637`)만 `NATIVE_ORCHESTRATION==='on'` flag로 `dispatchToNativeOrchestrator`로 교체(off면 기존 `dispatchToACR` 100% 유지, **비파괴**).
+**한 것**: (1) 순수 로직 `packages/l5-core/src/functions/cto-native/`(cli-command/model-map/fallback/recovery+types) — ACR `lib/`에서 이식, **jest 62/62**. (2) 실행 레이어 `services/agent-runtime/src/orchestrator/`(spawn-agent/worktree/phase-prompt/native-orchestrator) — **orchestrator jest 5/5, tsc 0**. (3) seam 비파괴 배선.
+**검증된 사실**: claude/codex/agy 3풀 모두 구독세션 동작(API키 미주입). codex는 `< /dev/null` 필수. S0 PoC 월클락 2분30초(ACR 직렬 동급 ~6분48초 대비 단축).
+**남음**: 라이브 스모크 결과 반영, S5 launchd 상주화+ScheduleWakeup 회복루프, 다중 phase 병렬, ACR 동등성 확인 후 은퇴.
+**문서**: `docs/cto/CTO_NATIVE_ORCHESTRATION_IMPL.md`(현황·파일맵), `CTO_NATIVE_ORCHESTRATION_ASSESSMENT.html`(설계), `~/.claude/plans/parsed-orbiting-cookie.md`(계획).
+
+## 🟢 2026-06-09 — R6 실 factory 연결 (sendBriefToFactory 스텁 제거)
+
+`sendBriefToFactory`가 더 이상 스텁 sent가 아니라 외부 factory 인박스로 brief를 실제 전달한다.
+- `plugin-orchestration/src/server/video-factory-transport.ts`: `submitBrief(brief)` 신설 → `${VIDEO_FACTORY_DIR=/Users/wonminyang/ai-slide-video-factory}/briefs/<slug>.json`(slug=content_card_id||title, path-traversal 가드 재사용)에 brief JSON write + `validate:brief`(runValidateBrief→scripts/validate-brief.ts, runValidate와 동일 npx tsx 패턴) 실행. 성공 `{ok:true,data:{brief_path,validated:true}}`, 검증 실패해도 파일은 남기고 `{ok:false,error}`.
+- `plugin.ts sendBriefToFactory`: transport.send 스텁 → `_videoFactoryTransport.submitBrief` 호출. transport null(=factory dir 미존재)이면 기존처럼 graceful stub. 응답 `data`에 `brief_path`/`stub:true` 표기.
+- **dist 패치**: 이 빌드에서 transport는 plugin.js에 인라인되지 않고 **별도 파일 `dist/video-factory-transport.js`**로 번들됨 → 그 파일에 submitBrief/runValidateBrief 추가 + plugin.js의 send만 패치. 번들 네임스페이스(import_fs/import_path/import_child_process) 사용, bare 식별자 금지(과거 randomUUID 버그 방지).
+- 검증: `node --check` 두 dist 파일 PASS. 실 factory dir 대상 submitBrief 스모크 PASS(briefs/에 JSON 생성 + validate:brief 통과 + 정리). l5-core/founder-ui 무영향(plugin 전용).
+- followup: 라이브 nocobase HTTP E2E(generateVideoExecutionBrief→sendBriefToFactory 200 + briefs/ 신규 JSON 확인) — 적합 프로젝트 부재로 미실행.
+
+## 🟢 2026-06-09 — CMO 키콘텐츠 재기획: 3주제 후보 + HTML 보고서 + 진행률 UI (라이브 검증, 트랙 B)
+
+**배경**: 사장님 기획 확정 — 입력은 프로젝트 생성 시 1회(상품·타깃·목표+고객핵심문제+핵심제안). 키콘텐츠 단계 = CMO 자동분석 → **서로 다른 주제 후보 3개**(제목+썸네일약속+선정이유4종: Viewtrap·기능특징장점·사용자문제·퍼널적용). 본문/도입/CTA는 제외(제작 단계로). 사장님은 3개 중 1개 선택. 보고서는 HTML 새창. 텔레그램 알림. UI는 진행률만+채팅 보조.
+
+**구현(Workflow+sub-agent)**:
+- **l5-core** `video-room/key-content-candidates.ts`: `generateKeyContentCandidates(draft, deps, count=3)` — runKeyContentWorkflow(분석 11스텝) 결과로 서로 다른 주제 N개 LLM 생성 + 선정이유 4종, zod 검증·스텝폴백. `KeyContentCandidate`(가벼운 타입, 본문/도입/CTA 없음, 배럴은 KeyContentCandidateV3 별칭), `finalizeKeyContentChoice`. 7 tests.
+- **plugin**: createProject에 customer_problem/core_offer 컬럼(ALTER IF NOT EXISTS). proposeKeyContentDraft→분석+3후보(buildLLMClient=Claude CLI). selectKeyContentCandidate(선택→풀링 advance). 텔레그램 헬퍼(env 미설정 graceful skip). dist 빌드.
+- **founder-ui**: ProjectSelector 입력통합(고객문제·핵심제안), KeyContentPlanBoard 재편(진행률 표시→3후보 카드+선택), `_lib/keyContentReport.ts`(보고서 HTML)→"📄 보고서 확인하기" 새창, 채팅 보조.
+
+**검증**: l5-core tsc 0 + jest 57 suites/**730 tests**. founder-ui tsc 0 + build. dist OK.
+**🔑 라이브 검증(실제 작동)**: 실제 Claude CLI로 분석→**서로 다른 3후보+선정이유4종 생성 성공(218초)**. 라이브 배포 후 **headed 브라우저 E2E로 전 흐름 확인**: 프로젝트 생성(고객문제 포함)→3후보 카드(raw JSON 제거)→보고서 새창. 보고서 스크린샷 확인 완료.
+**라이브에서 잡은 통합 버그 2건**(단위테스트 미포착): ① proposeKeyContentDraft의 product 객체 shape 오류(name/description→product_name/category 누락, zod 400) ② StrategyBoard가 key_content 카드를 raw JSON 노출 + KeyContentPlanBoard가 기존 후보 미로드. 둘 다 수정·재배포·재검증.
+
+**남은 것**: ① 텔레그램 env(TELEGRAM_BOT_TOKEN/CHAT_ID)를 NocoBase launchd에 주입해야 실제 알림 ② 풀링 단계 v3(4~5주제+이유, 동일 패턴) ③ 콘텐츠 제작 단계(제목/썸네일/도입부/원고 — 선택 주제별) ④ Viewtrap Playwright 자동(Phase2) ⑤ 속도(218초 LLM 6+1회 순차 → 독립 스텝 병렬화). 미커밋. 계획 = `docs/TASKS.md` 로드맵.
+
+---
+
+## 실험 최종 결론 — 속도 병목은 ACR (2026-06-09)
+
+Reels PRD를 business 7로 실제 dispatch해 속도를 실측. **결론: pulk 과분해 차단(M9.8/8.1)은 phase 총량을 ~77→32(58%↓)로 줄였으나 월클락은 미개선** — 지배 병목이 ACR 실행모델(단일 직렬 runner + per-phase cold claude-code spawn)이라 pulk 오케스트레이션으로 못 고침. 21분간 11 task 중 1개만 완주. progress note는 에이전트가 지시 무시(연속성 미작동). 일부 task scope-creep(에셋 생성).
+
+→ **개선 계획 전체를 `docs/cto/CTO_ACR_SPEED_IMPROVEMENT_PLAN.md`에 박제**(P1 ACR 병렬 runner / P2 TINY→codex / P3 grounding 경량화+ACR 연속성 강제 / P4 scope-creep / P5 ACR worktree 격리. 파일·수용기준·트레이드오프 포함). 나중에 그 문서대로 구현.
+
+**상태**: 실험 중단·정리됨. ACR phase-runner bootout, business 7 task 13개 동결(done 1/needs_review 1). pulk 코드(M9.8/8.1)는 dist 반영됐으나 **git 미커밋**.
+
+## 현재 상태 — M9.8 파이프라인 효율 개선 (2026-06-09)
+
+Reels PRD를 실제 CTO→ACR로 dispatch한 실험에서 두 비효율을 잡고 pulk 측을 수정. 상세 DECISIONS.md "M9.8".
+
+**잡은 문제**: ① 마크다운 1개 작성이 4 cold phase(~7분)로 과분해 ② phase마다 codex cold spawn + `[PRIOR PHASE CONTEXT]` raw 재주입.
+**수정(pulk, 완료·검증)**: `dev-workflow-spec.ts` — 콘텐츠 저작→TINY(2-phase) 라우팅(코드신호 제외 게이트) + 전 phase에 "개발문서 먼저 읽기" + mutating phase에 `docs/_acr-progress/<slug>.md` 진행기록 주입. jest 60/60, tsc 0, dist 재빌드 완료.
+**후속(②, 미착수)**: ACR repo 실행모델(raw 컨텍스트 재주입 → progress-doc 참조). `auto-dispatcher.ts:85-112` + `finalize-phase-execution.ts`.
+
+**실험 인프라 상태**:
+- business 7 `AI Slide Video Factory` 신규 생성, repo_path=`/Users/wonminyang/ai-slide-video-factory`. (business 3은 더미라 분리)
+- Reels PRD 15 task: 1 done, 14 동결(approval_required=true). 재개 시 동결 해제 + ACR 재기동 필요.
+- **ACR phase-runner bootout 상태** — 재개: `launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.l5.acr-phase-runner.plist`
+- 대상 repo `.gitignore` 보강(생성물 → 만성 409 "uncommitted changes in cwd" 차단), 커밋 `e8e76ee`. PRD 시드 `dc340c6`.
+- ⚠️ 라이브 반영 전 hermes/agent-runtime 프로세스가 새 dist를 로드하는지 확인(dispatcher는 StartInterval로 fresh 로드 추정).
+
+---
+
+## 🟢 2026-06-09 — CMO 승인중심 전환 Phase 1: 11스텝 순차 자동초안 + 승인=진행 (라이브 LLM 실작동)
+
+**배경**: 사장님 — 채팅은 비효율. 최소입력(상품+고객문제)→AI가 전 단계 초안 자동생성→승인/수정만→승인=자동 진행. **초안은 PRD 11스텝을 실제 워크플로우대로 거쳐가며**(이전 스텝 결과 기반), "아무렇게나 한방 LLM" 금지. Workflow+sub-agent로 구현. 설계=`docs/DECISIONS.md`/플랜.
+
+**구현(Phase 1)**:
+- **l5-core** `video-room/key-content-draft.ts` `runKeyContentWorkflow(input,deps)`: Step1(일반화)·7(검색축)은 결정론, **Step2/3/4/5/6/10은 LLM 스텝 — 각 스텝이 이전 검증된 산출물을 프롬프트 컨텍스트로 받아 그 스텝만 추론 → 기존 buildXxx 검증(throw시 재시도) → 누적**. 실패 시 그 스텝만 폴백(전체 폴백 아님). 인덱스 결정론 id. `{steps,progress,draft}` 반환. 1-shot `draftKeyContentPlan` @deprecated.
+- **l5-core** `cmo-strategy/plan-turn.ts`: `sanitizeReply`(reply에서 코드펜스/객체 리터럴 제거 → 자연어만, 구조화는 proposal.data), extractJson 견고화.
+- **plugin**: `decideGate` approved→`advanceVideoRoomStatus(gateApproved)` 원자 전이(승인=진행). `proposeKeyContentDraft`→runKeyContentWorkflow(buildLLMClient=Claude CLI 주입, progress 카드 upsert). src+dist.
+- **founder-ui**: 키콘텐츠 진입 시 자동초안(useEffect 가드), 진행률 표시, CmoChatPanel 자연어만, DecisionPanel "다음 단계로" 제거(승인=진행), 채팅 드로어 축소.
+
+**검증**: l5-core tsc 0 + jest 56 suites/**723 tests**. founder-ui tsc 0 + build. dist node --check.
+**🔑 라이브 LLM 실작동(mock 아님)**: 실제 Claude CLI haiku로 runKeyContentWorkflow 실행 → **progress 8/8, LLM 6회 호출, 178초, 결과물 논리 연결**(입력 고객문제 "콘텐츠 기획 모름" → Step4 문제도출 → Step5 퍼널 → Step6 진입단계 rationale → Step10 problem_statement+CTA, 전부 연결). 상품+고객문제만으로 키콘텐츠 11스텝 전체 초안 자동 생성 입증.
+**라이브 배포**: NocoBase·founder-ui kickstart. 키콘텐츠 액션 라이브 401(등록), /video-room 200.
+
+**남은 것**: ① 성능 — 178초(LLM 6회 순차)는 체감 느림 → 독립 스텝 묶기/병렬·모델 튜닝 후속. ② 브라우저 클릭 E2E(자동초안→승인=진행) 사장님 확인. ③ **Phase 2: Viewtrap Playwright 자동화**(세션저장+검색+스크래핑) — 사장님 다음 순서. ④ 다른 단계(풀링 등)에 동일 11스텝-순차 패턴 확장. 미커밋.
+
+---
+
+## 🟢 2026-06-09 — CMO Video Room UX: 왼쪽 단계 진행 레일 + 입력 최소화 (라이브 배포)
+
+**배경**: 사장님 — ① "채팅 언제까지 하나 지친다" → 왼쪽에 지금 단계/왜 필요/남은 단계가 누적으로 보여야. ② 채팅 입력이 너무 많다 → 각 단계 **필수 질문만** 받고 나머지는 AI 초안→**수정만**. 모든 단계 동일. 좋은 자산: `STAGE_SCRIPT.focus`(25단계 "왜 필요한지") 이미 존재 → 재사용.
+
+**구현**:
+- **단계 진행 레일** `founder-ui/_components/StepProgressRail.tsx`(신규): 5 Phase 그룹 세로, **현재 그룹만 세부 펼침**, 각 세부단계 ✓완료/●현재/○예정 + 현재 단계에 `focus`("왜 필요한지") 한 줄. `page.tsx` 3분할(좌 레일 ~260px + 중 보드 + 우 챗드로어), 가로 PhaseTimeline 제거.
+- **단계 가이드 노출**: `cmo:getStageGuides` 액션 — l5-core `STAGE_SCRIPT`를 `{[status]:{label,focus}}`로 반환(single source 유지). `cmoGetStageGuides` 헬퍼.
+- **입력 최소화(키콘텐츠 = 패턴 확립)**: `key-content-draft.ts draftKeyContentPlan`에 `customer_problem` 입력 추가 → 문제 기반 역설계(프롬프트 강조 + 폴백 시드 반영). KeyContentPlanBoard "① 필수 입력" 카드(상품 요약 + 고객 문제 textarea만) → "CMO 초안 생성" → Step1~7,10 자동 초안 → 사장님은 수정만. plugin proposeKeyContentDraft가 customer_problem 수신.
+
+**패턴(이후 단계 공통)**: 각 단계 = **[필수 최소입력 → AI 초안 → 사장님 수정]**. 키콘텐츠에 먼저 적용, 풀링/패키지/원고 등은 각 v3화 시 동일 반복.
+
+**검증·배포**: l5-core tsc 0 · jest 54 suites/**699 tests**(+1 customer_problem). founder-ui tsc 0 + build. dist node --check OK. STAGE_SCRIPT 런타임 require 24키. **라이브 배포**: NocoBase·founder-ui kickstart, `cmo:getStageGuides` 라이브 401(등록), /video-room 200.
+
+**남은 것**: 브라우저 클릭 확인(레일 표시·최소입력→초안) 사장님 몫. 이후 단계 v3화 + 동일 입력최소화 패턴. 미커밋.
+
+---
+
+## 🟢 2026-06-09 — CMO Video Room "항상 v3" 1단계: 키콘텐츠 11스텝 반자동 (라이브 배포)
+
+**배경**: 사장님 — CMO Video Room은 별도 v3 데모가 아니라 **항상 v3 로직으로 진행**(업그레이드=표준). 방식 A=반자동(CMO 초안→사장님 편집/승인). 조사 결과 기존 25 status 흐름은 v3와 이미 정렬, 갭은 **단계 산출물 생성이 구버전**(commitStrategyArtifact가 selectKeyContent/createPullingContentSet). 입력=혼합, Viewtrap=human-in-loop. 키콘텐츠부터 단계적. (orchestrator 자동체인은 반자동에 직접 안 씀 — 미래 자동화용 보존.)
+
+**구현(1단계 키콘텐츠)**:
+- **l5-core** `video-room/key-content-draft.ts`(신규): `draftKeyContentPlan`(LLM 주입+retry+결정론 폴백 → Step1~7,10 초안, 기존 11스텝 buildXxx로 검증) + `finalizeKeyContentPlan`(편집된 draft + Step8 Viewtrap + Step11 확정입력 → assembleKeyContentPlan, cross-step throw). 6 tests.
+- **plugin**(src+dist, ACL): `cmo:proposeKeyContentDraft`(상품/세컨브레인 로드 → `buildLLMClient`=Claude CLI llmComplete 주입 → 초안 카드 `key_content_draft`), `saveKeyContentStep`(편집 merge), `submitViewtrapValidation`(Step8), `commitKeyContentPlan`(finalize → `key_content` 카드). 구 selectKeyContent 경로 대체.
+- **founder-ui**: `api.ts` 헬퍼 4 + `_components/KeyContentPlanBoard.tsx`(초안생성→스텝편집→Viewtrap입력→확정) + StrategyBoard StageGate 연결.
+
+**검증·배포**: l5-core tsc 0 · jest 54 suites/698 tests GREEN(+6) · founder-ui tsc 0 · dist node --check OK. **라이브 배포 완료**: NocoBase kickstart(새 dist), founder-ui 빌드+kickstart. 4개 액션 라이브 **401(등록·라우팅 확인)**, /video-room 200. 브라우저 접근 가능.
+
+**남은 것**: ① 브라우저 클릭 E2E(새 프로젝트→상품정의→"CMO 초안 생성"=Claude CLI 실호출→편집→Viewtrap→확정) 사장님 확인. ② **2단계~**: 풀링 12스텝·전략패키지·제목/썸네일·도입부/원고·말투/brief 동일 패턴 v3화(현재 구버전). 미커밋.
+
+---
+
+## 🟢 2026-06-09 — CMO PRD v3 end-to-end 구현 (트랙 B, agent team + Workflow)
+
+설계·근거 = `docs/DECISIONS.md` 2026-06-09(정본 ① video-room + 얇은 orchestrator) + `docs/cmo/CMO_V3_ARCHITECTURE.html`. 트랙 A(CTO integrate phase)와 파일 경계 분리 병렬. PRD = `docs/prd/cmo-content-strategy-v3.md`(10 Phase).
+
+**배경**: CMO v3를 ACR로 돌리다 "절반에서 멈추고 연결 안 된"(built-but-not-wired) 상태였음 — 신규 `cmo-orchestrator/`가 PoC 스킬 2개만, Key Content는 video-room에 고립, types 5/10. 정밀 매핑 결과 **타입은 types.ts에 거의 다 존재, 갭은 작음**(P4 Pulling 12스텝·P5 Viewtrap 풀링·P6 Package 조립·P10 slide-deck LLM·orchestrator 배선). 정본=**기존 video-room 도메인 유지 + orchestrator는 얇은 지휘 레이어**(스킬=video-room 함수 호출 어댑터).
+
+**실행**: sub-agent agent team + Workflow(`wf_96ca5a78-f83`, 14 agents, 22분). Stage1(도메인 함수 병렬 4)→Stage2(스킬 래핑 병렬 8)→Stage3(직렬 통합 배선)→Stage4(검증).
+
+**구현(l5-core)**:
+- **도메인 신규**(video-room/): `pulling-content-planning.ts`(PRD §4 12스텝, key-content 스타일 미러, 롱테일 must_use·키연결성·5단계 커버리지 throw 강제, 35 tests), `viewtrap-tools.ts`(P3 기존 buildViewtrapValidation 재노출 + P5 핫비디오/노출확률/롱테일 신규, 17 tests), `content-strategy-package.ts`(P6 assembleContentStrategyPackage, 키+풀링 통합·cross-step 일관성 throw, 12 tests). `services/slide-deck-generator.ts`(P10: mock-only→llmComplete 주입 + retry + 결정론 폴백, 하위호환 string 분기, 9 tests).
+- **스킬 어댑터 8종**(cmo-orchestrator/skills/): key-content/viewtrap/pulling-content/strategy-package/title-thumbnail/script/voice-brief/factory. 각 5~15줄, video-room 함수 호출만. 의존성 체인 keycontent→pulling→package→title→script→voice→factory.
+- **배선**: `cmo-skill-registry.ts`(createCmoSkills/createCmoSkillRegistry — 10스킬 등록 + 위상정렬 fail-fast), index.ts 배럴 2곳, types.ts 누락 타입 이동, e2e `cmo-v3-e2e.test.ts`(등록·위상정렬·실행순서·D3 게이트).
+
+**검증**: l5-core **typecheck 0**, `jest video-room cmo-orchestrator slide-deck` **53 suites / 692 tests ALL GREEN**(이전 509 → +183, 회귀 0).
+
+**후속 완료(2026-06-09, 같은 세션)** — 남은 작업 1·2·3 처리:
+- **① P5 중복 정리(검증 중 발견)**: 핫비디오/노출/롱테일이 `pulling-content-planning.ts`·`viewtrap-tools.ts` 양쪽에 중복(`buildHotVideoStructureTemplate` 동일 2벌). viewtrap-tools를 P5 정본으로 통합 — pulling은 re-export로 import 이름 보존, 단건 longtail 빌더는 viewtrap-tools로 이동, 중복 zod 스키마 제거. `buildHotVideoStructureTemplate` 정의 **1곳만** 잔존. tsc 0, 692 GREEN 유지.
+- **② 라이브 배선(코드 완료)**: plugin-orchestration에 `cmo:runContentStrategy` 액션(createCmoSkillRegistry+CmoOrchestrator로 v3 체인 실행) — src+dist 직접 패치 + ACL `runContentStrategy` 추가. founder-ui `api.ts` `cmoRunContentStrategy` 헬퍼. l5-core dist 빌드(cmo-orchestrator emit, plugin require 경로 `packages/l5-core/dist/functions/cmo-orchestrator` 확인). founder-ui tsc 0, dist node --check OK.
+- **③ 구버전 deprecated**: `pulling-content.ts`(5세트 퍼널)에 `@deprecated` JSDoc(코드·export 불변).
+
+**남은 것(라이브 세션, 헤드리스 불가)**: ① orchestrator가 각 스킬에 입력(ids/brief/slide_deck_deps)을 공급하는 경로 미존재 — 현재 `skill.run`은 `{task, context}`만 전달해 caller-injected 입력 스킬(factory/keycontent 등)은 실행 시 throw. 단계별 입력 공급(반자동) 설계 필요. ② 슬라이드 LLM은 **OpenAI 불필요**(agent 보고 오류 정정) — `plugin.ts buildLLMClient` 기본 Claude CLI(haiku); `slide_deck_deps.llmComplete`에 `buildLLMClient().complete({system:'',user:p})` 주입만 추가(미주입 시 결정론 폴백). ③ NocoBase 기동 후 실 HTTP E2E + founder-ui /video-room 버튼 연결(선택). cmo-handler는 이미 CmoOrchestrator 위임 중.
+
+---
+
+## 🟢 2026-06-09 — 워커 구현력(B): E1 스킵 차단 + 과거 오류 회귀 박제 (트랙 A)
+
+**배경**: 과거 ACR 2회 대형 실행 실패를 `agent_control_room_docs/data/execution-logs.json`(424건) 실측 → **실패 151건(36%)**, codex/agy/claude 고른 분포(워커 공통). 카탈로그 = 메모리 `l5-acr-error-catalog`.
+
+- **최핵심 E1(implement 스킵)**: 워커가 worktree base 기존 커밋 보고 "이미 완료/clean branch"라며 changed=0으로 끝내고 AC 가짜 ✅(스킵 시그니처 ~25, review_blocked 33 중 10+). "key-content-agent 9회 미생성"의 정체.
+  - **방지(B)**: `dev-workflow-spec.ts isCodeProducingKind(kind)`(implement/integrate/test/fix/refactor/repro) → `cto.ts toCTOPhase`가 코드산출 phase prompt에 **NO-SKIP 지시 주입**("기존 커밋 무관, worktree에 실제 변경, 변경0=실패, AC 가짜체크 금지"). read_only/commit 미주입.
+  - **회귀 박제**: `verifier.test.ts`에 E1 실측 시그니처가 fail 보장. `cto.test.ts`에 NO-SKIP 코드 phase 한정 주입 검증.
+- **검증**: l5-core verifier+dev-workflow 75/75, dist 0. agent-runtime cto.test **12/12**, tsc 0.
+
+**E2~E6**: E2 codex 즉시실패→코드phase claude, E3 경로혼동→TARGET PATH, E4 좀비→데몬 생존, E6 고립→integrate phase. 전부 커버.
+
+**남은 것**: ① 라이브 E2E(NO-SKIP+integrate-retry 실작동, 헤드리스 불가). ② 영상 워크플로우 기능단위 검증(트랙 B). ③ kickstart 라이브 반영.
+
+---
+
+## 🟢 2026-06-09 — CTO SOP에 integrate(통합·배선) phase 신설 (트랙 A: CTO 개선)
+
+**배경**: ACR 산출물이 "고립 완료"(빌드 GREEN인데 orchestrator/진입점 미배선)되는 근본 원인 = CTO dev-workflow SOP에 통합 단계 부재. 방향 = ACR 레일 유지 + CTO 개선(사장님 확정). CMO PRD v3 재구축(사장님 직접, "기존 video-room 위에 v3 orchestrator 얇게")과 **파일 경계 분리 병렬**: 제 영역=`cto-*`/agent-runtime, 사장님 영역=`video-room`/`cmo-orchestrator`. 공유는 배럴(index.ts)뿐.
+
+- **`cto-design/dev-workflow-spec.ts`**: `DevPhaseKind`에 `integrate` 추가. FEATURE/BIG_CHANGE 6→7단계(implement→**integrate**→review). integrate=claude·mutating, 합격기준=진입점 등록·기존자산 정렬·고립 금지. implement 합격기준에 "기존 자산 재활용·중복 금지" 추가. `CLASS_EXPECTED_ORDER`/`CLASS_EXPECTED_DEPENDS_ON`/`NAME_TO_KIND`/`ALL_KINDS` 동반 갱신.
+- **`cto-design/model-routing.ts`**: `PHASE_TIER_DEFAULTS`에 `integrate: 'T1'`(exhaustive Record가 강제).
+- **`cto-verification/verifier.ts`**: integrate 고립 룰 — 무변경=fail, `modified_existing_files=0`(새 파일만)=orphaned fail(ACR 입력 시, 없으면 graceful). `VerifyCTOPhaseInput`에 `modified_existing_files?` 추가.
+- **테스트**: `dev-workflow-spec.test.ts`(7단계·integrate 전용), `verifier.test.ts`(+3: unwired/orphaned/pass), `agent-runtime/cto.test.ts`(7-phase 갱신 + 사전 실패한 runtime 단언 정정).
+
+**검증**: l5-core typecheck 0, cto-design/cto-verification 관련 GREEN. agent-runtime cto.test **11/11**(l5-core dist 재빌드로 7-phase 반영). **회귀 0** — l5-core 전체 5 failed는 baseline과 동일(사전존재: model-routing 4 = 2026-06-07 implement T2→T1 드리프트, cmo-v3 미완 1 = 사장님 트랙 B 진행 중).
+
+**후속 완료(트랙 A, 2026-06-09)**: ACR runner가 phase 콜백에 `changed_files`/`modified_existing_files` 포함 — ACR repo `lib/runner/file-boundary.ts`에 `countModifiedExistingFiles`(porcelain status로 신규 vs 기존수정 구분, 스모크 검증), `finalize-phase-execution.ts`가 commit 전 계산해 L5 콜백 body에 실음. pulk `plugin.ts` 콜백 수신부가 destructure→verifyCTOPhase에 전달(src+dist 미러 패치, node --check OK). runner-finalize.test.ts mock에 새 함수 추가. ACR 소스 tsc 클린·테스트 8/8(tsc 2건은 무관 사전존재 테스트 드리프트).
+
+**per-phase integrate 검증 완료(2026-06-09)**: verifier가 `all_done`에만 돌던 한계 해소. `verifier.ts`에 `isIntegratePhaseName`(phase 이름 식별) + `verifyIntegratePhase`(고립 전용 결정적 검사, expected 합성으로 기존 룰 재사용·LLM 불요) 추가. plugin 콜백 핸들러: `status==='phase_complete' && isIntegratePhaseName(phase)`면 `verifyIntegratePhase`로 그 phase 단독 고립을 즉시 판정(각 phase는 commit 후 콜백→worktree clean→그 phase 단독 diff). fail이면 기존 phase_complete 분기(원래 dead였음)가 needs_review+retry로 흘림. src+dist 미러, require 경로 스모크 OK(orphan=fail, wired=pass). verifier 22/22, l5-core 회귀 0.
+
+**남은 것(트랙 A)**: ① 라이브 kickstart(nocobase/agent-runtime, 현재 빌드만). ② model-routing.test.ts 사전존재 4건 정리. ③ (선택) integrate retry 루프가 ACR에서 실제로 재실행되는지 라이브 E2E 확인.
+
+---
+
+## 🟢 2026-06-07 — CMO Orchestrator & AgentSkill 인터페이스 설계 (Phase 1)
+
+**배경**: CMO가 여러 개의 마케팅 스킬을 동적으로 선택 및 실행하고, 결과를 조합할 수 있도록 Mastra 프레임워크와 호환되는 오케스트레이터 및 스킬 인터페이스 레이어를 l5-core에 구현함.
+
+- **l5-core (`src/functions/cmo-orchestrator/`)**:
+  - `AgentSkill` 인터페이스 (`types.ts`): `ExecutiveTool`을 확장하며 `skill_id`, `category`, `depends_on`, `default_risk` 메타데이터를 추가.
+  - `SkillRegistry` (`skill-registry.ts`): 스킬 등록/조회/카테고리 필터링과 의존성 그래프의 위상 정렬(resolving dependencies) 및 순환 참조 방지 구현.
+  - `CmoOrchestrator` (`orchestrator.ts`): `selection_strategy: 'rule'` 기반으로 태스크 및 스킬 간의 매핑을 해석하고, 의존성 순서대로 순차 실행 후 결과를 조합하여 `HandlerResult`로 병합. 위험도가 D3(high) 이상인 경우 승인 대기 처리하는 승인 게이트 기능 포함.
+  - PoC 스킬 2개 구현 (`skills/market-research.ts`, `skills/positioning-message.ts`): `cmo.research.market` 및 `cmo.positioning.message` (market 스킬에 의존) 구현.
+  - 배럴 내보내기 및 re-export (`index.ts` 및 `packages/l5-core/src/index.ts`).
+- **cmo-handler (`src/functions/executive-runtime/handlers/cmo-handler.ts`)**:
+  - 기존 하드코딩 응답을 `CmoOrchestrator.execute()` 위임 방식으로 리팩터링하고 `HandlerResult` 계약 정합성 유지.
+
+**검증**:
+- l5-core typecheck 0, jest `cmo-orchestrator` 관련 테스트 7건 모두 통과.
+- `npx pnpm -r typecheck` 및 l5-core `tsc` 빌드 전체 통과.
+- NocoBase 외부 종속성 없이 l5-core 수준에서 독립 테스트 확인 완료.
+
+---
+
+## 🟢 2026-06-06 — CMO/Script Room v3.1 전체 구현 (P0~P6, workflow 연속 실행)
+
+설계·근거 = `docs/cmo/CMO_SCRIPT_ROOM_EXECUTION_PLAN.md` + `docs/DECISIONS.md` 2026-06-06. PRD 3종(`~/Downloads/pulk_cmo_script_room_prd_v3_1_full.md` 정본, v2는 ScriptBeat 폐기, `ai_slide_video_factory_v2_1`은 수신측) 정합.
+
+**확정 경계**: CMO = **무엇을 말할지** → 산출물 끝 = `VideoExecutionBrief`(schema_version `cmo_to_factory_v2`). scene_type/best_medium/duration/timeline **확정 금지**(Factory의 Scene Decision Engine 몫). v2식 `script-factory.ts`(scene_type 확정 VideoJob)는 `@deprecated`, `video-execution-brief.ts`로 교체.
+
+**구현(기존 video-room 모듈에 통합, 평면 배치)** — l5-core `packages/l5-core/src/functions/video-room/`:
+- 타입: types.ts +27 export(Research packs, CmoVideoStrategyBrief+LogicBlock, ContentSetValidation, Intro30s/ScriptPart/IntegratedScript/VoiceMatchedScript/ScriptQaReport, VideoExecutionBrief(BriefLogicBlock는 금지필드 타입레벨 부재), CmoContentCard, RevisionTarget, ConsumerStageEn 매핑).
+- Research: market-research/voc-research/claim-verification/audience-fit/script-material-pack + research-gate(Gate1).
+- Strategy: strategy-brief(logic_blocks/Gate3) + content-set-validation(Gate2, 5단계 자유배정) + thumbnail-plan.
+- Script: intro-writer/logic-block-writers(블록 기준 분담)/script-integrator/founder-voice(논리 불변)/script-qa(전략80·타깃80·말투75·판매80·사실90)/revision-router(§16.15).
+- 핸드오프: video-execution-brief(빌더) + brief-validators(scene_type 포함시 invalid) + script-room-pipeline(e2e runScriptRoomToBrief) + factory-handoff(transport 주입, 외부전달 승인게이트).
+- 검증: **l5-core typecheck 0, video-room 509 tests / 34 suites GREEN**. 단일 카드 Research→Strategy→Script→QA→Brief→Handoff e2e 동작, 테스트6(scene_type 부재) 보장.
+
+**풀스택(P6)**:
+- NocoBase plugin-orchestration: cmo 리소스에 `generateVideoExecutionBrief` 액션 + `video_execution_briefs` 테이블 + ACL 추가. **src/server/plugin.ts와 dist/plugin.js 양쪽 패치**(빌드스크립트 없음 — 메모리 주의). dist `node --check` OK.
+- founder-ui: 신규 라우트 `/video-room/script-room` + ResearchRoomPanel/StrategyBriefPanel/ScriptRoomPanel/VideoExecutionBriefPanel/ContentCardBoard(카드별 영상생성 버튼=순차제작) + api.ts cmo:* 헬퍼. 기존 page.tsx(3페이지) 무수정. **founder-ui typecheck 0**.
+
+**커밋 완료**(2026-06-06, 브랜치 `cto/acr-kernel-harness`): CMO/Script Room v3.1만 분리 커밋 `45c8330`(63 파일 +12,895/−10). working tree에 섞여 있던 CTO Harness 변경분은 제외 — 공유 파일(`api.ts`/`DECISIONS.md`/`HANDOFF.md`/`TASKS.md`)은 hunk·블록 단위로 CMO 부분만 스테이징. 커밋 전 재검증: l5-core typecheck 0 · video-room 509 tests / 34 suites GREEN · founder-ui typecheck 0. (dist/plugin.js는 gitignored라 커밋 대상 아님.)
+
+**남은 것(라이브 세션)**: NocoBase 기동 후 cmo:generateVideoExecutionBrief 실 DB E2E(테이블 생성·upsert·ACL) 확인 + script-room 페이지 브라우저 검증. 헤드리스 불가(실 DB/NocoBase 필요).
+
+---
+
+## 🟢 2026-06-06 — 데몬을 기본 실행 경로로 승격 (라이브)
+
+`ACR_EXTERNAL_RUNNER=1` → auto-dispatcher가 인라인 대신 **잡큐 enqueue**, 상시 데몬(`com.l5.acr-phase-runner`)이 별도 프로세스에서 claim→prepare→spawn→finalize. acr-web 재시작이 in-flight phase를 못 죽임. 설계 = `docs/DECISIONS.md` 2026-06-06(마지막 항목).
+
+- 신규: `lib/orchestration/phase-runner-queue.ts`, `app/api/runner/queue/claim`, `scripts/phase-runner-daemon.mjs` poll 모드, `launchd/com.l5.acr-phase-runner.plist`. `auto-dispatcher.ts` 외부 분기 + plan당 1 in-flight 가드. `prepare` prompt override.
+- **라이브 검증**: FAKE + **실 claude** 둘 다 enqueue→claim→prepare→spawn→finalize→done(커밋+머지) 통과. 테스트 GREEN, tsc 0, 배포(BUILD_ID M0A5WLQiEMcXhDw2aW2m1).
+- **롤백**: `.env.local` `ACR_EXTERNAL_RUNNER=0`+재빌드/재시작 → 인라인. 데몬 중지: `launchctl unload`.
+- **주의**: stale plan 28개(2일+ 버려진 것)는 가드+dirty cwd 409로 inert. 별도 아카이브 권장(미변경).
+
+---
+
+
+## 🟢 2026-06-06 — 데몬 in-flight 생존 ③④ 라이브 시연 완료
+
+설계·근거 = `docs/DECISIONS.md` 2026-06-06(네 번째 항목). ①특성화 테스트 ②finalizer 추출에 이어 ③데몬+엔드포인트 구현 ④라이브 시연까지 완료.
+
+**③ 구현**: `app/api/runner/prepare/route.ts`(pre-spawn 컨텍스트) + `app/api/runner/finalize/route.ts`(공유 finalizePhaseExecution 호출) + `scripts/phase-runner-daemon.mjs`(별도 프로세스 spawn + acr-web 재시작 견디는 finalize 재시도). 둘 다 `x-l5-shared-secret` 인증. 인라인 `/api/runner` 무수정.
+
+**④ 라이브 시연**(격리 `~/l5-workspace/daemon-demo`):
+- **in-flight 생존 증명**: 40초 spawn 도중 acr-web 강제 종료(`kickstart -k`) → 데몬·spawn 자식 생존(acr-web=000 DOWN 동시 확인) → spawn 완주 → 복귀 후 finalize 안착.
+- 결과: ACR 태스크 **done**, 격리 브랜치 커밋+main 머지(D2 자동머지), exec-log done/exit0, L5콜백 도달, 브라우저(acr-web)에 데몬-생성 프로젝트 렌더.
+- 검증: 신규 4 + 기존 GREEN, tsc 0, rebuild(BUILD_ID 6vRuYYGfRK1FmGingK29S)+restart 배포.
+
+**남은 1단계**: 데몬을 **기본 경로로 승격**(auto-dispatcher가 인라인 POST 대신 데몬 잡 큐로 enqueue + 워커 N개 동시성). 현재 데몬은 명시적/opt-in 경로로 동작.
+
+---
+
+## 🟢 2026-06-06 — 데몬 in-flight 생존 ①②단계 완료 (finalize 추출, 무회귀)
+
+설계·근거 = `docs/DECISIONS.md` 2026-06-06(세 번째 항목). 데몬 in-flight 생존의 안전 순서(①특성화 테스트 →②추출 →③플래그 데몬 →④라이브 통합) 중 헤드리스로 안전 검증 가능한 ①②를 완료.
+
+- **① 특성화 테스트**(`__tests__/runner-finalize.test.ts`): finalize의 관찰 행동(최종 PlanTask 상태 + L5 콜백 status)을 4 시나리오로 고정. 추출 전/후 동일 통과 = 무회귀 증명.
+- **② finalizer 추출**(`lib/runner/finalize-phase-execution.ts`): `/api/runner` post-spawn 블록(상태·커밋·머지·**L5 taskCallback**·빈출력·경계)을 verbatim 추출(`controller.enqueue` → `emit` 콜백만 변경). route.ts 609→365줄. 고아 import 정리. **인라인 러너와 미래 별도-프로세스 러너가 공유**.
+- 검증: 전체 ACR 742 GREEN(사전존재 ENOENT 1건 제외), tsc 0. **배포: ACR rebuild + acr-web restart**(behavior-identical, live==repo).
+
+**남은 ③④(라이브 세션 필요)**: `/api/runner/prepare`+`/api/runner/finalize` 엔드포인트 + **별도 프로세스 데몬**(기본 OFF 플래그)이 CLI를 spawn → 플래그 켜고 실제 phase 1개로 "L5 콜백 도착" 확인. 실 acr-web·worktree·CLI 필요해 헤드리스 불가.
+
+---
+
+## 🟢 2026-06-06 — CTO 개선 후속 3종 적용 + 데몬 in-flight 보류 재확인
+
+설계·근거 = `docs/DECISIONS.md` 2026-06-06(두 번째 항목).
+
+**① per-phase agy 모델** (속도/비용): agy CLI `--model`(per-session=병렬 안전) 활용. `buildAgyArgs`에 `--model`, spawn 경로를 전역 settings.json 재작성(`withAntigravityModel`)에서 플래그로 전환. `/api/runner`가 phase kind로 모델 선택 — 경량=Gemini 3.5 Flash (High), 코딩=Gemini 3.1 Pro (High). env `ACR_AGY_MODEL_LIGHT`/`_CODE`/`_PER_PHASE_MODEL=0`.
+
+**② 쿼터 추적 갱신부** (B5 read-path 완성): `lib/agents/quota-tracker-file.ts` 신규 — runtime-registry(claude→T1/codex→T2/agy→T3)를 `QuotaState`로 `ACR_QUOTA_TRACKER_PATH`에 원자적 영속화. `updateAgentRuntime` choke point에서 fire-and-forget. **전제: pulk 디스패처·acr-web이 같은 env 공유**(미설정 시 graceful).
+
+**③ 브랜치 정리 자동화**: `scripts/git-acr-cleanup.sh`(머지+7일 경과 acr/* 만, 보호/워크트리 제외)를 일일 launchd(`com.l5.git-acr-cleanup.plist` 03:30) 스케줄. installer에 `__REPO_ROOT__` 치환 + 등록.
+
+**데몬 in-flight 생존 — 보류 유지(근거 강화)**: runner 테스트가 **pre-spawn만** 커버, **post-spawn finalize(상태·커밋·머지·L5콜백)는 테스트 0** 확인 → 안전망 없는 ~250줄 리팩터는 라이브 자율 루프 회귀 위험. 올바른 순서 = finalize 특성화 테스트 선작성 → 추출 → 플래그 게이트 데몬 → 라이브 통합 테스트(헤드리스 불가 → 별도 세션).
+
+**검증**: 신규 antigravity-runner `--model` 3종(+37)·quota-tracker-file 6 GREEN. 회귀 auto-dispatcher/resilience/pre-dispatch/execution-safety-regression/phase19 GREEN, ACR tsc 0. cleanup dry-run·plist plutil·installer bash -n OK. (qa-fixes-phase11 1건 실패는 사전 존재 ENOENT, 무관.) **반영: ACR rebuild+restart 시.**
+
+---
+
+## 🟢 2026-06-06 — ACR 자율 코딩 정체/재시작 낭비 근본 제거
+
+**배경**: CTO/ACR 자율 코딩의 마지막 근본 병목 = 인메모리 plan 락 + abort 없는 SSE 드레인. 행 발생 시 락 점유 → 드라이버가 acr-web을 재시작 → 진행 phase 폐기·재실행(토큰 낭비). 설계·근거 = `docs/DECISIONS.md` 2026-06-06.
+
+**수술적·무회귀 수정 (잡큐 전면 재작성 보류)**
+- **하트비트 lease** (`agent_control_room_docs/lib/orchestration/auto-dispatcher.ts`): `planDrainLocks` 고정 20분 stale → 30초 갱신 하트비트. 산 drain은 유지, 죽은 홀더는 3분 내 stale → 자동 재청구. `acquirePlanDrain`/`releasePlanDrain`/`isPlanDrainLocked`.
+- **/api/runner abort 타임아웃**: `dispatchNextTask`의 SSE 드레인에 `AbortController`(`ACR_RUNNER_TIMEOUT_MS`, 기본 `ACR_AGENT_TIMEOUT_MS`+90s). abort 시 `failed:runner_timeout` → lease 해제 → 다음 패스 재큐. 단일 phase 영구행 불가.
+- **드라이버**(`~/l5-workspace/cmo-driver.mjs`): `GLOBAL_STALL → restartAcrWeb()` 제거(고아 `restartAcrWeb`/`sleep` 정리). 지속 정체 시 고아 running→planned 힐만(재시작·재실행 낭비 0).
+- **`/api/runner` 무수정** → L5 `taskCallback`·머지·경계 검사·phase 커밋 전부 무회귀.
+
+**원안(데몬 직접 spawn) 보류 이유**: `/api/runner`가 spawn 외에 L5 콜백·머지·경계·커밋까지 수행 → 데몬 직접 spawn 전환 시 이들 회귀(특히 펄크가 phase 완료를 인지하는 유일 경로인 L5 콜백). in-flight CLI의 재시작 생존은 후속(`/api/runner` 후처리를 공유 finalizer로 추출 후).
+
+**검증**: `__tests__/auto-dispatcher-resilience.test.ts` 신규 2종(타임아웃 바운드 + lease 재청구) PASS. 기존 `auto-dispatcher.test.ts`(5)·`resilience-loop.test.ts`(9) 회귀 0 → 전부 GREEN. 드라이버 `node --check` OK.
+
+---
+
+## 🟢 2026-06-06 — 자가개선 루프 Phase B(일일 감시) + Phase C(에스컬레이션 배선) 완료
+
+**배경**: Phase A(read-path)·Phase B 코어(`cmoStrategyWatch`)에 이어, 일일 감시 래퍼와 CTO 에스컬레이션 배선을 코드로 완성. 설계 = `docs/DECISIONS.md` 2026-06-06. **원칙 불변: 승인 전엔 코드 한 줄도 안 바뀜(기존 self_mod_status 게이트 보장).**
+
+**Phase B — `services/hermes-runtime/src/tasks/cmo-strategy-watch.ts` (신규)**
+- self-learning 패턴 복제. biz 브레인 `brains/biz/memory/inventory.jsonl` 읽기 → `.omc/state/cmo-strategy-snapshot.json` load/save → `cmoStrategyWatch`(l5-core 순수 판단) → diff.
+- **첫 실행 베이스라인 가드**: prev 스냅샷이 비면 1059건 전체가 "added"로 잡혀 무의미한 알림이 되므로, 베이스라인만 조용히 저장하고 카드/알림 없이 종료. 둘째 실행부터 실제 변화만 보고.
+- 변화 시: **CTO tool-request 카드 1건 생성**(`assigned_agent:CTO`, `source_ref:secondbrain-watch:<date>`, status queued, approval_required false) + 텔레그램(dedupKey 일별). 변화 없으면 조용히 skip. 절대 throw 안 함(오프라인/파일 없음 graceful).
+- 배선: `runner.runCmoStrategyWatchLive`(createAgentTask 주입, repetition-analyzer와 동일하게 instruction FK 자동 provision) + `gateway` 등록(`cmo-strategy-watch`). launchd 템플릿 `launchd/com.l5.hermes.cmo-strategy-watch.plist`(09:05, self-learning 직후, RunAtLoad false).
+
+**Phase C — 기존 체인 재사용 배선 (executive-monitor)**
+- 갭은 단 하나: `toolRequests` 액션의 SQL이 `source_ref LIKE 'repetition-pattern:%'`만 잡아 B 카드가 안 보임. → `(repetition-pattern:% OR secondbrain-watch:%)`로 확장(`src/server/plugin.ts:448~` + `dist/plugin.js` 직접 패치).
+- 그 외 전 체인(UI [CTO에게 전송] 버튼 → `sendToCTO` self-mod 생성 → `applySelfMod`/`rollbackSelfMod` + diff 미리보기 + blast-radius deny)은 source_ref에 무관하게 작동 → 추가 변경 불필요.
+- `buildSelfModAcceptanceCriteria`(l5-core): `secondbrain-watch:<date>` prefix를 strip해 수용 기준이 날짜 대신 카드 제목으로 fallback(테스트 1건 추가).
+
+**검증**
+- hermes `cmo-strategy-watch` 테스트 4건 PASS(baseline/change-card+alert/silent/missing). hermes 빌드 tsc 0, gateway가 `cmo-strategy-watch` 등록 확인. 전체 hermes 89/90(실패 1건 `model-verify` roster_entries — 라이브 모델 데이터 네트워크 의존, 본 변경과 무관/기존).
+- l5-core: selfmod-criteria + cmo-strategy + second-brain-query 테스트 PASS.
+- **부수 수정**: Phase A의 `second-brain-query.ts` `QUERY_BY_STATUS`에 `paused` 누락(VideoRoomStatus exhaustiveness 타입 에러, 런타임 undefined 쿼리 버그) → `paused: null` 추가(일시정지 룸은 쿼리 안 함). hermes 테스트가 `@l5/core` 배럴을 타입체크하며 드러난 기존 갭.
+
+**라이브 활성화 완료(2026-06-06 추가 실행)**:
+- ① **hermes launchd 활성화 완료**: `com.l5.hermes.cmo-strategy-watch.plist` 설치(placeholder 치환 + `NOCOBASE_TOKEN`은 설치본에만 주입, repo 템플릿은 시크릿 없이 `NOCOBASE_URL`만)·`launchctl load`. `install-launchd.sh` PLISTS 목록에도 추가. **1회 수동 실행으로 베이스라인 수립 검증**: 1059줄 → 중복 source_id 제거 후 **606개 스냅샷**, 카드/알림 0, exit 0(첫 실행 = 조용한 베이스라인). 내일 09:05부터 실제 변화만 보고.
+- ② **nocobase 재기동 완료**: `launchctl kickstart -k`(PID 70452, health 200). `toolRequests` OR 필터 라이브 확인(`ok=true`, SQL 에러 없음).
+- ③ **환경 드리프트 해소 완료**: l5-core `zod` 미설치 → **전체 `pnpm install`(node_modules wipe, 라이브 서비스 중단 위험) 대신 안전한 방법으로 해결**. (a) `zod`는 이미 pnpm store에 있어(3.25.76, `^3.22.0` 충족) `packages/l5-core/node_modules/zod` **심링크만 생성**(기존 typescript 링크와 동일 패턴). (b) 동일 드리프트인 `pptxgenjs`(store에 없음)는 **그 폴더에 격리 npm 설치**(`--no-save`, 기존 심링크 전부 유지, 추적파일 무변경). 결과 **l5-core 빌드 tsc 0(완전 clean)**, 테스트 24/24, 서비스 정상. 루트 `pnpm-lock.yaml`엔 이미 둘 다 기록돼 있었으므로(설치만 누락) lockfile 무변경. 커밋된 stale `package-lock.json`은 원본 그대로 복원(npm이 덮어쓴 것 git checkout).
+
+---
+
+## 🟢 2026-06-06 — CMO 세컨브레인 자가개선 루프 Phase A: read-path 전 단계 확장 (배포 완료)
+
+**배경**: 사장님 — 세컨브레인의 비즈니스 PT 정보에 맞춰 CMO가 진화해야 한다. 조사 결과 CMO 챗은 세컨브레인을 전략~리서치 중간 단계에서만 조회(첫 대화 strategy_chat·원고·제작·발행 누락), 학습 루프 없음. 전체 설계는 `docs/DECISIONS.md` 2026-06-06 (데이터층 자동 / 코드층 승인된 CTO 분리).
+
+- **`l5-core/video-room/second-brain-query.ts` (신규)**: `secondBrainQueryForStatus(status)` — 23단계 전수 매핑(strategy_chat 포함, completed/unknown만 null). 단계별 PT 쿼리(원고=스토리텔링 현상욕구계획행동보상, 제작=나레이션/슬라이드/편집, 발행=유튜브 SEO 등). 단위테스트 `__tests__/second-brain-query.test.ts` 4건. **l5-core video-room 218/218 통과**(회귀 0).
+- **plugin chatMessage 배선**: 하드코딩 `SB_STATUS_QUERY` 맵(10단계만) 제거 → `secondBrainQueryForStatus` 사용. 도메인 매핑을 l5-core로 이전(CLAUDE.md 규칙). graceful 유지(무히트/실패 시 무시).
+- **배포**: l5-core dist 빌드(zod 미설치 typecheck 에러는 기존 환경 드리프트·내 파일은 정상 emit), plugin `dist/plugin.js` 직접 패치(require 추가 + 맵→함수, `node --check` OK), nocobase :13000 kickstart.
+- **검증**: strategy_chat 첫 메시지 `cmo:chatMessage` → HTTP 200·실제 LLM 답변·ok=true(새 경로 정상). 세컨브레인 biz 직접 조회 시 첫 단계 쿼리에 **PT 인사이트 6건 반환**("초기 타깃=작은 브랜드 대표", "고객 문제 인식→여정", "풀링2 문제 심화", "고객 관점 출발") — 이제 첫 메시지부터 프롬프트 주입.
+
+**Phase B 코어 완료 (2026-06-06)**: `l5-core/cmo-strategy/strategy-watch.ts` — `cmoStrategyWatch(prev, current)`가 biz 브레인 `brains/biz/memory/inventory.jsonl`(각 줄 source_id+hash)을 스냅샷 diff해 신규/수정 PT 감지 + 사장님 요약 생성(self-learning 동일 패턴, 시맨틱 추측 대신 파일 해시 diff = 신뢰적). `parsePTInventory`로 jsonl 파싱. 순수·NocoBase-free, 단위테스트 8건(cmo-strategy 16/16). **남은 것**: Hermes 래퍼 task(inventory 읽기→스냅샷 load/save→cmoStrategyWatch→🔔 제안+텔레그램, 없으면 skip) + launchd plist(09:00) + 라이브 배포.
+
+**Phase C 인프라 발견 (대부분 존재)**: executive-monitor + founder-ui에 자가수정 승인 체인 완비 — `approval/page.tsx`(`api.approvalQueue`/`approveTask`/`rejectTask`/`applySelfMod`/`rollbackSelfMod` + `acr_diff` diff 미리보기), `plugin-executive-monitor/src/server/plugin.ts:542~`("[CTO에게 전송]→self-mod task 생성, self_mod_origin/self_mod_status awaiting_apply→applied/rejected"), `acr-client.notifyACRApprovalRequired`. **승인 전 코드 불변은 기존 self_mod_status 게이트가 보장.** 남은 것: Phase B의 🔔 제안 → "CTO에게 전송"을 이 기존 에스컬레이션에 배선(2단계 승인: 의뢰 승인 → 적용 승인).
+
+**기타**: zod 미설치 환경 드리프트(전체 `pnpm install` 필요, 기존). Phase A·B 코어는 `cmo/video-room-ui-refactor` 브랜치 PR #5.
+
+---
+
+## 🟢 2026-06-06 — CMO Video Room UI 재설계: 단계 중심 단일 포커스 (frontend-only)
+
+**배경**: 사장님 — Movie/Video Room이 "너무 많은 워크플로우를 한 곳에 담아" 복잡. 실제 화면 확인(스크린샷) 결과 3대 문제: ① 3열 그리드가 모든 탭에 강제 → 좌(빈 CMO챗)·우(빈 승인) 컬럼이 가로 ~40% 죽임 ② 단계 무관하게 제작 보드에 원고·팩토리·음성·렌더 폼이 한꺼번에 다 노출 → "지금 뭐 할지" 안 보임 ③ 25점 미니로드맵 라벨 잘림 + 헤더 우상단 배지/알림벨 충돌. **백엔드 25단계 status/`cmo:*` API/데이터는 불변, 프론트(`apps/founder-ui`)만 재구성.**
+
+- **`video-room/_lib/phases.ts` (신규)**: 백엔드 status(25) → 5 Phase(전략/리서치/원고/제작/발행) 매핑. `STATUS_LABEL` 단일 출처화(page.tsx 중복 제거). `phaseOfStatus`/`phaseState`/`statusOrder`/`blockState`. 단위 테스트 `phases.test.ts`(`node --import tsx`, 기존 e2e 컨벤션) — 매핑 전수·순서·게이트 상태 검증.
+- **`PhaseTimeline`**: 잘리던 25점 로드맵 대체. 5단계 진행중(●)·완료(✓)·잠금(🔒) 표시, 클릭=이동, 페이지별 pending 배지. `PHASE_TO_PAGE`로 5phase→백엔드 3page 매핑.
+- **레이아웃**: 3열 강제 폐기 → **전체 폭 보드 + 접이식 우측 드로어(360px, CMO챗+승인 통합, 접으면 44px 레일+pending 배지)**. 죽은 빈 컬럼 제거.
+- **소프트 게이팅 `StageGate`**: 제작 보드의 4블록(원고 Beat / 팩토리 전달 / 음성 첨부 / 파이프라인)을 현재 status 기준 `blockState`로 — active=펼침, done=접기(클릭 펼침), locked=🔒 비활성 바("이전 단계 완료 후"). 게이팅 수준은 사장님 선택(소프트). 모든 블록은 DOM에 존재(완전 숨김 아님).
+- **헤더**: 알림벨 충돌 `paddingRight: 48`, 타임라인과 중복되던 page 라벨 제거, 내부 탭 내비 제거(타임라인이 대체).
+
+**검증**: founder-ui **tsc 0**, **next build 성공**(/video-room 10.4kB 정적), `phases.test.ts` 통과. 라이브 백엔드(:13000) 대상 Playwright 스크린샷 — 전략/제작/발행/드로어접힘/원고-active(새 프로젝트 walk→script_planning) 5종 확인: locked 4바→active 원고편집기만 펼침 입증. 헬퍼 `e2e/shot-video-room.mjs`·`e2e/shot-active-stage.mjs`.
+
+**후속 완료 (2026-06-06, 동일 frontend-only)**:
+- **전 보드 게이팅 일관화**: StrategyBoard(Viewtrap 수동 입력 → range `key_content_ideation`~`hook_draft_approval`), ReviewPublishBoard(게시 파이프라인 QA·업로드 → range `qa`~`upload_approval`)에도 `StageGate` 적용. 이제 전략/제작/발행 3보드 모두 현재 status 기준 active/done/locked 일관.
+- **`page.tsx` 컴포넌트 분리**: 2141줄 단일 파일 → 컨테이너(`VideoRoomContent`/`VideoRoomPage`)만 ~230줄로 슬림화. 추출: `_lib/types.ts`(공통 타입), `_components/`{`StageGate`,`cards`(Intro30s/FactoryJob/CardShell),`ScriptBeatEditor`,`DecisionPanel`,`CmoChatPanel`,`PhaseTimeline`(+`PHASE_TO_PAGE`),`VideoRoomHeader`,`StrategyBoard`,`ProductionBoard`(+`ProductionActionPanel`),`ReviewPublishBoard`(+`ReviewApprovalPanel`),`ProjectSelector`}.
+- **검증**: tsc 0, next 프로덕션 빌드 성공, `phases.test.ts` 통과, 프로덕션 서버(3002) 대상 Playwright 스크린샷으로 전략(Viewtrap '완료·보기' done)·발행(게시 파이프라인 🔒 locked) 게이팅 확인. 헬퍼 `e2e/shot-full-gating.mjs`.
+- **운영 주의(함정)**: launchd `com.l5.founder-ui`는 `next start -p 3002`(프로덕션). 떠 있는 수동 `next dev`(:3000)와 **같은 `.next`를 공유** → 실행 중 `next build`를 돌리면 청크가 깨져 화면이 로그인에서 안 넘어감(리소스 404). 복구: `rm -rf .next && next build && launchctl kickstart -k gui/$(id -u)/com.l5.founder-ui`.
 
 ---
 
@@ -1131,7 +1540,7 @@ CTO 로드맵(`/tmp/l5-roadmap.html`) Phase 1·2 구현. 전부 **ACR repo**(`~/
 - **자율 루프 게이팅 (E2E 검증됨)**: D1/D2 → 자동 dispatch, D3+ → `approval_required=true`로 dispatcher가 픽업 안 함(승인 시 자동 실행). `chat:submitInstruction` → CEO해석 → CTO분해 → ACR spawn → 샌드박스 파일생성+커밋 → 콜백 → done 전체 동작 확인.
 - **완료(2026-05-30 추가 작업)**:
   - **Stale 큐 정리**: 이전 세션 테스트 task 42건 전부 `killed` 처리 → queued 0건(깨끗한 베이스라인).
-  - **Cron 2개 설치·검증**: `com.l5.hermes.model-verify`(08:55) + `com.l5.hermes.self-learning`(09:00). 둘 다 수동 1회 실행 정상(model-verify: roster clean·알림 silent; self-learning: claude changelog 1건 변경·카탈로그 `docs/cto-tool-catalog.md` 갱신·Telegram 발송). plist에 Telegram 토큰+API Key 주입. (codex 403/antigravity 404 changelog fetch는 non-fatal.)
+  - **Cron 2개 설치·검증**: `com.l5.hermes.model-verify`(08:55) + `com.l5.hermes.self-learning`(09:00). 둘 다 수동 1회 실행 정상(model-verify: roster clean·알림 silent; self-learning: claude changelog 1건 변경·카탈로그 `docs/cto/cto-tool-catalog.md` 갱신·Telegram 발송). plist에 Telegram 토큰+API Key 주입. (codex 403/antigravity 404 changelog fetch는 non-fatal.)
   - **business_id→repo 매핑**: `businesses.repo_path`(text) 컬럼 추가(plugin-business-portfolio: collection 필드 + `ensureBusinessColumns` ALTER). dispatcher(`runTaskDispatcherLive`)가 `fetchBusinessRepoPaths`로 business_id→repo_path 조회 후 task.project_path 주입 → runCTOAgent `resolveProjectPath`가 cwd로 사용. repo_path 없으면 `L5_DEFAULT_PROJECT_PATH`(샌드박스) fallback. **E2E 검증**: business 1 repo_path=`~/l5-workspace/business-1` 설정 → "QA Fixed business" 지시 → CEO가 business_id=1 추론 → D2 task 자동 dispatch → **ACR 작업이 business-1 repo에 라우팅됨**(default-sandbox 아님). (단 해당 spawn은 빈 브랜치만 생성·파일 미커밋 — agent 실행 비결정성, 매핑과 별개. 이전 SMOKE 테스트에선 파일 생성 정상.)
 - **다음 작업**: business 2 및 향후 사업의 `repo_path`를 실제 repo로 지정(현재 business 1만 설정). project-status-sync cron(템플릿 존재, 미설치). dispatcher PATH에 claude 추가 시 CTO dev-workflow LLM 보강 활성화(현재 deterministic fallback). ACR `data/projects.json`의 pulk 가리키는 stale 등록 정리(샌드박스 기본값으로 무력화돼 있으나 청소 권장).
 
@@ -2531,3 +2940,90 @@ type AgentHandoff = {
 4. Approval queue.
 5. Hermes stalled-task/approval checks.
 6. BPR and Memory updates from completed tasks.
+
+---
+
+## CTO Harness / ACR Kernel 계약 레이어 (2026-06-06, 브랜치 cto/acr-kernel-harness)
+
+- pulk CTO = source of truth, ACR = 실행 커널 원칙을 코드 계약으로 고정. PRD `FINAL_pulk_cto_acr_kernel_harness_agent_team_prd.md`의 pulk 측 1차 구현 범위(타입·복잡도 라우터·가드·프롬프트 빌더·Agent Team router) 완료.
+- 위치: `packages/l5-core/src/functions/cto-harness/` (8 모듈 + 7 테스트 스위트, 216 테스트 GREEN, tsc 0). 루트 `index.ts`에 export 1줄 추가.
+- 실제 worktree 실행/HTTP API/ACR UI는 별도 저장소 agent-control-room 책임 — pulk에 중복 구현하지 않음(상세 docs/cto/ACR_KERNEL_REFACTOR_PLAN.md).
+- CMO 작업과 완전 분리(공유 파일 충돌 없음). 커밋 시 cto-harness/·index.ts·신규 문서 2개만 선택 add 권장(CMO 미커밋 변경분 제외).
+- 다음 단계(선택): hermes acr-client.ts에 buildWorkOrder→ACRIntent 어댑터 배선, founder-ui control-room에 ExecutionRun 상태 표시.
+
+---
+
+## CTO×ACR Kernel×Harness×Agent Team 풀구현 (2026-06-06, dynamic phased workflow 8단계)
+
+PRD `FINAL_pulk_cto_acr_kernel_harness_agent_team_prd.md` MVP **완료(PASS)**. 판정 리포트: `docs/cto/CTO_ACR_PRD_COMPLETION.html`.
+
+- **ACR repo**(agent-control-room, 브랜치 feat/runner-verify-merge-phase123) 신규 실행 커널 — 전부 additive, 111 WIP 불가침:
+  - `b8ecacd` ExecutionRun API(§8/§9): lib/execution-run/*, lib/storage/execution-run-store, app/api/execution-runs/{,[run_id],/result}
+  - `9cc7474` Worktree+Boundary(§12): lib/worktree/{worktree-manager,boundary-check,run-worktree}
+  - `0556c9e` Harness 코어(§13/§14/§15): lib/harness/{types,verification-runner,command-guard,handoff-generator,playwright-artifact,harness-pipeline}
+  - `d3dca52` Context Harness(§14.7)+command-guard PreToolUse hook(§19.1): lib/harness/context-harness, scripts/hooks/command-guard-hook.mjs
+- **pulk repo**(브랜치 cto/acr-kernel-harness):
+  - `fa69570` Agent Team 라이브 배선(§29)+execution-runs 클라이언트+Control Room §18.1 UI(checks/history/retry·review/ComplexityBadge)
+  - `7243ec4` Context Tax 인덱스(docs/index)+HARNESS_UTILIZATION 매핑
+- **QA/E2E**: ACR our-tests 124/124 + next build PASS, pulk l5-core 1414/1414·agent-runtime 16/16·founder-ui build PASS·control-room E2E(clean dev) PASS, ACR smoke PASS.
+- **잔여 통합 단서(4)**: ① runner-adapter thin(실 CLI 실행 트리거 1스텝 남음, 인터페이스 완비) ② cto.ts 라이브는 현재 solo run(다중feature 입력시 팀런 가동) ③ retry 버튼은 /api/monitor:retryRun 서버액션 필요(graceful degrade) ④ .claude/rules·settings.json은 양 repo gitignore(로컬 동작).
+- **사용자 WIP 오류 2건(미수정)**: ACR quota-tracker-file.test.ts:27 / runner-prepare-finalize.test.ts:77 TS2352 — 111 WIP라 분리 원칙대로 미수정.
+
+---
+
+## CMO Content Strategy v3 — R1 풀링 단계 완료 (2026-06-09, branch cmo/content-strategy-v3)
+
+현재 상태: 키 콘텐츠 단계(자동분석→후보 3개→택1)에 이어, **풀링 단계 v3** 동일 패턴으로 구현 완료.
+
+- 흐름: 키 콘텐츠 택1(`selectKeyContentCandidate`→`key_content_choice` 카드) → 풀링 보드 진입(`pulling_content_set_selection`) → `proposePullingCandidates`(자동) → 후보 5개 표시 → "세트 확정"(`commitPullingPlan`) → `pulling_plan` 카드 + 다음 단계 advance.
+- 도메인 정본: `packages/l5-core/src/functions/video-room/pulling-candidates.ts`(+ `__tests__/pulling-candidates.test.ts` 9건). 키 콘텐츠 정본은 `key-content-candidates.ts`.
+- 검증: l5-core tsc 0 / pulling-candidates 9 GREEN / founder-ui tsc 0 / plugin dist node --check 통과. 런타임 E2E 미실행(서버 가동 필요).
+- 다음: R2 텔레그램 알림 실작동(launchd 환경변수 주입) → R3 속도 최적화 → R4 제작 단계.
+
+## R1~R3 완료 + R4 대기 (2026-06-09, branch cmo/content-strategy-v3)
+
+진행 현황(콘텐츠 전략 v3 로드맵):
+- **R1 풀링 단계 v3** ✅ — pulling-candidates.ts(도메인) + plugin 2액션 + PullingPlanBoard + api. 키 콘텐츠와 동일 패턴(세트 승인). 커밋 6cb2339.
+- **R2 텔레그램 알림** ✅ — nocobase launchd plist에 TELEGRAM_BOT_TOKEN/CHAT_ID 주입(기존 hermes 토큰 재사용)+재시작, 실제 전송 검증(ok=True). 풀링 초안 알림 추가. 커밋 71b30bb.
+- **R3 속도(부분)** ✅ — 218초 원인=6회 순차 claude CLI 콜드 스타트 spawn. claude-cli 유지(결정). step2‖step3 병렬화(~14%). 커밋 eb26d15. DECISIONS "R3".
+- nocobase 재기동(pid 34133)로 R1~R3 라이브. l5-core dist 재빌드 완료.
+
+남은 작업: R4 콘텐츠 제작(제목/썸네일 상세·도입부30초·원고, 기존 자산 thumbnail-plan/intro-writer/script-factory 재활용) → R5 Viewtrap 자동화 → R6 전략패키지→Brief→Slide→렌더 → R7 성과 재학습.
+
+권장: R4 착수 전 founder-ui에서 R1 풀링 단계 + R2 알림을 실제 클릭 검증(런타임 E2E 미실행분).
+
+## R6 전략패키지→Brief→Factory 파이프라인 연결 + 버그수정 (2026-06-09, branch cmo/content-strategy-v3)
+
+- **버그수정 1** ✅ — plugin `generateVideoExecutionBrief`가 `buildVideoExecutionBrief`를 잘못된 시그니처(`{cardData,scriptData,...}`)로 호출하던 것을 정확한 `BuildVideoExecutionBriefInput`(content_card_id/content_type/title/strategy_brief/voice_matched_script/intro_30s)로 수정. `script_draft` 카드+프로젝트 메타에서 `buildStrategyBriefFromCards`(plugin helper)로 CmoVideoStrategyBrief 조립 → buildVideoExecutionBrief → validate → `prepareFactoryHandoff(brief,{id,created_at})`(시그니처도 수정). 응답 `{brief_id,brief,record}`.
+- **버그수정 2** ✅ — UI가 호출하나 핸들러 없던(404) `cmo:sendBriefToFactory` 액션 신설. video_execution_briefs 레코드(brief_id/content_card_id) 로드 → `sendToFactory(record,transport)`. transport는 기존 `_videoFactoryTransport.submitJob` 재사용, 미설정 시 결정론 스텁(상태만 sent). ACL에 sendBriefToFactory 추가.
+- 4계층 모두 dist 패치 반영(`dist/plugin.js` import/ACL/2액션 본문+helper 2개). node --check 통과.
+- 검증: l5-core tsc 0 / l5-core dist 재빌드 / factory-handoff·video-execution-brief jest 30 GREEN / 파이프라인 end-to-end node 검증(validation.valid=true→handoff valid/not_sent→sent) / founder-ui tsc 0 / plugin node --check OK.
+- 외부 factory 실엔드포인트(VIDEO_FACTORY_DIR/submitJob) 미설정 시 transport는 결정론 스텁으로 동작 — 실전송은 followup. factory_result_url은 VIDEO_FACTORY_RESULT_BASE_URL 환경변수 있을 때만 생성.
+
+## R1~R7 라이브 E2E 스모크 통과 (2026-06-09)
+
+API 스모크(`apps/founder-ui/e2e/smoke-r1-r7.mjs`)로 새 프로젝트를 상태머신 끝까지 주행 — **19/19 PASS**.
+흐름: createProject→키콘텐츠(후보3)→[gate]→R1풀링(후보5·확정)→[gate]→R4썸네일(후보3·확정)→[gate]→R4원고→R6 brief생성→R6 factory전송(sent)→[gates]→completed→R7 성과(인사이트7).
+
+스모크로 잡은 실버그 수정(이 커밋):
+- `approveStageGate` 액션 신설: 새 보드 흐름(R1/R4)은 승인 게이트 row를 만들지 않아 key_content_approval 등에서 막힘 → 사장님 권한으로 approved gate 생성+gateApproved 전이. (레거시 chatMessage 게이트 모델 불변)
+- dist `randomUUID` 미정의 → `import_crypto.randomUUID`.
+- R6 sendBriefToFactory: brief를 렌더용 submitJob에 넘겨 실패 → brief 핸드오프(video_execution_briefs 영속=sent)로 분리. 실 factory push는 followup.
+
+UI 버튼(approveStageGate)·런타임 클릭 검증은 다음 단계. dist는 gitignore라 로컬 패치+서버 반영 완료(src만 커밋).
+
+## R1~R7 자동 검증 완료 (2026-06-09)
+
+라이브 서버에서 자동 검증 + 막힌 화면 수정 완료:
+- **API E2E 스모크 19/19 PASS** (`e2e/smoke-r1-r7.mjs`): createProject→키콘텐츠→R1풀링→R4썸네일/원고→R6 brief/factory→completed→R7 성과.
+- **보드 렌더 검증** (`e2e/visual-r1-r7.mjs`, `e2e/check-pulling-render.mjs`): 4개 신규 보드 콘솔 에러 0. PullingPlanBoard 캐시 카드 ~2s 렌더 + 재생성 0회.
+- **founder-ui는 `next start`(프로덕션 빌드)** — 새 보드 반영하려면 `next build` 후 launchd 재기동 필요(이번에 수행). dev 아님 주의.
+
+수정한 실버그:
+- approveStageGate 액션 + UI 버튼: 새 보드 흐름이 승인 게이트 row를 안 만들어 막히던 문제.
+- dist randomUUID → import_crypto.randomUUID.
+- R6 sendBriefToFactory: brief를 렌더용 submitJob에 오용 → brief 핸드오프(sent) 분리.
+- ProductionBoard: script_draft raw JSON 중복 제거(ScriptDraftPanel 전담).
+
+남은 followup: 실 factory push 연결, R5 실 스크래퍼(자격증명/DOM), R7 외부 분석 자동연동, slide/render가 brief 직접 참조.
+커밋: 6cb2339·71b30bb·eb26d15·8e48cfb·6987561·b812402·67ca2a2 (branch cmo/content-strategy-v3).

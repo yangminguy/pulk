@@ -11,7 +11,31 @@ import {
   updateAgentTask,
   createProjectRoadmapEvent,
   deleteAgentTask,
+  createMemoryEntry,
+  fetchApprovedTigerProposals,
+  updateWorkflowImprovementProposalStatus,
+  fetchNativePhaseRuns,
+  createTigerIncident,
+  fetchApprovedTigerIncidents,
+  updateTigerIncident,
 } from "./api/nocobase-client.js";
+import { runClaudeCommand } from "./api/claude-cli.js";
+import { runApprovedBatch, dispatchToNativeOrchestrator } from "@l5/agent-runtime";
+import {
+  decodeTargetRef,
+  getImprovementTarget,
+  type TigerExecutiveRole,
+} from "@l5/core";
+import {
+  runTigerDispatchLoop,
+  type BatchRunResultShape,
+} from "./loops/tiger-dispatch-loop.js";
+import { runTigerWatchLoop } from "./loops/tiger-watch-loop.js";
+import {
+  runTigerRecoveryLoop,
+  type RecoveryDispatchResult,
+} from "./loops/tiger-recovery-loop.js";
+import type { RecoveryIncident } from "@l5/core";
 import { runRepetitionAnalyzer } from "./tasks/repetition-analyzer.js";
 import { runApprovalChecker } from "./tasks/approval-checker.js";
 import { runDailyBriefGenerator } from "./tasks/daily-brief-generator.js";
@@ -21,6 +45,7 @@ import { runTaskDispatcher } from "./tasks/task-dispatcher.js";
 import { runCTOVerificationLoop } from "./tasks/cto-verification-loop.js";
 import { runModelVerify } from "./tasks/model-verify.js";
 import { runSelfLearning } from "./tasks/self-learning.js";
+import { runCmoStrategyWatch } from "./tasks/cmo-strategy-watch.js";
 import { runTaskArchiver } from "./tasks/task-archiver.js";
 import type { DailyApprovalBrief } from "./tasks/approval-checker.js";
 import type { DailyBrief } from "./tasks/daily-brief-generator.js";
@@ -173,6 +198,115 @@ export async function runModelVerifyLive() {
 
 export async function runSelfLearningLive() {
   return runSelfLearning();
+}
+
+export async function runCmoStrategyWatchLive() {
+  // Mirror repetition-analyzer: the card needs a fresh instruction FK, which
+  // createAgentTask provisions when given an instruction_id.
+  return runCmoStrategyWatch({
+    createToolRequest: async (payload) =>
+      createAgentTask({ ...payload, instruction_id: randomUUID() }),
+  });
+}
+
+// 호랑이 일괄 승인분 → repo별 병렬 CTO 실행 + 학습축적. agent-runtime runApprovedBatch 주입.
+// 디스패치(코딩)는 승인분만 처리(승인 전 코딩 금지 게이트 보존 — fetchApprovedTigerProposals).
+const TIGER_EXECUTIVES = new Set(["CEO", "CMO", "CTO", "CFO", "CRO", "CPO", "COO"]);
+function toTigerExecutive(role: string | undefined): TigerExecutiveRole {
+  return role && TIGER_EXECUTIVES.has(role) ? (role as TigerExecutiveRole) : "CTO";
+}
+
+export async function runTigerDispatchLive() {
+  return runTigerDispatchLoop(
+    {},
+    {
+      fetchApproved: async () => {
+        const proposals = await fetchApprovedTigerProposals();
+        return proposals.map((p) => {
+          const targetId = decodeTargetRef(p.source_ref) ?? "";
+          const entry = targetId ? getImprovementTarget(targetId) : undefined;
+          return {
+            proposal_id: p.id,
+            source_ref: p.source_ref,
+            target_id: targetId,
+            executive: toTigerExecutive(entry?.owner),
+          };
+        });
+      },
+      runBatch: async (plan): Promise<BatchRunResultShape> => {
+        const res = await runApprovedBatch(plan);
+        return {
+          group_results: res.group_results.map((g) => ({
+            project_path: g.project_path,
+            card_ids: g.card_ids,
+            status: g.status,
+            reason: g.reason,
+          })),
+          exhausted_agents: res.exhausted_agents.map(String),
+        };
+      },
+      createMemory: (payload) => createMemoryEntry(payload),
+      patchProposal: (patch) =>
+        updateWorkflowImprovementProposalStatus(patch.proposal_id, patch.status),
+      pulkRoot: process.env.PULK_ROOT ?? process.cwd(),
+    },
+  );
+}
+
+// 호랑이 실시간 장애 감시(launchd 1~2분). 승인 대기 작업의 진행상태를 native_phase_runs/
+// agent_tasks에서 읽어 liveness 판정 → 새 장애만 텔레그램 알림 + tiger_incidents 영속화.
+// 코드 변경 없음(감지·알림). 복구(코딩)는 승인 후 tiger-dispatch가 — 승인 게이트 보존.
+export async function runTigerWatchLive() {
+  return runTigerWatchLoop(
+    {},
+    {
+      fetchNativePhaseRuns: () => fetchNativePhaseRuns(),
+      fetchAgentTasks: () => fetchAgentTasks() as unknown as Promise<any[]>,
+      persistIncident: (rec) => createTigerIncident({ ...rec }),
+      runClaude: (cmd, timeoutMs) =>
+        runClaudeCommand(cmd, { timeoutMs, onLog: (l) => console.log("[tiger-watch]", l) }),
+    },
+  );
+}
+
+// 호랑이 실시간 자동복구(launchd 2~5분). 사장님이 승인한(status=approved) tiger_incidents만:
+// CTO 수정(native-orchestrator가 worktree에서 verify_command 재현·검증, 통과해야 merge) →
+// 통과=resolved("고쳤어요"), 실패=재시도, 4회 초과=escalated("막혔어요"). 승인 게이트 보존
+// (fetchApprovedTigerIncidents가 approved만 반환 — 승인 전 코딩 금지).
+export async function runTigerRecoveryLive() {
+  return runTigerRecoveryLoop(
+    {},
+    {
+      fetchApprovedIncidents: async (): Promise<RecoveryIncident[]> => {
+        const rows = await fetchApprovedTigerIncidents();
+        return rows.map((r) => ({
+          id: r.id,
+          status: r.status as RecoveryIncident["status"],
+          attempt_count: r.attempt_count,
+          target_repo: r.target_repo,
+          task_label: r.task_label,
+          task_ref: r.task_ref,
+          incident_type: (r.incident_type as RecoveryIncident["incident_type"]) ?? null,
+          error_summary: r.error_summary,
+          diagnosis: r.diagnosis,
+          proposed_fix: r.proposed_fix,
+          verify_command: r.verify_command,
+        }));
+      },
+      dispatchFix: async (intent): Promise<RecoveryDispatchResult> => {
+        const summary = await dispatchToNativeOrchestrator(intent);
+        return {
+          mergedPhases: summary.mergedPhases,
+          waited: summary.waited,
+          reason:
+            summary.exhaustedAgents.length > 0
+              ? `소진 에이전트: ${summary.exhaustedAgents.map(String).join(",")}`
+              : undefined,
+        };
+      },
+      updateIncident: (id, patch) => updateTigerIncident(id, patch),
+    },
+  );
 }
 
 export async function runTaskArchiverLive() {

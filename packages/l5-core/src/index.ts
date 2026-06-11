@@ -15,6 +15,7 @@ export * from './functions/bpr-phase-manager';
 export * from './functions/bpr';
 export * from './functions/workflow-factory';
 export * from './functions/memory-loop';
+export * from './functions/tiger';
 export * from './functions/memory';
 export * from './functions/content-extract';
 export * from './functions/repetition-detection';
@@ -33,8 +34,10 @@ export * from './functions/delegation'; // tool + loop + verify re-exported from
 export * from './functions/chief-of-staff'; // P1 — founder synthesis deliverable
 export * from './functions/monitor'; // P2 — live agent status derivation
 export * from './functions/cto-control-room'; // P3-3 — control room tree builder
+export * from './functions/cto-harness'; // CTO Harness — ExecutionRun/complexity router/guard/Agent Team contracts (ACR Kernel PRD)
 export * from './functions/video-project';
 export * from './functions/video-room'; // CMO Video Room domain (PRD v1.1)
 export * from './functions/cmo-strategy'; // CMO strategy conversation turn engine
+export * from './functions/cmo-orchestrator'; // CMO AgentSkill registry and orchestrator
 export { createClaudeCLIClient } from './llm/claude-cli-client';
 export type { ClaudeCLIModel, ClaudeCLIClientOptions } from './llm/claude-cli-client';

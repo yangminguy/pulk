@@ -24,6 +24,10 @@
   <dict>
     <key>NODE_ENV</key>
     <string>production</string>
+    <!-- cto.ts loadQuotaState가 읽는 쿼터 트래커 경로. ACR(acr-web)가 같은 경로에 write.
+         양쪽 env가 같아야 쿼터 인지 라우팅이 동작(미설정 시 graceful=전 tier 가용). -->
+    <key>ACR_QUOTA_TRACKER_PATH</key>
+    <string>/Users/wonminyang/l5-workspace/acr-quota-tracker.json</string>
   </dict>
 </dict>
 </plist>

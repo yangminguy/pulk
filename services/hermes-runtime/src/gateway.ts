@@ -8,6 +8,7 @@
 //   cto-weekly-review     — BPR phase transition check (Monday 10:00)
 //   model-verify          — model roster deprecation check (08:55)
 //   self-learning         — changelog diff + catalog update (09:00)
+//   cmo-strategy-watch    — biz Second Brain PT-change watcher (09:05)
 
 import {
   runRepetitionAnalyzerLive,
@@ -18,8 +19,13 @@ import {
   runCTOVerificationLoopLive,
   runModelVerifyLive,
   runSelfLearningLive,
+  runCmoStrategyWatchLive,
   runTaskArchiverLive,
+  runTigerDispatchLive,
+  runTigerWatchLive,
+  runTigerRecoveryLive,
 } from "./runner.js";
+import { runNightBPRLoop } from "./loops/night-bpr-loop.js";
 
 const TASK_RUNNERS: Record<string, () => Promise<unknown>> = {
   "repetition-analyzer": runRepetitionAnalyzerLive,
@@ -30,7 +36,16 @@ const TASK_RUNNERS: Record<string, () => Promise<unknown>> = {
   "cto-verification-loop": runCTOVerificationLoopLive,
   "model-verify": runModelVerifyLive,
   "self-learning": runSelfLearningLive,
+  "cmo-strategy-watch": runCmoStrategyWatchLive,
   "task-archiver": runTaskArchiverLive,
+  // 호랑이 야간 분석(수집분 → 개선 카드 발행, 코드 변경 없음 — 승인 게이트 이전).
+  "night-bpr-loop": () => runNightBPRLoop({}),
+  // 호랑이 디스패치(일괄 승인분 → repo별 병렬 실행 + 학습축적). 승인분만 처리.
+  "tiger-dispatch": runTigerDispatchLive,
+  // 호랑이 실시간 감시(승인 대기 작업 liveness probe → 장애 감지·알림). 1~2분 주기.
+  "tiger-watch": runTigerWatchLive,
+  // 호랑이 실시간 자동복구(승인된 장애 → CTO 수정 + 호랑이 검증 + 4회 루프/에스컬). 2~5분 주기.
+  "tiger-recovery": runTigerRecoveryLive,
 };
 
 

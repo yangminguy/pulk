@@ -14,7 +14,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import type { LLMClient } from '../functions/ceo-orchestration/types';
 
-export type ClaudeCLIModel = 'opus' | 'haiku';
+export type ClaudeCLIModel = 'opus' | 'sonnet' | 'haiku';
 
 export interface ClaudeCLIClientOptions {
   model: ClaudeCLIModel;
@@ -24,6 +24,7 @@ export interface ClaudeCLIClientOptions {
 
 const MODEL_ID_MAP: Record<ClaudeCLIModel, string> = {
   opus: 'claude-opus-4-7',
+  sonnet: 'claude-sonnet-4-6',
   haiku: 'claude-haiku-4-5',
 };
 

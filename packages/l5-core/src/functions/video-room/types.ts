@@ -429,3 +429,602 @@ export interface VoiceRecording {
   duration_seconds?: number;
   quality_status: 'unchecked' | 'pass' | 'needs_rerecording';
 }
+
+// ── CMO Content Strategy v3 — Key/Pulling strategy model ──────────────────
+// Appended per docs/prd/cmo-content-strategy-v3.md.
+
+export interface ProductBrief {
+  product_name: string;
+  category: string;
+  target_audience: string;
+  core_offer: string;
+  business_goal: BusinessGoal;
+}
+
+export interface KeyContentEntryDecision {
+  selected_entry_stage: 'phenomenon' | 'desire' | 'plan';
+  rationale: string;
+}
+
+export interface KeyContentSearchKeywordSet {
+  problem_keywords: string[];
+  item_name_keywords: string[];
+  category_name_keywords: string[];
+  item_feature_benefit_keywords: string[];
+  category_feature_benefit_keywords: string[];
+}
+
+export interface KeyContentViewtrapValidation {
+  validated_keywords: string[];
+  candidate_titles: string[];
+  performance_score: 'normal' | 'good' | 'great';
+  contribution_score: 'normal' | 'good' | 'great';
+  growth_status: 'growing' | 'stalled' | 'unknown';
+  channel_value_risk: boolean;
+  person_value_risk: boolean;
+  verdict: 'use' | 'watch' | 'reject';
+}
+
+export interface SalesLogicMap {
+  problem_statement: string;
+  category_feature_benefit: string;
+  category_need: string;
+  item_feature_benefit: string;
+  item_solution_statement: string;
+  cta: string;
+}
+
+export interface ApprovedKeyContentTopic {
+  title: string;
+  thumbnail_promise: string;
+  entry_stage: 'phenomenon' | 'desire' | 'plan';
+  sales_logic: SalesLogicMap;
+  viewtrap_validation: KeyContentViewtrapValidation;
+  intro_direction: string;
+  body_structure: string[];
+  cta: string;
+}
+
+export interface PullingTopicCandidate {
+  title: string;
+  covered_stages: ConsumerStageEn[];
+  topic_axis: string;
+  key_content_connection: string;
+}
+
+export interface ContentTypePortfolio {
+  evergreen_candidates: PullingTopicCandidate[];
+  daily_candidates: PullingTopicCandidate[];
+  seasonal_candidates: PullingTopicCandidate[];
+  hero_candidates: PullingTopicCandidate[];
+}
+
+export interface HotVideoStructureTemplate {
+  original_title: string;
+  original_thumbnail_copy?: string;
+  structure_pattern: string;
+  emotional_trigger:
+    | 'worry'
+    | 'loss'
+    | 'desire'
+    | 'comparison'
+    | 'mistake'
+    | 'prohibition'
+    | 'checklist'
+    | 'twist';
+  adapted_title: string;
+  adapted_thumbnail_promise: string;
+  connected_sales_logic: string;
+}
+
+export interface ExposureProbabilityCandidate {
+  source_title: string;
+  exposure_probability: 'normal' | 'good' | 'great';
+  adapted_topic: string;
+  recommended_content_type: 'daily' | 'seasonal' | 'evergreen' | 'hero';
+  reason: string;
+}
+
+export interface LongtailEvergreenCandidate {
+  source_title: string;
+  published_age: 'old';
+  exposure_probability: 'good' | 'great';
+  evergreen_reason: string;
+  adapted_topic: string;
+  must_use: true;
+}
+
+export interface PullingTopicScore {
+  performance_score: number;
+  contribution_score: number;
+  exposure_probability_score: number;
+  growth_score: number;
+  evergreen_score: number;
+  reproducibility_score: number;
+  key_connection_score: number;
+  sales_logic_connection_score: number;
+  home_selection_score: number;
+  total_score: number;
+  verdict: 'use' | 'watch' | 'reject';
+}
+
+export interface ConsumerJourneyCoverageReport {
+  phenomenon_covered: boolean;
+  desire_covered: boolean;
+  plan_covered: boolean;
+  action_connected: boolean;
+  reward_promised: boolean;
+  natural_flow_score: number;
+  notes: string[];
+}
+
+export interface ApprovedPullingTopic {
+  title: string;
+  thumbnail_promise: string;
+  covered_stages: ConsumerStageEn[];
+  content_type: 'daily' | 'seasonal' | 'evergreen' | 'hero';
+  score: PullingTopicScore;
+  key_content_connection: string;
+}
+
+export interface ApprovedPullingContentSet {
+  pulling_topics: ApprovedPullingTopic[];
+  key_content_topic: ApprovedKeyContentTopic;
+  journey_coverage_report: ConsumerJourneyCoverageReport;
+  set_logic: string;
+  approval_status: 'approved';
+}
+
+export interface ApprovedContentStrategyPackage {
+  product_brief: ProductBrief;
+  key_content_strategy: ApprovedKeyContentTopic;
+  pulling_content_set: ApprovedPullingContentSet;
+  content_type_portfolio: ContentTypePortfolio;
+  title_thumbnail_direction: string;
+  script_direction: string;
+  cta_strategy: string;
+}
+
+// ── CMO / Script Room v3.1 — Contract Types ───────────────────────────────
+// Appended per PRD v3.1 + CMO_TO_FACTORY_CONTRACT.md (2026-06-06).
+// All types below are append-only; nothing above is modified.
+
+// ── ConsumerStage English mapping ──────────────────────────────────────────
+
+/** English enum for brief contracts (Factory uses en values). */
+export type ConsumerStageEn = 'phenomenon' | 'desire' | 'plan' | 'action' | 'reward';
+
+/** Maps Korean ConsumerStage values to the English equivalents used in briefs. */
+export const CONSUMER_STAGE_EN: Record<ConsumerStage, ConsumerStageEn> = {
+  '현상': 'phenomenon',
+  '욕구': 'desire',
+  '계획': 'plan',
+  '행동': 'action',
+  '보상': 'reward',
+} as const;
+
+// ── Research Packs (PRD §3) ────────────────────────────────────────────────
+
+/** PRD §3.1 Market Research Pack */
+export interface MarketResearchPack {
+  topic: string;
+  why_this_topic_matters: string;
+  market_context: string[];
+  competitor_content_patterns: string[];
+  unanswered_questions: string[];
+  common_misunderstandings: string[];
+  example_materials: string[];
+  content_opportunities: string[];
+}
+
+/** PRD §3.2 Voice of Customer Pack */
+export interface VoiceOfCustomerPack {
+  repeated_phrases: string[];
+  pain_expressions: string[];
+  desire_expressions: string[];
+  objection_expressions: string[];
+  realistic_situations: string[];
+  must_use_language: string[];
+  avoid_language: string[];
+}
+
+/** PRD §3.3 Claim Evidence Report */
+export interface ClaimEvidenceReport {
+  safe_claims: string[];
+  risky_claims: string[];
+  unverified_claims: string[];
+  safe_wording: string[];
+  proof_points: string[];
+  claims_to_avoid: string[];
+}
+
+/** PRD §3.4 Audience Fit Report */
+export interface AudienceFitReport {
+  overall_score: number;
+  pain_fit: number;
+  desire_fit: number;
+  language_fit: number;
+  curiosity_fit: number;
+  trust_fit: number;
+  action_fit: number;
+  what_target_wants_to_hear: string[];
+  what_target_does_not_want_to_hear: string[];
+  must_answer_questions: string[];
+  recommended_angle: string;
+}
+
+/** PRD §3.5 Script Material Pack */
+export interface ScriptMaterialPack {
+  topic: string;
+  target_viewer: string;
+  core_message_candidates: string[];
+  viewer_language: string[];
+  pain_scenes: string[];
+  desire_scenes: string[];
+  proof_points: string[];
+  examples: string[];
+  counterarguments: string[];
+  metaphors: string[];
+  story_candidates: string[];
+  must_use_lines: string[];
+  must_avoid_lines: string[];
+  safe_claims: string[];
+  cta_materials: string[];
+}
+
+// ── CMO Video Strategy Brief (PRD §4) ────────────────────────────────────
+
+/** A single logic block within the CMO Video Strategy Brief. */
+export interface LogicBlock {
+  block_id: string;
+  role: string;
+  covered_stages: ConsumerStageEn[];
+  main_claim: string;
+  supporting_materials: string[];
+  viewer_emotion: string;
+  transition_to_next_block: string;
+  visual_intent_hint?: string;
+}
+
+/** PRD §4 CMO Video Strategy Brief */
+export interface CmoVideoStrategyBrief {
+  content_id: string;
+  content_type: 'key' | 'pulling';
+  topic: string;
+  channel_context: {
+    current_position: string;
+    content_pillar: string;
+    role_in_content_set: string;
+    bridge_from_previous_content: string;
+    bridge_to_next_content: string;
+  };
+  target_viewer: {
+    who: string;
+    current_belief: string;
+    hidden_desire: string;
+    main_pain: string;
+    objection: string;
+    language_style: string[];
+  };
+  consumer_desire_coverage: {
+    covered_stages: ConsumerStageEn[];
+    primary_stage: ConsumerStageEn;
+    stage_explanation: string;
+  };
+  video_promise: string;
+  core_message: string;
+  strategic_angle: string;
+  logic_blocks: LogicBlock[];
+  intro_direction: string;
+  thumbnail_direction: string;
+  script_tone_direction: string;
+  cta: string;
+  risk_notes: string[];
+}
+
+// ── Content Set Validation (PRD §8) ───────────────────────────────────────
+
+/** Single content entry within the validation matrix. */
+export interface ContentSetEntry {
+  content_id: string;
+  content_type: 'key' | 'pulling';
+  title: string;
+  covered_stages: ConsumerStageEn[];
+  primary_stage: ConsumerStageEn;
+  bridge_to_key: string;
+}
+
+/** PRD §8 Content Set Validation Matrix */
+export interface ContentSetValidation {
+  contents: ContentSetEntry[];
+  stage_coverage: Record<ConsumerStageEn, string[]>;
+  sequence_logic: {
+    is_sequential: boolean;
+    explanation: string;
+  };
+  missing_stages: ConsumerStageEn[];
+  overlap_risk: string[];
+  revision_needed: boolean;
+}
+
+// ── Script Room types (PRD §5) ────────────────────────────────────────────
+
+/** PRD §5.1 Intro 30s output */
+export interface Intro30s {
+  first_sentence: string;
+  hook_type: string;
+  tension: string;
+  viewer_promise: string;
+  script: string;
+  used_materials: string[];
+  used_script_insights: string[];
+  why_it_works: string;
+}
+
+/** PRD §5.2 Logic Block Writer output (one block's draft) */
+export interface ScriptPart {
+  block_id: string;
+  draft: string;
+  used_materials: string[];
+  used_voc_lines: string[];
+  used_claims: string[];
+  transition_out: string;
+  risk_notes: string[];
+}
+
+/** PRD §5.3 Script Integrator output */
+export interface IntegratedScript {
+  full_script: string;
+  section_map: string[];
+  removed_repetition: string[];
+  added_transitions: string[];
+  strategy_alignment_notes: string[];
+}
+
+/** PRD §5.4 Founder Voice Agent output */
+export interface VoiceMatchedScript {
+  full_script: string;
+  voice_profile_used: Record<string, unknown>;
+  changed_phrases: string[];
+  preserved_logic: boolean;
+}
+
+/** PRD §6 CMO Script QA Report */
+export interface ScriptQaReport {
+  strategy_fit_score: number;
+  audience_fit_score: number;
+  voice_fit_score: number;
+  sales_logic_score: number;
+  fact_safety_score: number;
+  desire_stage_coverage: Record<ConsumerStageEn, boolean>;
+  logic_block_alignment: string[];
+  missing_parts: string[];
+  revision_requests: string[];
+  overall_pass: boolean;
+}
+
+// ── Thumbnail Plan (PRD §12 / agent 8) ───────────────────────────────────
+
+/** Thumbnail candidate plan produced by Thumbnail Strategy Agent. */
+export interface ThumbnailPlan {
+  content_id: string;
+  thumbnail_direction: string;
+  candidates: {
+    candidate_id: string;
+    headline_text: string;
+    hook_type: ThumbnailHookType;
+    visual_concept: string;
+    used_insight_ids: string[];
+  }[];
+  selected_candidate_id?: string;
+  approval_status: ApprovalStatus;
+}
+
+// ── VideoExecutionBrief (CMO_TO_FACTORY_CONTRACT.md §1–7) ─────────────────
+
+/** A single logic block as it appears in the VideoExecutionBrief.
+ *  scene_type / best_medium / duration are intentionally absent. */
+export interface BriefLogicBlock {
+  block_id: string;
+  role: string;
+  speaker_text: string;
+  communication_goal: string;
+  viewer_reaction_target: string;
+  required_evidence?: string[];
+  visual_intent_hint?: string;
+}
+
+/** Preferred asset type for asset requests. */
+export type PreferredAssetType =
+  | 'face_video'
+  | 'screen_work'
+  | 'reference_image'
+  | 'source_screenshot'
+  | 'reference_video';
+
+/** VideoExecutionBrief — the single contract document CMO hands to AI Slide Factory.
+ *  schema_version is fixed to 'cmo_to_factory_v2'.
+ *  Forbidden fields (scene_type, best_medium, duration, timeline, scenes) are absent by design. */
+export interface VideoExecutionBrief {
+  schema_version: 'cmo_to_factory_v2';
+  content_card_id: string;
+  content_type: 'key' | 'pulling';
+  title: string;
+  target_viewer: {
+    who: string;
+    knowledge_level: string;
+    pain: string;
+    desired_reaction: string;
+  };
+  strategy: {
+    core_message: string;
+    covered_stages: ConsumerStageEn[];
+    role_in_content_set: string;
+    bridge_to_key_content?: string;
+  };
+  script: {
+    full_script: string;
+    intro_30s: string;
+    logic_blocks: BriefLogicBlock[];
+  };
+  source_materials: {
+    market_research_pack_id?: string;
+    voc_pack_id?: string;
+    claim_evidence_report_id?: string;
+    script_material_pack_id?: string;
+    used_insights: {
+      thumbnail?: string[];
+      script?: string[];
+      founder_voice?: string[];
+    };
+  };
+  asset_requests?: {
+    need: string;
+    preferred_asset_type: PreferredAssetType;
+    reason: string;
+  }[];
+  constraints: {
+    tone: string;
+    avoid?: string[];
+    format: 'youtube_16_9' | 'shorts_9_16';
+  };
+}
+
+// ── Content Card status enums (PRD §11 / agent 18 workflow) ───────────────
+
+/** Research phase status for a Content Card. */
+export enum ResearchStatus {
+  NotStarted = 'not_started',
+  InProgress = 'in_progress',
+  Completed = 'completed',
+  Failed = 'failed',
+}
+
+/** Strategy brief phase status for a Content Card. */
+export enum StrategyBriefStatus {
+  NotStarted = 'not_started',
+  Drafting = 'drafting',
+  PendingApproval = 'pending_approval',
+  Approved = 'approved',
+  NeedsRevision = 'needs_revision',
+}
+
+/** Script phase status for a Content Card. */
+export enum ScriptStatus {
+  NotStarted = 'not_started',
+  Writing = 'writing',
+  QaPending = 'qa_pending',
+  QaPassed = 'qa_passed',
+  QaFailed = 'qa_failed',
+  PendingApproval = 'pending_approval',
+  Approved = 'approved',
+}
+
+/** Video generation phase status for a Content Card. */
+export enum VideoGenStatus {
+  NotStarted = 'not_started',
+  BriefReady = 'brief_ready',
+  SentToFactory = 'sent_to_factory',
+  Rendering = 'rendering',
+  Completed = 'completed',
+  Failed = 'failed',
+}
+
+/** CMO Content Card — tracks one content item through the full v3.1 workflow.
+ *  Reuses ConsumerStage (Korean) and ApprovalStatus from existing types. */
+export interface CmoContentCard {
+  id: string;
+  video_project_id: string;
+  content_type: 'key' | 'pulling';
+  title: string;
+  covered_stages: ConsumerStage[];
+  primary_stage: ConsumerStage;
+  research_status: ResearchStatus;
+  strategy_brief_status: StrategyBriefStatus;
+  script_status: ScriptStatus;
+  video_gen_status: VideoGenStatus;
+  approval_status: ApprovalStatus;
+  video_execution_brief_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Revision Router (PRD §16.15) ──────────────────────────────────────────
+
+/** Agent targets that the Revision Router can send QA failures back to. */
+export enum RevisionTarget {
+  MarketResearchAgent = 'market_research_agent',
+  VocResearchAgent = 'voc_research_agent',
+  ClaimVerificationAgent = 'claim_verification_agent',
+  AudienceFitValidator = 'audience_fit_validator',
+  ScriptMaterialPackBuilder = 'script_material_pack_builder',
+  CmoStrategyAgent = 'cmo_strategy_agent',
+  ThumbnailStrategyAgent = 'thumbnail_strategy_agent',
+  IntroWriter = 'intro_writer',
+  LogicBlockWriterA = 'logic_block_writer_a',
+  LogicBlockWriterB = 'logic_block_writer_b',
+  LogicBlockWriterC = 'logic_block_writer_c',
+  ScriptIntegrator = 'script_integrator',
+  FounderVoiceAgent = 'founder_voice_agent',
+  CmoScriptQaAgent = 'cmo_script_qa_agent',
+  ContentSetValidator = 'content_set_validator',
+  VideoExecutionBriefBuilder = 'video_execution_brief_builder',
+}
+
+// ── PRD v3 §3 키 콘텐츠 산출물 인터페이스 (Step 1~5) ──────────────────────────
+
+export interface FeatureBenefit {
+  item: string;
+  description: string;
+}
+
+export interface ProblemCandidate {
+  id: string;
+  problem: string;
+  derived_from: string;
+}
+
+export interface FunnelStageItem {
+  id: string;
+  content: string;
+}
+
+/** Step 1. 내 아이템 일반화 */
+export interface ItemGeneralization {
+  item_name: string;
+  direct_category: string;
+  parent_category: string;
+  customer_problem_category: string;
+  reason: string;
+}
+
+/** Step 2. 내 아이템의 기능/특징/장점 */
+export interface ItemFeatureBenefitMap {
+  features: FeatureBenefit[];
+  characteristics: FeatureBenefit[];
+  benefits: FeatureBenefit[];
+}
+
+/** Step 3. 카테고리의 기능/특징/장점 */
+export interface CategoryFeatureBenefitMap {
+  category_name: string;
+  features: FeatureBenefit[];
+  characteristics: FeatureBenefit[];
+  benefits: FeatureBenefit[];
+}
+
+/** Step 4. 기능/특징/장점이 해결하는 문제 도출 */
+export interface ProblemDerivationMap {
+  item_problem_candidates: ProblemCandidate[];
+  category_problem_candidates: ProblemCandidate[];
+  selected_problem_ids: string[];
+}
+
+/** Step 5. 현상/욕구/계획/행동/보상 퍼널 구성 */
+export interface FunnelPlanningMap {
+  phenomenon: FunnelStageItem[];
+  desire: FunnelStageItem[];
+  plan: FunnelStageItem[];
+  action: FunnelStageItem[];
+  reward: FunnelStageItem[];
+}

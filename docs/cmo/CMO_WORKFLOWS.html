@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMO 4대 워크플로우 — 키콘텐츠 · 풀링 · 콘텐츠제작 · 영상제작</title>
+<style>
+  :root{
+    --det:#0ea5e9; --det-bg:#e0f2fe;          /* 결정론 */
+    --llm:#7c3aed; --llm-bg:#ede9fe;          /* LLM 추론 */
+    --man:#d97706; --man-bg:#fef3c7;          /* 수동/심 */
+    --left:#16a34a; --left-bg:#dcfce7;        /* 잔여 */
+    --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f6f8fb; --card:#fff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",Segoe UI,sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.5;padding:30px 26px 80px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1340px;margin:0 auto}
+  h1{font-size:25px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px}
+  .meta{color:var(--sub);font-size:13px;margin-bottom:18px}
+  .meta b{color:var(--ink)}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);
+    border-radius:11px;padding:11px 16px;margin-bottom:24px;font-size:12.5px;align-items:center}
+  .legend .lg{display:flex;align-items:center;gap:7px;font-weight:600}
+  .sw{width:13px;height:13px;border-radius:4px}
+  .s-det{background:var(--det)} .s-llm{background:var(--llm)} .s-man{background:var(--man)} .s-left{background:var(--left)}
+
+  .cols{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+  @media(max-width:1100px){.cols{grid-template-columns:1fr}}
+
+  .wf{background:var(--card);border:1px solid var(--line);border-radius:15px;overflow:hidden;display:flex;flex-direction:column}
+  .wf-head{padding:14px 18px;color:#fff;position:relative}
+  .wf1 .wf-head{background:linear-gradient(120deg,#0369a1,#0ea5e9)}
+  .wf2 .wf-head{background:linear-gradient(120deg,#6d28d9,#8b5cf6)}
+  .wf3 .wf-head{background:linear-gradient(120deg,#b45309,#f59e0b)}
+  .wf4 .wf-head{background:linear-gradient(120deg,#15803d,#22c55e)}
+  .wf-head .n{font-size:11px;font-weight:700;opacity:.85;letter-spacing:1px;text-transform:uppercase}
+  .wf-head h2{font-size:18px;font-weight:800;letter-spacing:-.3px;margin:2px 0 3px}
+  .wf-head .sub{font-size:11.5px;opacity:.92;font-family:ui-monospace,Menlo,monospace}
+  .wf-head .out{margin-top:7px;font-size:12px;background:rgba(255,255,255,.18);
+    padding:4px 9px;border-radius:7px;display:inline-block;font-weight:600}
+
+  .steps{padding:13px 16px 16px;display:flex;flex-direction:column;gap:0;flex:1}
+  .step{position:relative;padding:8px 0 8px 40px;border-left:2px solid var(--line);margin-left:13px}
+  .step:last-child{border-left-color:transparent}
+  .step .dot{position:absolute;left:-9px;top:9px;width:18px;height:18px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+  .d-det{background:var(--det)} .d-llm{background:var(--llm)} .d-man{background:var(--man)} .d-left{background:var(--left)}
+  .step .body{margin-top:-2px}
+  .step .t{font-weight:700;font-size:13px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .step .fn{font-size:10.5px;color:var(--sub);font-family:ui-monospace,Menlo,monospace;background:#f1f5f9;padding:1px 6px;border-radius:5px}
+  .step .d{font-size:11.5px;color:var(--sub);margin-top:3px}
+  .badge{font-size:9px;font-weight:800;padding:1px 6px;border-radius:9px;color:#fff;letter-spacing:.3px}
+  .b-det{background:var(--det)} .b-llm{background:var(--llm)} .b-man{background:var(--man)} .b-left{background:var(--left)}
+
+  .gate{margin:9px 0 2px 13px;padding:7px 12px;background:#fffbeb;border:1px dashed var(--man);
+    border-radius:8px;font-size:11.5px;color:#92400e;font-weight:600}
+  .handoff{margin:6px 16px 14px;padding:9px 13px;border-radius:9px;font-size:12px;font-weight:600;
+    display:flex;align-items:center;gap:8px}
+  .handoff.to2{background:var(--llm-bg);color:#5b21b6}
+  .handoff.to3{background:var(--man-bg);color:#92400e}
+  .handoff.to4{background:var(--left-bg);color:#14532d}
+
+  .foot{margin-top:30px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--sub)}
+  .foot b{color:var(--ink)}
+  .chain{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:24px 0;
+    font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center}
+  .chain .box{padding:7px 13px;border-radius:9px;font-weight:700;font-size:12.5px}
+  .chain .c1{background:var(--det-bg);color:#075985} .chain .c2{background:var(--llm-bg);color:#5b21b6}
+  .chain .c3{background:var(--man-bg);color:#92400e} .chain .c4{background:var(--left-bg);color:#14532d}
+  .chain .ar{color:var(--sub);font-size:17px;font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>🎬 CMO 4대 워크플로우 — 실제 코드 기준 전체 스텝</h1>
+  <div class="meta">
+    L5 Business OS · 트랙 B · 기준 <b>2026-06-10</b> · 정본 = <b>packages/l5-core/src/functions/video-room/</b> ·
+    LLM = Claude CLI(haiku) 주입(실패 시 결정론 폴백) · 모든 스텝은 buildXxx 검증(throw 시 재시도)
+  </div>
+
+  <div class="legend">
+    <span class="lg"><span class="sw s-det"></span>결정론 (코드 계산, LLM 불필요)</span>
+    <span class="lg"><span class="sw s-llm"></span>LLM 추론 (이전 스텝 산출물 입력)</span>
+    <span class="lg"><span class="sw s-man"></span>수동 / 심 (사장님 입력 · 어댑터만)</span>
+    <span class="lg"><span class="sw s-left"></span>실 외부연동 잔여</span>
+  </div>
+
+  <!-- 전체 체인 -->
+  <div class="chain">
+    <span class="box c1">①&nbsp;키 콘텐츠 기획</span>
+    <span class="ar">→</span>
+    <span class="box c2">②&nbsp;풀링 콘텐츠 기획</span>
+    <span class="ar">→</span>
+    <span class="box c3">③&nbsp;콘텐츠 제작</span>
+    <span class="ar">→</span>
+    <span class="box c4">④&nbsp;영상 제작</span>
+  </div>
+
+  <div class="cols">
+
+    <!-- ============ WF1 키 콘텐츠 ============ -->
+    <div class="wf wf1">
+      <div class="wf-head">
+        <div class="n">Workflow ① · 라이브 검증</div>
+        <h2>키 콘텐츠 기획</h2>
+        <div class="sub">key-content-draft.ts · runKeyContentWorkflow + key-content-candidates.ts</div>
+        <div class="out">입력 = 상품·타깃·목표 + 고객 핵심 문제 + 핵심 제안 (1회)</div>
+      </div>
+      <div class="steps">
+        <div class="step"><span class="dot d-det">1</span><div class="body">
+          <div class="t">일반화 <span class="fn">buildItemGeneralization</span><span class="badge b-det">결정론</span></div>
+          <div class="d">상품을 "고객 문제 카테고리"로 일반화. 이후 모든 스텝의 뿌리.</div></div></div>
+        <div class="step"><span class="dot d-llm">2</span><div class="body">
+          <div class="t">아이템 기능·특징·장점 <span class="fn">buildItemFeatureBenefitMap</span><span class="badge b-llm">LLM</span></div>
+          <div class="d">내 상품의 기능/특징/장점(F·B·B) 맵.</div></div></div>
+        <div class="step"><span class="dot d-llm">3</span><div class="body">
+          <div class="t">카테고리 기능·특징·장점 <span class="fn">buildCategoryFeatureBenefitMap</span><span class="badge b-llm">LLM</span></div>
+          <div class="d">Step1 일반화 + Step2 입력 → 카테고리 전체의 F·B·B. (Step2∥Step3 병렬, R3)</div></div></div>
+        <div class="step"><span class="dot d-llm">4</span><div class="body">
+          <div class="t">실제 사용자 문제 도출 <span class="fn">deriveProblemMap</span><span class="badge b-llm">LLM</span></div>
+          <div class="d">아이템+카테고리 F·B·B → 시청자가 실제 겪는 문제 후보. 사장님 입력 문제가 출발점.</div></div></div>
+        <div class="step"><span class="dot d-llm">5</span><div class="body">
+          <div class="t">퍼널 기획 <span class="fn">buildFunnelPlanningMap</span><span class="badge b-llm">LLM</span></div>
+          <div class="d">문제 → 인지·관심·욕구·행동 퍼널 단계 매핑.</div></div></div>
+        <div class="step"><span class="dot d-llm">6</span><div class="body">
+          <div class="t">진입 단계 결정 <span class="fn">decideKeyContentEntryStage</span><span class="badge b-llm">LLM</span></div>
+          <div class="d">퍼널 중 이 키 콘텐츠가 진입할 단계 + 근거(rationale).</div></div></div>
+        <div class="step"><span class="dot d-det">7</span><div class="body">
+          <div class="t">검색 키워드(검색축) <span class="fn">generateSearchKeywords</span><span class="badge b-det">결정론</span></div>
+          <div class="d">문제·기능 키워드 → Viewtrap 검색축 생성.</div></div></div>
+        <div class="step"><span class="dot d-man">8</span><div class="body">
+          <div class="t">Viewtrap 검증 <span class="fn">buildViewtrapValidation</span><span class="badge b-man">수동</span></div>
+          <div class="d">검색축으로 실제 수요 검증. 현재 사장님 수동 입력(R5 자동화는 구조적 한계).</div></div></div>
+        <div class="step"><span class="dot d-llm">10</span><div class="body">
+          <div class="t">판매 논리 <span class="fn">buildSalesLogicMap</span><span class="badge b-llm">LLM</span></div>
+          <div class="d">problem_statement + 해결 약속 + CTA. (Step1~7,10 = 8 progress)</div></div></div>
+        <div class="step"><span class="dot d-llm">★</span><div class="body">
+          <div class="t">주제 후보 3개 생성 <span class="fn">generateKeyContentCandidates</span><span class="badge b-llm">LLM</span></div>
+          <div class="d">서로 다른 제목 3개 + 썸네일 약속 + <b>선정이유 4종</b>: viewtrap · feature_benefit · customer_problem · funnel_application.</div></div></div>
+      </div>
+      <div class="gate">🔒 게이트: HTML 보고서 새창 → 사장님이 3개 중 1개 선택 → finalizeKeyContentChoice (ApprovedKeyContentTopic)</div>
+      <div class="handoff to2">↓ 확정된 키 토픽 1개 → 풀링 워크플로우 입력</div>
+    </div>
+
+    <!-- ============ WF2 풀링 ============ -->
+    <div class="wf wf2">
+      <div class="wf-head">
+        <div class="n">Workflow ② · 라이브 검증 (R1)</div>
+        <h2>풀링 콘텐츠 기획</h2>
+        <div class="sub">pulling-content-planning.ts (Step 0~12) + pulling-candidates.ts</div>
+        <div class="out">입력 = 확정 키 토픽 1개 → 끌어오는 풀링 주제 N개(기본 5)</div>
+      </div>
+      <div class="steps">
+        <div class="step"><span class="dot d-det">0</span><div class="body">
+          <div class="t">키 판매논리 로드 <span class="fn">loadKeyContentSalesLogic</span><span class="badge b-det">결정론</span></div>
+          <div class="d">키 콘텐츠 Step10 판매논리를 풀링 출발점으로.</div></div></div>
+        <div class="step"><span class="dot d-det">1</span><div class="body">
+          <div class="t">키 볼 준비된 시청자 정의 <span class="fn">buildKeyReadyAudience</span><span class="badge b-det">결정론</span></div></div></div>
+        <div class="step"><span class="dot d-llm">2</span><div class="body">
+          <div class="t">논리적 확장 <span class="fn">buildLogicalExpansionMap</span><span class="badge b-llm">LLM</span></div>
+          <div class="d">키 주제에서 논리적으로 뻗어나갈 주변 주제.</div></div></div>
+        <div class="step"><span class="dot d-llm">3</span><div class="body">
+          <div class="t">풀링 문제 축 <span class="fn">buildProblemAxisMap</span><span class="badge b-llm">LLM</span></div>
+          <div class="d">분류 도구(고정 단계 아님).</div></div></div>
+        <div class="step"><span class="dot d-llm">4</span><div class="body">
+          <div class="t">콘텐츠 유형 포트폴리오 <span class="fn">buildContentTypePortfolio</span><span class="badge b-llm">LLM</span></div></div></div>
+        <div class="step"><span class="dot d-man">5</span><div class="body">
+          <div class="t">풀링 Viewtrap 검증 <span class="fn">buildPullingViewtrapValidation</span><span class="badge b-man">수동</span></div>
+          <div class="d">키 Step8과 같은 판단 모델.</div></div></div>
+        <div class="step"><span class="dot d-det">6·7</span><div class="body">
+          <div class="t">핫비디오 구조 · 노출확률 <span class="fn">buildHotVideoStructureTemplate / buildExposureProbabilityCandidate</span><span class="badge b-det">결정론</span></div>
+          <div class="d">viewtrap-tools에서 재사용.</div></div></div>
+        <div class="step"><span class="dot d-man">8</span><div class="body">
+          <div class="t">롱테일 에버그린 (노다지) <span class="fn">buildLongtailEvergreenCandidate</span><span class="badge b-man">강한규칙</span></div>
+          <div class="d">must_use 롱테일은 <b>반드시</b> 최종 세트에 포함(미포함 시 throw).</div></div></div>
+        <div class="step"><span class="dot d-det">9</span><div class="body">
+          <div class="t">풀링 주제 스코어 <span class="fn">scorePullingTopic</span><span class="badge b-det">결정론</span></div></div></div>
+        <div class="step"><span class="dot d-det">10</span><div class="body">
+          <div class="t">키 연결 문장 강제 <span class="fn">buildKeyConnectionSentence</span><span class="badge b-det">결정론</span></div>
+          <div class="d">각 풀링 주제가 키로 어떻게 연결되는지 1문장(비면 throw).</div></div></div>
+        <div class="step"><span class="dot d-det">11</span><div class="body">
+          <div class="t">소비자 행동 5단계 커버리지 <span class="fn">assessConsumerJourneyCoverage</span><span class="badge b-det">결정론</span></div>
+          <div class="d">세트가 소비자 여정 전체를 자연스럽게 설명(누락 단계 시 throw).</div></div></div>
+        <div class="step"><span class="dot d-llm">★</span><div class="body">
+          <div class="t">풀링 후보 N개 생성 <span class="fn">generatePullingCandidates</span><span class="badge b-llm">LLM</span></div>
+          <div class="d">제목 + <b>선정이유 4종</b>: consumer_stage · bridge_to_key · search_demand · problem_addressed.</div></div></div>
+        <div class="step"><span class="dot d-det">12</span><div class="body">
+          <div class="t">세트 조립 <span class="fn">assembleApprovedPullingContentSet</span><span class="badge b-det">결정론</span></div>
+          <div class="d">Step8 노다지 + Step11 커버리지 강한 규칙 재검증.</div></div></div>
+      </div>
+      <div class="gate">🔒 게이트: 보고서 → 사장님 풀링 주제 선택 → 세트 확정 (ApprovedPullingContentSet) · 텔레그램 알림(R2)</div>
+      <div class="handoff to3">↓ 확정 키 + 풀링 세트 → 선택 주제별 콘텐츠 제작</div>
+    </div>
+
+    <!-- ============ WF3 콘텐츠 제작 ============ -->
+    <div class="wf wf3">
+      <div class="wf-head">
+        <div class="n">Workflow ③ · 구현 완료 (R4)</div>
+        <h2>콘텐츠 제작 (제목·썸네일·원고)</h2>
+        <div class="sub">content-production.ts — 기존 도메인 함수 재활용(재구현 금지)</div>
+        <div class="out">입력 = 확정 주제 1개 → 제목/썸네일 상세 + 도입 30초 + 전체 원고</div>
+      </div>
+      <div class="steps">
+        <div class="step"><span class="dot d-det">A1</span><div class="body">
+          <div class="t">썸네일 초안 — 결정론 후보 <span class="fn">buildThumbnailPlan</span><span class="badge b-det">결정론</span></div>
+          <div class="d">항상 최소 3개 후보 + 추천 + 근거.</div></div></div>
+        <div class="step"><span class="dot d-llm">A1+</span><div class="body">
+          <div class="t">썸네일 카피·시각 보강 <span class="fn">proposeThumbnailDraft (LLM)</span><span class="badge b-llm">LLM</span></div>
+          <div class="d">카피/시각 방향 풍부화(실패 시 base 유지) + recommended 보정.</div></div></div>
+        <div class="step"><span class="dot d-man">A2·0</span><div class="body">
+          <div class="t">VOC 확보 <span class="fn">(카드 / 결정론 폴백)</span><span class="badge b-man">입력</span></div>
+          <div class="d">고객의 소리. 비면 buildIntro30s가 throw → 폴백 생성.</div></div></div>
+        <div class="step"><span class="dot d-det">A2·1</span><div class="body">
+          <div class="t">도입 30초 <span class="fn">buildIntro30s</span><span class="badge b-det">결정론</span></div>
+          <div class="d">훅·문제 제기 첫 30초.</div></div></div>
+        <div class="step"><span class="dot d-llm">A2·2</span><div class="body">
+          <div class="t">로직 블록 작성 <span class="fn">writeLogicBlockPart</span><span class="badge b-llm">LLM</span></div>
+          <div class="d">본문 논리 블록 3개(카드에 있으면 정규화, 없으면 문제/단계로 생성).</div></div></div>
+        <div class="step"><span class="dot d-det">A2·3</span><div class="body">
+          <div class="t">원고 통합 <span class="fn">integrateScript</span><span class="badge b-det">결정론</span></div>
+          <div class="d">도입 + 로직 블록 → 한 편의 통합 원고(IntegratedScript).</div></div></div>
+        <div class="step"><span class="dot d-det">A2·4</span><div class="body">
+          <div class="t">원고 QA <span class="fn">evaluateScriptQa</span><span class="badge b-det">결정론</span></div>
+          <div class="d">길이·훅·논리 흐름 자동 점검.</div></div></div>
+        <div class="step"><span class="dot d-llm">A2·5</span><div class="body">
+          <div class="t">말투 매칭 <span class="fn">founder-voice (voice-matched)</span><span class="badge b-llm">LLM</span></div>
+          <div class="d">사장님 말투로 원고 보이스 매칭.</div></div></div>
+      </div>
+      <div class="gate">🔒 게이트: ThumbnailPlanBoard / ScriptDraftPanel에서 사장님 편집·확정</div>
+      <div class="handoff to4">↓ 확정 원고 + 도입 + 썸네일 → 영상 제작(Brief)</div>
+    </div>
+
+    <!-- ============ WF4 영상 제작 ============ -->
+    <div class="wf wf4">
+      <div class="wf-head">
+        <div class="n">Workflow ④ · Brief 전달까지 라이브 (R6)</div>
+        <h2>영상 제작 (Brief → Factory → 렌더)</h2>
+        <div class="sub">strategy-package · video-execution-brief · factory-handoff · video-factory-transport</div>
+        <div class="out">입력 = 확정 키+풀링+원고 → 슬라이드 영상</div>
+      </div>
+      <div class="steps">
+        <div class="step"><span class="dot d-det">1</span><div class="body">
+          <div class="t">전략 패키지 조립 <span class="fn">assembleContentStrategyPackage</span><span class="badge b-det">결정론</span></div>
+          <div class="d">키 토픽 + 풀링 세트 통합. cross-consistency 검증(서로 다른 전략이면 throw).</div></div></div>
+        <div class="step"><span class="dot d-det">2</span><div class="body">
+          <div class="t">전략 브리프 <span class="fn">strategy-brief (CmoVideoStrategyBrief)</span><span class="badge b-det">결정론</span></div>
+          <div class="d">core_message + logic_blocks 채운 CMO 전략 브리프.</div></div></div>
+        <div class="step"><span class="dot d-det">3</span><div class="body">
+          <div class="t">영상 실행 브리프 <span class="fn">buildVideoExecutionBrief</span><span class="badge b-det">검증</span></div>
+          <div class="d">title·core_message·full_script·logic_blocks 비면 throw. 소비자 단계 EN 매핑.</div></div></div>
+        <div class="step"><span class="dot d-det">4</span><div class="body">
+          <div class="t">팩토리 핸드오프 준비 <span class="fn">prepareFactoryHandoff</span><span class="badge b-det">검증</span></div>
+          <div class="d">validate → valid면 handoff_status='not_sent'.</div></div></div>
+        <div class="step"><span class="dot d-det">5</span><div class="body">
+          <div class="t">실 Factory 전달 <span class="fn">sendBriefToFactory → submitBrief</span><span class="badge b-det">라이브✓</span></div>
+          <div class="d"><b>~/ai-slide-video-factory/briefs/&lt;slug&gt;.json</b> 실제 기록 + validate:brief → handoff_status='sent'. (stub=false 검증)</div></div></div>
+        <div class="step"><span class="dot d-left">6</span><div class="body">
+          <div class="t">슬라이드덱 생성 <span class="fn">slide-deck-generator</span><span class="badge b-left">잔여</span></div>
+          <div class="d">brief 직접 참조하도록 연결 잔여.</div></div></div>
+        <div class="step"><span class="dot d-left">7</span><div class="body">
+          <div class="t">렌더 잡 push <span class="fn">submitJob</span><span class="badge b-left">잔여</span></div>
+          <div class="d">실제 렌더 잡 제출(현재 brief 핸드오프와 분리됨).</div></div></div>
+        <div class="step"><span class="dot d-left">8</span><div class="body">
+          <div class="t">렌더 상태 폴링 → QA → 업로드 <span class="fn">getRenderJobStatus / evaluateScriptQa</span><span class="badge b-left">잔여</span></div>
+          <div class="d">렌더 완료 폴링 → 영상 QA → 업로드 초안.</div></div></div>
+      </div>
+      <div class="gate">🔒 게이트: 슬라이드 생성·렌더·QA·업로드 발동 버튼(Production/ReviewPublish 보드). E2E 19/19 PASS로 완료 상태까지 주행 확인.</div>
+    </div>
+
+  </div>
+
+  <div class="foot">
+    <b>핵심 패턴 (4개 동일):</b> [최소입력 → 스텝 순차(이전 산출물이 다음 입력) → 후보/초안 N개 → HTML 보고서 → 사장님 승인·선택].
+    LLM 스텝은 실패 시 <b>그 스텝만</b> 결정론 폴백(전체 폴백 아님). 모든 buildXxx는 검증 throw로 품질 강제.<br>
+    <b>완료:</b> WF①② 라이브 검증 · WF③ 구현완료 · WF④ Brief 실 전달까지 라이브. <b>잔여(실 외부연동):</b> WF④ 슬라이드덱·렌더 push·QA·업로드 · Viewtrap 실 스크래퍼(WF①②의 수동 스텝) · 성과 자동수집.<br>
+    <span style="color:#94a3b8">생성 2026-06-10 · 정본 = packages/l5-core/src/functions/video-room/*.ts · PRD = docs/prd/cmo-content-strategy-v3.md</span>
+  </div>
+
+</div>
+</body>
+</html>

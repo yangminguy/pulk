@@ -1,3 +1,7 @@
+/**
+ * @deprecated PRD v3는 pulling-content-planning.ts 사용.
+ * 이 파일은 구 video-room 상태머신 호환용 (createPullingContentPlan/createPullingContentSet 등).
+ */
 // CMO Video Room — Pulling Content Set builder (PRD §7.6, §12.5).
 //
 // Pure functions only. No Date.now(), new Date(), or randomUUID() inside.

@@ -4,6 +4,8 @@ import {
   validateDevWorkflowPhases,
   buildDeterministicDevPhases,
   classifyTask,
+  isCodeProducingKind,
+  progressNotePath,
 } from './dev-workflow-spec';
 
 // ---------------------------------------------------------------------------
@@ -43,15 +45,24 @@ const VALID_FEATURE_PHASES = () => [
     runtime: 'codex',
     read_only: false,
     dependsOn: ['test'],
-    acceptance_criteria: ['테스트 pass', '회귀 없음'],
+    acceptance_criteria: ['테스트 pass', '회귀 없음', '기존 자산 재활용'],
     verifier_hint: 'pnpm test green',
+  },
+  {
+    kind: 'integrate',
+    name: '통합·배선',
+    runtime: 'claude',
+    read_only: false,
+    dependsOn: ['implement'],
+    acceptance_criteria: ['진입점 등록', '고립 아님'],
+    verifier_hint: '신규 export가 진입점에서 import되는지 확인',
   },
   {
     kind: 'review',
     name: '리뷰',
     runtime: 'claude',
     read_only: true,
-    dependsOn: ['implement'],
+    dependsOn: ['integrate'],
     acceptance_criteria: ['LGTM 또는 fix list'],
     verifier_hint: '리뷰 코멘트 명시',
   },
@@ -109,9 +120,9 @@ const VALID_SMALL_FIX_PHASES = () => [
 // ---------------------------------------------------------------------------
 
 describe('DEV_WORKFLOW_TEMPLATES', () => {
-  it('FEATURE has 6 stages in canonical order', () => {
+  it('FEATURE has 7 stages in canonical order (integrate before review)', () => {
     const kinds = DEV_WORKFLOW_TEMPLATES.FEATURE.map((t) => t.kind);
-    expect(kinds).toEqual(['research', 'spec', 'test', 'implement', 'review', 'commit']);
+    expect(kinds).toEqual(['research', 'spec', 'test', 'implement', 'integrate', 'review', 'commit']);
   });
 
   it('SMALL_FIX has 4 stages: repro → fix → regress → commit', () => {
@@ -119,9 +130,9 @@ describe('DEV_WORKFLOW_TEMPLATES', () => {
     expect(kinds).toEqual(['repro', 'fix', 'regress', 'commit']);
   });
 
-  it('BIG_CHANGE has 6 stages starting with rfc', () => {
+  it('BIG_CHANGE has 7 stages starting with rfc (integrate before review)', () => {
     const kinds = DEV_WORKFLOW_TEMPLATES.BIG_CHANGE.map((t) => t.kind);
-    expect(kinds).toEqual(['rfc', 'spec', 'test', 'implement', 'review', 'commit']);
+    expect(kinds).toEqual(['rfc', 'spec', 'test', 'implement', 'integrate', 'review', 'commit']);
   });
 
   it('OPS has 4 stages: backup → implement → smoke → commit', () => {
@@ -150,12 +161,34 @@ describe('DEV_WORKFLOW_TEMPLATES', () => {
 
   it('FEATURE: declares correct dependsOn chain', () => {
     const byIdx = DEV_WORKFLOW_TEMPLATES.FEATURE;
-    expect(byIdx[0].dependsOn).toBeUndefined();      // research
-    expect(byIdx[1].dependsOn).toEqual(['research']); // spec
-    expect(byIdx[2].dependsOn).toEqual(['spec']);     // test
-    expect(byIdx[3].dependsOn).toEqual(['test']);     // implement
-    expect(byIdx[4].dependsOn).toEqual(['implement']); // review
-    expect(byIdx[5].dependsOn).toEqual(['review']);   // commit
+    expect(byIdx[0].dependsOn).toBeUndefined();        // research
+    expect(byIdx[1].dependsOn).toEqual(['research']);  // spec
+    expect(byIdx[2].dependsOn).toEqual(['spec']);      // test
+    expect(byIdx[3].dependsOn).toEqual(['test']);      // implement
+    expect(byIdx[4].dependsOn).toEqual(['implement']); // integrate
+    expect(byIdx[5].dependsOn).toEqual(['integrate']); // review
+    expect(byIdx[6].dependsOn).toEqual(['review']);    // commit
+  });
+
+  it('isCodeProducingKind: code phases true, read-only/commit phases false', () => {
+    for (const k of ['implement', 'integrate', 'test', 'fix', 'refactor', 'repro'] as const) {
+      expect(isCodeProducingKind(k)).toBe(true);
+    }
+    for (const k of ['research', 'spec', 'review', 'commit', 'regress', 'rfc', 'backup', 'smoke'] as const) {
+      expect(isCodeProducingKind(k)).toBe(false);
+    }
+  });
+
+  it('FEATURE/BIG_CHANGE: integrate is a mutating claude phase between implement and review', () => {
+    for (const cls of ['FEATURE', 'BIG_CHANGE'] as const) {
+      const integrate = DEV_WORKFLOW_TEMPLATES[cls].find((t) => t.kind === 'integrate')!;
+      expect(integrate).toBeDefined();
+      expect(integrate.runtime).toBe('claude');
+      expect(integrate.read_only).toBe(false);
+      expect(integrate.dependsOn).toEqual(['implement']);
+      // its whole purpose: wire the new deliverable into existing entry points
+      expect(integrate.acceptance_criteria.join(' ')).toMatch(/등록|진입점|고립/);
+    }
   });
 });
 
@@ -164,10 +197,10 @@ describe('DEV_WORKFLOW_TEMPLATES', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildDevWorkflowSystemPrompt', () => {
-  it('FEATURE prompt mentions all 6 stages and task info', () => {
+  it('FEATURE prompt mentions all 7 stages and task info', () => {
     const prompt = buildDevWorkflowSystemPrompt('login flow refactor', 'CSRF 노출 위험', 'FEATURE');
     expect(prompt).toMatch(/시니어 개발자/);
-    for (const kind of ['research', 'spec', 'test', 'implement', 'review', 'commit']) {
+    for (const kind of ['research', 'spec', 'test', 'implement', 'integrate', 'review', 'commit']) {
       expect(prompt).toContain(kind);
     }
     expect(prompt).toContain('login flow refactor');
@@ -210,23 +243,30 @@ describe('buildDevWorkflowSystemPrompt', () => {
 // ---------------------------------------------------------------------------
 
 describe('validateDevWorkflowPhases (FEATURE)', () => {
-  it('accepts a well-formed 6-stage FEATURE phase list', () => {
+  it('accepts a well-formed 7-stage FEATURE phase list', () => {
     const result = validateDevWorkflowPhases(VALID_FEATURE_PHASES(), 'FEATURE');
     expect(result.ok).toBe(true);
     expect(result.errors).toEqual([]);
   });
 
-  it('rejects a 5-stage list (missing research)', () => {
+  it('rejects a 6-stage list (missing research)', () => {
     const phases = VALID_FEATURE_PHASES().slice(1); // drop research
     const result = validateDevWorkflowPhases(phases, 'FEATURE');
     expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => /exactly 6 stages/.test(e))).toBe(true);
+    expect(result.errors.some((e) => /exactly 7 stages/.test(e))).toBe(true);
+  });
+
+  it('rejects a list missing the integrate phase', () => {
+    const phases = VALID_FEATURE_PHASES().filter((p) => p.kind !== 'integrate');
+    const result = validateDevWorkflowPhases(phases, 'FEATURE');
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => /exactly 7 stages|expected kind="integrate"/.test(e))).toBe(true);
   });
 
   it('rejects when order is wrong (implement before test)', () => {
     const phases = VALID_FEATURE_PHASES();
-    const [res, spec, test, impl, review, commit] = phases;
-    const reordered = [res, spec, impl, test, review, commit];
+    const [res, spec, test, impl, integrate, review, commit] = phases;
+    const reordered = [res, spec, impl, test, integrate, review, commit];
     const result = validateDevWorkflowPhases(reordered, 'FEATURE');
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => /expected kind="test"/.test(e))).toBe(true);
@@ -321,9 +361,9 @@ describe('validateDevWorkflowPhases (other classes)', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildDeterministicDevPhases', () => {
-  it('FEATURE returns 6 phases that pass FEATURE validation', () => {
+  it('FEATURE returns 7 phases that pass FEATURE validation', () => {
     const phases = buildDeterministicDevPhases('sample task', 'FEATURE');
-    expect(phases).toHaveLength(6);
+    expect(phases).toHaveLength(7);
     const validation = validateDevWorkflowPhases(phases, 'FEATURE');
     expect(validation.ok).toBe(true);
   });
@@ -368,7 +408,7 @@ describe('buildDeterministicDevPhases', () => {
 
   it('defaults to FEATURE when taskClass is omitted', () => {
     const phases = buildDeterministicDevPhases('sample task');
-    expect(phases).toHaveLength(6);
+    expect(phases).toHaveLength(7);
     expect(phases[0].kind).toBe('research');
   });
 });
@@ -436,6 +476,44 @@ describe('classifyTask', () => {
   it('M9.7 — real feature is NOT trivialized', () => {
     expect(classifyTask('사용자 인증 모듈 신규 구현', 'JWT 로그인 전체')).toBe('FEATURE');
     expect(classifyTask('새 대시보드 추가', '매출 시각화')).toBe('FEATURE');
+  });
+
+  it('M9.8 — pure content/doc authoring → TINY (no repro/fix/feature ceremony)', () => {
+    // The exact regression that motivated this: a markdown skill file ran 4 cold
+    // bug-workflow phases instead of implement→commit.
+    expect(classifyTask('SKILL.md 및 CLAUDE.md 라우팅 작성', 'Reels skill 문서화')).toBe('TINY');
+    expect(classifyTask('00-reels-pd-orchestrator.md 프롬프트 작성', '')).toBe('TINY');
+    expect(classifyTask('업로드 캡션 문구 작성', '해시태그 포함')).toBe('TINY');
+    expect(classifyTask('README 문서 업데이트', '')).toBe('TINY');
+  });
+
+  it('M9.8.1 — deliverable (.md) wins over title word: "Engine/Generator" → TINY', () => {
+    // expected_output names a *-agent.md prompt → markdown authoring, not code,
+    // even though the title says "Engine"/"Generator".
+    expect(
+      classifyTask('Quality Gate Engine', '점수화 기준', {}, '10-reels-quality-gate-agent.md. Scoring logic.'),
+    ).toBe('TINY');
+    expect(
+      classifyTask('Upload Package Generator', '', {}, '08-upload-package-agent.md 생성'),
+    ).toBe('TINY');
+    // title alone already carries ".md" → also TINY without expected_output.
+    expect(classifyTask('Quality Gate Engine (10-reels-quality-gate-agent.md)', '')).toBe('TINY');
+  });
+
+  it('M9.8.1 — genuine CODE deliverable (.ts/src) is NOT trivialized even with content keyword', () => {
+    // content keyword (프롬프트) present, but the deliverable is real TypeScript.
+    expect(classifyTask('프롬프트 로더 구현', '', {}, 'src/promptLoader.ts')).not.toBe('TINY');
+    expect(classifyTask('Scene JSON Draft Generator', 'VideoJob 생성기 구현')).not.toBe('TINY');
+    expect(classifyTask('VideoJobSchema 정의', 'zod schema 작성')).not.toBe('TINY');
+  });
+
+  it('M9.8 — content authoring with escalation signals is NOT trivialized', () => {
+    expect(
+      classifyTask('대규모 문서 작성', '여러 모듈 영향', {
+        estimatedLines: 400,
+        impactedModules: 5,
+      }),
+    ).not.toBe('TINY');
   });
 
   it('escalation: SMALL_FIX + 3 indicators → FEATURE', () => {
@@ -515,5 +593,50 @@ describe('classifyTask — single-component → SMALL_FIX', () => {
   it('genuine multi-component features are NOT trivialized to SMALL_FIX', () => {
     expect(classifyTask('사용자 인증 모듈 신규 구현', 'JWT 로그인 전체')).toBe('FEATURE');
     expect(classifyTask('결제 시스템 전체 구축', '')).toBe('FEATURE');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M9.8 — docs-based cross-phase continuity (no raw context re-injection)
+// ---------------------------------------------------------------------------
+
+describe('progressNotePath', () => {
+  it('is stable for the same title (so phases of one task share the note)', () => {
+    expect(progressNotePath('SKILL.md 작성')).toBe(progressNotePath('SKILL.md 작성'));
+  });
+
+  it('produces a path-safe note under docs/_acr-progress/', () => {
+    const p = progressNotePath('Add /health Endpoint!!');
+    expect(p.startsWith('docs/_acr-progress/')).toBe(true);
+    expect(p.endsWith('.md')).toBe(true);
+    expect(p).not.toMatch(/\s/);
+  });
+});
+
+describe('buildDeterministicDevPhases — docs grounding & progress record', () => {
+  it('every phase tells the agent to read project dev-docs FIRST', () => {
+    const phases = buildDeterministicDevPhases('SKILL.md 작성', 'FEATURE');
+    for (const p of phases) {
+      expect(p.prompt_packet).toContain('작업 전 필수');
+      expect(p.prompt_packet).toContain('CLAUDE.md');
+      expect(p.prompt_packet).toContain(progressNotePath('SKILL.md 작성'));
+    }
+  });
+
+  it('mutating phases record progress; read-only phases do NOT write', () => {
+    const phases = buildDeterministicDevPhases('새 기능 구현', 'FEATURE');
+    const research = phases.find((p) => p.kind === 'research'); // read_only
+    const implement = phases.find((p) => p.kind === 'implement'); // mutating
+    expect(research?.read_only).toBe(true);
+    expect(research?.prompt_packet).not.toContain('작업 기록');
+    expect(implement?.prompt_packet).toContain('작업 기록');
+  });
+
+  it('content task (TINY) runs 2 phases, both grounded', () => {
+    const cls = classifyTask('업로드 캡션 문구 작성', '');
+    expect(cls).toBe('TINY');
+    const phases = buildDeterministicDevPhases('업로드 캡션 문구 작성', cls);
+    expect(phases.map((p) => p.kind)).toEqual(['implement', 'commit']);
+    expect(phases[0].prompt_packet).toContain('작업 전 필수');
   });
 });

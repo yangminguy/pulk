@@ -15,6 +15,15 @@ export interface CTOPhase {
    * exhaustion — it waits for the designated (T1) agent to recover instead.
    * Set by the CTO from the model tier (T1 = locked). */
   model_locked?: boolean;
+  /** 같은 intent 내 선행 phase 이름들(Native 병렬 스케줄러 입력). 미지정 시 직전
+   * phase에 암묵 의존(배열순 순차 유지 — 기존 동작 불변). 명시한 phase만 병렬
+   * 후보가 된다. CTO Brain이 phase 분할 시 채운다. */
+  depends_on?: string[];
+  /** 실제 검증 명령(예: "corepack pnpm exec tsc --noEmit && corepack pnpm exec jest <test>").
+   * 지정 시 Native Orchestrator가 결정론 verdict 통과 후 이 명령을 worktree(cwd)에서 실행하고,
+   * exit≠0이면 merge를 막는다(휴리스틱 verdict만으로 못 거르는 실제 빌드/테스트 실패 차단).
+   * 미지정 시 기존 휴리스틱 검증만(하위호환). CTO가 코드 phase에 설정한다. */
+  verify_command?: string;
 }
 
 export interface ACRIntent {
@@ -33,4 +42,22 @@ export interface ACRIntent {
    * its own Release Gate panel. (auto_24h is a separate time policy and is NOT
    * bypassed by this flag.) */
   l5_approved?: boolean;
+
+  // ── CTO Harness 판단 메타 (additive, optional) ──────────────────────────────
+  // pulk CTO가 dispatch 전에 실어 보내는 복잡도/실행모드/경계 판단. ACR Kernel은
+  // "무엇을 할지" 판단하지 않으므로(PRD §5.2), 이 값들을 그대로 받아 격리 범위와
+  // 검증 강도를 정한다. 기존 ACR은 모르는 필드를 무시하므로 하위호환된다.
+  /** 작업 복잡도 (C0~C5, cto-harness complexity-router 산출). */
+  complexity?: 'C0' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
+  /** Harness 실행 레일 (PRD §14.4). */
+  harness_mode?: 'safe_solo' | 'implement_verify' | 'strict_sandbox' | 'parallel_patch_queue';
+  /** 수정 허용 파일/디렉터리 glob (worktree boundary check 입력). 빈 배열 = 제한 없음. */
+  allowed_files?: string[];
+  /** 수정 금지 파일/디렉터리 glob (.env·lockfile·node_modules 등 하드 블록). */
+  blocked_files?: string[];
+  /** Founder 승인이 필요한 작업인지 (risk D3+). */
+  requires_approval?: boolean;
+  /** 이 작업이 속한 사업 id. 사업별 모니터 그룹핑·native_phase_runs 영속화 키로 쓰인다.
+   * 없으면 회사 공통(null 그룹)으로 취급. additive — 기존 dispatch와 하위호환. */
+  business_id?: string;
 }

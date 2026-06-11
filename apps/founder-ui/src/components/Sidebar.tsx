@@ -18,10 +18,13 @@ const PHASE_SHORT: Record<string, string> = {
 
 const NAV_TOOLS = [
   { href: '/cmo', label: 'CMO 마케팅', icon: 'megaphone' },
+  { href: '/video-room', label: '영상룸', icon: 'video' },
   { href: '/monitor', label: '현황 모니터', icon: 'activity' },
   { href: '/memory', label: '지식', icon: 'database' },
   { href: '/control-room', label: 'Control Room', icon: 'sliders' },
   { href: '/tool-requests', label: 'Tool Requests', icon: 'wrench' },
+  { href: '/self-improve', label: '🐯 자가개선', icon: 'refresh' },
+  { href: '/incidents', label: '🔔 장애 감시', icon: 'activity' },
 ]
 
 function navItemStyle(active: boolean, hover: boolean): React.CSSProperties {

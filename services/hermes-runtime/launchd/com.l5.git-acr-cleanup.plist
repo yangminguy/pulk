@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.l5.git-acr-cleanup</string>
+
+  <!-- ACR이 phase마다 만드는 acr/l5-* 브랜치(머지 후 미삭제)가 쌓이는 것을 막는 안전망.
+       매일 03:30에 main 머지 완료 + 7일 경과한 acr/* 브랜치를 로컬·원격에서 삭제한다.
+       보호 브랜치(main/cmo//feat//omc//wip/)와 워크트리 체크아웃 브랜치는 절대 안 건드림. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__REPO_ROOT__/scripts/git-acr-cleanup.sh</string>
+    <string>--apply</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__REPO_ROOT__</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>AGE_DAYS</key>
+    <string>7</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/git-acr-cleanup.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/git-acr-cleanup.err</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

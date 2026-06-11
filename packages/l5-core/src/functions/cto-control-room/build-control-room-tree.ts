@@ -11,7 +11,31 @@
 
 import { estimateTaskTokens } from '../token-estimate';
 
-/** One ACR execution record, keyed by L5 task id (== acr_task_id). */
+/** PRD §8.2 ExecutionRun.checks — per-gate verifier outcome. Any subset; an
+ * absent gate means "not reported" and the UI hides that badge. */
+export type AcrCheckStatus = 'pass' | 'fail' | 'skipped';
+export interface AcrChecks {
+  typecheck?: AcrCheckStatus;
+  lint?: AcrCheckStatus;
+  test?: AcrCheckStatus;
+  build?: AcrCheckStatus;
+  playwright?: AcrCheckStatus;
+  boundary?: AcrCheckStatus;
+}
+
+/** PRD §8.1 — one prior run attempt for the task ▸ run history axis. Compact
+ * summary of an ExecutionRun; the full run lives in ACR. */
+export interface AcrRunSummary {
+  run_id: string;
+  status: string; // ExecutionRunStatus
+  agent?: string | null;
+  branch?: string | null;
+  checks?: AcrChecks | null;
+  created_at?: string | null;
+}
+
+/** One ACR execution record, keyed by L5 task id (== acr_task_id). Reflects the
+ * LATEST run for the task; prior attempts are in run_history (PRD §8.1). */
 export interface AcrExecTask {
   acr_task_id: string;
   assigned_agent?: string | null;
@@ -27,6 +51,18 @@ export interface AcrExecTask {
   // ACR runner captures it; estimate is shown meanwhile).
   total_tokens?: number | null;
   estimated_cost_usd?: number | null;
+  /** CTO Harness 복잡도(C0~C5). ACR이 dispatch 때 받은 intent.complexity 를 그대로
+   * echo. null이면 UI는 뱃지를 숨긴다(degraded view). */
+  complexity?: string | null;
+  /** PRD §18.1 latest-run id — needed to open/review the run and to scope retry. */
+  run_id?: string | null;
+  /** PRD §8.2 checks — verifier gate outcomes for the latest run. */
+  checks?: AcrChecks | null;
+  /** PRD §16 ResultPacket.nextAction / recommendation — what to do next. */
+  next_action?: string | null;
+  recommendation?: string | null;
+  /** PRD §8.1 task ▸ many runs — prior attempts (newest first), latest excluded. */
+  run_history?: AcrRunSummary[] | null;
 }
 
 export interface ControlRoomBusinessInput {
@@ -83,6 +119,8 @@ export interface ControlRoomDevTask {
   exec_status: string | null; // workspace_status ?? plan_status
   changed_files: number | null;
   log_tail: string | null;
+  /** CTO가 배정한 복잡도(C0~C5). ACR echo. null = 미표시. */
+  complexity: string | null;
   /** Forecast token range for this task (추정, from classification). */
   est_tokens_low: number | null;
   est_tokens_high: number | null;
@@ -90,6 +128,17 @@ export interface ControlRoomDevTask {
    * task has actually run; the UI then shows actuals instead of the estimate. */
   actual_total_tokens: number | null;
   actual_cost_usd: number | null;
+  // PRD §18.1 task ▸ run axes — null/empty when ACR absent → UI hides them.
+  /** Latest ExecutionRun id; scopes retry/review. Null = no run yet. */
+  run_id: string | null;
+  /** PRD §8.2 verifier gate outcomes for the latest run. Null = not reported. */
+  checks: AcrChecks | null;
+  /** PRD §16 — what to do next (ResultPacket.nextAction). Null = none. */
+  next_action: string | null;
+  /** PRD §16 — ResultPacket.recommendation (merge_ready/human_review/…). */
+  recommendation: string | null;
+  /** PRD §8.1 prior run attempts (newest first); empty when ACR absent. */
+  run_history: AcrRunSummary[];
 }
 
 export interface ControlRoomProjectNode {
@@ -192,10 +241,16 @@ function mergeDevTask(t: ControlRoomTaskInput, acr: AcrExecTask | undefined): Co
     exec_status: null,
     changed_files: null,
     log_tail: null,
+    complexity: null,
     est_tokens_low: est.low,
     est_tokens_high: est.high,
     actual_total_tokens: null,
     actual_cost_usd: null,
+    run_id: null,
+    checks: null,
+    next_action: null,
+    recommendation: null,
+    run_history: [],
   };
   if (!acr) return base;
 
@@ -212,7 +267,13 @@ function mergeDevTask(t: ControlRoomTaskInput, acr: AcrExecTask | undefined): Co
     exec_status: acr.workspace_status ?? acr.plan_status ?? null,
     changed_files: acr.changed_files ?? null,
     log_tail: acr.log_tail ?? null,
+    complexity: acr.complexity ?? null,
     actual_total_tokens: typeof acr.total_tokens === 'number' ? acr.total_tokens : null,
     actual_cost_usd: typeof acr.estimated_cost_usd === 'number' ? acr.estimated_cost_usd : null,
+    run_id: acr.run_id ?? null,
+    checks: acr.checks ?? null,
+    next_action: acr.next_action ?? null,
+    recommendation: acr.recommendation ?? null,
+    run_history: Array.isArray(acr.run_history) ? acr.run_history : [],
   };
 }

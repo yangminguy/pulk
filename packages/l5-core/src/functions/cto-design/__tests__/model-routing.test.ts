@@ -74,9 +74,12 @@ describe('selectModelTier — matrix', () => {
     expect(selectModelTier('SMALL_FIX', 'regress')).toBe('T3');
   });
 
-  it('routes balanced implementation phases to T2 by default', () => {
-    expect(selectModelTier('FEATURE', 'implement')).toBe('T2');
-    expect(selectModelTier('FEATURE', 'test')).toBe('T2');
+  // a29ed2a(2026-06-07): 코드작성 phase(implement/test/fix/repro)는 T1(claude)로 라우팅한다.
+  // codex(T2)가 동명 파일 다중 디렉토리에서 엉뚱한 파일을 수정하는 문제 때문. backup만 T2 기본.
+  it('routes code-authoring phases to T1, and backup to T2 by default', () => {
+    expect(selectModelTier('FEATURE', 'implement')).toBe('T1');
+    expect(selectModelTier('FEATURE', 'test')).toBe('T1');
+    expect(selectModelTier('FEATURE', 'backup')).toBe('T2');
   });
 
   it('applies SMALL_FIX downshift overrides', () => {
@@ -93,7 +96,8 @@ describe('selectModelTier — matrix', () => {
 
   it('applies OPS override and keeps others at default', () => {
     expect(selectModelTier('OPS', 'backup')).toBe('T3');
-    expect(selectModelTier('OPS', 'implement')).toBe('T2');
+    // OPS는 backup만 override → implement는 phase 기본(a29ed2a 이후 T1).
+    expect(selectModelTier('OPS', 'implement')).toBe('T1');
   });
 });
 
@@ -145,7 +149,7 @@ describe('resolveModel — fallback on exhausted quota', () => {
 
   it('T2 selection prefers cheaper T3 before escalating to T1', () => {
     const quota: QuotaState = { tiers: { T2: { available: false } } };
-    const r = resolveModel('FEATURE', 'implement', quota); // selects T2
+    const r = resolveModel('FEATURE', 'backup', quota); // backup은 T2 기본(implement는 a29ed2a 이후 T1)
     expect(r.selectedTier).toBe('T2');
     expect(r.tier).toBe('T3');
     expect(r.fellBack).toBe(true);
@@ -155,7 +159,8 @@ describe('resolveModel — fallback on exhausted quota', () => {
     const quota: QuotaState = {
       tiers: { T2: { available: false }, T3: { available: false } },
     };
-    const r = resolveModel('FEATURE', 'implement', quota);
+    const r = resolveModel('FEATURE', 'backup', quota); // backup은 T2 기본
+    expect(r.selectedTier).toBe('T2');
     expect(r.tier).toBe('T1');
     expect(r.fellBack).toBe(true);
   });

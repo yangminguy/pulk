@@ -58,11 +58,18 @@ const PHASE_TIER_DEFAULTS: Record<DevPhaseKind, ModelTier> = {
   research: 'T1',
   spec: 'T1',
   review: 'T1',
-  test: 'T2',
-  implement: 'T2',
-  fix: 'T2',
-  refactor: 'T2',
-  repro: 'T2',
+  // 코드/테스트 파일을 정밀하게 만지는 phase는 T1(claude)로 라우팅한다.
+  // codex(T2)는 동명 파일이 여러 디렉토리에 있을 때(예: video-room/types.ts가
+  // l5-core·founder-ui·agent-runtime에 모두 존재) 지정 경로를 무시하고 엉뚱한
+  // 파일을 수정하는 문제가 반복 확인됨(2026-06-07). claude는 경로를 지킨다.
+  test: 'T1',
+  implement: 'T1',
+  // integrate(통합·배선)는 신규 산출물을 기존 진입점에 연결하므로 코드베이스 전반의
+  // 정합성 판단이 필요하다 → T1(claude). 경로/등록처를 정확히 찾아야 한다.
+  integrate: 'T1',
+  fix: 'T1',
+  refactor: 'T1',
+  repro: 'T1',
   backup: 'T2',
   smoke: 'T3',
   regress: 'T3',
