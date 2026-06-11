@@ -146,6 +146,8 @@ const {
   // R4 콘텐츠 제작: 확정 주제 → 썸네일 상세 후보 + 도입30초/원고/QA 초안
   proposeThumbnailDraft,
   proposeScriptDraft,
+  // 썸네일 9개 A/B(PRD cmo-thumbnail-ab-automation): 9개 매트릭스 + 심리분석 통합 진입점
+  proposeThumbnailSet,
   // R7 성과 재학습 루프: 완료 영상 성과(수동 입력) → 인사이트 → 다음 기획 입력
   recordVideoPerformance,
   extractCompletionInsight,
@@ -227,7 +229,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'proposeProductDefinition', 'proposeKeyContentReport', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeTitleDevelopment', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'proposeProductDefinition', 'proposeKeyContentReport', 'selectKeyContentCandidate', 'proposePullingCandidates', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeThumbnailMatrix', 'proposeTitleDevelopment', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -3897,9 +3899,12 @@ function registerCmoResource(app: any, db: any) {
             return { available: t.available, text: t.text };
           };
 
+          // 시청자 정체성 판단 근거 — 인기순 상위 댓글(YouTube Data API).
+          const getComments = (id: string) => client.getTopComments(id, 8);
+
           report = await runKeyContentReport(
             { product: reportProduct, keywords, maxKeywords: 6, extraNotes: reportNotes },
-            { discover, getDurations, fetchTranscript, llmComplete },
+            { discover, getDurations, fetchTranscript, getComments, llmComplete },
           );
         } catch (err: any) {
           ctx.throw(400, err?.message ?? String(err));
@@ -4144,6 +4149,53 @@ function registerCmoResource(app: any, db: any) {
           project_id,
           'thumbnail_plan',
           `thumbnail_plan (${result.candidates.length}개 후보)`,
+          result,
+        );
+
+        ctx.body = { ok: true, data: result };
+        await next();
+      },
+
+      // POST /api/cmo:proposeThumbnailMatrix  { project_id, title, main_click_reason,
+      //   target_audience?, target_problem?, target_desire?, target_loss_to_avoid?, deterministic? }
+      // 썸네일 9개 A/B PRD Stage A+B: 9개 매트릭스 후보 + 후보별 심리분석을 생성해
+      // 'thumbnail_matrix' 카드로 저장(사장님 승인 G1 대상). thumbnail_pattern_extraction 구간 확장.
+      proposeThumbnailMatrix: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const title = String(v.title ?? '').trim();
+        const main_click_reason = String(v.main_click_reason ?? '').trim();
+        if (!title) ctx.throw(400, 'title is required');
+        if (!main_click_reason) ctx.throw(400, 'main_click_reason is required');
+
+        const input = {
+          video_id: project_id,
+          title,
+          main_click_reason,
+          target_audience: String(v.target_audience ?? '').trim(),
+          target_problem: String(v.target_problem ?? '').trim(),
+          target_desire: String(v.target_desire ?? '').trim(),
+          target_loss_to_avoid: String(v.target_loss_to_avoid ?? '').trim(),
+          reference_patterns: Array.isArray(v.reference_patterns) ? v.reference_patterns : [],
+        };
+        // deterministic=true면 LLM 없이 결정론 폴백(테스트/빠른 초안). 아니면 Claude CLI 주입.
+        const llmComplete = v.deterministic
+          ? undefined
+          : (p: string) => buildLLMClient('').complete({ system: '', user: p });
+
+        let result: any;
+        try {
+          result = await proposeThumbnailSet(input, llmComplete ? { llmComplete } : {});
+        } catch (err: any) {
+          ctx.throw(400, err?.message ?? String(err));
+        }
+
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'thumbnail_matrix',
+          `thumbnail_matrix (${result.candidates.length}개 후보 · ${result.source})`,
           result,
         );
 
