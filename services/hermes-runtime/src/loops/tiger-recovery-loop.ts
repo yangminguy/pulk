@@ -124,7 +124,7 @@ async function recoverOne(
   // 2. CTO 수정 + 호랑이 검증(intent에 verify_command 묶음 → native-orchestrator가 재현·검증).
   const intent = buildRecoveryFixIntent({
     incident: fixing,
-    verify_command: deps.verifyCommand,
+    verify_command: fixing.verify_command ?? deps.verifyCommand,
     attempt: fixing.attempt_count,
     now: result.run_at,
   });

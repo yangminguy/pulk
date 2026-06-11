@@ -332,6 +332,7 @@ export async function fetchApprovedTigerIncidents(): Promise<
     error_summary?: string | null;
     diagnosis?: string | null;
     proposed_fix?: string | null;
+    verify_command?: string | null;
   }>
 > {
   const data = await apiFetch(
@@ -348,6 +349,7 @@ export async function fetchApprovedTigerIncidents(): Promise<
     error_summary: (r.error_summary as string | null) ?? null,
     diagnosis: (r.diagnosis as string | null) ?? null,
     proposed_fix: (r.proposed_fix as string | null) ?? null,
+    verify_command: (r.verify_command as string | null) ?? null,
   }));
 }
 

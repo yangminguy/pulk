@@ -16,6 +16,7 @@ import { join } from 'path';
 import {
   detectIncidents,
   WATCH_TARGET_REGISTRY,
+  getWatchTarget,
   selectDiagnosisModel,
   buildIncidentDiagnosisPrompt,
   parseIncidentDiagnosis,
@@ -80,6 +81,8 @@ export interface TigerIncidentRecord {
   detected_at: string;
   /** dedup·복구 추적 키(=incident_key). */
   source_ref: string;
+  /** 작업 repo 기준 검증 명령(WatchTarget.verify_command). 복구가 호랑이 테스트로 사용. */
+  verify_command?: string;
 }
 
 export interface LivenessWatcherDeps {
@@ -358,6 +361,7 @@ export async function runLivenessWatcher(
           attempt_count: 0,
           detected_at: inc.detected_at,
           source_ref: inc.incident_key,
+          verify_command: getWatchTarget(inc.target_id)?.verify_command,
         });
         result.persisted += 1;
       } catch (err) {

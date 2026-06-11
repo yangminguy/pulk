@@ -53,6 +53,8 @@ export interface RecoveryIncident {
   diagnosis?: string | null;
   /** "이렇게 고치게 하겠다" 수정 계획(있으면 prompt에 실음). */
   proposed_fix?: string | null;
+  /** 작업 repo 기준 검증 명령(호랑이 테스트). 없으면 deps.verifyCommand/루트 tsc 폴백. */
+  verify_command?: string | null;
 }
 
 /** 호랑이 테스트(실패 과정 재현·검증) 결과 — 통과 여부 + 근거. */

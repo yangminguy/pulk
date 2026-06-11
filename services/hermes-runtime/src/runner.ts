@@ -290,6 +290,7 @@ export async function runTigerRecoveryLive() {
           error_summary: r.error_summary,
           diagnosis: r.diagnosis,
           proposed_fix: r.proposed_fix,
+          verify_command: r.verify_command,
         }));
       },
       dispatchFix: async (intent): Promise<RecoveryDispatchResult> => {

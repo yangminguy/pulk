@@ -1585,6 +1585,7 @@ function registerTigerIncidentsCollection(db: any) {
       { name: 'attempt_count', type: 'integer', defaultValue: 0 },
       { name: 'detected_at', type: 'date' },
       { name: 'source_ref', type: 'string' },       // 원 신호 출처(native_phase_runs:<id> 등)
+      { name: 'verify_command', type: 'string' },   // 호랑이 테스트 검증 명령(작업 repo 기준)
     ],
   }));
 }
@@ -1608,10 +1609,15 @@ async function ensureTigerIncidentsTable(db: any) {
         attempt_count int DEFAULT 0,
         detected_at timestamptz,
         source_ref text,
+        verify_command text,
         "createdAt" timestamptz NOT NULL DEFAULT now(),
         "updatedAt" timestamptz NOT NULL DEFAULT now()
       );
     `);
+    // 기존 테이블에 verify_command 컬럼 보강(additive, idempotent).
+    await db.sequelize.query(
+      `ALTER TABLE tiger_incidents ADD COLUMN IF NOT EXISTS verify_command text;`,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     db.logger?.warn?.(`Could not ensure tiger_incidents table: ${message}`);

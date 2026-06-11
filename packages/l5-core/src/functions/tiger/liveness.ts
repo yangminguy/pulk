@@ -56,6 +56,9 @@ export interface WatchTarget {
   heartbeatStaleMs: number;
   repo_path_kind: WatchRepoKind;
   repo_path: string;
+  /** 호랑이 복구 테스트로 쓸 검증 명령(작업 repo 기준, worktree 루트에서 실행).
+   *  없으면 recovery가 루트 `npx tsc --noEmit` 폴백. 서브패키지는 `cd <pkg> && ...` 형태. */
+  verify_command?: string;
 }
 
 /**
@@ -72,6 +75,7 @@ export const WATCH_TARGET_REGISTRY: readonly WatchTarget[] = [
     heartbeatStaleMs: 5 * 60 * 1000, // 5분간 phase 무갱신 = heartbeat 죽음
     repo_path_kind: 'pulk-relative',
     repo_path: 'packages/l5-core',
+    verify_command: 'cd packages/l5-core && npx tsc --noEmit',
   },
   {
     id: 'cmo_video_room',
@@ -82,6 +86,7 @@ export const WATCH_TARGET_REGISTRY: readonly WatchTarget[] = [
     heartbeatStaleMs: 8 * 60 * 1000,
     repo_path_kind: 'pulk-relative',
     repo_path: 'apps/founder-ui',
+    verify_command: 'cd apps/founder-ui && npx tsc --noEmit',
   },
   {
     id: 'cmo_workflow',
@@ -92,6 +97,7 @@ export const WATCH_TARGET_REGISTRY: readonly WatchTarget[] = [
     heartbeatStaleMs: 6 * 60 * 1000,
     repo_path_kind: 'pulk-relative',
     repo_path: 'packages/l5-core',
+    verify_command: 'cd packages/l5-core && npx tsc --noEmit',
   },
   {
     id: 'cto_phase_run',
@@ -102,6 +108,7 @@ export const WATCH_TARGET_REGISTRY: readonly WatchTarget[] = [
     heartbeatStaleMs: 10 * 60 * 1000,
     repo_path_kind: 'pulk-relative',
     repo_path: 'services/agent-runtime',
+    verify_command: 'cd services/agent-runtime && npx tsc --noEmit',
   },
 ];
 
