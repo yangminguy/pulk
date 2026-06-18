@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>펄크 CTO × ACR 자율 코딩 전 과정 — 누구나 이해하는 설명서</title>
+<style>
+  :root {
+    --canvas: #F4F0E6; --surface: #FAF7F0; --elevated: #FDFBF6;
+    --ink: #1c2521; --ink-soft: #51605a; --silver: #d9d3c4; --silver-2: #ece7da;
+    --green: #1FA64D; --green-hover: #178A3F; --green-tint: #E4F4E8;
+    --amber: #C77B1E; --amber-tint: #FBEFD9; --blue: #2D6CB5; --blue-tint: #E2ECF7;
+    --red: #C0392B; --red-tint: #F8E4E1; --lav: #ECE6F7; --mint: #E0F2EA;
+    --sky: #E2EEF7; --butter: #FBF3D6; --peach: #FBEADF;
+    --purple: #6B4FA8; --purple-tint: #ECE6F7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--canvas); color: var(--ink);
+    font-family: "IBM Plex Sans", -apple-system, "SUIT", "Pretendard", sans-serif;
+    line-height: 1.7; word-break: keep-all; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 24px 96px; }
+  header.hero {
+    background: var(--elevated); border: 1px solid var(--silver);
+    border-radius: 20px; padding: 44px 40px; margin-bottom: 32px;
+    border-left: 5px solid var(--purple);
+  }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--purple); font-weight: 600; margin: 0 0 12px;
+  }
+  h1 { font-family: "Source Serif 4", Georgia, serif; font-size: 34px; margin: 0 0 14px; line-height: 1.25; }
+  h2 {
+    font-family: "Source Serif 4", Georgia, serif; font-size: 26px;
+    margin: 60px 0 18px; padding-bottom: 8px; border-bottom: 2px solid var(--silver-2);
+  }
+  h3 { font-size: 19px; margin: 30px 0 10px; }
+  h4 { font-size: 15px; margin: 18px 0 8px; font-family: "IBM Plex Mono", monospace; letter-spacing: 0.02em; color: var(--ink); }
+  p { margin: 0 0 14px; color: var(--ink-soft); }
+  .lead { font-size: 17.5px; color: var(--ink); }
+  .meta { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink-soft); margin-top: 18px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--silver);
+    border-radius: 16px; padding: 24px 26px; margin-bottom: 18px;
+  }
+  .card.tight { padding: 18px 22px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  @media (max-width: 820px) { .grid2, .grid3 { grid-template-columns: 1fr; } .wrap { padding: 28px 16px 64px; } h1 { font-size: 27px; } }
+  .pill {
+    display: inline-block; font-family: "IBM Plex Mono", monospace; font-size: 11px;
+    font-weight: 600; padding: 3px 10px; border-radius: 999px; letter-spacing: 0.04em;
+  }
+  .pill-green { background: var(--green-tint); color: var(--green-hover); }
+  .pill-amber { background: var(--amber-tint); color: var(--amber); }
+  .pill-blue  { background: var(--blue-tint); color: var(--blue); }
+  .pill-red   { background: var(--red-tint); color: var(--red); }
+  .pill-purple{ background: var(--purple-tint); color: var(--purple); }
+  .pill-gray  { background: var(--silver-2); color: var(--ink-soft); }
+  code, .mono { font-family: "IBM Plex Mono", monospace; font-size: 0.88em; background: var(--silver-2); padding: 1px 6px; border-radius: 5px; color: var(--ink); }
+  pre { background: #20282455; border: 1px solid var(--silver); border-radius: 12px; padding: 16px 18px; overflow-x: auto; font-family: "IBM Plex Mono", monospace; font-size: 13px; line-height: 1.6; color: var(--ink); margin: 0 0 16px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 18px; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--silver-2); vertical-align: top; }
+  th { font-family: "IBM Plex Mono", monospace; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); background: var(--surface); }
+  tr:last-child td { border-bottom: none; }
+  .analogy { background: var(--butter); border: 1px solid #E8D89A; border-left: 4px solid var(--amber); border-radius: 12px; padding: 16px 20px; margin: 14px 0; }
+  .analogy .tag { font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 700; color: var(--amber); letter-spacing: 0.06em; }
+  .analogy p { color: #5a4a20; margin: 4px 0 0; }
+  .warn { background: var(--red-tint); border: 1px solid #E8B8B0; border-left: 4px solid var(--red); border-radius: 12px; padding: 16px 20px; margin: 14px 0; }
+  .warn .tag { font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 700; color: var(--red); letter-spacing: 0.06em; }
+  .warn p { color: #6e2b22; margin: 4px 0 0; }
+  .fix { background: var(--green-tint); border: 1px solid #B6DEC2; border-left: 4px solid var(--green); border-radius: 12px; padding: 16px 20px; margin: 14px 0; }
+  .fix .tag { font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 700; color: var(--green-hover); letter-spacing: 0.06em; }
+  .fix p { color: #1d5230; margin: 4px 0 0; }
+  ul, ol { color: var(--ink-soft); margin: 0 0 14px; padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  .toc { columns: 2; column-gap: 28px; font-size: 14.5px; }
+  .toc a { color: var(--blue); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  @media (max-width: 820px) { .toc { columns: 1; } }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0; }
+  .flow .step { background: var(--elevated); border: 1px solid var(--silver); border-radius: 10px; padding: 8px 14px; font-size: 13.5px; font-weight: 600; }
+  .flow .arrow { color: var(--ink-soft); font-weight: 700; }
+  .num { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--purple); color: #fff; font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 700; margin-right: 8px; flex: 0 0 auto; }
+  .kpi { text-align: center; padding: 18px; }
+  .kpi .big { font-family: "Source Serif 4", Georgia, serif; font-size: 34px; font-weight: 700; color: var(--purple); line-height: 1; }
+  .kpi .label { font-size: 13px; color: var(--ink-soft); margin-top: 8px; }
+  .stage-head { display: flex; align-items: center; margin: 26px 0 6px; }
+  .stage-head h3 { margin: 0; }
+  .ribbon { font-family: "IBM Plex Mono", monospace; font-size: 11px; padding: 2px 9px; border-radius: 6px; margin-left: 10px; }
+  footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid var(--silver); font-size: 13px; color: var(--ink-soft); }
+  .legend span { display: inline-block; margin-right: 16px; font-size: 12.5px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <p class="eyebrow">L5 Business OS · 내부 기술 설명서</p>
+  <h1>펄크 CTO가 ACR로 코딩하는 전 과정</h1>
+  <p class="lead">AI 가상 CTO(최고기술책임자)가 사람 대신 코드를 짜는 방식을 — 작업을 나누는 법부터, 단계별 워크플로우, 모델 배분, 검증, git 브랜치 정리, 그리고 <strong>왜 자꾸 병목과 오류가 생기는지</strong>까지 — 개발을 모르는 사람도 이해할 수 있게 처음부터 끝까지 풀어 정리했습니다.</p>
+  <p class="meta">작성일 2026-06-09 · 기준 브랜치 <code>claude/purl-cto-acr-docs-qq97pg</code> · 근거: 실제 코드(<code>cto.ts</code>, <code>dev-workflow-spec.ts</code>, <code>model-routing.ts</code>, <code>verifier.ts</code>, <code>acr-client.ts</code>, <code>task-dispatcher.ts</code>, <code>git-acr-cleanup.sh</code>) + 운영 회고 문서 + 최근 git 커밋 40건</p>
+</header>
+
+<!-- ============ 30초 요약 ============ -->
+<div class="card" style="border-left:4px solid var(--purple);">
+  <h3 style="margin-top:0;">⏱️ 30초 요약 (비개발자용)</h3>
+  <p><strong>ACR(Agent Control Room, 에이전트 관제실)</strong>은 AI 직원들이 일하는 <strong>무인 공장</strong>입니다. 그리고 <strong>CTO 에이전트</strong>는 그 공장의 <strong>현장 반장</strong>이에요. 누가 "이 기능 만들어줘"라고 지시하면:</p>
+  <ol>
+    <li><strong>반장(CTO)이 일의 크기를 판단</strong>합니다 — "이건 5분짜리 잔손질", "이건 큰 공사" 같은 식으로 7가지 등급으로 분류합니다.</li>
+    <li>크기에 맞는 <strong>작업 순서표(공정)</strong>를 꺼냅니다 — 큰 일은 "조사→설계→테스트→구현→검토→저장"까지 6단계, 작은 일은 2단계.</li>
+    <li>각 단계를 <strong>실력과 비용이 다른 AI 일꾼(모델)</strong>에게 배정합니다 — 어려운 설계는 비싼 고수에게, 단순 작업은 싼 일꾼에게.</li>
+    <li>일꾼이 실제로 코드를 짜면, <strong>검수원(verifier)이 결과를 검사</strong>하고, 통과하면 다음 단계로 넘깁니다.</li>
+    <li>위험한 작업(고객 결제·배포 등)은 <strong>사람(파운더)의 승인</strong>을 받고 진행합니다.</li>
+  </ol>
+  <p style="margin-bottom:0;">문제는, 이 공장이 한동안 <strong>거의 멈춰 있었다</strong>는 점입니다. 작은 일도 6단계를 다 돌리고, 빈 결과를 실패로 오인해 재시도하고, 안전장치가 내부 작업까지 막고, 다 끝난 임시 작업 폴더(git 브랜치)가 수백 개씩 쌓였습니다. 이 문서는 그 <strong>전 과정과 8가지 병목, 그리고 최근 고친 내용(B1~B5)</strong>을 모두 기록합니다.</p>
+</div>
+
+<!-- ============ 목차 ============ -->
+<h2 id="toc">목차</h2>
+<div class="card toc">
+  <p><a href="#what">1. ACR과 CTO가 뭔가요? (공장 비유)</a></p>
+  <p><a href="#bigpicture">2. 전체 워크플로우 한눈에</a></p>
+  <p><a href="#classify">3. 1단계 — 작업 분류 (7등급)</a></p>
+  <p><a href="#phases">4. 2단계 — 등급별 공정(Phase) 전부</a></p>
+  <p><a href="#routing">5. 3단계 — 모델 배분 (T1/T2/T3)</a></p>
+  <p><a href="#risk">6. 4단계 — 위험도(D1~D5)와 승인 게이트</a></p>
+  <p><a href="#dispatch">7. 5단계 — ACR로 전달 & 비동기 실행</a></p>
+  <p><a href="#verify">8. 6단계 — 검증(Verifier)</a></p>
+  <p><a href="#git">9. 7단계 — git 브랜치 생성과 정리</a></p>
+  <p><a href="#bottleneck">10. 왜 자꾸 병목·오류가 생기나 (8가지)</a></p>
+  <p><a href="#fixes">11. 최근 고친 것 — B1~B5 최적화</a></p>
+  <p><a href="#commits">12. 최근 바뀐 브랜치·커밋 전부</a></p>
+  <p><a href="#open">13. 아직 안 고친 것 (다음 숙제)</a></p>
+  <p><a href="#glossary">14. 용어집</a></p>
+</div>
+
+<!-- ============ 1. ACR이 뭔가 ============ -->
+<h2 id="what">1. ACR과 CTO가 뭔가요? <span class="pill pill-purple">개념</span></h2>
+<p>코드를 모르는 분을 위해 먼저 등장인물을 정리합니다. 이 시스템에는 사람 직원이 거의 없고, 대부분 <strong>AI 역할(에이전트)</strong>이 일합니다.</p>
+
+<div class="grid2">
+  <div class="card">
+    <h4>🏭 ACR (Agent Control Room)</h4>
+    <p>AI 일꾼들이 실제로 코드를 짜는 <strong>무인 공장 / 관제실</strong>. 작업 지시서를 받으면 단계별로 AI를 돌려 코드를 만들고, 결과를 기록합니다. 펄크 본체(L5)와는 <strong>인터넷(HTTP API)으로 연결된 별도 시스템</strong>입니다.</p>
+  </div>
+  <div class="card">
+    <h4>👷 CTO 에이전트</h4>
+    <p>공장에 일을 넘기기 <strong>전에</strong> 작업을 설계하는 <strong>현장 반장</strong>. "이 일은 얼마나 큰가, 몇 단계로 쪼갤까, 누구에게 맡길까, 위험한가"를 판단합니다. 코드 위치: <code>services/agent-runtime/src/agents/cto.ts</code></p>
+  </div>
+  <div class="card">
+    <h4>📋 L5 (펄크 본체)</h4>
+    <p>회사 운영 콘솔. 파운더의 지시를 받아 "할 일(Task)" 목록을 만들고 대기열에 넣습니다. CTO는 이 본체의 한 부서장입니다.</p>
+  </div>
+  <div class="card">
+    <h4>🚚 Hermes / Dispatcher</h4>
+    <p>대기열의 할 일을 꺼내 담당 부서장(CTO 등)에게 배달하는 <strong>배차 담당</strong>. 코드: <code>services/hermes-runtime/.../task-dispatcher.ts</code></p>
+  </div>
+</div>
+
+<div class="analogy">
+  <span class="tag">🍔 비유</span>
+  <p><strong>패스트푸드 주방</strong>을 떠올려 보세요. 손님 주문(파운더 지시)이 들어오면 → 배차 담당이 주문표를 주방장(CTO)에게 줍니다 → 주방장은 "햄버거 하나는 2분, 케이터링 100인분은 큰 공정"이라 판단하고 레시피(공정표)를 정합니다 → 각 조리 단계를 알바생(AI 모델)에게 나눠줍니다 → 검수원이 맛을 보고(verifier) → 통과하면 손님께 나갑니다. ACR은 바로 이 <strong>주방 전체</strong>입니다.</p>
+</div>
+
+<!-- ============ 2. 전체 워크플로우 ============ -->
+<h2 id="bigpicture">2. 전체 워크플로우 한눈에 <span class="pill pill-blue">전체 그림</span></h2>
+<p>지시 한 줄이 코드가 되어 저장되기까지 거치는 7개 큰 단계입니다. 각 단계는 아래 섹션에서 하나씩 자세히 풉니다.</p>
+
+<div class="flow">
+  <span class="step">① 할 일 대기열 (L5)</span><span class="arrow">→</span>
+  <span class="step">② 배차 (Dispatcher)</span><span class="arrow">→</span>
+  <span class="step">③ CTO 분류</span><span class="arrow">→</span>
+  <span class="step">④ 공정·모델·위험도 결정</span><span class="arrow">→</span>
+  <span class="step">⑤ ACR로 지시서 전달</span><span class="arrow">→</span>
+  <span class="step">⑥ 단계별 실행+검증</span><span class="arrow">→</span>
+  <span class="step">⑦ 브랜치 머지·정리</span>
+</div>
+
+<div class="card">
+  <table>
+    <tr><th>단계</th><th>담당</th><th>하는 일</th><th>핵심 코드</th></tr>
+    <tr><td><strong>① 대기</strong></td><td>L5 본체</td><td>파운더 지시를 "할 일(Task)"로 만들어 <code>queued</code> 상태로 대기열에 넣음</td><td>NocoBase</td></tr>
+    <tr><td><strong>② 배차</strong></td><td>Dispatcher</td><td>승인 불필요 + 대기중인 할 일만 꺼내 담당 에이전트에게 전달</td><td><code>task-dispatcher.ts</code></td></tr>
+    <tr><td><strong>③ 분류</strong></td><td>CTO</td><td>제목·설명을 보고 7등급 중 하나로 자동 분류 (AI 호출 없이 규칙으로)</td><td><code>classifyTask()</code></td></tr>
+    <tr><td><strong>④ 설계</strong></td><td>CTO</td><td>등급별 공정표 꺼냄 → 각 단계에 모델 배정 → 위험도·승인 게이트 계산</td><td><code>dev-workflow-spec.ts</code>, <code>model-routing.ts</code></td></tr>
+    <tr><td><strong>⑤ 전달</strong></td><td>CTO→ACR</td><td>"지시서(ACRIntent)"를 만들어 ACR 공장에 HTTP로 보냄. 할 일은 <code>running</code>으로 표시</td><td><code>acr-intent.ts</code>, <code>acr-client.ts</code></td></tr>
+    <tr><td><strong>⑥ 실행</strong></td><td>ACR 공장</td><td>단계마다 AI(claude/codex/gemini)를 돌려 코드 생성 → 검수원이 합격/불합격 판정 → 다음 단계</td><td><code>verifier.ts</code></td></tr>
+    <tr><td><strong>⑦ 정리</strong></td><td>git 스크립트</td><td>임시 작업 폴더(<code>acr/...</code> 브랜치)를 main에 합치고, 끝난 건 삭제</td><td><code>git-acr-cleanup.sh</code></td></tr>
+  </table>
+</div>
+
+<div class="analogy">
+  <span class="tag">💡 핵심 한 줄</span>
+  <p>CTO는 <strong>직접 코딩하지 않습니다.</strong> CTO가 하는 일은 "어떻게 만들지 설계도와 작업지시서를 짜서 공장에 넘기는 것"이고, 실제 코딩은 ACR 공장 안의 AI 일꾼들이 합니다. 그래서 속도와 오류는 <strong>코딩 실력이 아니라, 일을 어떻게 쪼개고 배분하고 관리하느냐</strong>에서 거의 다 결정됩니다.</p>
+</div>
+
+<!-- ============ 3. 분류 ============ -->
+<h2 id="classify">3. 1단계 — 작업 분류 (7등급) <span class="pill pill-green">CTO 권한</span></h2>
+<p>모든 것의 시작입니다. CTO는 할 일의 제목과 설명만 보고 <strong>AI를 호출하지 않고 정해진 규칙</strong>으로 7등급 중 하나를 정합니다. (예전엔 매번 AI에게 물어봤는데, 그게 느림의 원인이라 규칙으로 바꿨습니다 — B1 참고.) 이 등급이 이후 모든 것(몇 단계로 쪼갤지, 어떤 모델을 쓸지)을 결정합니다.</p>
+
+<div class="card">
+  <table>
+    <tr><th>등급</th><th>뜻</th><th>예시</th><th>공정 수</th></tr>
+    <tr><td><span class="pill pill-gray">TINY</span></td><td>진짜 사소한 일</td><td>오타 수정, 한 줄 변경, 상수 추가, 이름 바꾸기(rename)</td><td><strong>2단계</strong></td></tr>
+    <tr><td><span class="pill pill-blue">SMALL_FIX</span></td><td>작은 버그 수정·단일 컴포넌트</td><td>카드 1개, 버튼, 엔드포인트 하나, 작은 버그</td><td><strong>4단계</strong></td></tr>
+    <tr><td><span class="pill pill-green">FEATURE</span></td><td>일반적인 새 기능</td><td>새 화면, 여러 파일에 걸친 기능</td><td><strong>6단계</strong></td></tr>
+    <tr><td><span class="pill pill-red">BIG_CHANGE</span></td><td>큰 변경 (위험·광범위)</td><td>200줄+ 변경, 모듈 3개+ 영향, 스키마/공개 API 변경</td><td><strong>6~7단계 (RFC 추가)</strong></td></tr>
+    <tr><td><span class="pill pill-amber">OPS</span></td><td>운영·인프라 작업</td><td>배포, 마이그레이션, launchd, 롤백, 백업</td><td><strong>4단계</strong></td></tr>
+    <tr><td><span class="pill pill-purple">RESEARCH</span></td><td>조사·비교만</td><td>"X와 Y 비교", 기술 survey, 탐색</td><td><strong>1단계</strong></td></tr>
+    <tr><td><span class="pill pill-gray">REFACTOR</span></td><td>구조 개선(기능 동일)</td><td>리팩터링, 리팩토링</td><td><strong>4단계</strong></td></tr>
+  </table>
+</div>
+
+<h3>분류는 어떻게 결정되나 (판단 순서)</h3>
+<ol>
+  <li><strong>키워드 우선</strong>: 제목에 "리팩터/리팩토링"→REFACTOR, "조사/비교/survey"→RESEARCH, "배포/마이그레이션/롤백/운영"→OPS 처럼 명확한 단어가 있으면 바로 결정.</li>
+  <li><strong>복잡도 점수(escalation, 5개 신호)</strong>: ① 변경 줄 200 초과 ② 영향 모듈 3개 초과 ③ 새 외부 의존성 ④ 스키마/DB 변경 ⑤ 공개 API 깨짐. 이 중 <strong>3개 이상</strong>이면 등급을 한 칸 올림(SMALL_FIX→FEATURE→BIG_CHANGE).</li>
+  <li><strong>TINY 판정</strong>: "오타/typo/한 줄/함수 하나/rename/trivial" 같은 신호 + 예상 30줄 이하 + 모듈 1개 이하 + 위 복잡도 신호가 <strong>하나도 없을 때만</strong>.</li>
+  <li><strong>단일 컴포넌트 강등</strong>: FEATURE로 보였지만 "card/panel/badge/modal/endpoint/컴포넌트" 같은 단일 요소 키워드 + 복잡도 2 미만이면 → SMALL_FIX로 내림. (작은 UI를 6단계로 과설계하지 않으려는 장치 — B2)</li>
+</ol>
+
+<div class="analogy">
+  <span class="tag">🧰 비유</span>
+  <p>철물점 사장님이 손님 말만 듣고 "이건 못 몇 개면 되는 잔손질", "이건 인테리어 공사"라고 즉석에서 판단하는 것과 같습니다. 매번 본사에 전화해 묻지 않고(=AI 호출 안 함) <strong>경험 규칙</strong>으로 빠르게 정하는 게 핵심입니다.</p>
+</div>
+
+<!-- ============ 4. Phase ============ -->
+<h2 id="phases">4. 2단계 — 등급별 공정(Phase) 전부 <span class="pill pill-green">SOP</span></h2>
+<p>등급이 정해지면, 정해진 <strong>표준 작업순서(SOP)</strong>가 자동으로 나옵니다. 각 단계(phase)는 ① 한국어 이름 ② 담당 런타임 ③ 읽기전용 여부 ④ 합격 기준 ⑤ 직전 단계 의존성을 가집니다. 아래는 <strong>7개 등급의 모든 공정</strong>입니다.</p>
+
+<div class="grid2">
+  <div class="card tight">
+    <h4>TINY — 2단계</h4>
+    <div class="flow"><span class="step">구현</span><span class="arrow">→</span><span class="step">커밋</span></div>
+    <p style="font-size:13.5px;margin:0;">진짜 사소한 일은 조사·스펙·리뷰를 모두 생략. 수 초 안에 끝남.</p>
+  </div>
+  <div class="card tight">
+    <h4>SMALL_FIX — 4단계</h4>
+    <div class="flow"><span class="step">재현 테스트</span><span class="arrow">→</span><span class="step">버그 수정</span><span class="arrow">→</span><span class="step">회귀 확인</span><span class="arrow">→</span><span class="step">커밋</span></div>
+    <p style="font-size:13.5px;margin:0;">버그를 먼저 테스트로 재현 → 고침 → 다른 데 안 깨졌나 확인 → 저장.</p>
+  </div>
+  <div class="card tight">
+    <h4>FEATURE — 6단계 (표준 풀코스)</h4>
+    <div class="flow"><span class="step">오픈소스 조사</span><span class="arrow">→</span><span class="step">스펙 작성</span><span class="arrow">→</span><span class="step">실패 테스트</span><span class="arrow">→</span><span class="step">구현</span><span class="arrow">→</span><span class="step">리뷰</span><span class="arrow">→</span><span class="step">커밋</span></div>
+    <p style="font-size:13.5px;margin:0;">테스트를 먼저 써서 일부러 실패시키고(red), 구현으로 통과시키는(green) TDD 방식.</p>
+  </div>
+  <div class="card tight">
+    <h4>BIG_CHANGE — 7단계 (RFC 추가)</h4>
+    <div class="flow"><span class="step">RFC 작성</span><span class="arrow">→</span><span class="step">스펙</span><span class="arrow">→</span><span class="step">실패 테스트</span><span class="arrow">→</span><span class="step">구현</span><span class="arrow">→</span><span class="step">리뷰</span><span class="arrow">→</span><span class="step">커밋</span></div>
+    <p style="font-size:13.5px;margin:0;">큰 변경은 맨 앞에 "왜·어떻게 바꿀지" 설계 제안서(RFC)를 한 단계 더 둠.</p>
+  </div>
+  <div class="card tight">
+    <h4>OPS — 4단계</h4>
+    <div class="flow"><span class="step">백업·롤백 계획</span><span class="arrow">→</span><span class="step">운영 실행</span><span class="arrow">→</span><span class="step">스모크 테스트</span><span class="arrow">→</span><span class="step">커밋</span></div>
+    <p style="font-size:13.5px;margin:0;">운영 작업은 사고에 대비해 백업/되돌리기 계획을 먼저 세움.</p>
+  </div>
+  <div class="card tight">
+    <h4>RESEARCH — 1단계</h4>
+    <div class="flow"><span class="step">조사 및 비교</span></div>
+    <p style="font-size:13.5px;margin:0;">코드 변경 없이 조사 결과만 산출.</p>
+  </div>
+  <div class="card tight">
+    <h4>REFACTOR — 4단계</h4>
+    <div class="flow"><span class="step">회귀 green 확보</span><span class="arrow">→</span><span class="step">리팩터링</span><span class="arrow">→</span><span class="step">회귀 재확인</span><span class="arrow">→</span><span class="step">커밋</span></div>
+    <p style="font-size:13.5px;margin:0;">기능을 안 바꾸므로, 고치기 전·후로 "동작 그대로인지" 두 번 확인.</p>
+  </div>
+</div>
+
+<h3>각 단계가 가진 정보</h3>
+<p>모든 공정 단계는 내부적으로 다음 정보를 담은 "작업 카드"입니다(코드상 <code>DevPhaseTemplate</code>):</p>
+<ul>
+  <li><strong>kind</strong>: 단계 종류 — <code>spec, test, implement, review, commit, repro, fix, regress, research, rfc, refactor, backup, smoke</code> 중 하나</li>
+  <li><strong>name</strong>: 운영자가 보는 한국어 이름 (예: "실패 테스트 작성")</li>
+  <li><strong>runtime</strong>: 어떤 AI 도구로 돌릴지 (<code>claude</code> 또는 <code>codex</code>)</li>
+  <li><strong>read_only</strong>: 이 단계가 파일을 고치지 않고 읽기만 하는지 (읽기전용이면 위험도 D2 이하로 강제)</li>
+  <li><strong>acceptance_criteria</strong>: 합격 기준 목록 (예: 구현 단계 → "직전 실패 테스트가 통과한다(green), 기존 테스트가 회귀 없이 통과한다")</li>
+  <li><strong>verifier_hint</strong>: 검수원이 무엇을 봐야 하는지 힌트</li>
+  <li><strong>dependsOn</strong>: 반드시 끝나야 하는 직전 단계</li>
+</ul>
+
+<div class="card" style="background:var(--elevated);">
+  <h4>안전장치 — 공정 검증(validateDevWorkflowPhases)</h4>
+  <p style="margin-bottom:6px;">만약 AI가 공정을 직접 생성하는 모드라면, CTO는 그 결과가 SOP와 정확히 맞는지 검사합니다: 단계 수가 맞는가 / 순서가 맞는가 / 의존성이 맞는가 / 빈 칸이 없는가. <strong>두 번 실패하면 AI를 포기하고</strong> 정해진 템플릿(<code>buildDeterministicDevPhases</code>)을 그대로 씁니다. 그래서 공장은 <strong>항상</strong> 형식이 올바른 지시서를 받습니다.</p>
+</div>
+
+<!-- ============ 5. 모델 라우팅 ============ -->
+<h2 id="routing">5. 3단계 — 모델 배분 (T1/T2/T3) <span class="pill pill-blue">비용 vs 품질</span></h2>
+<p>각 공정 단계를 <strong>실력·비용이 다른 AI 모델</strong>에 배정합니다. 비싼 고수에게 모든 걸 맡기면 돈·쿼터가 빨리 닳고, 싼 일꾼에게 어려운 설계를 맡기면 품질이 떨어집니다. 그래서 <strong>티어(tier)</strong>로 나눕니다. (코드: <code>model-routing.ts</code>)</p>
+
+<div class="grid3">
+  <div class="card kpi"><div class="big">T1</div><div class="label"><strong>claude-opus</strong><br>최상위 추론(고수)<br>런타임: claude</div></div>
+  <div class="card kpi"><div class="big">T2</div><div class="label"><strong>gpt-4o</strong><br>균형 구현(중간)<br>런타임: codex</div></div>
+  <div class="card kpi"><div class="big">T3</div><div class="label"><strong>claude-haiku</strong><br>경량·저비용(빠름)<br>런타임: antigravity</div></div>
+</div>
+
+<h3>단계 종류별 기본 배정</h3>
+<div class="card">
+  <table>
+    <tr><th>티어</th><th>맡는 단계</th><th>이유</th></tr>
+    <tr><td><span class="pill pill-purple">T1 (고수)</span></td><td>rfc, research, spec, review</td><td>설계·검토는 머리를 많이 써야 함</td></tr>
+    <tr><td><span class="pill pill-blue">T2 (중간)</span></td><td>test, implement, fix, refactor, repro, backup</td><td>실제 구현은 균형형으로</td></tr>
+    <tr><td><span class="pill pill-gray">T3 (경량)</span></td><td>smoke, regress, commit</td><td>기계적·반복 작업은 싼 모델로</td></tr>
+  </table>
+</div>
+
+<h3>등급별 예외 (override)</h3>
+<ul>
+  <li><strong>TINY</strong>: 빨리 끝내려고 두 단계 모두 T1(claude). 테스트상 단계당 ~13초.</li>
+  <li><strong>SMALL_FIX</strong>: 비용 절감 — fix·repro를 T3로 내림.</li>
+  <li><strong>BIG_CHANGE</strong>: 품질 사수 — implement·test를 T1로 올림.</li>
+  <li><strong>OPS</strong>: 기계적이지만 위험 — backup을 T3로.</li>
+</ul>
+
+<div class="fix">
+  <span class="tag">✅ B5 — 쿼터 인지 라우팅</span>
+  <p>모델마다 하루 사용 한도(쿼터)가 있습니다. 예전엔 codex 쿼터가 바닥나도 계속 codex로 일을 보내 <strong>빈 결과 → 재시도</strong>가 반복됐습니다. 지금은 배정 전에 ACR의 <code>quota-tracker.json</code>을 읽어, 소진된 티어는 건너뛰고 사용 가능한 다음 티어로 자동 폴백합니다. (T1→T2→T3, 혹은 T2→T3→T1 순) 단, 핵심 설계인 T1 단계는 <code>model_locked</code>로 잠가 함부로 강등하지 않습니다.</p>
+</div>
+
+<!-- ============ 6. 위험도 ============ -->
+<h2 id="risk">6. 4단계 — 위험도(D1~D5)와 승인 게이트 <span class="pill pill-amber">안전</span></h2>
+<p>모든 작업에는 위험도가 붙고(프로젝트 규칙 4·5), 위험도에 따라 <strong>사람의 승인이 필요한지</strong>가 갈립니다. CTO가 자동으로 계산합니다(<code>gateFromRisk()</code>).</p>
+
+<div class="card">
+  <table>
+    <tr><th>위험도</th><th>뜻</th><th>게이트</th><th>승인 필요?</th><th>자동 실행?</th></tr>
+    <tr><td><span class="pill pill-green">D1</span></td><td>읽기전용, 최저</td><td>none</td><td>아니오</td><td>✅ 즉시</td></tr>
+    <tr><td><span class="pill pill-green">D2</span></td><td>코드 변경, 낮음</td><td>none</td><td>아니오</td><td>✅ 즉시</td></tr>
+    <tr><td><span class="pill pill-amber">D3</span></td><td>영향 큼</td><td>auto_24h</td><td>아니오</td><td>⏳ 24시간 뒤</td></tr>
+    <tr><td><span class="pill pill-red">D4</span></td><td>위험</td><td>manual_founder</td><td>✅ 예</td><td>❌ 사람 승인 후</td></tr>
+    <tr><td><span class="pill pill-red">D5</span></td><td>치명적</td><td>manual_founder</td><td>✅ 예</td><td>❌ 사람 승인 후</td></tr>
+  </table>
+</div>
+
+<div class="fix">
+  <span class="tag">✅ B4 — D3 사전판단</span>
+  <p>D3 판정을 매번 AI에게 묻던 걸, 명확한 경우는 규칙으로 즉답하게 했습니다. "매출/결제/고객메시지/배포/마이그레이션/환불/계약/법률" 단어가 있으면 → <strong>즉시 사람 승인으로 격상</strong>(AI 호출 0). "조사/리뷰/리팩터/내부유틸"이면 → <strong>즉시 통과</strong>. 애매한 회색지대만 AI에게 넘깁니다. 약 70%의 판정에서 AI 호출이 사라졌습니다.</p>
+</div>
+
+<!-- ============ 7. dispatch ============ -->
+<h2 id="dispatch">7. 5단계 — ACR로 지시서 전달 & 비동기 실행 <span class="pill pill-blue">전달</span></h2>
+<p>CTO는 위 모든 결정을 모아 하나의 <strong>지시서(ACRIntent)</strong>로 포장해 ACR 공장에 HTTP로 보냅니다.</p>
+
+<div class="card">
+  <h4>지시서(ACRIntent)에 담기는 것</h4>
+  <pre>{
+  l5_task_id:   "할 일 고유번호"
+  task_title:   "작업 제목"
+  phases: [ {                    ← 순서가 있는 공정 카드들
+      name:                "실패 테스트 작성"
+      runtime:             "codex"          ← 어느 AI 도구
+      prompt_packet:       "[test] ... 작업 지시 + 합격기준 + 힌트"
+      expected_output:     "합격 기준들 (세미콜론 구분)"
+      risk_level:          "D2"
+      release_gate_type:   "none"
+      l5_approval_required: false
+      auto_execute:         true
+      model_locked:         false           ← 쿼터로 강등 금지 여부
+  }, ... ]
+  project_path: "공장이 작업할 폴더 경로"
+  l5_approved:  true                         ← L5 승인 게이트 통과 여부
+}</pre>
+</div>
+
+<h3>전달 과정</h3>
+<ol>
+  <li><strong>프로젝트 등록</strong>: 처음이면 <code>POST /api/projects</code>로 ACR에 프로젝트를 만듦(부트스트랩).</li>
+  <li><strong>지시서 전송</strong>: <code>POST /api/workbench/dispatch</code>로 지시서를 보냄.</li>
+  <li><strong>할 일은 "running"으로</strong>: 공장이 여러 분에 걸쳐 <strong>비동기</strong>로 단계를 돌리므로, 배차 담당은 할 일을 <code>done</code>이 아니라 <code>running</code>으로 두고 빠집니다. 관제실 화면이 진행 상황을 실시간으로 보여줄 수 있게요. 모든 단계가 끝나면 콜백(<code>taskCallback</code>)이 <code>done</code>으로 마감합니다.</li>
+</ol>
+
+<div class="warn">
+  <span class="tag">⚠️ 여기가 함정이었다</span>
+  <p>예전엔 배차 담당이 CTO 할 일을 곧바로 <code>done</code>으로 표시해버려서, 실제로는 공장에서 돌고 있는 작업들이 화면에서 전부 사라졌습니다("진행 중인 일이 안 보임"). 지금은 <code>running</code>으로 두고, 멈춘 작업은 별도 감지기(stalled-task-detector)가 잡습니다.</p>
+</div>
+
+<!-- ============ 8. verify ============ -->
+<h2 id="verify">8. 6단계 — 검증(Verifier) <span class="pill pill-green">검수원</span></h2>
+<p>각 단계 실행이 끝나면 검수원이 "정말 합격 기준을 만족했나"를 봅니다. 핵심은 <strong>AI 없이 결정적으로(deterministic)</strong> 판정한다는 것 — 빠르고 일관됩니다(<code>verifyCTOPhaseDeterministic</code>). 검수원이 보는 것: 종료 코드(exit code), 로그 끝부분, git diff 통계(변경 파일 수).</p>
+
+<div class="card">
+  <table>
+    <tr><th>상황</th><th>판정</th><th>재시도?</th></tr>
+    <tr><td>종료 코드가 0이 아님 (오류로 끝남)</td><td><span class="pill pill-red">fail</span></td><td>예</td></tr>
+    <tr><td>로그에 <code>[ERROR]</code>, <code>Traceback</code>, <code>panic:</code>, <code>fatal:</code> 등</td><td><span class="pill pill-red">fail</span></td><td>예</td></tr>
+    <tr><td>코드를 만들어야 하는 단계인데 <strong>변경 파일이 0개</strong></td><td><span class="pill pill-red">fail</span></td><td>예</td></tr>
+    <tr><td>변경도 없고 변경이 필요한지도 애매</td><td><span class="pill pill-amber">inconclusive</span></td><td>아니오</td></tr>
+    <tr><td>정상 종료 + 오류 없음 + (변경 있음 or 읽기전용)</td><td><span class="pill pill-green">pass</span></td><td>아니오</td></tr>
+  </table>
+</div>
+
+<div class="fix">
+  <span class="tag">✅ B3 — 빈 결과 오탐 차단</span>
+  <p>커밋·리뷰·조사 같은 단계는 원래 <strong>코드를 안 만드는 게 정상</strong>입니다(마크다운 요약만 출력). 예전 검수원은 "변경 파일 0개 = 실패"로 오인해 멀쩡한 단계를 2번씩 재시도해 토큰을 낭비했습니다. 지금은 합격 기준 문구에 "구현/수정/작성/코드" 같은 <strong>코드 생산 신호가 있을 때만</strong> "변경 0개=실패"로 보고, 그렇지 않으면 정상 통과시킵니다.</p>
+</div>
+
+<!-- ============ 9. git ============ -->
+<h2 id="git">9. 7단계 — git 브랜치 생성과 정리 <span class="pill pill-amber">정리</span></h2>
+<p>ACR은 단계를 실행할 때마다 <strong>임시 작업 폴더(git 브랜치)</strong>를 만듭니다. 이름 규칙:</p>
+<pre>acr/l5-&lt;프로젝트UUID&gt;-task-&lt;단계번호&gt;-&lt;날짜&gt;
+예) acr/l5-cf465c42-...-task-4-20260604-2007</pre>
+<p>커밋 메시지에서도 보입니다: <code>ACR phase: 스펙 작성 [acr/l5-...]</code>, <code>ACR phase: 실패 테스트 작성 [...]</code>, <code>ACR phase: 구현 [...]</code>, <code>ACR merge: [L5] ... [...]</code>. 즉 한 작업이 <strong>스펙→테스트→구현→머지</strong> 단계마다 별도 브랜치/커밋을 남깁니다.</p>
+
+<div class="warn">
+  <span class="tag">⚠️ 병목 — 브랜치 폭증</span>
+  <p>ACR이 머지 후 브랜치를 <strong>지우지 않아</strong> 로컬·원격에 수백 개가 쌓였습니다. <strong>2026-06-05 기준 로컬 291개 · 원격 25개.</strong> 근본 해결은 "ACR이 머지 후 스스로 삭제"하는 것이고, 그때까지는 청소 스크립트가 안전망입니다.</p>
+</div>
+
+<div class="card">
+  <h4>청소 스크립트 — scripts/git-acr-cleanup.sh</h4>
+  <p>다음 조건을 모두 만족하는 <code>acr/*</code> 브랜치만 지웁니다: ① 이미 main에 머지됨 ② 7일 이상 지남(<code>AGE_DAYS</code>) ③ 보호 대상 아님(<code>main, cmo/, feat/, omc/, wip/</code>) ④ 현재 체크아웃되지 않음.</p>
+  <pre>bash scripts/git-acr-cleanup.sh            # 미리보기(삭제 안 함)
+bash scripts/git-acr-cleanup.sh --apply    # 실제 삭제
+AGE_DAYS=3 bash scripts/git-acr-cleanup.sh --apply</pre>
+  <p style="margin-bottom:0;">로컬은 <code>git branch -D</code>, 원격은 <code>git push origin --delete</code>로 정리합니다.</p>
+</div>
+
+<!-- ============ 10. 병목 ============ -->
+<h2 id="bottleneck">10. 왜 자꾸 병목·오류가 생기나 — 8가지 <span class="pill pill-red">핵심 진단</span></h2>
+<p>이 부분이 질문의 핵심입니다. CMO 영상룸 프로젝트에서 <strong>158개 공정</strong>을 끝까지 돌리며 실제로 겪은 병목입니다. 운영 회고의 한 줄이 모든 걸 요약합니다:</p>
+<div class="card" style="background:var(--butter);border-left:4px solid var(--amber);">
+  <p style="color:#5a4a20;font-size:16px;margin:0;"><strong>"처음엔 정체·오탐·고아·손상으로 거의 안 움직였고, 병목을 하나씩 제거하니 +5/27분 → +21/27분(4배 가속)으로 빨라졌다. 즉 속도는 작업 난이도가 아니라 오케스트레이션·게이트·모델 배분에서 결정됐다."</strong></p>
+</div>
+
+<div class="stage-head"><h3><span class="num">1</span>과도한 공정 분해 — 최대 낭비</h3><span class="ribbon pill-red">영향 ★★★</span></div>
+<p><strong>증상:</strong> CTO가 28개 기능을 <strong>전부 FEATURE(6단계)</strong>로 분류 → 28×6 = <strong>158개 공정</strong>. 그런데 조사·스펙·리뷰·커밋 4개는 <strong>코드를 안 만들면서</strong> 토큰만 씁니다. 카드 1개 추가에도 풀코스 6단계가 돌았습니다.<br><strong>왜:</strong> 분류 규칙이 너무 거칠어 작은 UI와 복잡한 기능을 똑같이 취급. SOP는 큰일엔 맞지만 작은 일엔 과설계.</p>
+
+<div class="stage-head"><h3><span class="num">2</span>콜드스타트 + 컨텍스트 재사용 0</h3><span class="ribbon pill-amber">영향 ★★</span></div>
+<p><strong>증상:</strong> 공정마다 <strong>새 AI 세션</strong>이 코드베이스를 처음부터 다시 읽음. claude 콜드스타트만 수십 초. 158번 반복되면 막대한 누적 낭비.<br><strong>왜:</strong> 따뜻한 세션 재사용(<code>--resume</code>)이 꺼져 있었음(<code>ACR_WARM_SESSIONS</code> 미설정).</p>
+
+<div class="stage-head"><h3><span class="num">3</span>빈 결과 공정이 "실패"로 막힘</h3><span class="ribbon pill-red">영향 ★★★</span></div>
+<p><strong>증상:</strong> 커밋·리뷰·조사 단계는 파일 변경이 0 → 검수원이 "빈 산출물"로 보고 <code>review_blocked</code> → 작업이 영영 완료 못 됨. 게다가 <strong>2회 재시도</strong>로 토큰이 2~3배.<br><strong>왜:</strong> 검수원이 "정상적인 무(無)코드 단계"와 "진짜 실패"를 구분 못 함.</p>
+
+<div class="stage-head"><h3><span class="num">4</span>안전 게이트 3종의 내부 코딩 오탐</h3><span class="ribbon pill-red">영향 ★★★</span></div>
+<p><strong>증상:</strong> ① 위험명령 탐지기가 프롬프트에 <code>token/secret/deploy/migrate</code> <strong>단어만 있어도</strong> 차단 ② 위험 분류기가 내부 D2 코딩을 D4(사람 승인)로 격상 ③ 게이트가 막을 때 작업을 <code>running</code>으로 방치 → <strong>고아 작업</strong>이 동시성 슬롯을 막아 데드락.<br><strong>왜:</strong> 게이트는 "외부 위험 작업(고객 메시지·결제·배포)"용인데 격리된 내부 코딩에도 적용됨. L5가 이미 승인한 작업에 중복 게이트.</p>
+
+<div class="stage-head"><h3><span class="num">5</span>오케스트레이션이 작업을 잃고 정체</h3><span class="ribbon pill-red">영향 ★★★</span></div>
+<p><strong>증상(반복됨):</strong> ACR이 <strong>인메모리 락(planDrainLock)</strong> + 긴 HTTP 1회로 작업을 직렬 실행 → 연결 끊김/행(hang) 시 <strong>락이 안 풀려 전체가 멈춤</strong>. acr-web을 재시작해야만 풀리고, 재시작하면 진행 중이던 공정이 <strong>폐기·재실행</strong>(토큰 낭비). 약 6분마다 정체→재시작이 반복됐고, 17분짜리 고아 작업도 발생.<br><strong>왜:</strong> 인메모리 락 + inline-HTTP + 행 감지/타임아웃 부재. 분산 비동기 작업엔 부적합한 구조.</p>
+
+<div class="stage-head"><h3><span class="num">6</span>비원자적 JSON 쓰기 → 파일 손상</h3><span class="ribbon pill-amber">영향 ★★</span></div>
+<p><strong>증상:</strong> 여러 작업이 동시에 같은 JSON 파일(<code>execution-logs.json</code> 등)에 쓰면서 내용이 뒤섞여 <strong>"Extra data after JSON"</strong> 손상 → 그 파일을 읽는 모든 후속 작업이 연쇄 실패.<br><strong>왜:</strong> 일반 파일 쓰기는 원자적이지 않아 동시 쓰기에 깨짐. 임시파일+이름변경(temp+rename) 방식을 안 씀.</p>
+
+<div class="stage-head"><h3><span class="num">7</span>모델/쿼터 미스매치 → 죽은 에이전트로 발송</h3><span class="ribbon pill-red">영향 ★★★</span></div>
+<p><strong>증상:</strong> codex(T2) 쿼터 소진, agy가 <strong>이미 소진된 모델("Claude Sonnet 4.6 Thinking")로 고정</strong>돼 빈 출력. 라우팅이 쿼터를 무시하고 죽은 에이전트로 계속 발송 → 폴백·재시도 낭비.<br><strong>왜:</strong> 쿼터 추적 데이터(<code>quota-tracker.json</code>)는 ACR에 있었지만 CTO 라우터가 <strong>한 번도 참조하지 않음</strong>. 가용성 가정하고 맹목 배정.</p>
+
+<div class="stage-head"><h3><span class="num">8</span>병렬 worktree의 통합 충돌</h3><span class="ribbon pill-gray">영향 ★</span></div>
+<p><strong>증상:</strong> 속도를 위해 4개 worktree를 병렬로 돌렸지만, 공유 파일(Sidebar, 라우터, <code>package.json</code>)을 각자 독립 수정 → 마지막에 병합 충돌을 수동 해결.<br><strong>왜:</strong> 병렬 작업이 같은 통합 지점을 동시에 건드림. 공유 파일 경계를 미리 정하지 않음.</p>
+
+<div class="card" style="background:var(--elevated);">
+  <h4>한 줄 결론</h4>
+  <p style="margin-bottom:0;">병목의 공통 뿌리는 <strong>"코딩이 어려워서"가 아니라, 일을 너무 잘게 쪼개고(1), 매번 처음부터 시작하고(2), 정상 결과를 실패로 오인하고(3), 안전장치가 과민하고(4), 작업 관리 구조가 약하고(5·6), 가용 자원을 안 보고 배정하는(7)</strong> — 오케스트레이션·게이트·자원관리 문제였습니다.</p>
+</div>
+
+<!-- ============ 11. fixes ============ -->
+<h2 id="fixes">11. 최근 고친 것 — B1~B5 최적화 <span class="pill pill-green">개선</span></h2>
+<p>위 병목들을 코드로 해결한 것이 최근 커밋의 <strong>B1~B5</strong> 시리즈입니다(2026-06-05). 각각이 어떤 병목을 겨냥했는지 정리합니다.</p>
+
+<div class="card">
+  <table>
+    <tr><th>코드</th><th>커밋</th><th>겨냥한 병목</th><th>무엇을 했나 (쉬운 설명)</th></tr>
+    <tr>
+      <td><span class="pill pill-green">B1</span></td>
+      <td><code>77d5ed4</code> feat(cto): phase 생성 결정적화</td>
+      <td>#1, #2</td>
+      <td>매번 AI에게 "몇 단계로 쪼갤까" 묻던 걸 <strong>규칙(classifyTask)으로 즉답</strong>. AI 재시도 루프와 콜드스타트 왕복을 제거. <code>ACR_DETERMINISTIC_PHASES</code> 기본 ON.</td>
+    </tr>
+    <tr>
+      <td><span class="pill pill-green">B2</span></td>
+      <td><code>096e598</code> test(cto): single-component→SMALL_FIX 휴리스틱</td>
+      <td>#1</td>
+      <td>카드·패널 같은 <strong>단일 컴포넌트는 6단계가 아니라 4단계(SMALL_FIX)</strong>로 인식하게 규칙 정교화. 49개 테스트로 오탐 방지.</td>
+    </tr>
+    <tr>
+      <td><span class="pill pill-green">B3</span></td>
+      <td><code>4b5853f</code> feat(cto): verifier diff-통계 검증</td>
+      <td>#3</td>
+      <td>"코드 생산 신호가 있을 때만 변경 0개=실패"로 판정해, 커밋·리뷰 같은 <strong>정상 무코드 단계의 헛 재시도를 차단</strong>. 13개 테스트.</td>
+    </tr>
+    <tr>
+      <td><span class="pill pill-green">B4</span></td>
+      <td><code>79664a3</code> feat(cto): D3 판정 결정적 사전판단</td>
+      <td>#4, #7</td>
+      <td>"결제·고객메시지=위험, 리팩터·조사=안전" 같은 <strong>명백한 위험판정을 규칙으로 즉답</strong>해 AI 호출을 ~70% 감소. 14개 테스트.</td>
+    </tr>
+    <tr>
+      <td><span class="pill pill-green">B5</span></td>
+      <td><code>c7b36aa</code> feat(cto): 쿼터 인지 모델 라우팅 연결</td>
+      <td>#7</td>
+      <td>배정 전에 <strong>쿼터 파일을 읽어 소진된 모델은 건너뜀</strong>. 죽은 에이전트로 보내는 헛발송과 재시도 폭풍 제거.</td>
+    </tr>
+  </table>
+</div>
+
+<p>그 밖에 운영 중 적용된 임시 처방: 따뜻한 세션 켜기(<code>ACR_WARM_SESSIONS=1</code>, #2), 재시도 1회로 축소(<code>ACR_MAX_ATTEMPTS=1</code>, #3), 위험명령 게이트 기본 OFF(<code>ACR_DANGER_GATE</code>, #4), 핫 스토어 원자적 쓰기(#6), agy 모델을 가용한 Gemini로 교체(#7), 정체 감지 시 자동 재시작·고아 작업 힐링(#5), 브랜치 청소 스크립트(<code>5dca10f</code>, git 폭증).</p>
+
+<div class="grid3">
+  <div class="card kpi"><div class="big">4×</div><div class="label">완주 속도<br>(+5분→+21분/27)</div></div>
+  <div class="card kpi"><div class="big">~70%↓</div><div class="label">D3 판정 AI 호출<br>(B4)</div></div>
+  <div class="card kpi"><div class="big">291→0</div><div class="label">목표: 쌓인 브랜치<br>(청소 스크립트)</div></div>
+</div>
+
+<!-- ============ 12. commits ============ -->
+<h2 id="commits">12. 최근 바뀐 브랜치·커밋 전부 <span class="pill pill-blue">이력</span></h2>
+<p>현재 작업 브랜치는 <code>claude/purl-cto-acr-docs-qq97pg</code>이며 <code>origin/main</code>(<code>7e93b74</code>)과 같은 지점에서 출발했습니다. 최근 커밋들은 크게 <strong>CTO 속도 최적화(B1~B5)</strong>와 <strong>CMO 영상룸 기능</strong> 두 갈래입니다.</p>
+
+<h3>① CTO / ACR 관련 (속도·안정화)</h3>
+<div class="card">
+  <table>
+    <tr><th>커밋</th><th>날짜</th><th>내용</th></tr>
+    <tr><td><code>c7b36aa</code></td><td>06-05</td><td>B5 — 쿼터 인지 모델 라우팅 연결</td></tr>
+    <tr><td><code>79664a3</code></td><td>06-05</td><td>B4 — D3 판정 결정적 사전판단 (LLM 호출 감소)</td></tr>
+    <tr><td><code>4b5853f</code></td><td>06-05</td><td>B3 — verifier diff-통계 검증으로 false-positive 차단</td></tr>
+    <tr><td><code>096e598</code></td><td>06-05</td><td>B2 — single-component→SMALL_FIX 휴리스틱 단위테스트</td></tr>
+    <tr><td><code>77d5ed4</code></td><td>06-05</td><td>B1 — phase 생성 결정적화 (LLM 재시도 루프 제거)</td></tr>
+    <tr><td><code>3864373</code></td><td>06-05</td><td>token-estimate 테스트를 single-component 휴리스틱에 맞춤</td></tr>
+    <tr><td><code>5dca10f</code></td><td>06-05</td><td>ACR 자동생성 브랜치 정리 안전망 스크립트</td></tr>
+    <tr><td><code>68e9d44</code></td><td>06-05</td><td>속도 최적화 전략/PRD + 상태 리포트 + .gitignore 보강</td></tr>
+    <tr><td><code>31c82aa</code></td><td>06-05</td><td>single-component→SMALL_FIX 휴리스틱 + cloudflared 개선 + 속도 문서</td></tr>
+  </table>
+</div>
+
+<h3>② CMO 영상룸 / 빌드 안정화</h3>
+<div class="card">
+  <table>
+    <tr><th>커밋</th><th>날짜</th><th>내용</th></tr>
+    <tr><td><code>7e93b74</code></td><td>06-05</td><td>PR #4 머지 — founder-ui recharts 중복 의존성 제거 (현재 HEAD)</td></tr>
+    <tr><td><code>be77bdb</code></td><td>06-05</td><td>recharts 중복 의존성 제거(빌드 안정화) + 워크플로우 문서</td></tr>
+    <tr><td><code>aaf352a</code> / <code>4732c6d</code></td><td>06-05</td><td>PR #3 머지 — cmo/video-room-clean</td></tr>
+    <tr><td><code>4c6eb99</code></td><td>06-05</td><td>Phase 3 잔여 — 원고(장면 beat) 편집 + 팩토리 Scene JSON 전달</td></tr>
+    <tr><td><code>7fa85e8</code></td><td>06-05</td><td>Phase 3 — 세컨브레인 기반 도입부 30초 + 적용 인사이트 승인</td></tr>
+    <tr><td><code>06d816a</code></td><td>06-05</td><td>워크플로우를 비즈니스 PT 강의에 정합 + 라이브 세컨브레인 결선</td></tr>
+    <tr><td><code>9e0d3c5</code></td><td>06-05</td><td>업로드 제목 입력 + QA 후 탭 리셋 방지 + 브라우저 E2E + 아키텍처 문서</td></tr>
+    <tr><td><code>503c7ce</code></td><td>06-05</td><td>Video Room PRD 갭 배선 — P0 production/publish UI + P1 신규 액션 3종</td></tr>
+    <tr><td><code>70c6a07</code></td><td>06-05</td><td>Production/Review 백엔드 액션 4종 + 라이브 e2e 스크립트</td></tr>
+    <tr><td><code>bff7f91</code></td><td>06-05</td><td>3페이지 Video Room UI 완성</td></tr>
+    <tr><td><code>771d027</code></td><td>06-05</td><td>NocoBase cmo 리소스 + Video Room 컬렉션 4종</td></tr>
+    <tr><td><code>fdf27dc</code></td><td>06-05</td><td>l5-core 도메인 모듈 10종 + 146 테스트</td></tr>
+    <tr><td><code>ff43eba</code></td><td>06-05</td><td>상태머신 기반 CMO 전략 턴 엔진 (runCmoStrategyTurn)</td></tr>
+  </table>
+</div>
+
+<h3>③ ACR 자동생성 커밋 (06-04) — 공장이 직접 남긴 흔적</h3>
+<p>아래는 ACR 공장이 단계를 돌리며 자동으로 남긴 커밋입니다. <strong>한 작업이 스펙→실패테스트→구현→머지 단계마다 별도 커밋</strong>을 남기는 패턴이 그대로 보입니다. (10번 섹션의 "브랜치 폭증" 병목의 실제 모습)</p>
+<div class="card">
+  <table>
+    <tr><th>커밋</th><th>단계</th><th>작업</th></tr>
+    <tr><td><code>2bba5a3</code></td><td>ACR merge</td><td>[L5] ContentApprovalGate 모델 &amp; 로직</td></tr>
+    <tr><td><code>f26ff21</code> / <code>b15d312</code></td><td>ACR phase: 구현</td><td>task-4 (병렬 두 작업)</td></tr>
+    <tr><td><code>6e7e23b</code></td><td>ACR phase: 실패 테스트 작성</td><td>task-3</td></tr>
+    <tr><td><code>9f866df</code></td><td>ACR phase: 스펙 작성</td><td>task-2</td></tr>
+    <tr><td><code>1c9fbdd</code></td><td>ACR merge</td><td>[L5] Pulling Content Set Card (5개 구조)</td></tr>
+    <tr><td><code>97a2438</code></td><td>ACR merge</td><td>[L5] Second Brain Insight Merge Card</td></tr>
+    <tr><td><code>13523da</code> / <code>53c42e6</code></td><td>ACR merge / 구현</td><td>[L5] CMO Chat UI 구현</td></tr>
+    <tr><td><code>ee4f736</code></td><td>ACR phase: 실패 테스트 작성</td><td>CMO Chat UI</td></tr>
+  </table>
+</div>
+
+<!-- ============ 13. open ============ -->
+<h2 id="open">13. 아직 안 고친 것 — 다음 숙제 <span class="pill pill-amber">미해결</span></h2>
+<p>B1~B5는 "분류·검증·라우팅" 같은 <strong>의사결정 로직</strong>을 고쳤습니다. 하지만 더 깊은 <strong>구조적 문제</strong>는 다음 단계 숙제로 남아 있습니다.</p>
+<div class="grid2">
+  <div class="card">
+    <h4>① 인메모리 락 → 잡 큐로 (병목 #5)</h4>
+    <p>지금은 정체되면 자동 재시작으로 때우는 임시 처방. 근본 해결은 <strong>파일/DB 기반 잡 큐 + 워커</strong> 구조 — dispatch는 큐에 넣고 즉시 반환, 워커가 처리, 행은 하트비트·타임아웃으로 정리(재시작 불필요).</p>
+  </div>
+  <div class="card">
+    <h4>② 브랜치 자동 삭제 (병목 git)</h4>
+    <p>청소 스크립트는 안전망일 뿐. 근본은 <strong>ACR이 머지 직후 자기 브랜치를 스스로 삭제</strong>하도록 만드는 것.</p>
+  </div>
+  <div class="card">
+    <h4>③ 게이트 적용 범위 축소 (병목 #4)</h4>
+    <p>안전 게이트는 <strong>D4/D5 외부·결제 작업에만</strong> 적용하고, 내부 D2 코딩은 기본적으로 게이트를 건너뛰게. (self-mod 보호만 유지)</p>
+  </div>
+  <div class="card">
+    <h4>④ 병렬 통합 지점 선(先)셋업 (병목 #8)</h4>
+    <p>공유 컴포넌트·라우터·스키마를 <strong>먼저 한 번 직렬로 셋업</strong>한 뒤 기능별 병렬. 또는 기능별 파일 경계를 강하게 잡아 충돌 면적 축소.</p>
+  </div>
+</div>
+
+<!-- ============ 14. glossary ============ -->
+<h2 id="glossary">14. 용어집 <span class="pill pill-gray">참고</span></h2>
+<div class="card">
+  <table>
+    <tr><th>용어</th><th>쉬운 뜻</th></tr>
+    <tr><td><strong>ACR</strong> (Agent Control Room)</td><td>AI 일꾼들이 실제 코딩하는 무인 공장/관제실</td></tr>
+    <tr><td><strong>CTO 에이전트</strong></td><td>일을 설계해 공장에 넘기는 AI 현장 반장 (직접 코딩 안 함)</td></tr>
+    <tr><td><strong>Phase(공정)</strong></td><td>작업을 쪼갠 한 단계 (스펙·테스트·구현·커밋 등)</td></tr>
+    <tr><td><strong>TaskClass(등급)</strong></td><td>작업 크기 분류 — TINY/SMALL_FIX/FEATURE/BIG_CHANGE/OPS/RESEARCH/REFACTOR</td></tr>
+    <tr><td><strong>Tier(티어) T1/T2/T3</strong></td><td>AI 모델 등급 — T1 고수(비쌈)·T2 중간·T3 경량(쌈)</td></tr>
+    <tr><td><strong>Runtime(런타임)</strong></td><td>실제로 코드를 돌리는 AI 도구 — claude / codex / antigravity(gemini)</td></tr>
+    <tr><td><strong>위험도 D1~D5</strong></td><td>작업 위험 등급. D1·D2 자동, D3 24시간 후, D4·D5 사람 승인 필요</td></tr>
+    <tr><td><strong>Verifier(검수원)</strong></td><td>단계 결과가 합격 기준을 충족했는지 AI 없이 빠르게 판정</td></tr>
+    <tr><td><strong>쿼터(quota)</strong></td><td>모델별 하루 사용 한도. 소진되면 빈 결과가 나옴</td></tr>
+    <tr><td><strong>콜드스타트</strong></td><td>새 AI 세션이 코드베이스를 처음부터 다시 읽느라 걸리는 초기 시간</td></tr>
+    <tr><td><strong>고아(orphan) 작업</strong></td><td>실행 중 표시인 채로 멈춰버려 슬롯만 차지하는 작업</td></tr>
+    <tr><td><strong>worktree</strong></td><td>같은 저장소를 여러 폴더로 복제해 병렬 작업하는 git 기능</td></tr>
+    <tr><td><strong>RFC</strong></td><td>큰 변경 전에 "왜·어떻게 바꿀지" 적는 설계 제안서</td></tr>
+    <tr><td><strong>회귀(regress) 테스트</strong></td><td>고친 뒤 다른 기능이 망가지지 않았는지 확인하는 검사</td></tr>
+  </table>
+</div>
+
+<footer>
+  <p><strong>펄크 L5 Business OS</strong> · CTO × ACR 자율 코딩 전 과정 설명서 · 2026-06-09 작성<br>
+  근거 파일: <code>cto.ts</code>, <code>dev-workflow-spec.ts</code>, <code>model-routing.ts</code>, <code>verifier.ts</code>, <code>acr-intent.ts</code>, <code>acr-client.ts</code>, <code>task-dispatcher.ts</code>, <code>build-control-room-tree.ts</code>, <code>claude-cli-client.ts</code>, <code>git-acr-cleanup.sh</code> · 회고: <code>docs/CMO_DEV_SPEED_STRATEGY.md</code>, <code>docs/CMO_SPEED_OPTIMIZATION_PLAN.md</code> · 최근 git 커밋 40건<br>
+  이 문서는 코드와 운영 기록을 근거로 작성되었으며, 비개발자도 이해할 수 있도록 비유와 쉬운 표현을 사용했습니다.</p>
+</footer>
+
+</div>
+</body>
+</html>
