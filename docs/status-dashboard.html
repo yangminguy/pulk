@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L5 Business OS — 전사 현황 대시보드</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2d3340;
+    --txt:#e6edf3; --muted:#8b949e; --accent:#4f9cf9; --accent2:#a371f7;
+    --good:#3fb950; --warn:#d29922; --bad:#f85149; --chip:#21262d;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;line-height:1.55;padding:32px 20px 80px}
+  .wrap{max-width:1240px;margin:0 auto}
+
+  /* Header */
+  header{margin-bottom:28px}
+  .eyebrow{color:var(--muted);font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+  h1{font-size:30px;margin:6px 0 4px;font-weight:700}
+  .sub{color:var(--muted);font-size:15px}
+  .hero{background:linear-gradient(135deg,#161b22,#1c2330);border:1px solid var(--line);border-radius:16px;padding:24px 26px;margin-top:20px;display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center}
+  .hero .summary{font-size:16px}
+  .hero .summary b{color:var(--accent)}
+  .gauge{text-align:center;min-width:150px}
+  .gauge .num{font-size:46px;font-weight:800;line-height:1;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .gauge .lbl{color:var(--muted);font-size:12px;margin-top:6px}
+  .phasebar{margin-top:18px;display:flex;gap:8px;flex-wrap:wrap}
+  .phase{flex:1;min-width:120px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--muted)}
+  .phase.active{border-color:var(--accent);color:var(--txt)}
+  .phase b{display:block;color:var(--txt);font-size:13px;margin-bottom:2px}
+
+  /* Section titles */
+  .secttl{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:34px 0 14px;border-bottom:1px solid var(--line);padding-bottom:8px}
+
+  /* Cards grid */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;position:relative;overflow:hidden}
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}
+  .card.c-good::before{background:var(--good)} .card.c-warn::before{background:var(--warn)} .card.c-bad::before{background:var(--bad)}
+  .chead{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  .badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;background:var(--chip);color:var(--accent);letter-spacing:.04em}
+  .chead h3{font-size:17px;font-weight:700}
+  .csum{color:var(--muted);font-size:13.5px;margin:6px 0 12px}
+  .pwrap{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .ptrack{flex:1;height:8px;background:var(--chip);border-radius:99px;overflow:hidden}
+  .pfill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+  .pfill.good{background:linear-gradient(90deg,#2ea043,#3fb950)}
+  .pfill.warn{background:linear-gradient(90deg,#bb8009,#d29922)}
+  .pfill.bad{background:linear-gradient(90deg,#bd2c1f,#f85149)}
+  .pct{font-size:13px;font-weight:700;min-width:38px;text-align:right}
+  .block{margin-top:10px}
+  .block .h{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;gap:6px}
+  .dot{width:7px;height:7px;border-radius:99px;display:inline-block}
+  .dot.g{background:var(--good)} .dot.r{background:var(--bad)} .dot.b{background:var(--accent)}
+  ul.items{list-style:none;display:flex;flex-direction:column;gap:5px}
+  ul.items li{font-size:13px;padding-left:16px;position:relative;color:#cdd5df}
+  ul.items li::before{content:"›";position:absolute;left:2px;color:var(--muted)}
+
+  /* Risk panel */
+  .risk{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+  .risktop{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+  .rl{font-size:13px;font-weight:700;padding:6px 14px;border-radius:8px;background:rgba(210,153,34,.15);color:var(--warn);border:1px solid rgba(210,153,34,.4)}
+  table.rk{width:100%;border-collapse:collapse;font-size:13px}
+  table.rk th,table.rk td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.rk th{color:var(--muted);font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:600}
+  .dlvl{font-weight:700;padding:2px 7px;border-radius:5px;font-size:11px;white-space:nowrap}
+  .d2{background:rgba(79,156,249,.15);color:var(--accent)}
+  .d3{background:rgba(210,153,34,.15);color:var(--warn)}
+  .d4{background:rgba(248,81,73,.15);color:var(--bad)}
+
+  /* Priority list */
+  .prio{display:flex;flex-direction:column;gap:10px}
+  .prow{display:grid;grid-template-columns:34px 1fr auto;gap:14px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px}
+  .prow .rank{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px}
+  .prow .body .t{font-weight:600;font-size:15px}
+  .prow .body .d{color:var(--muted);font-size:13px;margin-top:2px}
+  .tag{font-size:11px;font-weight:700;padding:4px 10px;border-radius:7px;white-space:nowrap}
+  .tag.dev{background:rgba(163,113,247,.15);color:var(--accent2)}
+  .tag.manual{background:rgba(210,153,34,.15);color:var(--warn)}
+  .tag.decide{background:rgba(79,156,249,.15);color:var(--accent)}
+
+  footer{margin-top:40px;color:var(--muted);font-size:12px;text-align:center;border-top:1px solid var(--line);padding-top:20px}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin-bottom:10px;font-size:12px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">L5 Business OS · pulk</div>
+    <h1>전사 현황 대시보드</h1>
+    <div class="sub">9개 임원 에이전트(CEO·CTO·COO·CMO·CPO·CRO·CFO·Chief of Staff·Risk/QA) 병렬 보고 종합 · 2026-06-27</div>
+
+    <div class="hero">
+      <div class="summary">
+        <b>“빌드는 됐지만 운영은 반쪽.”</b> 핵심 인프라(CMO 콘텐츠 파이프라인·CTO 자율 실행 레일·Tiger 자가개선·원격 운영 통로)는 구현·라이브 검증까지 대부분 완료됐다.
+        지금 병목은 기술이 아니라 <b>“코드 완성 → 사용자 실사용 흐름 연결”</b>이 여러 곳에서 끊긴 것 — 그리고 현재 검증 환경(node_modules 미설치)이 무너져 기계적 검증이 막혀 있다.
+      </div>
+      <div class="gauge">
+        <div class="num">~58%</div>
+        <div class="lbl">전체 진척도 (임원 추정 가중 평균)</div>
+      </div>
+    </div>
+
+    <div class="phasebar">
+      <div class="phase"><b>Phase 1–2 ✓</b>설계·도메인 로직 구축 완료</div>
+      <div class="phase active"><b>Phase 3 (현재)</b>Execution Build — 실행 레일 배선·라이브 검증</div>
+      <div class="phase"><b>Phase 4</b>Sales / Distribution Test — 첫 발행·PMF 신호</div>
+      <div class="phase"><b>Phase 5</b>Scale — 검증된 사업 확장</div>
+    </div>
+  </header>
+
+  <!-- ===== EXECUTIVE CARDS ===== -->
+  <div class="secttl">임원별 현황</div>
+  <div class="grid">
+
+    <!-- CTO -->
+    <div class="card c-warn">
+      <div class="chead"><span class="badge">CTO</span><h3>개발 · 인프라</h3></div>
+      <div class="csum">파이프라인·자율 실행 구현은 끝났으나 <b>node_modules 미설치로 로컬 빌드/테스트가 전혀 안 도는</b> 상태. 마지막 커밋 2026-06-12 이후 신규 없음.</div>
+      <div class="pwrap"><div class="ptrack"><div class="pfill warn" style="width:62%"></div></div><div class="pct">62%</div></div>
+      <div class="block"><div class="h"><span class="dot g"></span>완료·검증됨</div>
+        <ul class="items">
+          <li>CMO 키콘텐츠 11스텝 워크플로우 라이브 실증 (178초, LLM 6회)</li>
+          <li>CTO integrate phase + E1 스킵 차단 (l5-core 75/75)</li>
+          <li>Tiger watchdog 감지→복구 전 경로 라이브</li>
+          <li>원격 운영 통로 + zombie guard E2E</li>
+        </ul>
+      </div>
+      <div class="block"><div class="h"><span class="dot r"></span>블로커</div>
+        <ul class="items">
+          <li><b>긴급:</b> node_modules 미설치 → jest/tsc 실행 불가, 모든 테스트 정지</li>
+          <li>NocoBase 서버·launchd 데몬 가동 상태 2주 미점검</li>
+          <li>model-routing.test 드리프트 4건 사전 존재</li>
+        </ul>
+      </div>
+      <div class="block"><div class="h"><span class="dot b"></span>다음</div>
+        <ul class="items"><li>① pnpm install + 빌드 복구 → ② CMO 풀링 v3 → ③ Native Orchestration 활성화</li></ul>
+      </div>
+    </div>
+
+    <!-- CMO -->
+    <div class="card c-warn">
+      <div class="chead"><span class="badge">CMO</span><h3>마케팅 · 콘텐츠 · PMF</h3></div>
+      <div class="csum">콘텐츠 파이프라인(키→풀링→제목/썸네일→영상→업로드)은 코드상 <b>end-to-end 관통 완료</b>. 그러나 PMF 신호 수집 인프라는 0이고 실제 발행이 한 번도 없다.</div>
+      <div class="pwrap"><div class="ptrack"><div class="pfill warn" style="width:52%"></div></div><div class="pct">52%</div></div>
+      <div class="block"><div class="h"><span class="dot g"></span>잘 되는 것</div>
+        <ul class="items">
+          <li>파이프라인 전구간 라이브 E2E (video.mp4 548KB 실 렌더 확인)</li>
+          <li>YouTube API + Viewtrap CDP 발굴 실데이터 연결</li>
+          <li>YouTube Analytics 성과 자동 수집 (디립다 채널)</li>
+          <li>제목·썸네일 강의 방법론 도메인 반영 (jest 41건 GREEN)</li>
+        </ul>
+      </div>
+      <div class="block"><div class="h"><span class="dot r"></span>블로커</div>
+        <ul class="items">
+          <li><b>Critical:</b> services/pmf-signal 디렉토리 자체가 없음 (Formbricks 0)</li>
+          <li>실제 콘텐츠 미발행 — publishUpload(D3) 사장님 승인 대기</li>
+          <li>풀링 단계 v3 미배선 → 사장님 흐름이 키콘텐츠 선택 후 막힘</li>
+        </ul>
+      </div>
+      <div class="block"><div class="h"><span class="dot b"></span>다음</div>
+        <ul class="items"><li>첫 영상 발행 승인(D3) → PMF 신호 지표 정의 → 성과→재기획 루프 가동</li></ul>
+      </div>
+    </div>
+
+    <!-- CPO -->
+    <div class="card c-warn">
+      <div class="chead"><span class="badge">CPO</span><h3>제품 · 오퍼</h3></div>
+      <div class="csum">CMO 파이프라인·CTO 자율 실행은 과반 구축. 그러나 핵심 MVP 루프(Founder Chat→CEO Orchestration→Monitor)가 <b>단일 흐름으로 브라우저 검증된 적이 없다.</b></div>
+      <div class="pwrap"><div class="ptrack"><div class="pfill warn" style="width:52%"></div></div><div class="pct">52%</div></div>
+      <div class="block"><div class="h"><span class="dot g"></span>작동 확인됨</div>
+        <ul class="items">
+          <li>CMO Video Room 풀 파이프라인 (가장 완성된 수직 슬라이스)</li>
+          <li>CTO 자율 실행 루프 (분류→라우팅→phase→callback)</li>
+          <li>l5-core 700+ tests / tsc 0 (NocoBase 없이 테스트 가능)</li>
+        </ul>
+      </div>
+      <div class="block"><div class="h"><span class="dot r"></span>블로커</div>
+        <ul class="items">
+          <li>PMF 검증 루프 부재 — Experiment Board가 컬렉션 수준에만 존재</li>
+          <li>CEO Orchestration→실행 통합 브라우저 E2E 0회</li>
+          <li>“브라우저 확인 필요” 미수행 빚 최소 4건 누적</li>
+          <li>Workflow Factory — 신규 사업 입력 UI 진입점 없음</li>
+        </ul>
+      </div>
+      <div class="block"><div class="h"><span class="dot b"></span>다음</div>
+        <ul class="items"><li>브라우저 클릭 E2E 빚 청산 → PMF Board MVP → 통합 루프 시연</li></ul>
+      </div>
+    </div>
+
+    <!-- COO -->
+    <div class="card c-bad">
+      <div class="chead"><span class="badge">COO</span><h3>운영 · 프로세스</h3></div>
+      <div class="csum">핵심 루프(디스패치·장애 감시·승인 게이트)는 코드로 존재하지만 <b>공식 SOP 문서는 전무</b>하고 케이던스 루프 절반이 TODO stub.</div>
+      <div class="pwrap"><div class="ptrack"><div class="pfill bad" style="width:38%"></div></div><div class="pct">38%</div></div>
+      <div class="block"><div class="h"><span class="dot g"></span>돌아가는 것</div>
+        <ul class="items">
+          <li>Task Dispatcher (launchd 60초, 8종 핸들러 라우팅)</li>
+          <li>Tiger 감시(90초)+복구(180초)+야간 자가개선(03:00)</li>
+          <li>AgentOutput 프로토콜 14필드 (risk_level + approval_required)</li>
+        </ul>
+      </div>
+      <div class="block"><div class="h"><span class="dot r"></span>병목</div>
+        <ul class="items">
+          <li>Morning Operating Loop — TODO stub, 미착수</li>
+          <li>Stalled Workflow Detector — TODO stub (태스크 지연 감시 공백)</li>
+          <li>Approval Required Checker — TODO (D3+ 적체 알림 없음)</li>
+          <li>SOP 문서 전무 — 딜리버리 반복 가능성 0%</li>
+        </ul>
+      </div>
+      <div class="block"><div class="h"><span class="dot b"></span>다음</div>
+        <ul class="items"><li>Approval Checker 구현 → 텔레그램 알림 배선 → 3대 핵심 SOP 초안</li></ul>
+      </div>
+    </div>
+
+    <!-- CRO -->
+    <div class="card c-bad">
+      <div class="chead"><span class="badge">CRO</span><h3>매출 · 세일즈</h3></div>
+      <div class="csum">에이전트 코드 골격·PMF 스코어링 로직만 존재. <b>리드·파이프라인·제안서·가격 데이터 전무.</b> 사실상 미착수.</div>
+      <div class="pwrap"><div class="ptrack"><div class="pfill bad" style="width:8%"></div></div><div class="pct">8%</div></div>
+      <div class="block"><div class="h"><span class="dot g"></span>준비된 것</div>
+        <ul class="items">
+          <li>runCROAgent() 실행 경로 + D3/D4 승인 게이트 코드</li>
+          <li>calculatePmfScore() 완성 — 신호만 들어오면 즉시 사용</li>
+        </ul>
+      </div>
+      <div class="block"><div class="h"><span class="dot r"></span>블로커</div>
+        <ul class="items">
+          <li>PMF 신호 미수집 → sales_distribution_test 진입 조건 미충족</li>
+          <li>리드 세그먼트·가치 제안·가격 모델 문서 없음</li>
+          <li>현 리소스가 CMO에 집중 → CRO 배정 없었음</li>
+        </ul>
+      </div>
+      <div class="block"><div class="h"><span class="dot b"></span>다음 (고객 접촉 없이)</div>
+        <ul class="items"><li>PMF 신호 설계 → 리드 세그먼트 정의 → LTV/CAC 가정 초안</li></ul>
+      </div>
+    </div>
+
+    <!-- CFO -->
+    <div class="card c-bad">
+      <div class="chead"><span class="badge">CFO</span><h3>재무 · 가격 · 예산</h3></div>
+      <div class="csum">에이전트 골격만 존재. <b>실제 재무 데이터(비용·예산·가격·번레이트)가 전사 어디에도 정의·추적되지 않음.</b> 분석할 원재료 자체가 없다.</div>
+      <div class="pwrap"><div class="ptrack"><div class="pfill bad" style="width:8%"></div></div><div class="pct">8%</div></div>
+      <div class="block"><div class="h"><span class="dot g"></span>준비된 것</div>
+        <ul class="items">
+          <li>runCFOAgent() 코드 경로 + D3/D4 승인 규칙 하드코딩</li>
+          <li>AGENT_PROTOCOL에 pricing_analysis/budget_request 출력 계약</li>
+        </ul>
+      </div>
+      <div class="block"><div class="h"><span class="dot r"></span>블로커</div>
+        <ul class="items">
+          <li>도구 월 실비용 데이터 부재 (Claude/NocoBase/Mastra 등)</li>
+          <li>번레이트 상한·예산 한도·가격 미정</li>
+          <li>budget_entries/cost_tracking 등 재무 엔티티 미정의</li>
+          <li>CFO 에이전트 end-to-end 실행 0회</li>
+        </ul>
+      </div>
+      <div class="block"><div class="h"><span class="dot b"></span>다음</div>
+        <ul class="items"><li>현행 도구 비용 인벤토리 작성(D2) → 번레이트 목표 합의(D3)</li></ul>
+      </div>
+    </div>
+
+    <!-- Chief of Staff -->
+    <div class="card">
+      <div class="chead"><span class="badge">CoS</span><h3>비서실 · 조율</h3></div>
+      <div class="csum">사장님 흐름을 막는 <b>유일한 실사용 블로커는 CMO 풀링 v3</b>. 도메인은 완성이라 배선만 하면 됨. 승인 대기 3건이 사장님 결정을 기다린다.</div>
+      <div class="block"><div class="h"><span class="dot r"></span>승인 대기 (24h)</div>
+        <ul class="items">
+          <li>A-1 텔레그램 게이트웨이 라이브 활성화 (install.sh 1회)</li>
+          <li>A-2 Native Orchestration 활성화 (plist 주입 + launchctl bootstrap)</li>
+          <li>A-3 M7.2 회의 컨트롤러 방식 결정 (라운드로빈 vs CEO 지명형)</li>
+        </ul>
+      </div>
+      <div class="block"><div class="h"><span class="dot b"></span>추천 시퀀스</div>
+        <ul class="items">
+          <li>1. CMO 풀링 v3 착수 (CMO 파이프라인 첫 1사이클 완주)</li>
+          <li>2. 사장님 수동: Native Orchestration 활성화</li>
+          <li>3. 사장님 수동: 텔레그램 게이트웨이 + 알림 주입</li>
+          <li>4. CTO: model-routing 드리프트 4건 정리</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== RISK PANEL ===== -->
+  <div class="secttl">Risk / QA — 위험 · 품질</div>
+  <div class="risk">
+    <div class="risktop">
+      <span class="rl">⚠ 전반 위험 수준: 중간 (MEDIUM)</span>
+      <span style="color:var(--muted);font-size:13px">거버넌스 프레임은 완비됐으나, 검증 환경 붕괴(node_modules 미설치)로 “안전하다는 기계적 증명”이 불가능한 상태. 현재 BLOCK 항목은 없으나 2개 조건부 BLOCK 예고.</span>
+    </div>
+    <table class="rk">
+      <thead><tr><th>위험</th><th>D레벨</th><th>현상 / 영향</th><th>판정</th></tr></thead>
+      <tbody>
+        <tr><td><b>R1</b> 검증 환경 붕괴</td><td><span class="dlvl d2">D2</span></td><td>node_modules 전무 → jest/tsc 실행 불가. 723+30개 테스트 통과 여부 확인 불가</td><td>CONDITIONAL · 복원 전 신규 외부 액션 배선 금지</td></tr>
+        <tr><td><b>R2</b> 텔레그램 자율 모드</td><td><span class="dlvl d4">D4</span></td><td><code>--dangerously-skip-permissions</code> 경로 존재 → 메시지 1개로 승인 없는 파일/외부 실행 가능</td><td>CONDITIONAL · 활성화 시 명시 사인오프 필수</td></tr>
+        <tr><td><b>R3</b> LLM 트레이스 PII 마스킹 미구현</td><td><span class="dlvl d3">D3~D4</span></td><td>Langfuse 연동·마스킹 레이어 부재 → 고객 PII가 LLM/로그에 잔류 가능</td><td>CONDITIONAL · 에이전트 실행 전 마스킹 설계</td></tr>
+        <tr><td><b>R4</b> 감사 로그(audit_log_ref) 미완</td><td><span class="dlvl d3">D3</span></td><td>sendBriefToFactory 등 외부 발신에 audit_log_ref 없음</td><td>CONDITIONAL · D4+ 외부 액션 실행 불가</td></tr>
+        <tr><td><b>R5</b> 텔레그램 게이트웨이 라이브 미실증</td><td><span class="dlvl d3">D3</span></td><td>tsc 오류(node10 deprecated) 잔류, allowlist 빈 상태 기동 위험</td><td>CONDITIONAL · 봇 토큰 E2E 1회 필수</td></tr>
+        <tr><td><b>R6</b> 자가개선 노이즈 카드</td><td><span class="dlvl d2">D2</span></td><td>실증용 카드 5건이 /self-improve에 잔류 (오탐 승인 위험)</td><td>PASS(낮음) · 사장님 확인 후 정리 권고</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===== TOP PRIORITIES ===== -->
+  <div class="secttl">다음 우선순위 — 사장님 액션</div>
+  <div class="prio">
+    <div class="prow"><div class="rank">1</div><div class="body"><div class="t">pnpm install + 빌드/검증 환경 복구</div><div class="d">테스트·타입체크의 전제. 이게 없으면 어떤 것도 기계적으로 검증 불가 (CTO·Risk 공통 1순위)</div></div><span class="tag dev">개발 C0/D0</span></div>
+    <div class="prow"><div class="rank">2</div><div class="body"><div class="t">CMO 풀링 단계 v3 배선</div><div class="d">사장님 실사용 흐름을 막는 유일한 블로커. 도메인은 완성, 키콘텐츠 패턴 복제로 배선만 하면 첫 1사이클 완주</div></div><span class="tag dev">개발 C2/D1</span></div>
+    <div class="prow"><div class="rank">3</div><div class="body"><div class="t">Native Orchestration launchd 활성화</div><div class="d">코드·검증 완료. plist에 토큰 주입 + launchctl bootstrap 3단계 (사장님 맥 수동). ACR 은퇴·속도 개선 즉시 체감</div></div><span class="tag manual">수동 실행</span></div>
+    <div class="prow"><div class="rank">4</div><div class="body"><div class="t">텔레그램 게이트웨이 라이브 실증</div><div class="d">install.sh 1회 + 토큰 주입. 폰에서 @임원 호출 + 초안 완료 알림 동작. ※ 자율 모드는 Risk R2 사인오프 필요</div></div><span class="tag manual">수동 실행</span></div>
+    <div class="prow"><div class="rank">5</div><div class="body"><div class="t">첫 콘텐츠 발행 승인 (publishUpload D3)</div><div class="d">파이프라인은 준비 완료. 승인 하나면 첫 영상이 나가고 실제 시장 실험(PMF)이 시작된다</div></div><span class="tag decide">사장님 결정</span></div>
+    <div class="prow"><div class="rank">6</div><div class="body"><div class="t">미커밋 WIP 커밋 + docs 동기화</div><div class="d">CMO/video-room WIP·dist 로컬 빌드분이 git 밖에 잔류. docs–실제코드 갭 해소로 다음 세션 혼선 방지</div></div><span class="tag dev">정리 C0</span></div>
+  </div>
+
+  <footer>
+    <div class="legend">
+      <span><span class="dot g"></span> 완료·작동</span>
+      <span><span class="dot r"></span> 블로커·위험</span>
+      <span><span class="dot b"></span> 다음 단계</span>
+      <span>진척도 색상: <span style="color:var(--good)">녹색 ≥60%</span> · <span style="color:var(--warn)">황색 30–60%</span> · <span style="color:var(--bad)">적색 &lt;30%</span></span>
+    </div>
+    생성: 9개 임원 서브에이전트 병렬 보고 종합 · source of truth = docs/TASKS.md · HANDOFF.md · DECISIONS.md · git log
+    <br>전체 진척도는 임원별 추정치의 가중 평균이며 추정값입니다. 검증 환경 복구 후 수치 재산정 권장.
+  </footer>
+
+</div>
+</body>
+</html>
