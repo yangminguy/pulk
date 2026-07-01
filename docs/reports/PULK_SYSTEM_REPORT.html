@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PULK SYSTEM — L5 Business OS 상세 기획 보고서 (2026-07 갱신본)</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#161b22; --panel2:#1c232d; --ink:#e6edf3; --muted:#9aa7b4;
+    --line:#2a333f; --accent:#5b9dff; --accent2:#4dd6b0; --warn:#f4b942;
+    --danger:#ff6b6b; --ok:#4dd6b0; --chip:#233043;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Noto Sans KR",Roboto,"Malgun Gothic",sans-serif;
+    line-height:1.7;font-size:16px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+  header.hero{padding:56px 0 36px;border-bottom:1px solid var(--line);
+    background:radial-gradient(1200px 400px at 20% -10%,rgba(91,157,255,.14),transparent 60%),
+               radial-gradient(900px 380px at 90% -20%,rgba(77,214,176,.10),transparent 60%)}
+  .kicker{color:var(--accent2);font-weight:700;letter-spacing:.14em;font-size:12.5px;text-transform:uppercase}
+  h1{font-size:40px;line-height:1.15;margin:12px 0 8px;letter-spacing:-.5px}
+  .sub{color:var(--muted);font-size:18px;margin:0 0 18px}
+  .tagline{font-size:16px;color:var(--ink);background:var(--panel);border:1px solid var(--line);
+    border-left:3px solid var(--accent);border-radius:10px;padding:14px 18px;margin:18px 0 6px}
+  .metabadges{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+  .badge{background:var(--chip);color:var(--ink);border:1px solid var(--line);border-radius:999px;
+    padding:4px 12px;font-size:12.5px;font-weight:600}
+  .badge.g{color:var(--ok);border-color:#25493f}
+  .badge.b{color:var(--accent);border-color:#243a5c}
+  .badge.y{color:var(--warn);border-color:#4a3d1a}
+
+  .layout{display:grid;grid-template-columns:248px 1fr;gap:36px;align-items:start;margin-top:8px}
+  nav.toc{position:sticky;top:16px;align-self:start;max-height:calc(100vh - 32px);overflow:auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 14px;font-size:14px}
+  nav.toc h4{margin:6px 6px 10px;font-size:11.5px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+  nav.toc a{display:block;color:var(--muted);text-decoration:none;padding:5px 8px;border-radius:8px;margin:1px 0}
+  nav.toc a:hover{background:var(--panel2);color:var(--ink)}
+  nav.toc a.mini{padding-left:20px;font-size:13px;color:#7f8b98}
+  main{min-width:0;padding-bottom:80px}
+
+  section{padding:34px 0 8px;border-top:1px solid var(--line)}
+  section:first-of-type{border-top:none}
+  h2{font-size:26px;margin:6px 0 14px;letter-spacing:-.3px}
+  h2 .num{color:var(--accent);font-weight:800;margin-right:10px}
+  h3{font-size:19px;margin:26px 0 10px;color:#dbe7f2}
+  h4{font-size:15.5px;margin:18px 0 6px;color:var(--accent2)}
+  p{margin:10px 0}
+  .lead{font-size:17px;color:#cdd8e2}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:5px 0}
+  code{background:#0b0e12;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:13px;
+    font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;color:#a9d3ff}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--panel2);color:#cfe0f0;font-weight:700;font-size:13px}
+  tr:last-child td{border-bottom:none}
+  td strong{color:#eaf2fb}
+
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:16px 0}
+  .box.accent{border-left:3px solid var(--accent)}
+  .box.ok{border-left:3px solid var(--ok)}
+  .box.warn{border-left:3px solid var(--warn)}
+  .box.danger{border-left:3px solid var(--danger)}
+  .box h4{margin-top:0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card h4{margin:0 0 6px}
+
+  .pill{display:inline-block;font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 8px;margin-right:6px}
+  .p-done{background:#123027;color:#57e0b6;border:1px solid #1e5142}
+  .p-prog{background:#332a12;color:#f4c85a;border:1px solid #57471c}
+  .p-plan{background:#2a2440;color:#b39dff;border:1px solid #46396f}
+  .p-new{background:#0f2c4d;color:#79bbff;border:1px solid #21507f}
+  .p-d{background:#0b0e12;color:#a9d3ff;border:1px solid var(--line)}
+
+  .flow{background:#0b0e12;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:16px 0;
+    font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#bcd; white-space:pre;overflow:auto;line-height:1.55}
+  .cols{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}
+  .brainbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:left}
+  .brainbox .t{font-weight:800;font-size:15px;margin-bottom:4px}
+  .brainbox.cto{border-top:3px solid var(--accent)}
+  .brainbox.exec{border-top:3px solid #b39dff}
+  .brainbox.herm{border-top:3px solid var(--warn)}
+  .brainbox.tiger{border-top:3px solid #ff8a5b}
+  small.note{color:var(--muted)}
+  hr{border:none;border-top:1px solid var(--line);margin:26px 0}
+  footer{border-top:1px solid var(--line);padding:26px 0 60px;color:var(--muted);font-size:13px}
+  a.anchor{color:var(--accent);text-decoration:none}
+  @media(max-width:900px){.layout{grid-template-columns:1fr}.grid2{grid-template-columns:1fr}.cols{grid-template-columns:1fr 1fr}nav.toc{position:static;max-height:none}}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">PULK SYSTEM · L5 Business OS</div>
+    <h1>펄크 시스템 상세 기획 보고서</h1>
+    <p class="sub">Founder Operating System · AI 임직원 조직 · Native Orchestration · Tiger 자가개선 루프 · PMF 수익화</p>
+    <div class="tagline"><strong>한 문장 정의 —</strong> 펄크는 창업자가 채팅으로 CEO Agent와 방향을 잡으면, AI 임직원 조직이 그 지시를 사업 가설·워크플로우·병렬 실행·검증·회고·메모리까지 이어서 굴리고, 시스템 스스로 병목을 찾아 개선까지 하는 <strong>AI Company Operating System</strong>이다.</p>
+    <div class="metabadges">
+      <span class="badge b">2026-07 갱신본</span>
+      <span class="badge">최신 아키텍처 중심 재구성</span>
+      <span class="badge g">MVP Phase 1–5 완료</span>
+      <span class="badge y">Phase 6 진행</span>
+      <span class="badge g">750+ tests</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="layout">
+  <nav class="toc">
+    <h4>목차</h4>
+    <a href="#delta">⚡ 이전 기획서 대비 변경점</a>
+    <a href="#s1">1. Executive Summary</a>
+    <a href="#s2">2. 배경과 문제정의</a>
+    <a href="#s3">3. 제품 정체성·핵심 원칙</a>
+    <a href="#s4">4. L5 운영 루프</a>
+    <a href="#s5">5. 시스템 아키텍처 (현행)</a>
+    <a href="#s6">6. AI 임직원 조직</a>
+    <a href="#s7">7. 위험도 × 복잡도 이원 체계</a>
+    <a href="#s8">8. 핵심 모듈 상세</a>
+    <a href="#s9">9. Tiger 자가개선 루프</a>
+    <a href="#s10">10. 데이터·메모리·거버넌스</a>
+    <a href="#s11">11. 기술 스택 & 구현 원칙</a>
+    <a href="#s12">12. 구현 현황</a>
+    <a href="#s13">13. 첫 사업: 마케팅 자동화</a>
+    <a href="#s14">14. 운영 정책·승인 게이트</a>
+    <a href="#s15">15. 로드맵 & KPI</a>
+    <a href="#s16">16. 결론 & 다음 액션</a>
+    <a href="#appx" class="mini">부록 A–D</a>
+  </nav>
+
+  <main>
+
+  <!-- DELTA -->
+  <section id="delta">
+    <h2><span class="num">⚡</span>이전 기획서 대비 무엇이 바뀌었나</h2>
+    <p class="lead">최초 기획서(<code>pulk_system_report.docx</code>)는 대화 맥락 기반의 <em>순수 기획 정리본</em>이었다. 이후 코드베이스가 크게 진화하면서 실제 시스템은 "구상"에서 "동작하는 운영체계"로 넘어왔다. 본 갱신본은 그 델타를 반영한다.</p>
+    <table>
+      <thead><tr><th style="width:16%">영역</th><th style="width:38%">이전 기획서</th><th>현재 시스템 (2026-06~07)</th></tr></thead>
+      <tbody>
+        <tr><td><strong>CTO 실행 엔진</strong></td><td>"Agent Control Tower(ACR)를 CTO가 호출"</td><td><strong>2단계 Native Orchestration</strong> — pulk CTO가 요구사항을 Work Package로 1차 분해 → main agent(claude-code/codex/antigravity)가 complexity(C0~C5) 기반 2차 오케스트레이션 → worktree 격리·병렬 phase·verify gate·merge. ACR은 초기 실행기에서 native 실행으로 정리됨.</td></tr>
+        <tr><td><strong>자율성 판단</strong></td><td>위험도(D)만</td><td><strong>위험도 D1~D5 × 복잡도 C0~C5</strong> 이원 체계. "Risk ≠ Gate" — 승인 게이트는 D4/D5, D3는 24h 무응답 시 자동승인.</td></tr>
+        <tr><td><strong>자가개선</strong></td><td>"BPR Room"(개념)</td><td><strong>Tiger 자가개선 루프</strong> — 수집 → Claude night-BPR 분석 → 개선 카드 → Founder 일괄승인 → CTO 병렬 실행 → 메모리 학습. cross-repo 도구 레지스트리, <code>/self-improve</code> UI.</td></tr>
+        <tr><td><strong>임원 실행</strong></td><td>JSON만 산출하는 함수</td><td><strong>Claude Code 서브에이전트</strong>(9× <code>.claude/agents/*.md</code>)로 실제 작업(파일·bash·영상 렌더·dispatch) + <strong>텔레그램 인바운드 게이트웨이</strong>(@ceo/@cto/@cmo).</td></tr>
+        <tr><td><strong>임원 협업</strong></td><td>없음</td><td><strong>임원 간 위임 루프</strong>(CEO 게이트 + 결정론적 검증 반복, max_rounds), <strong>FounderDeliverable 종합</strong>(Chief of Staff 단일 산출), <strong>CEO Clarification Gate</strong>.</td></tr>
+        <tr><td><strong>조직</strong></td><td>9 임원</td><td>+ <strong>Culture 에이전트</strong>(자문), Hermes를 "운영 신경계"로 재정의, autonomy 레벨 L1~L5 도입.</td></tr>
+        <tr><td><strong>첫 사업</strong></td><td>"작은 브랜드 마케팅 자동화"(개념)</td><td><strong>CMO v3 실집행 트랙</strong> — video-room canonical(509 tests), 11-step 자동초안, YouTube/썸네일 A·B/viewtrap, 영상 팩토리 핸드오프.</td></tr>
+        <tr><td><strong>구현 상태</strong></td><td>없음(순수 기획)</td><td><strong>MVP Phase 1~5 완료 + Phase 6 진행</strong>, 750+ tests(174 core / 509 video-room / 66+ tiger).</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 1 -->
+  <section id="s1">
+    <h2><span class="num">1</span>Executive Summary</h2>
+    <p class="lead">펄크는 특정 업무 하나를 자동화하는 도구가 아니라, 창업자가 새로운 사업을 계속 만들고 실험하며 운영하는 방식을 시스템화하는 AI 기반 회사 운영체계다. 일반 자동화 도구가 "입력된 업무를 더 빠르게" 처리하는 데 집중한다면, 펄크는 "무엇을·왜 해야 하는가, 누가 어떤 기준으로 판단하는가, 어떤 실험을 거쳐 제품화하는가"까지 포함하는 상위 운영 구조를 지향한다.</p>
+    <p>핵심 가정은 <strong>창업자의 병목 제거</strong>다. 초기 사업가의 가장 큰 제약은 아이디어 부족이 아니라 <em>실행의 지속성, 우선순위 판단, 검증 루프, 반복 개선, 학습 축적</em>의 부재다. 펄크는 창업자가 모든 태스크를 직접 쪼개고 검수하는 구조에서 벗어나, CEO·Chief of Staff·CMO·CRO·CPO·CTO·COO·CFO·Risk/QA·Culture·Hermes로 구성된 AI 임직원 조직이 역할을 나눠 수행하도록 설계된다.</p>
+    <p>철학은 <strong>"No Demand → No Tool / Paid Demand → Productization"</strong>이다. 처음부터 거대한 SaaS를 만들지 않는다. 콘텐츠·메시지·인터뷰·랜딩·DM·수동 운영으로 먼저 수요를 검증하고, 반복 워크플로우가 확인될 때만 도구화한다.</p>
+
+    <h3>1.1 최상위 판단 (갱신)</h3>
+    <table>
+      <tbody>
+        <tr><td><strong>제품 카테고리</strong></td><td>펄크의 최상위 카테고리는 <strong>AI Business OS / Founder Operating System</strong>이다. 개발툴이 아니다.</td></tr>
+        <tr><td><strong>실행 엔진</strong></td><td>ACR(Agent Control Tower)은 펄크 전체가 아니라 <em>CTO의 실행 하위 엔진</em>이었고, 현재는 <strong>2단계 Native Orchestration</strong>으로 정리되었다. pulk CTO는 "판단"만, native 오케스트레이터가 worktree·phase·verify·merge를 소유한다.</td></tr>
+        <tr><td><strong>Shell 전략</strong></td><td>NocoBase + PostgreSQL을 MVP Shell/Agent 작업장으로 쓰되, 핵심 로직은 <code>l5-core</code>로 분리한다. Founder-facing UX의 중심은 <strong>chat-first(founder-ui)</strong>다.</td></tr>
+        <tr><td><strong>Hermes</strong></td><td>강한 감시자이자 <strong>운영 신경계</strong>이지만, 코드 수정·자기 승인·Release Gate 우회 권한은 없다.</td></tr>
+        <tr><td><strong>자가개선</strong></td><td><strong>Tiger 루프</strong>가 매일 병목을 수집·분석해 개선 카드를 만들고, Founder 일괄승인 후 CTO가 병렬로 고친다. 시스템이 스스로 진화한다.</td></tr>
+        <tr><td><strong>첫 수익화</strong></td><td>펄크 자체 판매보다, 펄크를 이용해 <strong>작은 브랜드/로컬 사업자의 마케팅 자동화</strong>를 운영·상품화하는 것이 현실적. CMO 트랙이 그 첫 Business다.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="box accent">
+      <h4>전략적 결론</h4>
+      <p style="margin-bottom:0">펄크 MVP는 "모든 기능이 있는 OS"가 아니라, <strong>Founder 입력 → CEO 해석 → 임원 병렬 실행 → Approval Queue → Hermes 감시 → Memory 저장 → 워크플로우 진화</strong>가 하나의 실제 Vertical Slice로 작동하는 것이다. 이 슬라이스는 이미 동작하며(Phase 1~5 완료), 이제 자동 브리핑·승인 라우팅·메모리 지속화로 완성 중이다(Phase 6).</p>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section id="s2">
+    <h2><span class="num">2</span>배경과 문제정의</h2>
+    <p>펄크의 출발점은 "AI로 무엇을 자동화할 것인가"가 아니라 <strong>"창업자의 반복적 병목을 어떻게 시스템으로 제거할 것인가"</strong>다. 창업자는 아이디어가 많아도 실제로는 시장검증·고객 인터뷰·세일즈 메시지·콘텐츠 발행·개발 요청·QA·지표 확인·회고·다음 실험 설계를 모두 직접 챙긴다. 이 구조에서는 창업자의 체력과 집중력이 곧 회사의 처리량이 된다.</p>
+    <p>기존 업무관리툴은 태스크를 저장·표시하는 데 능하지만 <em>생성 이유·사업적 우선순위·고객 반응 기반 수정·조직적 역할 분담</em>을 자동 수행하지 못한다. 일반 AI 챗봇은 좋은 답을 주지만 <em>장기 운영 메모리·실행 상태·승인 정책·PMF 실험판·조직 구조</em>가 없다. 펄크는 이 둘 사이의 빈 공간을 채운다.</p>
+
+    <h3>2.1 구체적 병목 (PRD 반영)</h3>
+    <table>
+      <thead><tr><th>병목</th><th>펄크의 해법</th></tr></thead>
+      <tbody>
+        <tr><td>Founder의 방향 지시가 각 임원의 실행 과제로 안정적으로 분해되지 않음</td><td>CEO Agent가 지시 → 목표/성공기준/phase/agent task로 분해(<code>ceo-orchestration</code>)</td></tr>
+        <tr><td>각 Agent가 지금 무엇을·왜·어떤 원본 지시로 하는지 안 보임</td><td>모든 AgentTask에 <code>source_instruction</code>·rationale·expected output 부착, Executive Monitor 가시화</td></tr>
+        <tr><td>병렬 Agent들의 상태·산출물·병목·handoff가 추적 안 됨</td><td>Agent Task Board(status FSM) + AgentHandoff 로그</td></tr>
+        <tr><td>매번 창업자가 프롬프트·작업 지시를 직접 만듦</td><td>Workflow Factory가 실행흐름 자동 생성</td></tr>
+        <tr><td>PMF 검증 전에 툴부터 만듦</td><td>PMF Experiment Board를 Tool Request보다 먼저 강제</td></tr>
+        <tr><td>실행 결과가 다음 사업 자산으로 축적 안 됨</td><td>Memory Room + BPR/Tiger 학습 루프</td></tr>
+        <tr><td>고객 데이터와 재사용 인사이트가 섞임</td><td><code>pii_level</code>·<code>allowed_usage</code> 분리 저장, Founder export 권한</td></tr>
+      </tbody>
+    </table>
+
+    <h3>2.2 왜 지금인가</h3>
+    <p>AI 도구가 늘수록 역설적으로 창업자의 관리 부담도 커진다. Claude Code·Codex·자동화 도구·문서 도구·DB·대시보드가 따로 움직이면 창업자는 다시 이 도구들의 PM이 되어야 한다. 펄크는 개별 도구를 더 많이 쓰는 것이 아니라, <strong>이 도구들을 회사 운영체계 안에 배치·통제하는 상위 구조</strong>다. 초기 사용자는 창업자 본인이며, 본인의 사업 실험을 펄크 위에서 돌리며 반복되는 구조를 제품화한다.</p>
+  </section>
+
+  <!-- 3 -->
+  <section id="s3">
+    <h2><span class="num">3</span>제품 정체성·핵심 원칙</h2>
+    <p>펄크는 세 개념이 겹친다. ① <strong>Founder Operating System</strong> — 창업자의 의사결정 기준·성향·리스크 허용범위·브랜드 톤을 시스템에 반영. ② <strong>AI Company OS</strong> — AI를 어시스턴트가 아니라 역할·책임을 가진 임직원 조직으로 운영. ③ <strong>PMF Experiment Engine</strong> — 새 사업/상품을 수요 검증 중심으로 반복 실험. 셋을 묶으면 정체성은 <em>"창업자의 사업 감각을 조직화된 AI 운영체계로 바꾸는 시스템"</em>이다.</p>
+
+    <table>
+      <thead><tr><th>구분</th><th>펄크가 아닌 것</th><th>펄크가 지향하는 것</th></tr></thead>
+      <tbody>
+        <tr><td>챗봇</td><td>질문에 답하고 대화를 저장하는 비서</td><td>대화를 실행 가능한 사업 가설·워크플로우로 변환하는 운영체계</td></tr>
+        <tr><td>업무관리툴</td><td>사람이 입력·관리하는 보드</td><td>AI가 태스크를 생성·배분·감시·회고하는 실행 시스템</td></tr>
+        <tr><td>자동화툴</td><td>조건-액션을 잇는 Zapier류</td><td>수요 검증 후 반복 워크플로우를 도구화하는 제품화 엔진</td></tr>
+        <tr><td>개발툴</td><td>코드 생성/QA에 국한</td><td>개발 실행도 포함하되 사업 운영 전체를 포괄하는 OS</td></tr>
+      </tbody>
+    </table>
+
+    <h3>3.1 핵심 원칙</h3>
+    <div class="grid2">
+      <div class="card"><h4>Company Culture First</h4><p>기능보다 운영 문화·의사결정 원칙을 먼저 정의. Culture 에이전트가 정렬성 검토.</p></div>
+      <div class="card"><h4>Founder DNA as Default Context</h4><p>창업자 기준은 매번 설명하지 않아도 기본 컨텍스트로 작동.</p></div>
+      <div class="card"><h4>Generative Workflow</h4><p>고정 템플릿만 쓰지 않고 사업 상황에 맞춰 워크플로우를 생성.</p></div>
+      <div class="card"><h4>Small PMF Before Build</h4><p>콘텐츠·메시지·인터뷰·랜딩으로 먼저 수요 확인.</p></div>
+      <div class="card"><h4>No Demand, No Tool</h4><p>반복 수요·유료 의사 확인 전에는 무거운 개발을 미룸.</p></div>
+      <div class="card"><h4>Approval by Risk Level</h4><p>위험도에 따라 자동 실행 / 검토 / 창업자 승인 구분.</p></div>
+      <div class="card"><h4>Memory Compounding</h4><p>모든 실행·판단은 다음 실행 품질을 높이는 메모리로 축적.</p></div>
+      <div class="card"><h4>Chat-first, Shell-separate</h4><p>Founder UX는 채팅. NocoBase는 Agent 작업장. 핵심 로직은 l5-core.</p></div>
+    </div>
+
+    <h3>3.2 명명 규칙</h3>
+    <p><strong>Pulk</strong> = 브랜드명, <strong>L5 Business OS</strong> = 제품 카테고리/기술적 설명, <strong>AI Business OS</strong> = 일반명. 외부 소개는 "Pulk — AI Business OS for Founders", 내부 문서는 "L5 Business OS Architecture".</p>
+  </section>
+
+  <!-- 4 -->
+  <section id="s4">
+    <h2><span class="num">4</span>L5 운영 루프</h2>
+    <p>펄크 중심에는 L5 운영 루프가 있다: <strong>Sense → Think → Design → Execute → Measure → Learn → Evolve → Repeat</strong>. 창업자가 아이디어를 입력하면 시스템은 단순히 답하지 않고, 맥락을 감지하고 사업성을 판단하고 실행흐름을 설계하고 임원을 배치하고 결과를 측정하고 배운 것을 다음 워크플로우에 반영한다. 자율성은 무조건 높이는 것이 아니라 <em>위험도와 데이터 확실성에 따라 조절</em>된다.</p>
+
+    <table>
+      <thead><tr><th>단계</th><th>의미</th><th>주요 산출물</th><th>담당</th></tr></thead>
+      <tbody>
+        <tr><td>Sense</td><td>대화·고객 반응·시장 신호·내부 로그 감지</td><td>Signal Log, Opportunity Brief</td><td>Hermes, CEO</td></tr>
+        <tr><td>Think</td><td>사업성·우선순위·리스크·창업자 적합도 판단</td><td>Decision Memo, Priority Score</td><td>CEO, CFO, Risk/QA</td></tr>
+        <tr><td>Design</td><td>실행 가능한 워크플로우·실험 설계</td><td>Workflow Draft, PMF Plan</td><td>Chief of Staff, CPO, CMO</td></tr>
+        <tr><td>Execute</td><td>콘텐츠·세일즈·개발·운영 태스크 수행</td><td>Tasks, Drafts, Code, Campaigns</td><td>CMO, CRO, CTO, COO</td></tr>
+        <tr><td>Measure</td><td>성과·반응 측정</td><td>KPI Snapshot, PMF Signal</td><td>CFO, CMO, CRO</td></tr>
+        <tr><td>Learn</td><td>실패·성공 요인 기록</td><td>Learning Note, Retrospective</td><td>Hermes, BPR</td></tr>
+        <tr><td>Evolve</td><td>워크플로우·메모리·정책 개선</td><td>Updated Playbook, Memory Update</td><td>Chief of Staff, Hermes, <strong>Tiger</strong></td></tr>
+        <tr><td>Repeat</td><td>다음 실험/제품화로 연결</td><td>Next Action Queue</td><td>CEO</td></tr>
+      </tbody>
+    </table>
+
+    <h3>4.1 BPR 6-Phase 매핑</h3>
+    <p>운영 루프는 사업 재설계 관점에서 6단계 phase로도 관리된다: <strong>① Direction Alignment → ② Market/PMF Diagnosis → ③ Offer/Workflow Redesign → ④ Execution System Build → ⑤ Sales/Revenue Test → ⑥ Monitoring/Optimization(Scale·Automation)</strong>. phase 전환은 승인 게이트를 가진다.</p>
+
+    <div class="box">
+      <h4>운영 원칙</h4>
+      <p style="margin-bottom:0">펄크는 "아이디어 → 개발"이 아니라 <strong>"아이디어 → 작은 수요 검증 → 반복 워크플로우 발견 → 도구화 → 매출화"</strong> 순서로 움직인다.</p>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section id="s5">
+    <h2><span class="num">5</span>시스템 아키텍처 (현행)</h2>
+    <p>펄크 아키텍처는 <strong>4개의 두뇌</strong>를 명확히 분리한다. 하나의 범용 AI에 모든 것을 맡기지 않고, 판단·실행·감시·자가개선을 서로 다른 시스템이 소유한다.</p>
+
+    <div class="cols">
+      <div class="brainbox cto"><div class="t">🧠 pulk CTO</div><small class="note">판단(Brain)</small><p style="margin:8px 0 0">요구사항 → task/spec/risk → complexity(C0~C5) → agent 배정 → Work Order. 코드는 직접 쓰지 않는다.</p></div>
+      <div class="brainbox exec"><div class="t">⚙️ Native Orchestration</div><small class="note">실행(Executor)</small><p style="margin:8px 0 0">2-level. worktree 격리 · 병렬 phase · verify gate · merge · e2e/QA를 소유.</p></div>
+      <div class="brainbox herm"><div class="t">🔔 Hermes</div><small class="note">감시(Nervous System)</small><p style="margin:8px 0 0">멈춤·실패·드리프트·승인대기 감지, Brief 생성, 개선 제안. 읽기 전용.</p></div>
+      <div class="brainbox tiger"><div class="t">🐯 Tiger</div><small class="note">자가개선(Self-Improve)</small><p style="margin:8px 0 0">병목 수집 → Claude 분석 → 카드 → Founder 일괄승인 → CTO 병렬 실행 → 메모리 학습.</p></div>
+    </div>
+
+    <h3>5.1 계층 구조</h3>
+    <table>
+      <thead><tr><th>계층</th><th>구성요소</th><th>역할</th><th>구현 원칙</th></tr></thead>
+      <tbody>
+        <tr><td>Founder Layer</td><td>Founder DNA, Culture, Decision Rules</td><td>창업자 기준·의사결정 원칙 보존</td><td>수동 입력 + 대화 기반 자동 업데이트 후보</td></tr>
+        <tr><td>Strategy Layer</td><td>CEO Agent, Chief of Staff, Decision Queue</td><td>방향·우선순위·실행계획 정리</td><td>문서/데이터 모델 우선</td></tr>
+        <tr><td>Execution Layer</td><td>CMO·CRO·CPO·CTO·COO·CFO·Risk/QA (+Culture)</td><td>역할별 산출·검토</td><td>Claude Code 서브에이전트 프로필로 구현</td></tr>
+        <tr><td>Monitoring Layer</td><td>Hermes, Alerts, Watchdog, Logs</td><td>멈춤·실패·드리프트·승인 감지</td><td>강한 알림/요약 중심</td></tr>
+        <tr><td>Experiment Layer</td><td>PMF Board, Signal Score</td><td>수요 검증·제품화 판단</td><td>마케팅 자동화 실험부터 적용</td></tr>
+        <tr><td>Memory Layer</td><td>Second Brain, Decision·Insight Memory</td><td>학습 축적·재사용</td><td>구조화 메모리 + export 권한</td></tr>
+        <tr><td>Self-Improve Layer</td><td>Tiger(수집기·night-BPR·dispatch)</td><td>cross-repo 병목 자동 개선</td><td>D1~D2 스코프, 일괄승인 게이트</td></tr>
+        <tr><td>Tooling Layer</td><td>Native Orchestration, GitHub, CLI Tools</td><td>개발 실행·외부 자동화</td><td>CTO 하위 엔진으로 분리</td></tr>
+      </tbody>
+    </table>
+
+    <h3>5.2 CTO 실행: 2단계 Native Orchestration (ACR → native 전환)</h3>
+    <p>이전 기획서는 "Agent Control Tower(ACR)를 CTO가 호출한다"고 봤다. 현재는 ACR이 기획(분해)과 실행(Harness)을 동시에 하던 책임 분산을 정리하고, <strong>pulk CTO(판단) + Native Orchestration(실행)</strong>으로 분리했다. Native Orchestration이 worktree 격리·병렬 phase·verify gate를 이미 커버하므로 별도 Harness가 불필요해졌다.</p>
+    <div class="flow">Founder 요청 / 큰 PRD
+  │  (pulk CTO 1차 분해 · decomposeLargePRDToPackages)
+  ▼
+Work Package[]  + main agent 배정 (selectMainAgent → claude-code / codex / antigravity)
+  │  (각 main agent 2차 오케스트레이션 · complexity 기반 · selectInternalOrchestrationMode)
+  ▼
+MainAgentWorkPackage  (C0~C5 guardrail로 solo / sub-agent / sequential team / parallel team 결정)
+  │  (Native Orchestration 실행)
+  ▼
+worktree 격리 → 병렬 phase → verify gate → merge → e2e → QA → TeamResultPacket 회수</div>
+    <p><small class="note">관련 코드: <code>packages/l5-core/src/functions/cto-native</code>, <code>cto-planning</code>, <code>cto-design</code>, <code>cto-verification</code>, <code>services/agent-runtime/src/orchestrator/</code>. pulk는 task 상태만 관리하고, ExecutionRun(실행 시도)은 오케스트레이터가 소유한다.</small></p>
+
+    <h3>5.3 Shell 분리 원칙</h3>
+    <p>초기 구현에서 중요한 것은 NocoBase에 과도하게 종속되지 않는 것이다. NocoBase는 MVP Shell·Admin UI·Plugin Host·Agent 작업장으로 쓰고, 핵심 규칙·타입·의사결정 로직·워크플로우 모델은 <code>l5-core</code>에 둔다. 그래야 Next.js·자체 백엔드·다른 DB·SaaS 환경으로 이전해도 핵심 자산을 보존한다. Founder-facing 경험의 중심은 <code>apps/founder-ui</code>(Next.js) 채팅이다.</p>
+  </section>
+
+  <!-- 6 -->
+  <section id="s6">
+    <h2><span class="num">6</span>AI 임직원 조직</h2>
+    <p>펄크는 AI를 기능이 아니라 <strong>조직 구조</strong>로 쓴다. 책임 경계와 판단 기준을 명확히 하기 위해서다. 각 임원은 <code>.claude/agents/*.md</code> 페르소나로 정의되며, 실제 파일 생성·bash·영상 렌더·dispatch 같은 실작업을 수행할 수 있다.</p>
+
+    <table>
+      <thead><tr><th>역할</th><th>핵심 책임</th><th>autonomy</th><th>승인 필요 경계</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Founder</strong></td><td>최종 방향·승인, 자본·브랜드 리스크 판단</td><td>—</td><td>반복 실행은 직접 하지 않음</td></tr>
+        <tr><td><strong>CEO</strong></td><td>Founder 채팅 해석, 임원 task 병렬 배정, 우선순위·성장 전략, Daily brief</td><td>L3–L4</td><td>결제·계약·환불, 최종 가격, 고위험 외부 발신, 유료 툴</td></tr>
+        <tr><td><strong>Chief of Staff</strong></td><td>Founder 주의력 보호, 보고 압축, Brief·승인 큐, <strong>FounderDeliverable 종합</strong></td><td>L3</td><td>전략 최종 결정권 없음</td></tr>
+        <tr><td><strong>CMO</strong></td><td>PMF 메시지·콘텐츠·포지셔닝·수요 실험·고객 리서치</td><td>L2–L3</td><td>D3: 외부 발송 전 Founder 승인</td></tr>
+        <tr><td><strong>CRO</strong></td><td>리드 세그먼트·세일즈 워크플로우·제안서·가격·팔로업</td><td>L2–L3</td><td>D4: 고객 메시지 Founder 승인</td></tr>
+        <tr><td><strong>CPO</strong></td><td>제품화 판단·오퍼 형태·유저 워크플로우·기능 우선순위</td><td>L2–L3</td><td>PMF 기준 미충족 시 빌드 금지</td></tr>
+        <tr><td><strong>CTO</strong></td><td>도구 요청 검증·빌드 계획·기술 실현성·자동화 위험</td><td>L2–L4</td><td>PMF 신호 부재 시 자동화 차단, 배포/머지는 QA Gate</td></tr>
+        <tr><td><strong>COO</strong></td><td>배송 워크플로우·내부 프로세스·SOP·운영 케이던스</td><td>L3</td><td>외부 영향 있으면 CEO 검증</td></tr>
+        <tr><td><strong>CFO</strong></td><td>비용·가격·수익성·단위경제·예산</td><td>L2–L3</td><td>D5: 모든 금전 약속 Founder 필수</td></tr>
+        <tr><td><strong>Risk/QA</strong></td><td>D3~D5 항목 안전성 최종 검증, PII·LLM trace·자동화 리스크</td><td>L3–L4</td><td>불안전 항목 <strong>차단 권한</strong>(대체안 제시 필수)</td></tr>
+        <tr><td><strong>Culture</strong> <span class="pill p-new">신규</span></td><td>회사 가치관·Founder DNA 일관성·팀 문화·장기 지향성</td><td>L1 (자문)</td><td>자문 역할(직접 실행 없음)</td></tr>
+        <tr><td><strong>Hermes</strong></td><td>워크플로우 감시·정체 탐지·BPR 트리거·승인 큐·개선 제안</td><td>L1–L2 (읽기)</td><td>자기 승인·코드 수정·릴리즈 우회 <strong>금지</strong></td></tr>
+      </tbody>
+    </table>
+
+    <h3>6.1 CEO ↔ Chief of Staff</h3>
+    <p>CEO는 "무엇을·왜 해야 하는가"를, Chief of Staff는 "누가 언제 무엇을 어떻게 해야 하는가"를 담당한다. CEO는 대부분의 사업 판단을 하되 결제·법적 책임·고위험 외부 실행은 Founder 승인으로 남긴다. <strong>CEO Clarification Gate</strong>: 지시가 불충분하면 자동 분해하지 않고 채팅으로 되묻는다(<code>needs_clarification</code>).</p>
+
+    <h3>6.2 FounderDeliverable 종합 <span class="pill p-new">신규</span></h3>
+    <p>한 지시에서 파생된 모든 task가 종료(done/killed, ≥1 done)되면 Chief of Staff가 <strong>단일 종합 산출물</strong>을 만든다. 구조는 코드 소유(<code>UNIQUE(instruction_id)</code> 멱등 백스톱), 요약은 LLM + 결정론 규칙. 필드: <code>decision_summary</code>, <code>contributions[]</code>(agent·task·요약·상태), <code>next_actions[]</code>(approve/hold). 창업자는 임원별 산출을 일일이 읽지 않고 하나의 카드로 결정한다.</p>
+
+    <h3>6.3 임원 간 위임 루프 (Executive Delegation) <span class="pill p-new">신규</span></h3>
+    <p>임원 A가 산출 도중 임원 B의 작업이 필요하면 CEO를 거쳐 위임하고, <strong>자동 검증-수정 루프</strong>를 반복한다. 예: CMO가 영상 생성기 수정을 CTO에게 위임 → CTO 제작 → CMO가 <code>acceptance_criteria</code> 대비 검증 → fail이면 피드백 재투입 → pass 또는 예산소진까지 → 원래 CMO 작업 재개.</p>
+    <div class="flow">CMO tool-loop 중 ask_executive(to='CTO', objective, acceptance_criteria, max_rounds=3)
+  ▼
+CEO 게이트 (1회 정책 검토 — 고위험/아웃바운드면 Founder 승인 토큰)
+  ▼
+while round &lt; max_rounds:      ← CEO LLM 미개입, 결정론 제어 (비용 0)
+    CTO 제작 → CMO 검증(체크리스트) → fail → 피드백 재투입
+  ▼
+pass or 예산소진 → 원래 task 재개  |  escalate_founder</div>
+    <p><small class="note">안전장치: max_rounds(기본 3, 상한 5) · acceptance_criteria 필수(없으면 위임 거부) · 자기 위임 금지 · 승인 게이트 유지. 코드: <code>l5-core/functions/delegation</code>, <code>consultation</code>.</small></p>
+
+    <h3>6.4 임원 = Claude Code 서브에이전트 + 멀티채널 <span class="pill p-new">신규</span></h3>
+    <p>임원은 JSON만 뱉는 함수가 아니라 실제 작업이 가능한 서브에이전트다. <strong>텔레그램 인바운드 게이트웨이</strong>(<code>services/telegram-gateway</code>)가 <code>@ceo</code>/<code>@cto</code>/<code>@cmo</code> 메시지를 파싱해 <code>claude -p</code>로 임원을 소환하고 결과·파일을 회신한다. Founder의 Mac에서 launchd(KeepAlive)로 상주. <code>.claude/agents/</code>는 팀 공유 설정으로 git 추적, <code>.telegram-runs/</code>는 무시.</p>
+
+    <h3>6.5 Hermes 포지션</h3>
+    <p>Hermes는 단순 알림봇보다 강한 <strong>운영 신경계</strong>이지만 중앙 CEO가 되어서는 안 된다. 멈춘 작업·오래된 승인·반복 실패·품질 저하·드리프트·지표 이상을 감지해 Founder/관련 Agent에 개입 요청을 보낸다. 그러나 <em>위험 작업 자기 승인·코드 직접 수정·Release Gate 우회</em>는 금지된다. (상세: §9 Tiger)</p>
+  </section>
+
+  <!-- 7 -->
+  <section id="s7">
+    <h2><span class="num">7</span>위험도 × 복잡도 이원 체계</h2>
+    <p>펄크는 두 개의 독립 축으로 자율성을 판단한다. <strong>위험도(D)</strong>는 외부 영향·비가역성을, <strong>복잡도(C)</strong>는 내부 구조 난이도를 나타낸다. 핵심 원칙은 <strong>"Risk ≠ Gate"</strong> — 위험도가 곧바로 승인 대기를 의미하지 않는다.</p>
+
+    <h3>7.1 위험도 (D1~D5)</h3>
+    <table>
+      <thead><tr><th>등급</th><th>의미</th><th>예시</th><th>처리</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill p-d">D1</span></td><td>내부 초안 전용 (Founder도 안 봄)</td><td>LLM 스크래치, 브레인스톰, trace</td><td>자동, 로그 불필요</td></tr>
+        <tr><td><span class="pill p-d">D2</span></td><td>내부 실행 (외부 발신 없음)</td><td>프로세스 설계, 콘텐츠 초안, 기술 검토, <strong>CTO 코드 변경</strong></td><td>자동 + 로그 (게이트 없음)</td></tr>
+        <tr><td><span class="pill p-d">D3</span></td><td>저위험 외부 초안</td><td>이메일 초안, 1차 설문</td><td>Founder 검토 선택, <strong>24h 무응답 자동승인</strong></td></tr>
+        <tr><td><span class="pill p-d">D4</span></td><td>고객 대면 메시지</td><td>이메일 발송, 제안·가격 제시</td><td><strong>Founder 명시 승인 필수</strong></td></tr>
+        <tr><td><span class="pill p-d">D5</span></td><td>법적·재무·공개 약속</td><td>계약, 유료 구독, 데이터 삭제, 배포/머지 우회</td><td><strong>Founder + Risk/QA 이중 게이트</strong> + 감사 로그</td></tr>
+      </tbody>
+    </table>
+    <div class="box warn">
+      <h4>CTO 자기수정(self-mod) 예외</h4>
+      <p style="margin-bottom:0">CTO 코드 변경은 원칙적으로 D2(게이트 없음, GitHub 브랜치+테스트가 안전장치)다. 단, <strong>L5 자기 자신(ACR/플러그인/승인 로직/launchd/.env/SECURITY_*)</strong>을 바꾸는 자기수정은 승인 게이트가 걸린다(<code>L5_SELFMOD_AUTO_APPLY_FLOOR=D3</code> 기본, 0이면 전건 승인). diff 미리보기 + 롤백 + 적용 후 검증 루프.</p>
+    </div>
+
+    <h3>7.2 복잡도 (C0~C5) → 내부 오케스트레이션</h3>
+    <table>
+      <thead><tr><th>등급</th><th>유형</th><th>내부 오케스트레이션</th><th>team</th></tr></thead>
+      <tbody>
+        <tr><td>C0</td><td>문서/텍스트</td><td><code>solo</code></td><td>금지</td></tr>
+        <tr><td>C1</td><td>작은 코드</td><td><code>solo</code></td><td>금지</td></tr>
+        <tr><td>C2</td><td>중소 코드</td><td><code>solo_with_subagents</code></td><td>sub-agent만</td></tr>
+        <tr><td>C3</td><td>중형 코드</td><td><code>internal_sequential_team</code></td><td>순차 팀</td></tr>
+        <tr><td>C4</td><td>복잡 코드</td><td><code>internal_sequential_team</code></td><td>순차 팀</td></tr>
+        <tr><td>C5</td><td>매우 복잡</td><td><code>internal_parallel_team</code></td><td>병렬 팀 (파일 범위 겹침 금지)</td></tr>
+      </tbody>
+    </table>
+    <p><small class="note">guardrail: C0~C1 작업에 team 사용 금지. 이유 없는 team/sub-agent 사용은 reject. 간단한 작업(C0~C1)에 무거운 워크플로우를 태우지 않는다.</small></p>
+  </section>
+
+  <!-- 8 -->
+  <section id="s8">
+    <h2><span class="num">8</span>핵심 모듈 상세</h2>
+    <p>핵심 모듈은 독립 기능처럼 보이지만 하나의 운영 루프 안에서 연결된다.</p>
+
+    <h3>8.1 Founder DNA Room</h3>
+    <p>창업자의 성향·선호·판단 기준·사업 철학을 저장. 선호 시장, 피할 사업, 콘텐츠 톤, 가격 정책 성향, 리스크 허용범위, 승인 기준, 브랜드 감각, 업무 스타일. 카테고리: <code>business_preference · risk_standard · strength · weakness · brand_tone · decision_rule</code>, 각 항목 <code>confidence(1~5)</code>. 기능: 사업 적합도 점수화, 스타일 일관성 검토, 승인/거절에서 새 선호 추출(자동 반영 아닌 <em>업데이트 후보</em> 제안), 경계 설정.</p>
+
+    <h3>8.2 Business Portfolio (BusinessIdea → Business → Project) <span class="pill p-new">계층 확장</span></h3>
+    <p>구상/실행 중인 사업·실험·상품 후보를 관리. 3단계 계층으로 확장되었다.</p>
+    <table>
+      <thead><tr><th>레벨</th><th>의미</th><th>상태(status)</th></tr></thead>
+      <tbody>
+        <tr><td><strong>BusinessIdea</strong></td><td>원시 입력 아이디어</td><td>idea / scoring / pmf_experiment / killed / converted_to_business</td></tr>
+        <tr><td><strong>Business</strong></td><td>실험~제품화 컨테이너</td><td>idea / scoring / pmf_experiment / active_experiment / tool_candidate / revenue_test / productization / scaling / paused / killed</td></tr>
+        <tr><td><strong>Project</strong></td><td>Business 하위 실행 컨테이너</td><td>active / completed / killed · <code>repo_path=~/l5-workspace/business-{id}</code> 자동 생성</td></tr>
+      </tbody>
+    </table>
+
+    <h3>8.3 Workflow Factory</h3>
+    <p>창업자의 추상적 입력("마케팅 자동화 상품을 만들자")을 실행 가능한 워크플로우로 변환하는 실행화 엔진. 입력: business idea + Founder DNA + culture + relevant memory + available agents + 제약. 자동 생성 문서: <code>BUSINESS_BRIEF · FOUNDER_FIT_SCORE · OPPORTUNITY_SCORE · BUSINESS_MODEL_DRAFT · PMF_EXPERIMENT_PLAN · AGENT_STAFFING_PLAN · REVENUE/MARKETING/SALES/DELIVERY/BPR_WORKFLOW · TOOL_REQUESTS · 7_DAY_EXPERIMENT · KILL_OR_SCALE_CRITERIA</code>. 규칙: PMF 실험은 도구 요청 전에, 도구 요청은 반복 신호(주 3회+) 필수, 워크플로우는 구조화 레코드로 저장.</p>
+
+    <h3>8.4 PMF Experiment Board</h3>
+    <p>펄크가 툴 개발에 빠지지 않게 막는 핵심 장치. 시장 반응을 먼저 본다. format: <code>content · message · landing · proposal · manual_delivery · interview · waitlist · survey</code>, <code>pmf_score</code>, <code>signal_level(1~5)</code>. 설계 요소: Customer Segment / Pain Point / Offer / Channel / Signal / Threshold / Learning.</p>
+
+    <h3>8.5 Decision Queue · Approval Gate</h3>
+    <p>시스템이 Founder에게 결정을 요청하는 대기열. 모든 것을 묻는 시스템은 자동화가 아니고, 아무것도 묻지 않는 시스템은 위험하다. <code>decision_type</code>: founder_approval / risk_review / tool_subscription / external_send / pricing / legal_financial, <code>risk_level</code> D1~D5, <code>status</code>: pending / approved / rejected / needs_revision. (§7 승인 정책과 연동)</p>
+
+    <h3>8.6 Hermes Control Room · BPR · Tiger</h3>
+    <p>Hermes가 감시하는 상태와 트리거를 보여준다: 멈춘 작업, 마감 지난 PMF 실험, 승인 필요 항목, 반복 업무 감지, BPR 제안, Tool Request 후보. BPR Room은 반복 병목·실패 원인을 분석해 프로세스를 재설계한다(Local/Company/Triggered BPR). 이 BPR 분석이 <strong>Tiger 자가개선 루프</strong>로 자동화되었다(§9).</p>
+
+    <h3>8.7 Memory Room</h3>
+    <p>결정·인사이트·워크플로우·고객 반응을 저장·재사용. 단순 노트가 아니라 재사용 가능한 운영 자산. 유형: Founder / Business / Customer Insight / Workflow / Decision / Failure Pattern / Risk Policy / Revenue Memory. AI 생성 메모리는 <code>confidence</code>·<code>source</code>와 함께 저장되고, PII 분리·큐레이션(§10)을 거친다.</p>
+
+    <h3>8.8 Tool Request Lab</h3>
+    <p>반복 업무·병목을 도구화 후보로 관리. 필드: 반복성, 소요 시간, 실수/누락 위험, 매출/PMF 영향, <code>reuse_potential(1~5)</code>, <code>cto_decision</code>(manual_for_now / local_script / no_code_tool / internal_feature / native_orchestration / claude_code / codex / antigravity / hermes_automation / future_saas / reject). No Demand → No Tool 원칙의 집행 지점.</p>
+  </section>
+
+  <!-- 9 -->
+  <section id="s9">
+    <h2><span class="num">9</span>Tiger 자가개선 루프 <span class="pill p-new">신규 핵심</span></h2>
+    <p class="lead">호랑이(Tiger)는 펄크가 스스로 병목을 찾아 고치는 자가개선 신경계다. 이전 기획서의 "BPR Room" 개념이 <strong>매일 도는 자동 루프</strong>로 구현되었다.</p>
+
+    <div class="flow">1. [수집]  cross-repo 수집기가 도구 레지스트리 순회 → 임원·도구·repo별 병목 후보 모음
+2. [분석]  Claude(호랑이 두뇌, night-BPR)가 후보 분석 → 개선 카드 작성 (D1~D2 자동)
+3. [제안]  founder-ui '🐯 자가개선' 사이드바에 카드 노출 (문제 / 근본원인 / 해결예정 / 대상 repo)
+4. [승인]  Founder가 카드 다중선택 → 일괄 승인 (단일 게이트)
+5. [실행]  CTO가 target_repo별 그룹핑(RepoGroup) → native-orchestrator 병렬 worktree → verify → merge
+6. [학습]  결과(성공/실패) → MemoryEntry 적재 (category: bpr / failure)
+7. [순환]  다음날 분석이 이 메모리를 입력으로 받아 품질 향상</div>
+
+    <div class="grid2">
+      <div class="card"><h4>도구 레지스트리</h4><p>임원별 도구를 1줄로 등록(<code>owner · 도구명 · repo_path · error_sources · manual_intake</code>). 새 도구 = 레지스트리 한 줄 추가 → 수집·분석·디스패치 전 경로에 자동 편입.</p></div>
+      <div class="card"><h4>수집 소스</h4><p>(A) 자동 어댑터: jsonl 로그 / dir-scan / agent-tasks. (B) 수동 제보: Founder 텔레그램·UI. 외부 repo(영상 팩토리 등)도 포함.</p></div>
+      <div class="card"><h4>호랑이 두뇌</h4><p><code>night-bpr-loop.ts</code>, Claude CLI 헤드리스 전담. 후보 → BPRLog(근본원인) + WorkflowImprovementProposal(카드). 과거 MemoryEntry를 입력으로 재발·회피·우선순위 반영. <strong>OpenAI 미사용.</strong></p></div>
+      <div class="card"><h4>CTO 병렬 실행</h4><p>승인 카드를 <code>target_repo</code>별 RepoGroup으로 묶어 native-orchestrator 병렬 실행. 동시성 상한 <code>max(1, cpu-2)</code>. 결과 merged/held/failed + 사유 → 메모리.</p></div>
+    </div>
+
+    <div class="box danger">
+      <h4>Tiger 스코프 = D1~D2 고정 · 금지사항</h4>
+      <ul style="margin-bottom:0">
+        <li>✗ 외부 고객 발송·결제 자동화 &nbsp;·&nbsp; ✗ <code>.env</code>/<code>.git</code>/lockfile 수정 &nbsp;·&nbsp; ✗ DB schema 마이그레이션</li>
+        <li>이런 항목은 코드로 고치지 않고 카드를 <code>approval_required=true</code> + <code>risk_level=D4</code>로 <code>/approval</code> 큐에 보낸다.</li>
+      </ul>
+    </div>
+    <p><small class="note">관련: <code>l5-core/functions/tiger</code>, <code>bpr</code>, <code>services/hermes-runtime/src/tiger/</code>(watchdog collector · liveness · recovery), founder-ui <code>/self-improve</code>. 실시간 장애 감시(~90s 지연) + 4회 자동복구 루프 실증.</small></p>
+  </section>
+
+  <!-- 10 -->
+  <section id="s10">
+    <h2><span class="num">10</span>데이터·메모리·거버넌스</h2>
+    <p>펄크의 장기 경쟁력은 데이터와 메모리에 있다. 매번 새 대화처럼 시작하면 운영체계가 아니라 일회성 비서다. 사업별 실행 기록·고객 반응·의사결정·실패 패턴·승인 사유·워크플로우 성과를 구조화 저장하고, Founder가 조회·백업·export할 수 있어야 한다.</p>
+
+    <h3>10.1 데이터 모델 (갱신)</h3>
+    <table>
+      <thead><tr><th>엔티티</th><th>핵심 필드</th><th>용도</th></tr></thead>
+      <tbody>
+        <tr><td>FounderDNA</td><td>category, statement, confidence(1~5)</td><td>창업자 기본 컨텍스트</td></tr>
+        <tr><td>CultureRule</td><td>principle, allowed_behavior, forbidden_behavior</td><td>AI 조직 운영문화</td></tr>
+        <tr><td>BusinessIdea / Business / Project</td><td>name, stage/status, owner_agent, fit_score, repo_path</td><td>포트폴리오 계층 관리</td></tr>
+        <tr><td>Agent <span class="pill p-new">신규</span></td><td>role(ceo…risk_qa/culture/squad), autonomy_level(L1~L5)</td><td>임원 정의·권한</td></tr>
+        <tr><td>FounderInstruction / CEOInterpretation</td><td>원본 지시, 목표/성공기준, phase, task 분해</td><td>지시 → 실행 추적</td></tr>
+        <tr><td>AgentTask</td><td>status(queued/running/blocked/needs_review/done/killed), <strong>output(jsonb)</strong>, risk_level, approval_required, source_instruction_id</td><td>에이전트 실행 기록</td></tr>
+        <tr><td>AgentHandoff</td><td>from/to agent, context, approval_required</td><td>task 간 인계</td></tr>
+        <tr><td>FounderDeliverable <span class="pill p-new">신규</span></td><td>instruction_id(UNIQUE), decision_summary, contributions[], next_actions[]</td><td>지시당 단일 종합 산출</td></tr>
+        <tr><td>ExecutiveConsultation <span class="pill p-new">신규</span></td><td>task_id, from_agent, question, status(awaiting_founder/resolved)</td><td>임원→Founder 질의</td></tr>
+        <tr><td>ExecutiveDelegation <span class="pill p-new">신규</span></td><td>from/to_agent, origin_task_id, status, round, max_rounds(1~5)</td><td>임원 간 위임 루프</td></tr>
+        <tr><td>PMFExperiment</td><td>hypothesis, segment, channel, format, metric, threshold, pmf_score, signal_level</td><td>수요 검증 기록</td></tr>
+        <tr><td>Workflow</td><td>trigger, objective, steps, agents, gates, metrics, type</td><td>실행흐름 저장·재사용</td></tr>
+        <tr><td>DecisionQueue</td><td>decision_type, risk_level, options, recommendation, status</td><td>판단·승인 이력</td></tr>
+        <tr><td>HermesAlert</td><td>type, severity, source, suggested_action, status</td><td>감시·알림·개입</td></tr>
+        <tr><td>MemoryEntry</td><td>type, content, source, confidence, pii_level, allowed_usage, <strong>curation_decision, discard_reason, purge_at</strong></td><td>학습 인사이트 저장·큐레이션</td></tr>
+        <tr><td>ToolRequest</td><td>need, demand_signal, reuse_potential, cto_decision, build_priority</td><td>도구화 후보</td></tr>
+        <tr><td>BPRLog / WorkflowImprovementProposal</td><td>bottleneck, root_cause, proposal, target_repo, self_mod_status</td><td>Tiger 자가개선</td></tr>
+      </tbody>
+    </table>
+
+    <h3>10.2 메모리 큐레이션 <span class="pill p-new">신규</span></h3>
+    <p>메모리는 무한정 쌓이지 않는다. <code>curation_decision</code>(auto_save / auto_discard / needs_review)과 <code>discard_reason</code>(pii_high / too_short / duplicate / low_value)로 분류되고, 폐기 항목은 <code>purge_at</code>(폐기 후 30일)에 cron 삭제된다. <code>pii_level='high'</code>는 LLM 컨텍스트로 전송되지 않는다.</p>
+
+    <h3>10.3 거버넌스 원칙</h3>
+    <ul>
+      <li>Founder는 핵심 데이터에 대해 조회·백업·export 권한을 가진다.</li>
+      <li>고객 PII(<code>pii_level</code>)와 비식별 인사이트(<code>allowed_usage</code>: internal_only / reusable_anonymized / restricted_customer_purpose)를 분리 저장.</li>
+      <li>AI 생성 메모리는 <code>confidence</code>·<code>source</code>를 함께 저장.</li>
+      <li>중요한 Founder DNA 변경은 자동 반영이 아니라 업데이트 후보로 제안.</li>
+      <li>승인 이력·고위험 실행 로그는 삭제하지 않고 감사 가능하게 보존.</li>
+      <li>MVP 단계에서도 데이터 모델은 이전 가능성을 고려해 NocoBase 종속을 낮춘다.</li>
+    </ul>
+  </section>
+
+  <!-- 11 -->
+  <section id="s11">
+    <h2><span class="num">11</span>기술 스택 & 구현 원칙</h2>
+    <p>초기 기술 전략은 <strong>"최소 비용, 빠른 MVP, 낮은 종속성"</strong>. NocoBase를 Shell/Admin/Plugin Host로 쓰고 <code>l5-core</code>를 별도 패키지로 둔다.</p>
+
+    <table>
+      <thead><tr><th>구성요소</th><th>역할</th><th>상태</th></tr></thead>
+      <tbody>
+        <tr><td>NocoBase (PostgreSQL)</td><td>MVP Shell · Admin · Agent 작업장</td><td><span class="pill p-done">live</span> plugin-orchestration / executive-monitor / business-portfolio</td></tr>
+        <tr><td>PostgreSQL</td><td>Source of Truth DB</td><td><span class="pill p-done">live</span> 4 tables + 11 indexes + RLS</td></tr>
+        <tr><td>l5-core</td><td>핵심 도메인 로직 (NocoBase 무관 테스트)</td><td><span class="pill p-done">live</span> 36 function dir, 174 core tests</td></tr>
+        <tr><td>founder-ui (Next.js)</td><td>Founder-facing 채팅 + 상태 패널</td><td><span class="pill p-done">live</span> 2-column, 승인 큐, /self-improve</td></tr>
+        <tr><td>Mastra</td><td>Agent Runtime (Claude API)</td><td><span class="pill p-done">live</span> 텍스트 tool 프로토콜</td></tr>
+        <tr><td>Native Orchestration</td><td>CTO 실행 (worktree/phase/verify/merge)</td><td><span class="pill p-prog">code ready</span> 활성화 플래그 대기</td></tr>
+        <tr><td>Trigger.dev (Hermes)</td><td>장기/예약 작업·감시 루프</td><td><span class="pill p-prog">partial</span> tiger watchdog live, scheduler 연결 진행</td></tr>
+        <tr><td>Telegram Gateway</td><td>인바운드 @임원 소환</td><td><span class="pill p-done">live</span> launchd, 토큰 주입 대기</td></tr>
+        <tr><td>영상 팩토리 (ai-slide-video-factory)</td><td>CMO 영상 생성</td><td><span class="pill p-done">live</span> VideoFactoryTransport 핸드오프</td></tr>
+        <tr><td>Langfuse</td><td>LLM Trace / 관찰성</td><td><span class="pill p-plan">integrated</span> 비용·품질 추적</td></tr>
+        <tr><td>Formbricks</td><td>PMF 설문·피드백</td><td><span class="pill p-plan">integrated</span> waitlist/survey</td></tr>
+        <tr><td>Activepieces</td><td>외부 자동화 연결</td><td><span class="pill p-plan">integrated</span> Slack/Gmail/Sheets/webhook</td></tr>
+      </tbody>
+    </table>
+
+    <h3>11.1 구현 원칙</h3>
+    <ul>
+      <li>9개 플러그인을 한꺼번에 만들지 않는다. 하나의 실제 Vertical Slice를 먼저 완성한다.</li>
+      <li>NocoBase는 교체 가능한 Shell, 핵심 로직은 <code>l5-core</code>에.</li>
+      <li>Agent 실행보다 먼저 데이터 모델·승인정책·워크플로우 스키마를 안정화한다.</li>
+      <li>개발 자동화는 CTO 하위 시스템으로 분리하고 Business OS와 혼동하지 않는다.</li>
+      <li><strong>결정론 우선</strong>: phase 생성은 <code>classifyTask</code>+템플릿, LLM은 opt-in 안전망.</li>
+      <li><strong>"Agent says done" ≠ Done. 검증 통과 = Done.</strong> 유형별 검증(문서/API/UI/DB/runner/보안) 강제. 모든 scoring rule은 단위테스트 필수.</li>
+      <li>로컬/무료/저비용 우선, 운영 안정화 시 관찰성·예약 실행 도구를 붙인다.</li>
+    </ul>
+  </section>
+
+  <!-- 12 -->
+  <section id="s12">
+    <h2><span class="num">12</span>구현 현황 <span class="pill p-new">신규</span></h2>
+    <p class="lead">MVP Vertical Slice(Phase 1~5)는 완료·검증되었고, Founder-facing 완성(Phase 6)이 진행 중이다. 총 750+ tests(174 core / 509 video-room / 66+ tiger).</p>
+
+    <h3>12.1 코어 트랙</h3>
+    <table>
+      <thead><tr><th>영역</th><th>상태</th><th>비고</th></tr></thead>
+      <tbody>
+        <tr><td>Orchestration Core</td><td><span class="pill p-done">완료</span></td><td>interpret/decompose/assign/summarize, 174 tests</td></tr>
+        <tr><td>임원 핸들러 8종</td><td><span class="pill p-done">완료</span></td><td>CMO·CRO·CPO·CTO·COO·CFO·Risk/QA + 라우팅</td></tr>
+        <tr><td>AgentOutput 프로토콜</td><td><span class="pill p-done">완료</span></td><td>14필드 flat 인터페이스 + validateOutput</td></tr>
+        <tr><td>PostgreSQL 스키마·마이그레이션</td><td><span class="pill p-done">완료</span></td><td>4 tables · 11 indexes · RLS(agent full / founder read-only)</td></tr>
+        <tr><td>API 엔드포인트</td><td><span class="pill p-done">완료</span></td><td>11 endpoints + smoke test PASS</td></tr>
+        <tr><td>Brief 자동생성</td><td><span class="pill p-prog">부분</span></td><td>7 템플릿 done, Hermes 배선 진행</td></tr>
+        <tr><td>승인 큐 자동 라우팅</td><td><span class="pill p-prog">부분</span></td><td>구조 설계 done, executeAgentTask 로직 진행</td></tr>
+        <tr><td>메모리 지속화</td><td><span class="pill p-prog">부분</span></td><td>수집 done, Founder 승인→테이블 저장 진행</td></tr>
+      </tbody>
+    </table>
+
+    <h3>12.2 CMO 트랙 (첫 사업)</h3>
+    <table>
+      <thead><tr><th>단계</th><th>상태</th></tr></thead>
+      <tbody>
+        <tr><td>KeyContent 11-step 자동초안</td><td><span class="pill p-done">live</span> 실제 Claude CLI, 178s / 6 calls</td></tr>
+        <tr><td>썸네일 A·B + YouTube</td><td><span class="pill p-done">live</span></td></tr>
+        <tr><td>영상 execution brief → 팩토리</td><td><span class="pill p-done">live</span> 실 팩토리 핸드오프</td></tr>
+        <tr><td>Pulling 후보 · Strategy 패키지 · Script 초안</td><td><span class="pill p-prog">code done</span> 일부 UI 대기</td></tr>
+        <tr><td>Viewtrap Playwright</td><td><span class="pill p-prog">Phase 2</span> 현재 human-in-loop</td></tr>
+      </tbody>
+    </table>
+
+    <h3>12.3 CTO / Tiger 트랙</h3>
+    <ul>
+      <li>Native Orchestration: <span class="pill p-prog">code(76 tests)</span> 활성화 플래그·plist 부트스트랩 대기.</li>
+      <li><code>integrate</code> phase(7th): 신규 파일이 진입점에 등록됐는지·중복·고아 모듈을 검사 — "만들었지만 안 붙임" 방지. <span class="pill p-done">구현</span></li>
+      <li>Tiger watchdog: <span class="pill p-done">live</span> 66+ tests, launchd 활성, 1/1 복구 실증.</li>
+    </ul>
+    <p><small class="note">주의: <code>docs/IMPLEMENTATION_STATUS.md</code>는 5월 스냅샷(ACR 시절)으로 일부 stale하며, 6월 DECISIONS와 코드(native 전환·Tiger·CMO v3)가 최신 사실이다.</small></p>
+  </section>
+
+  <!-- 13 -->
+  <section id="s13">
+    <h2><span class="num">13</span>첫 사업: 마케팅 자동화 (CMO 트랙)</h2>
+    <p>펄크 자체를 바로 SaaS로 파는 것은 위험하다. 더 현실적인 전략은 펄크를 내부 운영체계로 써서 <strong>작은 브랜드/로컬 사업자의 마케팅 자동화</strong>라는 명확한 고객 문제를 먼저 푸는 것이다. 이것이 첫 Business이며, CMO 트랙으로 실제 집행되고 있다(§12.2). 사용자의 기존 관심사(릴스·블로그·숏츠·쓰레드 자동화, 작은 브랜드 성장, AI 수익화 상품)와 정확히 맞는다.</p>
+
+    <h3>13.1 CMO v3 구조</h3>
+    <p><code>video-room</code>(25 stage, 509 tests, 도메인 순수 함수)이 source of truth이고, <code>cmo-orchestrator</code>는 스킬 선택·순서·승인 게이트 층(thin adapter). 각 AgentSkill은 video-room 순수 함수를 호출하는 5~15줄 어댑터로 중복 로직을 방지한다. YouTube 핫비디오·업로드·썸네일 레퍼런스, viewtrap 크롤링(사장님 in-app 검색 후 로드된 테이블만 읽는 human-in-loop) 포함.</p>
+
+    <h3>13.2 수익화 5단계</h3>
+    <table>
+      <thead><tr><th>단계</th><th>목표</th><th>실행</th><th>성공 신호</th></tr></thead>
+      <tbody>
+        <tr><td>1 문제 검증</td><td>고객군·pain 확인</td><td>인터뷰·DM·콘텐츠 반응</td><td>응답률, 문제 공감, 상담요청</td></tr>
+        <tr><td>2 수동 제공</td><td>가치 전달 확인</td><td>콘텐츠 캘린더·DM·블로그 초안(수동+AI)</td><td>재요청, 파일럿 비용 지불</td></tr>
+        <tr><td>3 워크플로우 표준화</td><td>반복 업무 템플릿화</td><td>Pulk Workflow로 단계 저장</td><td>제공시간 단축, 품질 안정화</td></tr>
+        <tr><td>4 반자동 도구화</td><td>일부 자동화</td><td>리서치·초안·리포트·알림 자동화</td><td>마진 개선, 운영량 증가</td></tr>
+        <tr><td>5 제품화</td><td>SaaS/패키지화</td><td>대시보드·고객 포털·정기 리포트</td><td>월 구독, 유지율, 추천</td></tr>
+      </tbody>
+    </table>
+
+    <h3>13.3 첫 패키지 예시</h3>
+    <div class="grid2">
+      <div class="card"><h4>AI 마케팅 진단</h4><p>작은 브랜드 대표 · 채널/콘텐츠/세일즈 메시지 진단 리포트 · 무료/저가 진단 후 상담전환</p></div>
+      <div class="card"><h4>콘텐츠 운영 패키지</h4><p>콘텐츠를 못 올리는 브랜드 · 월간 캘린더 + 릴스/블로그/쓰레드 초안 · 반복 구매·시간절약 체감</p></div>
+      <div class="card"><h4>DM 세일즈 실험 패키지</h4><p>리드 있는 사업자 · 고객군 정의 + DM 스크립트 + 후속 + 반응 리포트 · 응답률·상담전환</p></div>
+      <div class="card"><h4>자동화 구축 패키지</h4><p>반복 업무 있는 고객 · Activepieces류 자동화·리포트·알림 · 반복 pain 존재</p></div>
+    </div>
+    <p><strong>펄크 자체의 장기 수익화</strong>는 ① 운영 대행/컨설팅 → ② 검증된 워크플로우 템플릿 판매 → ③ Founder OS SaaS 순. ③으로 바로 가지 않고 ①②로 고객 문제·반복 패턴을 충분히 확보한다.</p>
+  </section>
+
+  <!-- 14 -->
+  <section id="s14">
+    <h2><span class="num">14</span>운영 정책·승인 게이트·리스크 관리</h2>
+    <p>AI 운영체계에서 "무엇을 자동화할 것인가"만큼 중요한 것이 "무엇을 자동화하지 않을 것인가"다. Hermes나 다른 에이전트가 자기 판단으로 고위험 작업을 승인해서는 안 된다.</p>
+
+    <h3>14.1 행동유형별 승인 매트릭스</h3>
+    <table>
+      <thead><tr><th>행동</th><th>자동 여부</th><th>검토 주체</th><th>비고</th></tr></thead>
+      <tbody>
+        <tr><td>내부 아이디어 정리</td><td>가능</td><td>없음</td><td>로그 저장</td></tr>
+        <tr><td>사업 후보 생성</td><td>가능</td><td>CEO</td><td>Founder 요약 보고</td></tr>
+        <tr><td>콘텐츠 초안 작성</td><td>가능</td><td>CMO</td><td>공개 전 승인 가능</td></tr>
+        <tr><td>CTO 코드 변경(비 self-mod)</td><td>가능(D2)</td><td>QA Gate</td><td>브랜치+테스트가 안전장치</td></tr>
+        <tr><td>외부 공개 콘텐츠 발행</td><td>조건부(D3)</td><td>Risk/QA + Founder</td><td>브랜드 리스크 확인</td></tr>
+        <tr><td>고객 DM/메일 발송</td><td>승인 필요(D4)</td><td>Founder</td><td>템플릿·대상 확인</td></tr>
+        <tr><td>가격 제안/견적 전달</td><td>승인 필요(D4)</td><td>Founder + CFO</td><td>수익성·브랜드 기준</td></tr>
+        <tr><td>CTO 자기수정(L5 자체)</td><td>게이트</td><td>Founder(±Risk/QA)</td><td>self-mod floor · diff·롤백</td></tr>
+        <tr><td>개인정보 처리/삭제</td><td>강한 승인(D5)</td><td>Founder</td><td>감사 로그 필수</td></tr>
+        <tr><td>결제/계약</td><td>강한 승인(D5)</td><td>Founder + Risk/QA</td><td>자동 실행 금지</td></tr>
+      </tbody>
+    </table>
+
+    <h3>14.2 주요 리스크와 대응</h3>
+    <table>
+      <thead><tr><th>리스크</th><th>대응</th></tr></thead>
+      <tbody>
+        <tr><td>범위 과대화 (모든 모듈을 한꺼번에)</td><td>Vertical Slice만 먼저 구현</td></tr>
+        <tr><td>툴 집착 (검증 전 개발)</td><td>No Demand → No Tool + PMF Board 강제</td></tr>
+        <tr><td>AI 환각/품질저하</td><td>Risk/QA · 근거필드 · confidence 저장 · 검증=완료</td></tr>
+        <tr><td>자동 실행 사고</td><td>Approval Gate + 샌드박스 · worktree 격리 · boundary 위반 중단</td></tr>
+        <tr><td>데이터 종속성</td><td>l5-core 분리 · export 설계</td></tr>
+        <tr><td>메모리 오염</td><td>큐레이션(auto_discard/purge) · 승인/수정/폐기</td></tr>
+        <tr><td>개발툴로 축소 (Business OS가 실행기에 흡수)</td><td>pulk CTO(판단) vs Native Orchestration(실행) 명확 분리</td></tr>
+      </tbody>
+    </table>
+
+    <h3>14.3 품질관리 정책</h3>
+    <ul>
+      <li>모든 외부 산출물은 목적·대상·채널·리스크 레벨을 가진다.</li>
+      <li>중요 결정은 recommendation만이 아니라 options·trade-off를 함께 제시한다.</li>
+      <li>실험 결과는 숫자 지표와 정성 인사이트를 분리 저장한다.</li>
+      <li>자동화 실패는 숨기지 않고 Hermes Alert·Failure Pattern으로 기록한다.</li>
+      <li>반복 실패가 2회 이상이면 BPR/Tiger가 원인분석을 자동 생성한다.</li>
+    </ul>
+  </section>
+
+  <!-- 15 -->
+  <section id="s15">
+    <h2><span class="num">15</span>로드맵 & KPI</h2>
+    <h3>15.1 Phase 로드맵 (현행 기준)</h3>
+    <table>
+      <thead><tr><th>Phase</th><th>목표</th><th>상태</th></tr></thead>
+      <tbody>
+        <tr><td>Phase 1–5</td><td>Core Skeleton + Vertical Slice (오케스트레이션·핸들러·스키마·API·smoke)</td><td><span class="pill p-done">완료</span></td></tr>
+        <tr><td>Phase 6</td><td>Founder-facing 완성: Brief 자동생성 · 승인 큐 라우팅 · 메모리 지속화</td><td><span class="pill p-prog">진행</span></td></tr>
+        <tr><td>Phase 7</td><td>실사업 적용(CMO 마케팅 자동화) 실고객 반응 데이터</td><td><span class="pill p-prog">병행</span></td></tr>
+        <tr><td>Phase 8</td><td>Native Orchestration 활성화 · Tiger 상시 루프 · 임원 위임 안정화</td><td><span class="pill p-plan">다음</span></td></tr>
+        <tr><td>Phase 9</td><td>상품화 판단: Paid Demand · 반복 워크플로우 · 도구화 후보 정리</td><td><span class="pill p-plan">계획</span></td></tr>
+      </tbody>
+    </table>
+
+    <h3>15.2 KPI</h3>
+    <table>
+      <thead><tr><th>영역</th><th>지표</th><th>의미</th><th>초기 목표</th></tr></thead>
+      <tbody>
+        <tr><td>System Usage</td><td>입력→실행계획 전환률</td><td>대화가 워크플로우로 바뀌는 비율</td><td>70%+</td></tr>
+        <tr><td>Execution</td><td>워크플로우 완료율</td><td>끝까지 실행되는 비율</td><td>50%+</td></tr>
+        <tr><td>Decision</td><td>승인 대기 처리시간</td><td>Founder 병목 감소</td><td>24h 이내</td></tr>
+        <tr><td>PMF</td><td>실험당 고객 신호 수</td><td>시장 반응 수집</td><td>실험당 10+</td></tr>
+        <tr><td>Revenue</td><td>유료 의사/파일럿 수</td><td>Paid Demand 존재</td><td>월 1+</td></tr>
+        <tr><td>Memory</td><td>재사용 인사이트 수</td><td>학습 반영</td><td>주 5+</td></tr>
+        <tr><td>Quality</td><td>Risk/QA 차단·수정 건수</td><td>위험 실행 필터링</td><td>로그 필수</td></tr>
+        <tr><td>Self-Improve</td><td>Tiger 카드 승인·머지율</td><td>자가개선 작동</td><td>주간 카드 생성</td></tr>
+        <tr><td>Hermes</td><td>멈춤 감지 후 개입률</td><td>운영 감시 작동</td><td>중요 알림 100%</td></tr>
+      </tbody>
+    </table>
+    <p><small class="note">장기적으로 펄크의 진짜 KPI는 생산성보다 <strong>학습 속도와 실행 지속성</strong>이다 — 더 많은 사업 실험을 더 적은 피로도로 돌리고, 수요가 확인된 워크플로우를 제품화하며, 이전 인사이트가 다음 실행의 품질을 높이는 상태.</small></p>
+  </section>
+
+  <!-- 16 -->
+  <section id="s16">
+    <h2><span class="num">16</span>결론 & 다음 액션</h2>
+    <p>펄크는 단순 자동화 프로젝트가 아니라, 창업자의 사업 운영 방식을 AI 조직과 데이터 구조로 재설계하는 프로젝트다. 핵심은 에이전트 수가 아니라 <strong>Founder DNA · CEO 판단 · PMF 실험 · Workflow 생성 · Native 실행 · Hermes 감시 · Memory 축적 · Tiger 자가개선</strong>이 하나의 닫힌 루프로 작동하는 것이다. 그 루프의 뼈대(Phase 1~5)는 이미 동작하며, 이제 Founder-facing 완성과 실사업 적용으로 나아간다.</p>
+    <div class="box accent">
+      <h4>다음 액션 (압축)</h4>
+      <ol style="margin-bottom:0">
+        <li>Phase 6 완성 — Chief of Staff Brief 자동생성 → 승인 큐 자동 라우팅 → 메모리 지속화.</li>
+        <li>CMO 마케팅 자동화를 첫 실사업으로 돌려 실고객 반응 데이터를 넣는다.</li>
+        <li>Native Orchestration 활성화 + Tiger 상시 루프로 자가개선을 켠다.</li>
+        <li>Paid Demand가 확인된 워크플로우만 도구화·제품화 후보로 승격한다.</li>
+      </ol>
+    </div>
+    <div class="box">
+      <p style="margin:0"><strong>최종 요약 —</strong> 펄크의 본질은 "AI로 일을 대신시키는 것"이 아니라 <strong>"창업자의 사업 감각과 실행 루프를 회사 운영체계로 만들고, 그 운영체계가 스스로 진화하게 하는 것"</strong>이다.</p>
+    </div>
+  </section>
+
+  <!-- APPENDIX -->
+  <section id="appx">
+    <h2><span class="num">부록</span>용어 · 예시 · 문서 · 다이어그램</h2>
+
+    <h3>A. 용어 정의 (갱신)</h3>
+    <table>
+      <tbody>
+        <tr><td>Pulk</td><td>AI Business OS 브랜드명. 창업자 운영체계.</td></tr>
+        <tr><td>L5 Business OS</td><td>Sense-Think-Design-Execute-Measure-Learn-Evolve-Repeat 루프의 고자율 사업 운영체계.</td></tr>
+        <tr><td>Native Orchestration <span class="pill p-new">신규</span></td><td>pulk CTO 분해 → main agent → C0~C5 내부 팀 → worktree/phase/verify/merge 실행 엔진. ACR을 대체.</td></tr>
+        <tr><td>ACR (Agent Control Room/Tower)</td><td>초기 CTO 실행 하위 엔진. 현재 native 실행으로 정리됨.</td></tr>
+        <tr><td>Tiger <span class="pill p-new">신규</span></td><td>수집→분석→카드→일괄승인→병렬 실행→학습의 자가개선 루프(호랑이).</td></tr>
+        <tr><td>Executive Delegation <span class="pill p-new">신규</span></td><td>임원 간 위임 + CEO 게이트 + 결정론적 검증 반복 루프.</td></tr>
+        <tr><td>FounderDeliverable <span class="pill p-new">신규</span></td><td>한 지시의 임원 산출을 종합한 단일 결정 카드.</td></tr>
+        <tr><td>Risk Level (D1~D5)</td><td>외부 영향·비가역성 기준 위험 등급.</td></tr>
+        <tr><td>Complexity (C0~C5) <span class="pill p-new">신규</span></td><td>내부 구조 난이도 → 오케스트레이션 모드 결정.</td></tr>
+        <tr><td>Autonomy (L1~L5) <span class="pill p-new">신규</span></td><td>임원별 자율 실행 권한 수준.</td></tr>
+        <tr><td>Hermes</td><td>감시·알림·회고·메모리 제안 운영 신경계(읽기 전용).</td></tr>
+      </tbody>
+    </table>
+
+    <h3>B. 예시 워크플로우</h3>
+    <h4>B.1 마케팅 자동화 PMF 실험</h4>
+    <ol>
+      <li>Founder: "작은 브랜드의 콘텐츠/마케팅 자동화 문제를 검증한다."</li>
+      <li>CEO가 가설 생성 → Business Portfolio에 후보 등록.</li>
+      <li>CMO가 고객 메시지 3종(시간절약·매출개선·운영대행) + 콘텐츠.</li>
+      <li>CRO가 DM/상담 스크립트.</li>
+      <li>Risk/QA가 고객 발송 전 확인항목 검토 → Decision Queue "DM 1차 발송 승인".</li>
+      <li>Founder 승인 → 반응률·상담전환·결제의사 기록.</li>
+      <li>BPR/Tiger가 문구·고객군·가격·범위 수정 제안 → 반복 요청 시 Tool Request Lab 승격.</li>
+    </ol>
+    <h4>B.2 개발 실행 (Native Orchestration)</h4>
+    <ol>
+      <li>CPO가 PRD 생성 → CTO가 기술설계·범위, complexity(C) 판정.</li>
+      <li>pulk CTO가 Work Package로 분해 → main agent 배정.</li>
+      <li>Native Orchestration이 worktree 격리 → 병렬 phase → verify gate.</li>
+      <li>테스트·브라우저 QA 통과해야 완료. Risk/QA가 배포/머지 리스크 확인.</li>
+      <li>승인 후 merge → Hermes가 실패 로그·회고 저장.</li>
+    </ol>
+    <h4>B.3 Tiger 자가개선</h4>
+    <ol>
+      <li>수집기가 cross-repo 병목 후보 수집 → night-BPR(Claude)이 개선 카드 작성.</li>
+      <li>/self-improve에서 Founder가 카드 다중선택 → 일괄 승인.</li>
+      <li>CTO가 repo별 그룹핑 → 병렬 worktree 실행 → verify → merge.</li>
+      <li>결과(성공/실패)를 MemoryEntry로 학습 → 다음날 분석 품질 향상.</li>
+    </ol>
+
+    <h3>C. 문서 패키지</h3>
+    <table>
+      <thead><tr><th>문서</th><th>목적</th></tr></thead>
+      <tbody>
+        <tr><td>PRD.md</td><td>제품 요구사항(문제·사용자·핵심 기능·성공 기준)</td></tr>
+        <tr><td>ARCHITECTURE.md</td><td>모듈·데이터모델·에이전트 계층·기술스택</td></tr>
+        <tr><td>DATA_MODEL.md</td><td>엔티티·필드·상태 전이</td></tr>
+        <tr><td>DECISIONS.md</td><td>중요 결정 기록(native 전환·l5-core 분리·Hermes 권한 제한·self-mod)</td></tr>
+        <tr><td>AGENT_PROTOCOL.md / AGENT_TEAM_ARCHITECTURE.md</td><td>임원 역할·권한·팀 오케스트레이션</td></tr>
+        <tr><td>HERMES_SPEC / TIGER_SELF_IMPROVE_SPEC / EXECUTIVE_DELEGATION_SPEC / FOUNDER_BRIEF_SPEC</td><td>감시·자가개선·위임·브리핑 스펙</td></tr>
+        <tr><td>WORKFLOW_FACTORY_SPEC / SECURITY_DATA_GOVERNANCE</td><td>워크플로우 생성·보안 거버넌스</td></tr>
+        <tr><td>TASKS.md / HANDOFF.md / IMPLEMENTATION_STATUS.md</td><td>실행 태스크·인계·구현 현황</td></tr>
+        <tr><td>CLAUDE.md + .claude/rules/*</td><td>AI 개발 지시문·운영 규칙(글로벌·CTO·runner·worktree·검증·UI·NocoBase)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>D. 최종 구조 다이어그램</h3>
+    <div class="flow">Founder Input (chat / telegram)
+  ▼
+Founder DNA · Culture · Decision Rules
+  ▼
+CEO Agent ⟷ Chief of Staff   ── CEO Clarification Gate / FounderDeliverable 종합
+  ▼
+Business Portfolio → PMF Experiment Board → Workflow Factory
+  ▼                                   ▼
+Agent Staffing (임원 서브에이전트)      Decision Queue / Approval Gate (D1~D5)
+  ▼                                   ▼
+CMO · CRO · CPO · CTO · COO · CFO · Risk/QA · Culture
+  │        └─ 임원 간 위임 루프 (CEO gate + verify)
+  ▼
+Execution Outputs / Customer Signals / Dev Tasks (Native Orchestration · C0~C5)
+  ▼
+Hermes (신경계): Watchdog · Alerts · Reports · Failure Patterns
+  ▼
+Tiger 자가개선: 수집 → night-BPR 분석 → 카드 → 일괄승인 → 병렬 실행 → 학습
+  ▼
+Memory Room / Second Brain: Decisions · Insights · Workflows · Policies
+  ▼
+Tool Request Lab: Demand-based Productization
+  ▼
+Next Business / Next Experiment / Next Workflow</div>
+  </section>
+
+  <footer>
+    <p><strong>PULK SYSTEM — L5 Business OS 상세 기획 보고서 (2026-07 갱신본).</strong> 본 보고서는 이전 대화 기반 기획 정리본을 현재 코드베이스와 <code>docs/</code>의 실제 상태(2026-06~07)로 보강·수정한 내부 기획 문서다. 근거 출처: <code>docs/PRD·ARCHITECTURE·DATA_MODEL·DECISIONS·AGENT_PROTOCOL·HERMES_SPEC·TIGER_SELF_IMPROVE_SPEC·EXECUTIVE_DELEGATION_SPEC·IMPLEMENTATION_STATUS</code> 및 <code>.claude/rules/*</code>, <code>packages/l5-core</code>, <code>services/*</code>.</p>
+  </footer>
+
+  </main>
+</div>
+</div>
+</body>
+</html>

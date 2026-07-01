@@ -3,6 +3,10 @@
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
 > 최종 업데이트: 2026-06-09 (CTO SOP integrate phase 신설 — 트랙 A). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
 
+## 📄 문서 산출물
+
+- [x] **펄크 기획서 최신화 (HTML)** — `docs/reports/PULK_SYSTEM_REPORT.html` (2026-07-01). 초기 docx 기획서를 현재 아키텍처(Native Orchestration·Tiger·임원 위임·D×C 이원체계·CMO v3·구현현황)로 재구성한 상세 HTML. 검증: 파서 밸런스·앵커 18/18·placeholder 0.
+
 ## 🗺️ CMO 콘텐츠 시스템 — 앞으로 작업 로드맵 (2026-06-09 기준, 트랙 B)
 
 > ➡️ **CMO 개발 계획은 [docs/cmo/TASKS.md](./cmo/TASKS.md)로 이관** (2026-06-10~, M1~M8). 발굴 자동화 등 신규 작업은 그쪽에서 관리. 아래 R1~R7은 완료 이력으로 보존.

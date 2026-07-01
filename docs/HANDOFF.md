@@ -6,6 +6,13 @@
 > - **CMO**: [docs/cmo/](./cmo/CLAUDE.md) — 콘텐츠 마케팅 (라우터·HANDOFF·TASKS·기능 문서). CMO 작업은 이쪽 갱신.
 > - CTO / 전체 pulk: 추후 같은 패턴(`docs/cto/`)으로 분리 예정. 이 파일은 그때까지 전역 이력 유지.
 
+## 🟢 2026-07-01 — 펄크 기획서 최신화 (HTML, 최신 아키텍처 중심 재구성)
+
+**무엇**: 사장님 업로드 `pulk_system_report.docx`(초기 대화기반 기획 정리본)를 현재 코드/`docs/` 실제 상태로 보강·수정한 **상세 HTML 기획서** 신규 작성 → `docs/reports/PULK_SYSTEM_REPORT.html`(self-contained, 외부 의존성 0, 18섹션/21표, ~74KB).
+**반영 델타**: ACR→**2단계 Native Orchestration**(C0~C5), 위험도×복잡도 이원체계(Risk≠Gate·D4/D5 게이트·D3 24h auto·self-mod 예외), **Tiger 자가개선 루프**(수집→night-BPR→카드→일괄승인→병렬 실행→학습), 임원=Claude Code 서브에이전트+텔레그램, **임원 위임 루프**/FounderDeliverable/CEO Clarification Gate, Culture 에이전트·autonomy L1~L5, 데이터모델 확장(BusinessIdea→Business→Project·FounderDeliverable·ExecutiveConsultation/Delegation·MemoryEntry 큐레이션), CMO v3 첫 사업 트랙, 구현현황(Phase 1~5 완료/Phase 6 진행/750+ tests).
+**검증**: HTML 파서 밸런스 OK, TOC 앵커 18/18 매칭, placeholder/잔여문자 0. 근거는 `docs/PRD·ARCHITECTURE·DATA_MODEL·DECISIONS·AGENT_PROTOCOL·HERMES_SPEC·TIGER_SELF_IMPROVE_SPEC·EXECUTIVE_DELEGATION_SPEC·IMPLEMENTATION_STATUS` + `.claude/rules/*`.
+**주의**: `IMPLEMENTATION_STATUS.md`(5/27)는 ACR 시절 일부 stale → 기획서는 6월 DECISIONS·코드(native 전환)를 최신 사실로 채택.
+
 ## 🟢 2026-06-11 — 원격 운영 통로 복구·검증 (배포 사이트 → 터널 → 로컬 백엔드, 모바일 운영 가능)
 
 **무엇**: "배포 사이트(Vercel founder-ui)에서 지침 → 로컬에서 실행" 통로 점검. **좀비 터널 발견·복구 + parity 재배포 + E2E 검증 완료.**
