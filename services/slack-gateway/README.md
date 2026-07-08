@@ -41,6 +41,29 @@ Node 22의 global `WebSocket`/`fetch`만 사용한다. Socket Mode(`apps.connect
 
 선택: `PULK_DIR`, `SLACK_AGENT_MODEL`(sonnet 기본), `SLACK_CLAUDE_ARGS`(기본 `--permission-mode acceptEdits`; 완전 자율은 `--dangerously-skip-permissions`), `SLACK_RUN_TIMEOUT_MS`(기본 15분), `SLACK_POST_FILES`(기본 true), `CLAUDE_BIN`.
 
+CTO 구조화 기획 브리지용: `NOCOBASE_URL`(기본 `http://localhost:13000`), `NOCOBASE_TOKEN`(필수 — 없으면 기획 요청 시 명확한 오류 회신), `SLACK_CTO_PLANNING_ENABLED`(기본 true, `false`로 끔).
+
+## CTO 구조화 기획 (일반 임원 실행과의 차이)
+
+`@CTO`(또는 CTO DM)는 메시지를 3가지로 분류한다(`router.ts classifyCtoIntent`, 보수적):
+
+| 분류 | 트리거 예 | 경로 |
+|---|---|---|
+| `plan` | "…PRD 만들어줘", "개발 기획", "로드맵 짜고 task로 나눠줘", "구현 계획 세워줘" | `cto:planMessage` — Control Room과 동일한 구조화 기획 레일. 대화가 쌓여 PLAN(PRD+로드맵+태스크)이 제안되면 스레드에 요약+승인 안내 |
+| `approve` | 짧은 명령: "승인", "approve", "실행", "진행해", "이 계획 실행해" | 같은 스레드의 최신 proposed plan → `cto:approvePlan` — `roadmap_items`+`agent_tasks` 생성(queued), 생성 개수 회신 |
+| `generic` | 그 외 전부 (질문/보고/파일 요청, CEO·CMO 전체) | 기존 헤드리스 claude 임원 실행 (변경 없음) |
+
+Slack 스레드가 곧 기획 스레드다: `thread_id = slack-<channel>-<thread_ts>` (`cto-planning-bridge.ts`). 승인은 로컬 상태 없이 `cto_planning_messages`에서 스레드의 최신 proposed plan을 조회해 매핑한다. NocoBase가 죽어 있으면 generic으로 조용히 폴백하지 않고 운영 오류를 회신한다.
+
+승인 후: 태스크는 기존 pulk 실행 레일(Hermes/native orchestration)이 집행하고, `@l5/notion-gateway`가 PRD를 Notion "PRD저장소"에, 태스크를 "코딩 워크플로우 로그"에 투영한다.
+
+라이브 스모크 (Slack 없이 NocoBase만으로):
+
+```bash
+NOCOBASE_TOKEN=... node services/slack-gateway/scripts/cto-planning-smoke.mjs            # planMessage만
+NOCOBASE_TOKEN=... node services/slack-gateway/scripts/cto-planning-smoke.mjs --approve  # 실제 태스크 생성됨(테스트 아이디어로만)
+```
+
 ## 채널 & 봇 초대
 
 이미 생성된 채널: `#boardroom` `#exec-ceo` `#exec-cmo` `#exec-cto` `#approvals` `#acr-runs`.

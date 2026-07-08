@@ -1,7 +1,7 @@
 // Notion REST client — raw fetch, no @notionhq/client dependency.
 // Uses only the free public API (query/create/update). No Workers, no webhooks.
 
-import type { NotionPage, NotionPropertiesPayload } from '@l5/core';
+import type { NotionPage, NotionPropertiesPayload, NotionDatabaseSchema, NotionBlock } from '@l5/core';
 import type { NotionGatewayConfig } from './config.js';
 
 const API = 'https://api.notion.com/v1';
@@ -31,13 +31,13 @@ export class NotionClient {
   }
 
   /** All rows in the target database (follows pagination). */
-  async queryDatabase(): Promise<NotionPage[]> {
+  async queryDatabase(databaseId: string = this.cfg.notionDatabaseId): Promise<NotionPage[]> {
     const pages: NotionPage[] = [];
     let cursor: string | undefined;
     do {
       const body: Record<string, unknown> = { page_size: 100 };
       if (cursor) body.start_cursor = cursor;
-      const data = await this.request(`/databases/${this.cfg.notionDatabaseId}/query`, {
+      const data = await this.request(`/databases/${databaseId}/query`, {
         method: 'POST',
         body: JSON.stringify(body),
       });
@@ -49,13 +49,27 @@ export class NotionClient {
     return pages;
   }
 
+  /** Property name → { type } map of the database (drives schema-aware mapping). */
+  async retrieveDatabaseSchema(databaseId: string = this.cfg.notionDatabaseId): Promise<NotionDatabaseSchema> {
+    const data = await this.request(`/databases/${databaseId}`, { method: 'GET' });
+    const out: NotionDatabaseSchema = {};
+    for (const [name, def] of Object.entries<any>(data.properties ?? {})) {
+      out[name] = { type: def?.type };
+    }
+    return out;
+  }
+
   /** Create a row; returns the new page id (to store as notion_page_id in pulk). */
-  async createPage(properties: NotionPropertiesPayload): Promise<string> {
+  async createPage(
+    properties: NotionPropertiesPayload,
+    opts?: { databaseId?: string; children?: NotionBlock[] },
+  ): Promise<string> {
     const data = await this.request('/pages', {
       method: 'POST',
       body: JSON.stringify({
-        parent: { database_id: this.cfg.notionDatabaseId },
+        parent: { database_id: opts?.databaseId ?? this.cfg.notionDatabaseId },
         properties,
+        ...(opts?.children?.length ? { children: opts.children } : {}),
       }),
     });
     return data.id as string;

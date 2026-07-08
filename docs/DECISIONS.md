@@ -1,5 +1,15 @@
 # DECISIONS — L5 Business OS
 
+## 2026-07-08 — Slack CTO 기획 브리지 = 기존 cto:planMessage 레일 재사용 · Notion PRD = 단방향 프로젝션 · Notion 컬럼은 schema-adapter로만 확장
+
+**컨텍스트**: Slack에서 CTO와 개발 기획→PRD를 Notion "PRD저장소"에 저장→태스크 분해→실행 추적까지 한 루프로 잇는 요구. 기존 자산: cto:planMessage/approvePlan(M10), slack-gateway(헤드리스 임원), notion-gateway(agent_tasks 양방향).
+
+**결정 1 — Slack CTO 기획 = 새 LLM 경로가 아니라 기존 `cto:planMessage`/`cto:approvePlan` 재사용**: slack-gateway에 보수적 분류기(classifyCtoIntent)만 추가 — 명시적 기획/승인 문구만 구조화 레일로, 나머지(및 CEO/CMO 전부)는 기존 헤드리스 경로 유지. Slack thread가 곧 기획 thread(`thread_id=slack-<channel>-<thread_ts>`)라 승인 시 로컬 상태 없이 `cto_planning_messages`에서 최신 proposed plan을 조회해 매핑. NocoBase 장애 시 generic 폴백 금지, 운영 오류 회신(구조화 레일을 요청했으므로).
+
+**결정 2 — Notion PRD저장소 = 단방향 push 프로젝션, 태스크와 별도 모듈**: NocoBase/Postgres가 source of truth. PRD 페이지 본문은 생성 시 1회만 쓰고 업데이트는 pulk 관리 프로퍼티만(사장님 본문 편집 보존). 코딩 워크플로우 로그 매핑(양방향)과 분리(`l5-core/notion-prd-sync` + `prd-sync.ts`). 플랜↔태스크 링크는 스키마 신설 대신 `cto_planning_messages.instruction_id`(+`notion_prd_page_id`) 2컬럼 — 이미 approvePlan이 만드는 founder_instruction FK를 저장만 하면 agent_tasks와 연결됨(schema sprawl 회피).
+
+**결정 3 — Notion 선택 컬럼은 schema adapter로만**: 사장님 DB 컬럼 구성은 founder-owned. 확장 메타데이터(`Pulk Agent/Phase/Risk/…/PRD`)는 매 라운드 `GET /databases/:id`로 스키마를 읽어 이름+타입이 일치하는 컬럼만 기록(filterManagedProps; 없으면 skip, 절대 추측 금지). PRD DB도 동일 — title 타입 프로퍼티를 자동 발견해 어떤 이름이든 동작.
+
 ## 2026-06-12 — CTO 대화 통로 = CEO 채팅 @CTO 멘션(Control Room 네비 은퇴) · 호랑이 영상룸 회고는 기존 자가개선 파이프 재사용
 
 **컨텍스트**: ACR 은퇴(2026-06-10 결정)로 Control Room의 존재 이유가 약해짐. 사장님 요구 — CTO와의 대화·PRD 기반 개발 지시를 일상 동선(CEO 채팅)에서, 그리고 파이프라인 완료마다 호랑이가 오류·병목을 회고해 CTO에게 개선 작업을 시키는 루프(항상은 아니고 프로젝트별 선택).

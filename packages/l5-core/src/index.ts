@@ -27,6 +27,7 @@ export * from './functions/token-estimate';
 export * from './functions/roadmap';
 export * from './functions/cto-planning';
 export * from './functions/notion-sync'; // agent_tasks ↔ Notion database rows (bidirectional sync)
+export * from './functions/notion-prd-sync'; // CtoPlan PRD → Notion PRD저장소 page (one-way projection)
 export * from './functions/state-machine/transitions';
 export * from './functions/project-status/builder';
 export * from './functions/consultation';

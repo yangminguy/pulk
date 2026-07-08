@@ -28,6 +28,10 @@ export interface GatewayConfig {
   claudeBin?: string;
   /** Upload deliverable files back into the Slack thread. */
   postFilesInline: boolean;
+  /** CTO structured planning bridge (cto:planMessage/approvePlan via NocoBase). */
+  ctoPlanningEnabled: boolean;
+  nocobaseUrl: string;
+  nocobaseToken: string;
 }
 
 const BOT_DEFS: { id: ExecutiveId; label: string; envPrefix: string }[] = [
@@ -77,5 +81,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     timeoutMs: Number(env.SLACK_RUN_TIMEOUT_MS ?? 15 * 60 * 1000),
     claudeBin: env.CLAUDE_BIN,
     postFilesInline: (env.SLACK_POST_FILES ?? 'true') !== 'false',
+    // On by default; needs NOCOBASE_TOKEN at call time (missing → clear error reply).
+    ctoPlanningEnabled: (env.SLACK_CTO_PLANNING_ENABLED ?? 'true') !== 'false',
+    nocobaseUrl: env.NOCOBASE_URL ?? 'http://localhost:13000',
+    nocobaseToken: env.NOCOBASE_TOKEN ?? '',
   };
 }

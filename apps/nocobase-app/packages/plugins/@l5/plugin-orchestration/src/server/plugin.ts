@@ -316,6 +316,17 @@ async function ensureOrchestrationColumns(db: any) {
 
   try {
     await db.sequelize.query(`
+      ALTER TABLE IF EXISTS cto_planning_messages
+        ADD COLUMN IF NOT EXISTS instruction_id text,
+        ADD COLUMN IF NOT EXISTS notion_prd_page_id text;
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure cto_planning_messages contract columns: ${message}`);
+  }
+
+  try {
+    await db.sequelize.query(`
       ALTER TABLE IF EXISTS ceo_interpretations
         ADD COLUMN IF NOT EXISTS business_id text,
         ADD COLUMN IF NOT EXISTS project_id text;
@@ -675,6 +686,10 @@ function registerCollections(db: any) {
       { name: 'text', type: 'text', allowNull: false },
       { name: 'plan', type: 'json' },
       { name: 'plan_status', type: 'string' },
+      // Set at approval: FK of the founder_instruction whose agent_tasks came from this plan.
+      { name: 'instruction_id', type: 'string' },
+      // Notion PRD저장소 sync: id of the mirrored PRD page (one-way projection).
+      { name: 'notion_prd_page_id', type: 'string' },
     ],
   }));
 
@@ -2525,10 +2540,12 @@ function registerCtoPlanningResource(app: any, db: any) {
             task_ids.push(id);
           }
 
-          // Mark the plan approved (idempotency guard for re-clicks).
+          // Mark the plan approved (idempotency guard for re-clicks). Store the
+          // instruction_id so downstream sync (Notion PRD ↔ tasks) can link the
+          // created agent_tasks back to this plan.
           await db.sequelize.query(
-            `UPDATE cto_planning_messages SET plan_status = 'approved', "updatedAt" = now() WHERE id = $1`,
-            { bind: [cto_message_id], transaction: t },
+            `UPDATE cto_planning_messages SET plan_status = 'approved', instruction_id = $2, "updatedAt" = now() WHERE id = $1`,
+            { bind: [cto_message_id, instruction_id], transaction: t },
           );
         });
 

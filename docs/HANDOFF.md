@@ -1,6 +1,21 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-07-08 (Notion 양방향 동기화 게이트웨이 구현 — 무료·워커 없음)
+최종 업데이트: 2026-07-08 (Slack CTO 기획 → Notion PRD저장소 → 태스크 실행 추적 루프 완성)
+
+## 🟢 2026-07-08 — Slack CTO 기획 루프: Slack → cto:planMessage/approvePlan → Notion PRD저장소 + 태스크 추적 (코드·단위검증 완료, 라이브는 토큰 필요)
+
+**무엇**: 사장님이 Slack `@CTO`로 개발을 기획하면 기존 pulk 기획 레일(`cto:planMessage`)로 PRD/로드맵/태스크가 만들어지고, 같은 스레드에서 "승인"으로 `cto:approvePlan`(roadmap_items+agent_tasks 생성) → PRD는 Notion **"PRD저장소"** 에, 태스크 실행 상태는 **"코딩 워크플로우 로그"** 에 투영되는 전체 루프. NocoBase/Postgres = source of truth, Notion = 프로젝션(PRD는 단방향, 태스크 상태만 양방향).
+
+**완료 (전부 이 세션 검증)**:
+- **Slack CTO 브리지** — `slack-gateway/src/router.ts classifyCtoIntent`(plan/approve/generic, 보수적 분류) + `pulk-api.ts`(PulkClient) + `cto-planning-bridge.ts`(thread_id=`slack-<ch>-<ts>`, 승인은 스레드 최신 proposed plan 조회 — 로컬 상태 없음). CEO/CMO·일반 CTO 질문은 기존 헤드리스 경로 그대로. env: `NOCOBASE_URL`/`NOCOBASE_TOKEN`/`SLACK_CTO_PLANNING_ENABLED`.
+- **PRD저장소 어댑터** — `l5-core/notion-prd-sync`(순수: derivePrdTitle/derivePrdStatus(draft·approved·executing·done)/mapPrdToProperties(schema adapter — title 자동발견+있는 컬럼만)/buildPrdChildren) + `notion-gateway/src/prd-sync.ts`(runPrdSyncRound). 페이지 본문은 생성 1회만(사장님 편집 보존). `NOTION_PRD_DATABASE_ID` env로 활성화. page id는 `cto_planning_messages.notion_prd_page_id`로 회수.
+- **플랜↔태스크 링크** — `cto_planning_messages`에 `instruction_id`+`notion_prd_page_id` 컬럼(defineCollection+ALTER, src와 dist/plugin.js 둘 다 패치·node --check OK). approvePlan이 instruction_id 기록 → agent_tasks.instruction_id로 매칭.
+- **태스크 추적 확장** — notion-sync에 선택 컬럼 9종(`Pulk Agent/Phase/Risk/Expected Output/Blocker/Branch/PR/Updated/PRD`), 라운드마다 DB 스키마 조회 후 존재+타입일치 컬럼만 기록(`filterManagedProps`). AgentTask에 `acr_branch`/`acr_pr_url` 추가. 사장님 소유 컬럼 불가침 유지, 상태 양방향(최신수정 우선) 그대로.
+- **스모크 3종** — `slack-gateway/scripts/cto-planning-smoke.mjs`(planMessage/--approve), `notion-gateway/scripts/prd-smoke.mjs`(PRD+태스크 1라운드), `task-status-smoke.mjs`(상태 수렴 확인/--flip).
+
+**검증**: `@l5/core` notion 테스트 35/35 + typecheck 0 + build OK · `@l5/notion-gateway` 7/7 + typecheck 0 · `@l5/slack-gateway` 21/21 + typecheck 0 · dist/plugin.js `node --check` OK.
+
+**라이브 미검증 (토큰/외부 필요)**: ① NocoBase 재기동(새 DDL+dist 반영) 후 `cto-planning-smoke.mjs` ② `.env.local`에 `NOTION_PRD_DATABASE_ID`(PRD저장소 DB id) 추가 후 `prd-smoke.mjs` ③ 실제 Slack `@CTO "…PRD 만들어줘"` → "승인". 상세 절차는 두 서비스 README.
 
 ## 🟢 2026-07-08 — Notion ↔ agent_tasks 양방향 동기화 (코드 완료, 라이브 E2E는 토큰 대기)
 

@@ -75,6 +75,10 @@ export interface AgentTask {
   blocker?: string;
   due_at?: string;
   business_id?: string | null;
+  /** Branch the executor worked on (ACR/native orchestration evidence). */
+  acr_branch?: string | null;
+  /** PR URL produced by the execution rail (evidence link). */
+  acr_pr_url?: string | null;
   created_at: string;
   updated_at: string;
 }

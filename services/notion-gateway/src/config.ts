@@ -4,6 +4,8 @@
 export interface NotionGatewayConfig {
   notionToken: string;
   notionDatabaseId: string;
+  /** PRD저장소 database id — empty string disables the PRD sync round. */
+  notionPrdDatabaseId: string;
   notionVersion: string;
   nocobaseUrl: string;
   nocobaseToken: string;
@@ -27,6 +29,8 @@ export function loadConfig(): NotionGatewayConfig {
     // Target = DB1 "코딩 워크플로우 로그". A Notion database id is not a secret,
     // so it's a documented default here (overridable by env).
     notionDatabaseId: process.env.NOTION_DATABASE_ID ?? '39737e66cadf80cfb508fdd49c650088',
+    // Target = "PRD저장소". No documented default id yet → env-required to enable.
+    notionPrdDatabaseId: process.env.NOTION_PRD_DATABASE_ID ?? '',
     notionVersion: process.env.NOTION_VERSION ?? '2022-06-28',
     nocobaseUrl: process.env.NOCOBASE_URL ?? 'http://localhost:13000',
     nocobaseToken: process.env.NOCOBASE_TOKEN ?? '',

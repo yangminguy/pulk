@@ -2,7 +2,7 @@
 // Note: NocoBase auto-timestamps are camelCase (createdAt/updatedAt); we map them
 // to the AgentTask snake_case shape used by l5-core (see rules/60-nocobase).
 
-import type { AgentTask, TaskStatus, TaskLink } from '@l5/core';
+import type { AgentTask, TaskStatus, TaskLink, PrdDocument } from '@l5/core';
 import type { NotionGatewayConfig } from './config.js';
 
 export class NocoBaseClient {
@@ -46,6 +46,35 @@ export class NocoBaseClient {
       body: JSON.stringify({ status }),
     });
   }
+
+  /** CTO planning turns that carry a plan (proposed/approved) → PRD candidates.
+   * task_statuses is filled by the PRD sync round from the task links. */
+  async listPrdDocuments(): Promise<PrdDocument[]> {
+    const filter = encodeURIComponent(
+      JSON.stringify({ role: 'cto', plan_status: { $in: ['proposed', 'approved'] } }),
+    );
+    const data = await this.api(`/api/cto_planning_messages:list?pageSize=200&filter=${filter}`);
+    const rows: any[] = data?.data ?? [];
+    return rows
+      .filter((row) => row.plan)
+      .map((row) => ({
+        cto_message_id: String(row.id),
+        thread_id: String(row.thread_id ?? ''),
+        plan: typeof row.plan === 'string' ? JSON.parse(row.plan) : row.plan,
+        plan_status: String(row.plan_status ?? 'proposed'),
+        instruction_id: row.instruction_id ?? null,
+        notion_prd_page_id: row.notion_prd_page_id ?? null,
+        created_at: row.createdAt ?? row.created_at ?? '',
+        updated_at: row.updatedAt ?? row.updated_at ?? '',
+      }));
+  }
+
+  async setNotionPrdPageId(ctoMessageId: string, pageId: string): Promise<void> {
+    await this.api(
+      `/api/cto_planning_messages:update?filterByTk=${encodeURIComponent(ctoMessageId)}`,
+      { method: 'POST', body: JSON.stringify({ notion_prd_page_id: pageId }) },
+    );
+  }
 }
 
 function rowToTask(row: any): AgentTask {
@@ -65,6 +94,8 @@ function rowToTask(row: any): AgentTask {
     blocker: row.blocker ?? undefined,
     due_at: row.due_at ?? undefined,
     business_id: row.business_id ?? undefined,
+    acr_branch: row.acr_branch ?? undefined,
+    acr_pr_url: row.acr_pr_url ?? undefined,
     created_at: row.createdAt ?? row.created_at ?? '',
     updated_at: row.updatedAt ?? row.updated_at ?? '',
   };
