@@ -3,6 +3,10 @@
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
 > 최종 업데이트: 2026-06-09 (CTO SOP integrate phase 신설 — 트랙 A). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
 
+## 🔗 Notion 동기화 (2026-07-08)
+
+- [~] **CtoPlan(agent_tasks) ↔ Notion 양방향 동기화** — `l5-core/notion-sync`(순수, jest 16) + `services/notion-gateway`(raw-fetch, jest 3) + `agent_tasks.notion_page_id` 컬럼. 무료(워커 미사용, API 폴링). 코드·단위검증 완료. **라이브 E2E는 사장님 토큰/DB 준비 후** (`services/notion-gateway/README.md`).
+
 ## 🗺️ CMO 콘텐츠 시스템 — 앞으로 작업 로드맵 (2026-06-09 기준, 트랙 B)
 
 > ➡️ **CMO 개발 계획은 [docs/cmo/TASKS.md](./cmo/TASKS.md)로 이관** (2026-06-10~, M1~M8). 발굴 자동화 등 신규 작업은 그쪽에서 관리. 아래 R1~R7은 완료 이력으로 보존.
@@ -1663,3 +1667,25 @@ L5 Business OS
 - [x] **M4 디스패치+학습+launchd**: `l5-core/.../tiger/proposal-to-task`·`phase-result-to-memory` + `cto-native/batch-plan`(repo별 ACRIntent 그룹핑+위상정렬) + `agent-runtime/.../batch-runner.ts`(코어수-2 세마포어 병렬) + `hermes/.../tiger-dispatch-loop.ts`(승인분만=게이트 보존) + gateway/runner 등록 + plist 2종 작성. l5 17 + agent-rt 6 + hermes 7 GREEN.
 - [x] ✅ **런타임 배선 완료 (라이브, 커밋 3fe957e)**: plugin 핸들러 2개(`monitor:selfImproveCards`·`bulkApproveSelfImprove`)+컬렉션 3개+DDL+ACL 구현·재빌드·재기동, e2e 스모크 통과 / launchd night-bpr **03:00** / tiger-dispatch **매시** bootstrap / night-bpr↔collector 연결(무인 자율) / founder-ui `/self-improve`(200). **end-to-end 실증**: night-bpr 수동 실행 → `ai-slide-video-factory`(외부 repo) 로그 cross-repo 수집 → Claude opus 분석 → **개선 카드 5건 발행** → surface 조회 확인.
 - [ ] **followup**: (1) collector 신호 필터 튜닝 — 정상 로그(`warnings:[]`/`fail_count:0`)를 병목으로 오탐 → 카드 노이즈. (2) M1-A 도구 구조화 실패로그(jsonl) 심기(현재 ai-slide outputs json 추정 glob만). (3) tiger-dispatch 실제 코딩 경로 런타임 검증(approved 카드 → native-orchestrator 병렬).
+
+## 호랑이 영상룸 회고 루프 + @CTO 인라인 채팅 (2026-06-12)
+
+> 목표: CTO/CMO 작업이 아직 어설픈 동안, 파이프라인 1회 완료마다 호랑이가 오류·병목을 회고해 CTO에게 개선 작업을 시키는 폐회로(승인 게이트 유지). ACR 은퇴에 맞춰 CTO 대화 통로를 CEO 채팅 @CTO로 이전.
+
+- [x] **호랑이 회고 순수 룰**: `l5-core/functions/tiger/video-room-retro.ts` — buildVideoRoomRetroCards(게이트 재작업/병목·QA 실패·오류 메시지 → ImprovementCard, CTO/D1/target=cmo_video_room). jest 8 GREEN, tsc 0, dist 재빌드.
+- [x] **프로젝트별 토글 + 회고 배선**: `video_room_projects.tiger_enabled` DDL + `cmo:setTigerEnabled`/`cmo:runTigerRetro`(멱등) + completed 전이 4지점(maybeTigerRetro: decideGate/approveStageGate/advanceStatus/advanceUntilGate/publishUpload) 훅. 제안은 workflow_improvement_proposals(proposed, source_ref=`tiger:cmo_video_room`) → 기존 🐯 자가개선 승인 → tiger-dispatch-loop가 Claude Code 실행. plugin src+dist 패치, node --check OK.
+- [x] **영상룸 UI**: VideoRoomHeader 제목 옆 🐯 토글(TigerSwitch, role=switch). founder-ui tsc 0.
+- [x] **@CTO 인라인 채팅**: CEO 채팅 입력 `@CTO ...` → cto:planMessage(thread=`ceo-chat-<projectId>`) 라우팅, CTO 버블+Phase 플랜 카드(PRD 접이식/phase별 task 수/승인 버튼) → cto:approvePlan → CTO agent_tasks queued → task-dispatcher(60s)가 Native Orchestration(Claude Code)으로 자동 실행. 이력은 cto_planning_messages REST list 머지.
+- [x] **새 대화(보관)**: chat:archive — chat_messages.archived=true + CTO 스레드 회전. history/submitInstruction 컨텍스트 모두 archived 제외. UI 버튼(채팅 우상단).
+- [x] **Control Room 네비 숨김**: Sidebar에서 제거(페이지 코드 보존, 직접 URL 접근 가능).
+- [ ] **라이브 검증(로컬)**: NocoBase 재기동(DDL/액션) + founder-ui `next build`→launchd 재기동 → ① 토글 ON/OFF 영속 ② 파이프라인 completed→/self-improve에 회고 카드 ③ @CTO PRD→플랜 승인→dispatcher 실행 ④ 새 대화 후 이전 대화 미노출(DB 보존) 확인.
+
+## Slack 임원 게이트웨이 (2026-07-08)
+
+> 목표: Slack에서 `@CEO` `@CMO` `@CTO`를 호출해 대화·작업. 1인 기업을 회사처럼 운영.
+
+- [x] **Slack 앱 3개**: CEO/CMO/CTO 매니페스트 생성·워크스페이스 설치·App-Level Token(connections:write). Socket Mode.
+- [x] **채널 6개**: boardroom/exec-ceo/exec-cmo/exec-cto/approvals/acr-runs.
+- [x] **`services/slack-gateway`**: 무의존 Socket Mode 게이트웨이(config/router/slack-api/socket-mode/executor/index) + launchd + install.sh + README. tsc 0, jest 10/10, dist 빌드.
+- [ ] **라이브 배선(사장님)**: 6토큰 env 주입 → `pnpm --filter @l5/slack-gateway build` → install.sh → 각 채널 `/invite @CEO @CMO @CTO` → `@CEO 상태 보고` 확인.
+- [ ] **followup**: (1) 임원 페르소나 보강(ceo=오케스트레이션/최적화/객관전략, cmo=데이터기반분석) — .claude 편집 보호로 별도 세션. (2) 리듬 자동화(CEO 아침 브리핑 스케줄러) ②트리아지 ③임원간 협업 ⑤승인 게이트 버튼. (3) 봇 channels:join 스코프로 자동 조인(현재 수동 invite).

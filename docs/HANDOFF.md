@@ -1,10 +1,55 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-06-12 (git 위생 정리 — 1주치 미푸시 87커밋 + 미커밋 WIP 전부 커밋·origin 푸시. 배포 parity 검증: Vercel 번들에 최신 코드 포함 확인)
+최종 업데이트: 2026-07-08 (Notion 양방향 동기화 게이트웨이 구현 — 무료·워커 없음)
+
+## 🟢 2026-07-08 — Notion ↔ agent_tasks 양방향 동기화 (코드 완료, 라이브 E2E는 토큰 대기)
+
+**무엇**: 승인된 CtoPlan task(`agent_tasks`)를 Notion 데이터베이스에 task별 row로 동기화. 양방향(pulk→Notion 필드 푸시 + Notion Status→pulk 회수). **전 과정 무료** — Notion API/CLI는 모든 플랜 무료, 유료 Workers는 미사용(pulk가 API 폴링).
+
+**완료**:
+- `packages/l5-core/src/functions/notion-sync/` — 순수 매핑/충돌 로직(status-map, map-task-to-properties, map-properties-to-task, reconcile) + jest 16건.
+- `services/notion-gateway/` — raw-fetch Notion REST 클라이언트 + NocoBase 어댑터 + runSyncRound + 폴링 index(`--once`/데몬) + jest 3건. `@notionhq/client` 미설치(무의존).
+- `agent_tasks.notion_page_id` 컬럼 추가(plugin.ts src + dist/plugin.js, contract-column ALTER 패턴).
+- **검증**: l5-core 2203/2203 GREEN, notion-gateway typecheck 0 + 3/3.
+
+**🟢 라이브 E2E 통과 (2026-07-08)**: 사장님이 토큰(`.env.local`의 `notionintegrationtoken`) + DB 2개 제공. 실제 DB **"코딩 워크플로우 로그"**(`39737e66cadf80cfb508fdd49c650088`)에 실제 매핑 코드로 create/query/update/pull 전부 동작 확인(`services/notion-gateway/scripts/e2e-live.mjs`). DB2 "PRD저장소"는 후속(PRD용).
+
+**스키마 적응**: 사장님 DB는 한국어 코딩 워크플로우 로그 스키마. 사장님 컬럼(`단계`/`영역`/`워크플로우 태그`/`PR링크`/`메모`)은 안 건드리고, 기존 `이름`/`무엇을 했나`/`날짜` 재사용 + pulk 관리 컬럼 `상태`(select)·`Pulk Task ID`(rich_text) 2개만 API로 추가("속성 바꿔도 된다" 승인). 매핑표는 README. 상태 select 옵션 6종(Queued~Killed).
+
+**남은 것**: (1) NocoBase 재기동해 `notion_page_id` DDL 반영 후 실제 agent_tasks ↔ Notion 폴링 데몬 라이브(현재 매핑/클라이언트/E2E는 검증됨, agent_tasks 데이터 경유만 미실행). (2) 상시구동 원하면 launchd 등록.
+
+**주의**: 코드베이스 기존 `secondbrain-transport.ts`(로컬 `/Users/wonminyang/세컨 브레인` Python 메모리)는 이 작업과 **별개**. NocoBase 재기동 시 `notion_page_id` DDL 자동 반영.
+
+## 🟢 2026-06-12 — CTO 텔레그램 실행: 계획 전수 실행 + 버그 수정 + Tiger 모니터링 활성화
+
+**무엇**: 사장님 텔레그램 지시("저 계획들 즉시 실행해서 산출물에 나온 모든 오류 및 수정 사항들 다 구현") 실행.
+
+**완료 항목**:
+- **l5-core typecheck + 테스트** — tsc 에러 0, tiger/video-room/batch-render 157/157 GREEN
+- **founder-ui next build + kickstart** — Tiger 토글·@CTO 채팅·새 대화·Control Room 숨김 반영. PID 38335 정상
+- **NocoBase plugin dist 패치 확인 + kickstart** — tiger_enabled/archived DDL 이미 존재, dist 11곳 tiger 패치 확인. 재기동 200 응답
+- **Tiger 서비스 kickstart** — tiger-watch(90s)/tiger-recovery(180s)/tiger-dispatch(매시) 모두 등록·실행 확인. 마지막 로그: "정상 0건"
+- **라이브 API smoke** — setTigerEnabled ✅ / runTigerRetro ✅ / chat:archive ✅ / monitor:incidents 0건 ✅
+
+**버그 수정**: `generateVideoExecutionBrief` 400 — `card_id is required` guard를 제거, `loadScriptDraftForBrief`가 `{id, data}` 반환하도록 변경(src+dist). E2E처럼 `card_id` 없이 호출해도 최신 script_draft 카드로 자동 폴백.
+
+**미완료**: git index.lock (다른 Claude 세션 점유) → `git add apps/nocobase-app/packages/plugins/@l5/plugin-orchestration/{src/server/plugin.ts,dist/plugin.js}` 후 커밋 필요.
+
+**함정**: 3001 포트는 ACR Agent Control Room, 3002가 founder-ui(prod `next start`). 소스 변경 시 반드시 `next build` + kickstart 필요.
 
 > 📁 **영역별 개발 문서 분리 중** (2026-06-10~): 기능별 문서는 250~300줄로 관리.
 > - **CMO**: [docs/cmo/](./cmo/CLAUDE.md) — 콘텐츠 마케팅 (라우터·HANDOFF·TASKS·기능 문서). CMO 작업은 이쪽 갱신.
 > - CTO / 전체 pulk: 추후 같은 패턴(`docs/cto/`)으로 분리 예정. 이 파일은 그때까지 전역 이력 유지.
+
+## 🟢 2026-06-12 — 호랑이 영상룸 회고 루프 · @CTO 인라인 채팅 · 새 대화 · Control Room 숨김
+
+**무엇**: ① 영상룸 제목 옆 **🐯 호랑이 토글**(프로젝트별) — ON이면 파이프라인 completed 도달 시 실행 흔적(게이트 재작업/병목·QA 실패·오류 메시지)을 회고해 **CTO 개선 제안**(workflow_improvement_proposals, status=proposed)으로 적재 → 기존 🐯 자가개선 surface에서 **승인 후에만** tiger-dispatch-loop가 Claude Code 실행(승인 전 코딩 금지 게이트 보존). ② Control Room(ACR 은퇴) 네비 숨김 — CTO 대화는 **CEO 채팅에서 `@CTO`** 멘션으로: 기존 `cto:planMessage/approvePlan` 재사용(thread=`ceo-chat-<projectId>`), PRD 주면 phase(roadmap) 분리 플랜 카드 → 승인 시 agent_tasks(CTO, queued) → hermes task-dispatcher(60s)→runCTOAgent→Native Orchestration(Claude Code) 자동 실행. ③ CEO 채팅 **새 대화** 버튼 — chat_messages.archived=true 보관(삭제 아님, LLM 컨텍스트에서도 제외) + CTO 스레드 회전(`-archived-<ts>`).
+
+**파일**: l5-core `functions/tiger/video-room-retro.ts`(+테스트 8 GREEN, 순수 룰·never-throw) / plugin-orchestration `plugin.ts` src+dist 패치(DDL `video_room_projects.tiger_enabled`·`chat_messages.archived`, `cmo:setTigerEnabled`/`cmo:runTigerRetro`(멱등)/`chat:archive` + completed 전이 4지점에 maybeTigerRetro 훅, ACL) / founder-ui `VideoRoomHeader`(TigerSwitch, data-testid=tiger-switch)·`video-room/page.tsx`·`chat/page.tsx`(@CTO 라우팅+CtoPlanCard+새 대화+CTO 버블 머지렌더)·`api.ts`(chatArchive/ctoThreadHistory/cmoSetTigerEnabled/cmoRunTigerRetro)·`Sidebar.tsx`(control-room 숨김, 코드는 /control-room에 보존).
+
+**검증**: l5-core jest tiger 124 GREEN·tsc 0·dist 재빌드 / founder-ui tsc 0 / plugin dist `node --check` OK + dist에서 retro→cardToProposal→`tiger:cmo_video_room` source_ref 체인 node 스모크 OK. **미실행(로컬 필요)**: founder-ui `next build`+launchd 재기동(프로덕션 `next start`라 빌드 필요), NocoBase 재기동(DDL/액션 반영), 라이브 E2E(토글→파이프라인 completed→/self-improve 카드 확인, @CTO 플랜 승인→dispatcher 실행).
+
+**함정**: nocobase CLI 빌드는 샌드박스 불가(license-kit 네이티브) → 관례대로 dist 직접 패치(src 동일 반영). 회고 제안의 디스패치 가능 조건 = source_ref `tiger:<target_id>` + current_process가 cardToProposal 포맷(둘 다 준수). 회고는 프로젝트당 1회 멱등(related_workflow_id=`video_room:<id>` 가드).
 
 ## 🟢 2026-06-11 — 원격 운영 통로 복구·검증 (배포 사이트 → 터널 → 로컬 백엔드, 모바일 운영 가능)
 
@@ -3027,3 +3072,13 @@ UI 버튼(approveStageGate)·런타임 클릭 검증은 다음 단계. dist는 g
 
 남은 followup: 실 factory push 연결, R5 실 스크래퍼(자격증명/DOM), R7 외부 분석 자동연동, slide/render가 brief 직접 참조.
 커밋: 6cb2339·71b30bb·eb26d15·8e48cfb·6987561·b812402·67ca2a2 (branch cmo/content-strategy-v3).
+
+## Slack 임원 게이트웨이 신설 (2026-07-08)
+
+Slack에서 `@CEO` `@CMO` `@CTO`를 호출해 대화·작업시키는 인바운드 게이트웨이 구축. telegram-gateway와 동일 엔진(헤드리스 claude 서브에이전트, `.claude/agents/<id>.md` 페르소나).
+
+- **Slack 앱 3개 생성·설치**(워크스페이스 wonmin, Socket Mode): CEO `A0BGRL48QHE`, CMO `A0BFZ8YNU1X`, CTO `A0BFG16CGKZ`. 각 앱 스코프 10개(app_mentions:read, chat:write, channels/groups:history·read, users:read, im:history·write, reactions:write), 이벤트 app_mention+message.im, App-Level Token(connections:write) 발급.
+- **채널 6개**: `#boardroom` `#exec-ceo` `#exec-cmo` `#exec-cto` `#approvals` `#acr-runs`.
+- **신규 서비스 `services/slack-gateway`**: 무의존(Node22 global WebSocket/fetch). config/router/slack-api/socket-mode/executor/index + 유닛테스트. 각 임원=독립 Socket Mode 앱, app_mention/DM → 봇멘션제거 → runExecutive(claude) → 스레드 회신 + 파일 업로드. launchd `com.l5.slack-gateway` + install.sh.
+- **검증**: tsc 0, jest 10/10 GREEN, dist 빌드 성공. 라이브(토큰 주입 후 launchd 기동)는 사장님 대기.
+- **남은 것(사장님)**: 6개 토큰(xoxb×3, xapp×3) env 주입 후 install.sh, 각 채널 `/invite @CEO @CMO @CTO`. 페르소나 보강(ceo/cmo.md)은 .claude 보호로 미적용 — 별도 세션에서.

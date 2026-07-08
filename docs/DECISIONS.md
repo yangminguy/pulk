@@ -1,5 +1,15 @@
 # DECISIONS — L5 Business OS
 
+## 2026-06-12 — CTO 대화 통로 = CEO 채팅 @CTO 멘션(Control Room 네비 은퇴) · 호랑이 영상룸 회고는 기존 자가개선 파이프 재사용
+
+**컨텍스트**: ACR 은퇴(2026-06-10 결정)로 Control Room의 존재 이유가 약해짐. 사장님 요구 — CTO와의 대화·PRD 기반 개발 지시를 일상 동선(CEO 채팅)에서, 그리고 파이프라인 완료마다 호랑이가 오류·병목을 회고해 CTO에게 개선 작업을 시키는 루프(항상은 아니고 프로젝트별 선택).
+
+**결정 1 — CTO 채널 = CEO 채팅 인라인 @CTO**: 새 페이지를 만들지 않고 CEO 채팅 입력의 `@CTO` 멘션을 기존 `cto:planMessage`/`cto:approvePlan`(M10)으로 라우팅(thread=`ceo-chat-<projectId>`). 이유: 백엔드(PRD→roadmap→agent_tasks→task-dispatcher→Native Orchestration) 전 경로가 이미 검증돼 있어 UI 라우팅만으로 충분 — 새 채널/테이블 신설은 중복. Control Room은 네비에서만 숨기고 코드는 보존(롤백 1줄).
+
+**결정 2 — 호랑이 영상룸 회고 = 기존 자가개선 파이프에 신호원 추가**: 회고 결과를 별도 큐가 아니라 `workflow_improvement_proposals`(status=proposed, source_ref=`tiger:cmo_video_room`)로 적재 — 기존 🐯 자가개선 surface 승인 → tiger-dispatch-loop → Claude Code 경로를 그대로 탄다. 이유: 승인 게이트·학습 폐회로·repo 해석(decodeTargetRef)이 이미 구축됨. 회고 판단 룰은 l5-core 순수함수(`video-room-retro.ts`, LLM 비의존 결정론 휴리스틱)로 시작 — 노이즈를 보고 LLM 분석으로 승격 여부는 후속 결정. 프로젝트당 1회 멱등(related_workflow_id 가드), 토글은 `video_room_projects.tiger_enabled`(기본 OFF).
+
+**결정 3 — 새 대화 = 소프트 보관**: chat_messages에 `archived` boolean(삭제·테이블 분리 대신). 화면과 LLM 컨텍스트에서만 제외, 기록은 영속(프로젝트 단위 격리 보존 원칙 유지). CTO 스레드는 thread_id 회전으로 동일 효과.
+
 ## 2026-06-11 — 임원 호출 = `.claude/agents` 서브에이전트, 텔레그램 실행기 = 헤드리스 claude CLI
 
 **컨텍스트**: 사장님 요구 — `@cto`/`@cmo`로 임원을 호출해 "실제 작업 + 파일 회신"을, 이 세션뿐 아니라 **텔레그램에서**도. 기존 자산: `services/agent-runtime/src/agents/*.ts`(임원별 SYSTEM_PROMPT, 단 `runXAgent()`는 판단 JSON만 반환), CMO 영상 풀 파이프라인(`packages/l5-core/.../video-room/`, 실제 `video.mp4`까지 — 단 렌더는 외부 `ai-slide-video-factory`가 `npm run render`로 수행), 텔레그램 **아웃바운드만**(`hermes-runtime/.../notifier/telegram.ts`).
@@ -1120,3 +1130,31 @@ l5-core tsc 0 + jest dev-workflow-spec 60/60(신규 M9.8 5군 포함) GREEN, age
 **사업별 모니터 = 신규 테이블**: 기존 `agent_tasks`(ACR 경로) 재사용 대신 `native_phase_runs` 전용 테이블 + `monitor:nativeRuns` 조회 액션 + founder-ui 전용 뷰. 근거: phase 단위 세밀도(풀·상태·전체 output·타이밍)는 task 단위 모델로 표현 불가. 오케스트레이터는 `PhaseRunSink` 콜백(NocoBase 비의존, 테스트 가능)으로만 영속화하고, 데몬이 표준 REST(:create/:update)로 기록 — 커스텀 쓰기 액션 불필요. 결과 본문 회수: phase 프롬프트에 "마지막 출력에 전체 보고서 본문" 지시 + spawn stdout 전체를 `output`에 보존.
 
 **ESM 디렉토리 임포트 수정**: dist `native-orchestrator.js`가 `@l5/core/dist/functions/cto-native`(디렉토리)를 value 임포트해 ESM 런타임에서 `ERR_UNSUPPORTED_DIR_IMPORT`로 데몬 기동 실패(jest는 CJS라 통과). `/index.js` 명시로 수정. 데몬 드라이런(빈 큐 기동→모듈 로드→폴링)이 잡은 잠복 버그 — 데몬이 실제 기동된 적이 없어 미발견이었다.
+
+## 2026-06-12 — 영상 일괄 렌더는 잡 단위 순차, 데몬은 hermes-runtime 소속
+
+승인 완료분(status=rendering) 일괄 렌더에서 **잡 단위 동시 병렬을 채택하지 않음**. 근거: Remotion이 잡 내부 프레임 렌더를 CPU 코어 전체로 병렬화하므로 동시 N프로세스는 CPU 경합 + `node_modules/.remotion` 번들 캐시 경합으로 총 시간이 오히려 늘 수 있음. "한 번에 시작(배치)"이 요구사항이지 "동시 실행"이 아님. 선별/요약 판단은 `l5-core/video-room/batch-render.ts`(pure), 실행(spawn/HTTP/telegram)은 hermes-runtime 주입 — factory 레포에는 배치 러너를 두지 않고 오케스트레이터가 `render-final-v2.ts`를 잡별 호출(파일 프로토콜 유지). 실패 잡은 자동 재시도 금지(사람 확인) — 렌더 실패 무한루프 방지.
+
+## 2026-07-08 — Slack 임원 게이트웨이: 임원=별도 앱, 무의존 Socket Mode
+
+**임원별 개별 Slack 앱** 채택(단일 봇+라우팅 대신). 근거: Slack 앱 1개=봇유저 1개라 `@CEO`/`@CMO`/`@CTO`를 각각 멘션하려면 앱이 분리돼야 자연스러운 호출 경험이 나온다. 라우팅은 Slack이 아니라 수신 소켓(어느 앱이 받았나)이 결정 → UI/전송계층에 도메인 로직 없음 원칙과 일치.
+
+**연결 방식 = Socket Mode**(Events API 공개 URL 대신). 1인 기업 상시 맥(launchd)에서 공개 엔드포인트·서명검증 없이 돌기 위함. 기존 `com.l5.cdp-chrome`/telegram-gateway와 동일 상시구동 패턴.
+
+**무의존 구현**: @slack/* SDK 미설치(규칙: 알 수 없는 패키지 install 금지). Node22 global WebSocket으로 `apps.connections.open`→wss→envelope ack, global fetch로 Web API. telegram-gateway의 raw-fetch 방식 계승. ack는 job 실행 전 즉시(<3s) 전송 후 처리 — 재전송 폭주 방지.
+
+**실행 엔진 공유**: agent-runtime `runXAgent()`는 판단 JSON만 반환하므로, 실제 파일 산출·영상 렌더는 `.claude/agents/<id>.md` 페르소나를 헤드리스 `claude -p`로 구동(executor.ts, telegram-gateway와 동일). 산출물은 `.slack-runs/<runId>`에 저장 후 스레드 업로드.
+
+## 2026-07-08 — Notion 양방향 동기화: 워커 없이 무료, agent_tasks 기준, 무의존 raw-fetch
+
+**요구**: CtoPlan task를 Notion에 트래킹. 조사 결과 Notion **API·CLI는 모든 플랜 무료**(3 req/초, 호출당 과금 없음), **Workers만 유료**(Business/Enterprise). 따라서 **워커 미채택** — pulk가 Notion API를 **폴링**해 양방향 동기화(워커·웹훅 불필요, 전 과정 무료). 사장님 워크스페이스 무료 플랜에서 동작.
+
+**동기화 대상 = `agent_tasks`** (CtoPlan.tasks 드래프트가 아님). 근거: 상태 변화 트래킹이 의미 있는 대상은 승인 후 영속화된 task(status 컬럼 보유)이지 초안이 아니다. 매핑 키는 `agent_tasks.notion_page_id` 신규 컬럼(기존 contract-column ALTER 패턴 재사용, src+dist 동시 패치 — rule 60).
+
+**충돌 처리**: pulk-owned 필드(title/rationale/…)는 pulk→Notion 단방향. **Status만 contested → 최신수정 우선**(pulk `updatedAt` vs Notion `last_edited_time`). 인식 불가 라벨은 skip(추론 금지). 순수 결정 로직은 `l5-core/notion-sync/reconcile.ts`.
+
+**무의존 raw-fetch**: `@notionhq/client` 미설치(규칙: 알 수 없는 패키지 install 금지). telegram/slack 게이트웨이의 raw-fetch 방식 계승 → `services/notion-gateway` (raw fetch로 Notion REST query/create/update). 도메인 로직은 `@l5/core` notion-sync에 두고 서비스는 배선만(l5-core 외부 의존성 없이 테스트 가능 원칙).
+
+**Verify**: l5-core 2203/2203 GREEN(신규 19건), notion-gateway typecheck 0 + jest 3/3. 라이브 E2E는 사장님 토큰/DB 준비 후(README 참조).
+
+**주의 — "second brain"**: 사장님 지칭 "second brain"은 Notion integration 표시 이름(코드 무관). 코드베이스의 기존 `secondbrain-transport.ts`는 로컬 Python 메모리 시스템(`/Users/wonminyang/세컨 브레인`)으로 이 작업과 **별개**.
