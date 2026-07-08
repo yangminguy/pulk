@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.l5.slack-gateway</string>
+
+  <!-- Persistent Socket Mode process (one WebSocket per executive app).
+       Substitute __NODE_PATH__ / __GATEWAY_DIR__ / __LOG_DIR__ (install.sh does this). -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE_PATH__</string>
+    <string>__GATEWAY_DIR__/dist/index.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__GATEWAY_DIR__</string>
+
+  <!-- Start on load and keep alive (auto-restart on boot / crash). -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/slack-gateway.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/slack-gateway.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <!-- Secrets are read from the environment. Never hardcode here.
+         install.sh injects (after substitution) whichever of these are set:
+           SLACK_CEO_BOT_TOKEN, SLACK_CEO_APP_TOKEN
+           SLACK_CMO_BOT_TOKEN, SLACK_CMO_APP_TOKEN
+           SLACK_CTO_BOT_TOKEN, SLACK_CTO_APP_TOKEN
+           SLACK_ALLOWED_USER_IDS
+         Optional: PULK_DIR, SLACK_AGENT_MODEL, SLACK_CLAUDE_ARGS,
+                   SLACK_RUN_TIMEOUT_MS, SLACK_POST_FILES, CLAUDE_BIN -->
+  </dict>
+</dict>
+</plist>

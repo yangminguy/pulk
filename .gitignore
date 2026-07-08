@@ -73,3 +73,9 @@ services/youtube/.credentials.json
 
 # Telegram gateway per-run deliverables (ephemeral; shipped to Telegram then disposable)
 .telegram-runs/
+
+# Slack gateway per-run deliverables (ephemeral executive run outputs)
+.slack-runs/
+
+# Stray temp files
+_tmp_*
