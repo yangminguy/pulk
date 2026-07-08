@@ -1,0 +1,29 @@
+{
+  "name": "@l5/notion-gateway",
+  "version": "0.1.0",
+  "description": "L5 Business OS - Notion gateway. Bidirectionally syncs pulk agent_tasks with a Notion database (no Notion Workers required — pulk polls the free API).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --config jest.config.cjs"
+  },
+  "keywords": ["l5", "notion", "gateway", "sync"],
+  "author": "L5 Team",
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "@l5/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "catalog:",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "catalog:"
+  }
+}
