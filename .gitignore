@@ -79,3 +79,6 @@ services/youtube/.credentials.json
 
 # Stray temp files
 _tmp_*
+
+# 생성된 마케팅 썸네일 산출물 (바이너리; 레포에 커밋 안 함)
+/썸네일_249만원인스타강의/
