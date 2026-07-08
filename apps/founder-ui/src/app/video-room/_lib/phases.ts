@@ -16,7 +16,7 @@ export const STATUS_LABEL: Record<string, string> = {
   strategy_chat:                   '전략 대화',
   business_pt_context_loading:     'PT 컨텍스트 로딩',
   product_defined:                 '상품 정의 완료',
-  key_content_ideation:            '키 콘텐츠 기획',
+  key_content_ideation:            '키 콘텐츠 기획서 (리서치+분석)',
   viewtrap_key_research:           'Viewtrap 키 리서치',
   key_content_approval:            '키 콘텐츠 승인 대기',
   viewtrap_pulling_research:       'Viewtrap 풀링 리서치',

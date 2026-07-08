@@ -191,9 +191,14 @@ export function computeMarketMetrics(
 
 /**
  * 시장성 판정(순수). 결정론 베이스라인 + LLM 적합도(targetFit) 결합.
- * - 제외: 영상 너무 적음 / 평균조회수 너무 낮음 / 롱폼 비중 낮음 / 타깃 적합 '낮음'
- * - 진행 추천: 충분한 양 + 상위 5만+ + 롱폼 우세 + 타깃 적합 '높음'
+ * - 제외: 영상 너무 적음 / 평균조회수 너무 낮음 / 타깃 적합 '낮음'
+ * - 진행 추천: 수요(상위 5만+ & 평균 2만+) + 타깃 적합 '높음' + 판매연결 '낮음' 아님
  * - 그 외: 보류
+ *
+ * 형식(롱폼/쇼츠)으로는 제외하지 않는다 — 상품은 릴스·쇼츠도 확장 채널이므로,
+ * 쇼츠 우세인데 고수요·고적합인 키워드(예: '카페 마케팅 아이디어')를 형식 비율만으로
+ * 버리면 정작 대표/사장 타깃이 보는 콘텐츠를 놓친다(2026-06-12 사장님 피드백).
+ * 형식은 진행 추천 사유에 라벨로만 표기한다(롱폼/쇼츠/혼합).
  */
 export function decideVerdict(
   m: MarketMetrics,
@@ -202,28 +207,29 @@ export function decideVerdict(
 ): { verdict: MarketVerdict; reason: string } {
   if (m.videoCount < 3) return { verdict: '제외', reason: '검색 결과 영상이 너무 적어 시장성 미달' };
   if (m.avgViews < 5_000) return { verdict: '제외', reason: `평균 조회수(${m.avgViews.toLocaleString()})가 낮아 수요 부족` };
-  if (m.longformRatio < 0.2) return { verdict: '제외', reason: '롱폼 콘텐츠 비중이 낮아 롱폼 주제로 부적합' };
   if (targetFit === '낮음') return { verdict: '제외', reason: '우리 핵심 타깃이 볼 만한 주제가 아님' };
 
-  const strongVolume = m.videoCount >= 8;
-  const strongViews = m.topViews >= MIN_VIEWS && m.avgViews >= 20_000;
-  const longformOk = m.longformRatio >= 0.4;
-  if (strongVolume && strongViews && longformOk && targetFit === '높음' && salesLink !== '낮음') {
-    return { verdict: '진행 추천', reason: `상위 조회수 ${m.topViews.toLocaleString()}·롱폼 우세·타깃 적합 높음·판매연결 가능` };
+  const strongDemand = m.topViews >= MIN_VIEWS && m.avgViews >= 20_000;
+  if (strongDemand && targetFit === '높음' && salesLink !== '낮음') {
+    const fmt = m.longformRatio >= 0.4 ? '롱폼 우세' : m.shortsRatio >= 0.6 ? '쇼츠 우세' : '롱폼·쇼츠 혼합';
+    return { verdict: '진행 추천', reason: `상위 조회수 ${m.topViews.toLocaleString()}·타깃 적합 높음·판매연결 가능 (형식: ${fmt})` };
   }
   return { verdict: '보류', reason: '시장성은 있으나 타깃 적합/판매연결 신뢰도가 충분치 않음' };
 }
 
-/** 후보 영상 필터(순수): 롱폼 + 성과도/기여도 Good 이상 + 5만+. */
+/** 후보 영상 필터(순수): 5만+ & (롱폼은 등급 Good+/등급미상 통과, 쇼츠는 등급 Good+ 한정). */
 const GOOD_GRADES = new Set(['Good', 'Great', 'good', 'great']);
 export function isQualifiedCandidate(v: ReportSourceVideo, dur: VideoDurationInfo | undefined): boolean {
-  if (dur?.isShort) return false;
   if (v.viewCount < MIN_VIEWS) return false;
   const perf = String(v.metrics?.['성과도'] ?? '');
   const contrib = String(v.metrics?.['기여도'] ?? '');
-  // 등급이 둘 다 비어 있으면(확장 미주입) 조회수만으로 통과시킨다(graceful).
+  const goodGrade = GOOD_GRADES.has(perf) || GOOD_GRADES.has(contrib);
+  // 쇼츠는 하드 제외하지 않는다(상품이 쇼츠도 확장 채널). 단 품질 보증을 위해
+  // 성과도/기여도 Good+ 일 때만 후보로 — 등급이 없으면 쇼츠 품질을 보증할 수 없어 제외.
+  if (dur?.isShort) return goodGrade;
+  // 롱폼: 등급이 둘 다 비면(확장 미주입) 조회수만으로 통과(graceful).
   if (!perf && !contrib) return true;
-  return GOOD_GRADES.has(perf) || GOOD_GRADES.has(contrib);
+  return goodGrade;
 }
 
 // ── LLM JSON 파서(관대) ──────────────────────────────────────────────────────
@@ -282,6 +288,14 @@ ${table}
 
 각 키워드가 (1) 이 키워드 영상을 보는 시청자의 **정체성·자기인식 레벨**이 우리 핵심 타깃과 같은지(targetFit) (2) 우리 상품 판매논리로 연결 가능한지(salesLink)를 판단하라.
 ★ targetFit은 단순 주제 매칭이 아니다. 주제가 마케팅/카테고리상 관련 있어도, 그 키워드를 검색·시청할 사람이 우리 타깃보다 낮은 작업·실무 단위 정체성이면(예: 우리 타깃은 '대표/사업가'인데 키워드는 'OO를 직접 하고 싶은 실무자/작업자'를 끌어당김) targetFit은 "낮음"이다.
+
+[대표/사장이 실제로 클릭·시청하는 콘텐츠 — targetFit 높음 신호]
+- "○○ 자동화/마케팅팀 활용으로 매출이 N배 늘었다" 같은 결과·사례
+- "우리 가게 인스타 이렇게만 해보세요 / 인스타 잘 모르는 대표님 이렇게 운영하세요" 같은 사장 눈높이 운영법
+- "마케팅팀 없이 대표 혼자 굴리는 마케팅 구조"
+[실무자·자동화러를 끌어당기는 콘텐츠 — targetFit 낮음 신호]
+- "MAKE·n8n 같은 툴로 SNS 글쓰기/업무를 완전 자동화하는 법" 같은 툴 구축·사용법
+- 편집·세팅·코드 등 '작업 방법' 중심 → 대표는 이를 자기 일로 인식하지 않는다
 각각 "높음" | "보통" | "낮음" 중 하나로만 답하라.
 
 JSON 배열로만 출력:
@@ -315,6 +329,13 @@ ${list}
   반대로 '팀 없이도 마케팅을 직접 굴릴 수 있겠다'고 대표가 판단하게 만드는 영상은 match.
 - **조회수·성과가 아무리 높아도 정체성이 mismatch면 후보에서 제외하라.** match를 최우선, 차선은 partial.
 
+[match 신호 — 대표/사장이 보는 콘텐츠]
+  · "자동화/마케팅으로 매출 N배 늘었다" 결과·사례 · "우리 가게 인스타 이렇게만 해보세요" 운영법
+  · "인스타 잘 모르는 대표님 이렇게 운영하세요" · "마케팅팀 없이 대표 혼자 굴리는 구조"
+[mismatch 신호 — 실무자·자동화러가 보는 콘텐츠]
+  · "MAKE/n8n으로 SNS 글쓰기·업무 완전 자동화" 같은 툴 구축·사용법 · 편집/세팅/코드 작업법 중심
+  대표는 '결과와 운영 방향'을 원하지 '직접 작업하는 법'을 원하지 않는다.
+
 그 다음, 정체성이 맞는(match 우선) 후보 중 우리 상품 판매논리(현상→욕구→계획→행동→보상)를 세우기 가장 좋은 3개를 골라라.
 가장 추천하는 1개에 top=true.
 
@@ -347,17 +368,37 @@ function synthesisPrompt(
   p: ReportProduct,
   top: ReportCandidate | undefined,
   candidates: ReportCandidate[],
+  market: MarketKeywordRow[],
 ): string {
   const summary = candidates
-    .map((c) => `- "${c.title}" (성과도 ${c.performance ?? '-'}, 기여도 ${c.contribution ?? '-'}, 조회수 ${c.viewCount})${c.topPick ? ' [최우선]' : ''}`)
+    .map((c) => {
+      const id = c.identity_match ? ` · 시청자정체성 ${c.identity_match}${c.viewer_identity ? `(${c.viewer_identity})` : ''}` : '';
+      const fn = c.funnel?.phenomenon ? ` · 현상 "${c.funnel.phenomenon}"` : '';
+      return `- "${c.title}" (조회수 ${c.viewCount.toLocaleString()}, 성과도 ${c.performance ?? '-'}, 기여도 ${c.contribution ?? '-'})${c.topPick ? ' [최우선]' : ''}${id}${fn}`;
+    })
     .join('\n');
+  const marketEvidence = market
+    .filter((r) => r.verdict !== '제외')
+    .map((r) => `- "${r.keyword}": 판정 ${r.verdict}, 평균조회수 ${r.avgViews.toLocaleString()}, 상위 ${r.topViews.toLocaleString()}, 타깃적합 ${r.targetFit}, 판매연결 ${r.salesLink}`)
+    .join('\n') || '- (진행/보류 키워드 없음)';
   return `${productHeader(p)}
 
-선별된 키 콘텐츠 후보:
+[키워드 시장성 근거(진행·보류 키워드)]
+${marketEvidence}
+
+[선별된 키 콘텐츠 후보 — 정체성/현상 포함]
 ${summary}
 
 위 후보(특히 최우선: "${top?.title ?? '-'}")를 바탕으로, 우리 상품으로 만들 키 콘텐츠의 판매논리를 설계하라.
-또한 그 최우선 콘텐츠를 추천하는 이유를 우리 타깃 적합/성과/판매논리 확장성/수익화 확인/연결 자연스러움 기준으로 서술하라.
+★ content_topic(키 콘텐츠 주제)은 대표/사장이 '내 가게·내 사업에 바로 적용할 결과·운영법'으로 인식할 프레이밍이어야 한다.
+  예: "마케팅팀 없이 인스타로 매출 올린 사장님들 공통점", "인스타 잘 모르는 대표님을 위한 한 달 운영법".
+  '툴 구축법·자동화 세팅법·작업 방법' 프레이밍은 금지(그건 실무자용이라 우리 대표 타깃이 보지 않는다).
+
+★ recommendation_reason은 "왜 이 주제를 선택해야 하는가"를 데이터 근거로 논리적으로 설명하라(감상·뜬구름 금지). 아래 4가지를 모두, 각 주장마다 위 수치·정체성을 근거로 붙여 3~5문장으로:
+  ① 수요 근거 — 시장성 수치(조회수·성과도/기여도)로 이 주제에 시장이 있다는 증거
+  ② 타깃 정합 근거 — 이 콘텐츠를 보는 시청자가 왜 우리 '대표/사장' 타깃과 일치하는지(정체성 match 근거)
+  ③ 다른 후보 대비 우위 — 나머지 후보보다 이걸 골라야 하는 이유
+  ④ 판매논리 연결 — 이 주제의 현상→욕구→계획→행동이 우리 상품 구매로 자연스럽게 이어지는 논리
 
 JSON 객체로만 출력:
 {"applied":{"content_topic":"우리 상품으로 만들 키 콘텐츠 주제 한 줄","core_target":"...","target_phenomenon":"...","desire_to_trigger":"...","plan_user_makes":"...","action_to_our_product":"...","reward_user_expects":"..."},"recommendation_reason":"..."}`;
@@ -409,6 +450,12 @@ export async function runKeyContentReport(
       }
     }
     perKeyword.push({ keyword, videos, durations, m: computeMarketMetrics(videos, durations, nowMs) });
+  }
+
+  // 크롤 표본 가시화(P6) — 영상 3개 미만 키워드는 발굴 수가 적어 시장성 판정 신뢰도가 낮다.
+  const thinKeywords = perKeyword.filter((k) => k.m.videoCount < 3).map((k) => k.keyword);
+  if (thinKeywords.length > 0) {
+    notes.push(`크롤 표본 부족(영상 3개 미만): ${thinKeywords.join(', ')} — 발굴 수가 적어 제외/판정 신뢰도 낮음(크롤 재시도 권장)`);
   }
 
   // ── 2단계: LLM 시장성 판단(배치) → verdict ────────────────────────────────
@@ -567,7 +614,7 @@ export async function runKeyContentReport(
   let recommendationReason = '';
   if (finalCandidates.length > 0) {
     try {
-      const raw = await deps.llmComplete(synthesisPrompt(p, top, finalCandidates));
+      const raw = await deps.llmComplete(synthesisPrompt(p, top, finalCandidates, market));
       const parsed = parseJson<{ applied?: AppliedSalesLogic; recommendation_reason?: string }>(raw, {});
       applied = parsed.applied ?? null;
       recommendationReason = String(parsed.recommendation_reason ?? '');

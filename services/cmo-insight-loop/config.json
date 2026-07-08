@@ -1,0 +1,21 @@
+{
+  "keywords": [
+    "마케팅 자동화",
+    "AI 마케팅",
+    "콘텐츠 마케팅",
+    "유튜브 마케팅",
+    "AI 업무 자동화"
+  ],
+  "videosPerDay": 5,
+  "recentDays": 30,
+  "minViews": 10000,
+  "maxPerChannel": 2,
+  "excludeShorts": true,
+  "requireKorean": true,
+  "introChars": 800,
+  "bodyChars": 4000,
+  "regionCode": "KR",
+  "relevanceLanguage": "ko",
+  "telegramPlistPath": "~/Library/LaunchAgents/com.l5.telegram-gateway.plist",
+  "secondBrainEnvPath": "~/Desktop/양원민 개발자/썸끝원끝 플랫폼/.env.local"
+}

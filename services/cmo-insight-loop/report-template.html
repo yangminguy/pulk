@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<!-- CMO Insight Loop 리포트 템플릿. 스케줄 태스크가 이 구조/스타일을 따라 data/reports/<date>.html 생성.
+     {{...}} 자리는 실제 내용으로 치환. 영상 카드(.video)는 5개 반복. -->
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMO 인사이트 — {{DATE}}</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --txt:#e8eaf0; --sub:#9aa3b2;
+          --accent:#ffd166; --green:#7ce38b; --blue:#79b8ff; --pink:#ff9ecf; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--txt); font-family:-apple-system,'Apple SD Gothic Neo','Pretendard',sans-serif; line-height:1.65; padding:24px 16px; max-width:760px; margin:0 auto; }
+  h1 { font-size:22px; margin-bottom:4px; }
+  .date { color:var(--sub); font-size:14px; margin-bottom:20px; }
+  .summary { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:10px; padding:16px; margin-bottom:24px; font-size:15px; }
+  .video { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:20px; }
+  .video img { width:100%; border-radius:8px; margin-bottom:12px; }
+  .video h2 { font-size:17px; margin-bottom:2px; }
+  .meta { color:var(--sub); font-size:13px; margin-bottom:12px; }
+  .meta a { color:var(--blue); text-decoration:none; }
+  .driver { background:#22262f; border-radius:8px; padding:12px; margin-bottom:12px; font-size:15px; }
+  .driver b { color:var(--accent); }
+  .sec { margin-bottom:10px; font-size:14px; }
+  .sec .tag { display:inline-block; font-size:12px; font-weight:700; border-radius:5px; padding:1px 8px; margin-right:6px; }
+  .tag.thumb { background:#3d2e10; color:var(--accent); }
+  .tag.title { background:#11324a; color:var(--blue); }
+  .tag.intro { background:#3a1430; color:var(--pink); }
+  .tag.apply { background:#143a22; color:var(--green); }
+  .formula { font-family:ui-monospace,monospace; font-size:13px; background:#11141a; border:1px dashed var(--line); border-radius:6px; padding:8px 10px; margin:6px 0; color:var(--green); }
+  .apply-box { background:#11241a; border:1px solid #1f4630; border-radius:8px; padding:12px; font-size:14px; }
+  footer { color:var(--sub); font-size:12px; text-align:center; margin-top:28px; }
+</style>
+</head>
+<body>
+  <h1>📊 CMO 인사이트 리포트</h1>
+  <div class="date">{{DATE}} · 키워드: {{KEYWORDS}} · {{N}}개 영상 분석</div>
+
+  <div class="summary"><b>오늘의 핵심:</b> {{TODAY_TOP_INSIGHT — 오늘 5개를 관통하는 가장 강한 패턴 1~2문장}}</div>
+
+  <!-- 영상 카드 ×5 -->
+  <div class="video">
+    <img src="data:image/jpeg;base64,{{THUMB_BASE64}}" alt="thumbnail">
+    <h2>{{TITLE}}</h2>
+    <div class="meta">{{CHANNEL}} · 조회수 {{VIEWS}} · 구독자 {{SUBS}} · <a href="{{URL}}">영상 보기</a></div>
+    <div class="driver">🎯 <b>왜 봤는가:</b> {{WATCH_DRIVER}}</div>
+    <div class="sec"><span class="tag thumb">썸네일</span> {{THUMBNAIL_INSIGHT}}
+      <div class="formula">{{THUMBNAIL_FORMULA}}</div></div>
+    <div class="sec"><span class="tag title">제목</span> {{TITLE_INSIGHT}}
+      <div class="formula">{{TITLE_FORMULA}}</div></div>
+    <div class="sec"><span class="tag intro">도입부 30초</span> {{INTRO_INSIGHT}}
+      <div class="formula">{{INTRO_FORMULA}}</div></div>
+    <div class="sec"><span class="tag apply">적용 루트</span>
+      <div class="apply-box">{{APPLICATION_ROUTE — 썸네일 문구/제목/도입부 첫 문장 초안 포함}}</div></div>
+  </div>
+
+  <footer>L5 CMO Insight Loop · 피드백은 채팅으로 — 다음 분석에 자동 반영됩니다</footer>
+</body>
+</html>

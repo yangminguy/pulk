@@ -9,6 +9,8 @@ export type CmoProject = {
   status: string
   current_page: 'strategy' | 'production' | 'review_publish'
   business_id?: string | null
+  // 호랑이 회고 루프 — ON이면 파이프라인 완료 시 오류/병목 회고 → CTO 개선 제안.
+  tiger_enabled?: boolean
 }
 
 export type CmoCard = {

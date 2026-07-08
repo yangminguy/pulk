@@ -365,3 +365,46 @@ export async function updateTigerIncident(
   });
 }
 
+
+// ── 일괄 렌더 (video-batch-render) ───────────────────────────────────────────
+
+/** 'rendering' 상태 video_room_projects 목록 — 승인 게이트를 모두 통과해 렌더만 남은 프로젝트들. */
+export async function fetchRenderingVideoProjects(): Promise<
+  Array<{ id: string; title: string; status: string }>
+> {
+  const data = await apiFetch(
+    "/api/video_room_projects:list?filter[status]=rendering&pageSize=100",
+  );
+  return ((data.data ?? []) as any[]).map((r) => ({
+    id: String(r.id),
+    title: String(r.title ?? ""),
+    status: String(r.status ?? ""),
+  }));
+}
+
+export interface CmoRenderStatusSnapshot {
+  slug: string | null;
+  /** deriveRenderJobStatus 값: not_found | queued | rendering | completed | failed */
+  status: string | null;
+  job_path: string | null;
+  total_seconds?: number;
+  qa_result?: "pass" | "fail" | null;
+}
+
+/** POST /api/cmo:getRenderStatus — factory 파일 관찰 기반 렌더 상태(+DB 카드 갱신, 완료 시 rendering→qa 전진). */
+export async function fetchCmoRenderStatus(project_id: string): Promise<CmoRenderStatusSnapshot> {
+  const json = await apiFetch("/api/cmo:getRenderStatus", {
+    method: "POST",
+    body: JSON.stringify({ project_id }),
+  });
+  const d = json?.data?.data ?? {};
+  const observation = d.observation ?? {};
+  const totalSeconds = observation?.render_report?.totalSeconds;
+  return {
+    slug: d.slug ? String(d.slug) : null,
+    status: d.status ? String(d.status) : null,
+    job_path: observation?.paths?.job ? String(observation.paths.job) : null,
+    ...(typeof totalSeconds === "number" ? { total_seconds: totalSeconds } : {}),
+    qa_result: d.render_qa?.result === "pass" || d.render_qa?.result === "fail" ? d.render_qa.result : null,
+  };
+}

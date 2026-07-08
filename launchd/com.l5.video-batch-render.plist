@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.l5.video-batch-render</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/node</string>
+        <string>/Users/wonminyang/Desktop/pulk/services/hermes-runtime/scripts/video-batch-render-daemon.mjs</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/wonminyang/Desktop/pulk</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/Users/wonminyang/.npm-global/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>NODE_ENV</key>
+        <string>production</string>
+        <key>NOCOBASE_URL</key>
+        <string>http://localhost:13000</string>
+        <key>VIDEO_FACTORY_DIR</key>
+        <string>/Users/wonminyang/ai-slide-video-factory</string>
+        <!-- 시크릿(NOCOBASE_TOKEN, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)은 커밋 금지.
+             배포 시 ~/Library/LaunchAgents 복사본에 PlistBuddy로 주입:
+             /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:NOCOBASE_TOKEN string <TOKEN>" ... -->
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/wonminyang/.l5/video-batch-render/daemon.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/wonminyang/.l5/video-batch-render/daemon.err.log</string>
+</dict>
+</plist>

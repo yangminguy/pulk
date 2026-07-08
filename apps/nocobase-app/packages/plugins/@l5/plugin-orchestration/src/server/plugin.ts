@@ -205,6 +205,15 @@ const {
   createClaudeCLIClient,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/llm/claude-cli-client'));
 
+// 호랑이 영상룸 회고: 파이프라인 완료 시 실행 흔적 → CTO 개선 카드(순수 룰, l5-core).
+const {
+  buildVideoRoomRetroCards,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/tiger/video-room-retro'));
+const {
+  cardToProposal,
+  encodeTargetRef,
+} = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/tiger/analysis'));
+
 type ActionContext = {
   app?: any;
   db: any;
@@ -238,7 +247,7 @@ export default class PluginOrchestrationServer extends Plugin {
     registerCmoResource(this.app, this.db);
     registerVideoProjectResource(this.app, this.db);
 
-    this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow', 'approvePlan', 'rejectPlan', 'history'], 'loggedIn');
+    this.app.acl.allow('chat', ['submitInstruction', 'generateWorkflow', 'approvePlan', 'rejectPlan', 'history', 'archive'], 'loggedIn');
     this.app.acl.allow('agent', ['executeTask'], 'loggedIn');
     // taskCallback is a machine-to-machine callback from ACR (non-interactive,
     // long-running). Public ACL + non-expiring shared-secret guard in the handler
@@ -257,7 +266,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'proposeProductDefinition', 'proposeKeyContentReport', 'selectKeyContentCandidate', 'proposePullingCandidates', 'proposePullingReport', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeThumbnailMatrix', 'recordImageSources', 'proposeTitleDevelopment', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights', 'learnThumbnailReferences', 'developThumbnailCandidate', 'reviewThumbnail', 'channelFirstDiscovery', 'evaluateHookAlignment', 'checkSwapSignals', 'publishUpload'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'proposeProductDefinition', 'proposeKeyContentReport', 'selectKeyContentCandidate', 'proposePullingCandidates', 'proposePullingReport', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeThumbnailMatrix', 'recordImageSources', 'proposeTitleDevelopment', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights', 'learnThumbnailReferences', 'developThumbnailCandidate', 'reviewThumbnail', 'channelFirstDiscovery', 'evaluateHookAlignment', 'checkSwapSignals', 'publishUpload', 'setTigerEnabled', 'runTigerRetro'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -286,7 +295,8 @@ async function ensureOrchestrationColumns(db: any) {
         ADD COLUMN IF NOT EXISTS self_mod_status text,
         ADD COLUMN IF NOT EXISTS acr_branch text,
         ADD COLUMN IF NOT EXISTS acr_diff text,
-        ADD COLUMN IF NOT EXISTS acr_pr_url text;
+        ADD COLUMN IF NOT EXISTS acr_pr_url text,
+        ADD COLUMN IF NOT EXISTS notion_page_id text;
     `);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -468,6 +478,29 @@ async function ensureOrchestrationColumns(db: any) {
     db.logger?.warn?.(`Could not ensure video_room_projects key-content columns: ${message}`);
   }
 
+  // 호랑이 회고 루프: 프로젝트별 활성화 토글(tiger_enabled).
+  // ON이면 파이프라인 완료 시 호랑이가 실행 흔적을 회고해 CTO 개선 제안을 만든다(승인 후 실행).
+  try {
+    await db.sequelize.query(`
+      ALTER TABLE IF EXISTS video_room_projects
+        ADD COLUMN IF NOT EXISTS tiger_enabled boolean NOT NULL DEFAULT false;
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure video_room_projects tiger_enabled column: ${message}`);
+  }
+
+  // CEO 채팅 "새 대화": 이전 대화는 archived=true로 보관(삭제 아님), 화면·LLM 컨텍스트에서만 제외.
+  try {
+    await db.sequelize.query(`
+      ALTER TABLE IF EXISTS chat_messages
+        ADD COLUMN IF NOT EXISTS archived boolean NOT NULL DEFAULT false;
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure chat_messages archived column: ${message}`);
+  }
+
   try {
     await db.sequelize.query(`
       CREATE TABLE IF NOT EXISTS video_room_cards (
@@ -606,6 +639,8 @@ function registerCollections(db: any) {
       { name: 'acr_branch', type: 'string' },
       { name: 'acr_diff', type: 'text' },
       { name: 'acr_pr_url', type: 'string' },
+      // Notion sync: id of the mirrored row in the Notion database (bidirectional sync).
+      { name: 'notion_page_id', type: 'string' },
       // Full executive AgentOutput (goal/options/recommendation/action_items …)
       // so the inbox/monitor/synthesis can surface the real work product.
       { name: 'output', type: 'json' },
@@ -669,6 +704,8 @@ function registerCollections(db: any) {
       { name: 'role', type: 'string', allowNull: false },
       { name: 'text', type: 'text', allowNull: false },
       { name: 'metadata', type: 'json', defaultValue: {} },
+      // "새 대화" 보관 플래그 — true면 화면/LLM 컨텍스트에서 제외(기록은 영속 보존).
+      { name: 'archived', type: 'boolean', defaultValue: false },
     ],
   }));
 
@@ -840,7 +877,8 @@ function registerChatResource(app: any, db: any) {
 
         const chatMessageRepo = db.getRepository('chat_messages');
         const rows = await chatMessageRepo.find({
-          filter: { project_id },
+          // archived=true(새 대화로 보관된 이전 세션)는 화면에서 제외 — 기록은 DB에 영속.
+          filter: { project_id, archived: { $ne: true } },
           sort: ['createdAt'],
         });
 
@@ -886,6 +924,40 @@ function registerChatResource(app: any, db: any) {
               createdAt: m.createdAt || m.created_at,
             };
           }),
+        };
+        await next();
+      },
+
+      // POST /api/chat:archive  { project_id }
+      // "새 대화" — 이전 대화를 삭제하지 않고 archived=true로 보관(화면·LLM 컨텍스트에서만 제외).
+      // CEO 채팅에 인라인된 CTO 플래닝 스레드(ceo-chat-<project_id>)도 함께 회전·보관한다.
+      archive: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const values = getValues(ctx);
+        const project_id = String(values.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+
+        const [, metaCeo] = await db.sequelize.query(
+          `UPDATE chat_messages SET archived = true, "updatedAt" = now()
+            WHERE project_id = $1 AND archived = false`,
+          { bind: [project_id] },
+        );
+
+        // CTO 플래닝 스레드 회전: thread_id를 보관용으로 바꿔 새 대화에서 빈 스레드로 시작.
+        const activeThread = `ceo-chat-${project_id}`;
+        const archivedThread = `${activeThread}-archived-${Date.now()}`;
+        const [, metaCto] = await db.sequelize.query(
+          `UPDATE cto_planning_messages SET thread_id = $1, "updatedAt" = now()
+            WHERE thread_id = $2`,
+          { bind: [archivedThread, activeThread] },
+        );
+
+        ctx.body = {
+          ok: true,
+          data: {
+            archived: true,
+            chat_messages: (metaCeo as any)?.rowCount ?? null,
+            cto_messages: (metaCto as any)?.rowCount ?? null,
+          },
         };
         await next();
       },
@@ -971,7 +1043,8 @@ function registerChatResource(app: any, db: any) {
           try {
             const chatMessageRepo = db.getRepository('chat_messages');
             const messages = await chatMessageRepo.find({
-              filter: { project_id },
+              // 새 대화 이후엔 이전(보관) 세션을 LLM 컨텍스트에도 싣지 않는다.
+              filter: { project_id, archived: { $ne: true } },
               sort: ['createdAt'],
             });
             chatHistory = (messages ?? [])
@@ -2528,6 +2601,83 @@ function registerCmoResource(app: any, db: any) {
   const q = (sql: string, bind: any[] = []) =>
     db.sequelize.query(sql, { bind, type: SELECT });
 
+  // ── 호랑이 영상룸 회고 루프 ────────────────────────────────────────────────
+  // 파이프라인이 completed에 도달하면(프로젝트 tiger_enabled=true일 때만) 실행 흔적
+  // (게이트/메시지/QA카드)을 l5-core 순수 룰로 회고해 CTO 개선 제안을 만든다.
+  // 제안은 workflow_improvement_proposals(status='proposed')로 적재 → 🐯 자가개선
+  // surface에서 사장님 승인 후에만 tiger-dispatch-loop가 CTO(Claude Code)를 실행한다.
+  // never-throw: 회고 실패가 파이프라인 응답을 막지 않는다. 프로젝트당 1회(멱등).
+  async function runVideoRoomTigerRetro(project_id: string): Promise<number> {
+    const projRows = await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]);
+    const project = projRows[0];
+    if (!project) return 0;
+
+    // 멱등 가드: 이 프로젝트 회고 제안이 이미 있으면 재실행하지 않는다.
+    const workflowRef = `video_room:${project_id}`;
+    const existing = await q(
+      `SELECT COUNT(*) AS cnt FROM workflow_improvement_proposals
+        WHERE related_workflow_id = $1 AND suggested_by_agent_id = 'Tiger'`,
+      [workflowRef],
+    );
+    if (Number(existing[0]?.cnt ?? 0) > 0) return 0;
+
+    const gates = await q(
+      `SELECT gate_type, status, "createdAt", decided_at FROM video_room_gates WHERE video_project_id = $1`,
+      [project_id],
+    );
+    const messages = await q(
+      `SELECT role, text FROM cmo_planning_messages WHERE thread_id = $1`,
+      [project_id],
+    );
+    const cards = await q(
+      `SELECT stage, summary, data FROM video_room_cards WHERE video_project_id = $1`,
+      [project_id],
+    );
+
+    const retroCards = buildVideoRoomRetroCards({ project, gates, messages, cards });
+    let created = 0;
+    for (const card of retroCards) {
+      const p = cardToProposal(card);
+      await db.sequelize.query(
+        `INSERT INTO workflow_improvement_proposals
+           (id, related_workflow_id, related_business_id, current_process, identified_bottleneck,
+            proposed_improvement, impact_on_timeline, effort_to_implement, suggested_by_agent_id,
+            status, source_ref, "createdAt", "updatedAt")
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, 'proposed', $9, now(), now())`,
+        {
+          bind: [
+            workflowRef,
+            project.business_id ?? null,
+            p.current_process,
+            p.identified_bottleneck,
+            p.proposed_improvement,
+            card.impact,
+            p.effort_to_implement,
+            p.suggested_by_agent_id,
+            encodeTargetRef(card.target_id),
+          ],
+        },
+      );
+      created++;
+    }
+    return created;
+  }
+
+  // status 전이 후 호출하는 베스트에포트 훅 — completed && tiger_enabled일 때만 회고.
+  async function maybeTigerRetro(project_id: string, newStatus: string | null | undefined) {
+    if (newStatus !== 'completed') return;
+    try {
+      const rows = await q(`SELECT tiger_enabled FROM video_room_projects WHERE id = $1`, [project_id]);
+      if (rows[0]?.tiger_enabled) {
+        const n = await runVideoRoomTigerRetro(project_id);
+        if (n > 0) db.logger?.info?.(`[tiger-retro] ${project_id}: ${n} proposal(s) created`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      db.logger?.warn?.(`[tiger-retro] failed for ${project_id}: ${message}`);
+    }
+  }
+
   // Shared helper: approve a pending gate for a project and optionally advance status.
   async function approveGateForProject(project_id: string, gate_id: string, decision: string) {
     await db.sequelize.query(
@@ -2546,6 +2696,7 @@ function registerCmoResource(app: any, db: any) {
           `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
           { bind: [newStatus, newPage, project_id] },
         );
+        await maybeTigerRetro(project_id, newStatus);
         return newStatus;
       }
     }
@@ -2577,6 +2728,7 @@ function registerCmoResource(app: any, db: any) {
         `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
         { bind: [status, pageForStatus(status), project_id] },
       );
+      await maybeTigerRetro(project_id, status);
       return status;
     }
     return null;
@@ -2623,10 +2775,33 @@ function registerCmoResource(app: any, db: any) {
     return { yt: _ytModule, client: new _ytModule.YouTubeClient(creds), creds };
   }
 
+  // Shared helper: Sonnet SDK 직접 호출 클라이언트 — launchd 환경에서 CLI cold-spawn 대비
+  // 타임아웃 불안정(47~125s, 배치 전체 classified=false 폴백) 문제를 제거한다.
+  // (S3 안정화 2026-06-12: createClaudeCLIClient → @anthropic-ai/sdk 직접 호출 전환)
+  function createSdkLlmClient(_opts?: { timeoutMs?: number }) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    return {
+      async complete({ system, user }: { system: string; user: string }): Promise<string> {
+        const resp = await client.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 8192,
+          ...(system?.trim() ? { system } : {}),
+          messages: [{ role: 'user', content: user }],
+        });
+        return (resp.content as any[])
+          .filter((b: any) => b.type === 'text')
+          .map((b: any) => (b as any).text)
+          .join('');
+      },
+    };
+  }
+
   // Shared helper: Sonnet llmComplete(prompt→string) — l5-core deps { llmComplete } 주입용.
-  function sonnetComplete(timeoutMs = 240_000): (prompt: string) => Promise<string> {
-    const sonnet = createClaudeCLIClient({ model: 'sonnet', timeoutMs });
-    return (p: string) => sonnet.complete({ system: '', user: p });
+  function sonnetComplete(_timeoutMs = 240_000): (prompt: string) => Promise<string> {
+    const sdk = createSdkLlmClient();
+    return (p: string) => sdk.complete({ system: '', user: p });
   }
 
   // Shared helper: 프로젝트의 "주제" 기본값 — 풀링 주제 1순위 → 확정 키 콘텐츠 → 프로젝트 제목.
@@ -2674,6 +2849,35 @@ function registerCmoResource(app: any, db: any) {
           `SELECT * FROM video_room_projects ORDER BY "createdAt" DESC`,
         );
         ctx.body = { ok: true, data: { projects } };
+        await next();
+      },
+
+      // POST /api/cmo:setTigerEnabled  { project_id, enabled }
+      // 호랑이 회고 루프 프로젝트별 토글 — ON이면 파이프라인 완료 시 회고가 돌고,
+      // 발견된 오류/병목이 CTO 개선 제안(승인 게이트)으로 올라간다.
+      setTigerEnabled: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const enabled = v.enabled === true;
+        const rows = await q(`SELECT id FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!rows[0]) ctx.throw(404, `project ${project_id} not found`);
+        await db.sequelize.query(
+          `UPDATE video_room_projects SET tiger_enabled = $1, "updatedAt" = now() WHERE id = $2`,
+          { bind: [enabled, project_id] },
+        );
+        ctx.body = { ok: true, data: { project_id, tiger_enabled: enabled } };
+        await next();
+      },
+
+      // POST /api/cmo:runTigerRetro  { project_id }
+      // 수동 트리거(디버그/재실행용). 멱등 — 이미 제안이 있으면 0건 반환.
+      runTigerRetro: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const created = await runVideoRoomTigerRetro(project_id);
+        ctx.body = { ok: true, data: { project_id, proposals_created: created } };
         await next();
       },
 
@@ -2872,6 +3076,7 @@ function registerCmoResource(app: any, db: any) {
           `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
           { bind: [newStatus, newPage, project_id] },
         );
+        await maybeTigerRetro(project_id, newStatus);
         ctx.body = { ok: true, data: { status: newStatus } };
         await next();
       },
@@ -2924,6 +3129,7 @@ function registerCmoResource(app: any, db: any) {
           `UPDATE video_room_projects SET status = $1, current_page = $2, "updatedAt" = now() WHERE id = $3`,
           { bind: [newStatus, pageForStatus(newStatus), project_id] },
         );
+        await maybeTigerRetro(project_id, newStatus);
         ctx.body = { ok: true, data: { status: newStatus, gate_id: gateId } };
         await next();
       },
@@ -3242,6 +3448,13 @@ function registerCmoResource(app: any, db: any) {
         let advanced_status: string | null = null;
         if (result.overall_status === 'pass') {
           advanced_status = await advanceProjectFrom(project_id, 'qa');
+        } else {
+          // T3: QA fail → 텔레그램 알림 (2026-06-12)
+          const failDetails = Object.entries(checks as Record<string, string>)
+            .filter(([, v]) => v !== 'pass')
+            .map(([k, v]) => `${k}:${v}`)
+            .join(', ');
+          sendRuntimeErrorTelegram('runQA', `QA FAIL — ${failDetails || 'checks failed'}`, project_id).catch(() => {});
         }
 
         ctx.body = { ok: true, data: { qa_result_id, result, status: advanced_status } };
@@ -3611,7 +3824,6 @@ function registerCmoResource(app: any, db: any) {
         const project_id = String(v.project_id ?? '').trim();
         const card_id = String(v.card_id ?? '').trim();
         if (!project_id) ctx.throw(400, 'project_id is required');
-        if (!card_id) ctx.throw(400, 'card_id is required');
 
         let brief: any = v.brief ?? null;
 
@@ -3619,20 +3831,28 @@ function registerCmoResource(app: any, db: any) {
           // 전략패키지→Brief 파이프라인: 승인된 키 콘텐츠(choice) + script_draft(원고/논리블록/도입)
           // 카드를 읽어 CmoVideoStrategyBrief + VoiceMatchedScript + intro_30s를 조립한 뒤
           // buildVideoExecutionBrief(정확한 시그니처)로 brief를 생성한다.
-          const scriptDraft = await loadScriptDraftForBrief(q, project_id, card_id);
-          if (!scriptDraft) {
+          // card_id는 선택적 — 미제공 시 프로젝트 최신 script_draft로 폴백.
+          const scriptDraftResult = await loadScriptDraftForBrief(q, project_id, card_id);
+          if (!scriptDraftResult) {
             ctx.throw(400, 'script_draft 카드가 없습니다. proposeScriptDraft를 먼저 호출하세요.');
           }
+          const { id: foundCardId, data: scriptDraft } = scriptDraftResult;
+          const effectiveCardId = card_id || foundCardId;
 
           const proj = (await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]))[0] ?? {};
-          const strategyBrief = buildStrategyBriefFromCards(scriptDraft, proj, card_id);
+          const strategyBrief = buildStrategyBriefFromCards(scriptDraft, proj, effectiveCardId);
 
-          const fullScript: string =
+          // Q3 안정화(2026-06-12): fullScript / title 빈값 폴백 강화.
+          // buildVideoExecutionBrief는 empty fullScript / title 시 throw → 400으로 이어지던 근본원인.
+          const rawFullScript: string =
             scriptDraft.integrated_script?.full_script ??
             scriptDraft.full_script ??
             (Array.isArray(scriptDraft.logic_blocks)
               ? scriptDraft.logic_blocks.map((b: any) => b.draft ?? '').filter(Boolean).join('\n\n')
               : '');
+          // 최종 폴백: coreMessage(topic)를 원고 자리에 채움. 품질은 저하되지만 brief 생성은 보장.
+          const fullScript: string = rawFullScript.trim() || strategyBrief.core_message || strategyBrief.topic;
+          const title: string = (strategyBrief.topic ?? '').trim() || (proj.title ?? '콘텐츠');
           const intro30s: string =
             scriptDraft.intro_30s?.script ??
             scriptDraft.intro_30s?.first_sentence ??
@@ -3647,21 +3867,25 @@ function registerCmoResource(app: any, db: any) {
 
           try {
             brief = buildVideoExecutionBrief({
-              content_card_id: card_id,
+              content_card_id: effectiveCardId,
               content_type: strategyBrief.content_type,
-              title: strategyBrief.topic,
+              title,
               strategy_brief: strategyBrief,
               voice_matched_script,
               intro_30s: intro30s,
             });
           } catch (err: any) {
-            ctx.throw(400, `buildVideoExecutionBrief 실패: ${err?.message ?? String(err)}`);
+            const msg = `buildVideoExecutionBrief 실패: ${err?.message ?? String(err)}`;
+            sendRuntimeErrorTelegram('generateVideoExecutionBrief', msg, project_id).catch(() => {});
+            ctx.throw(400, msg);
           }
         }
 
         const validation = validateVideoExecutionBrief(brief);
         if (!validation.valid) {
-          ctx.throw(400, `brief 검증 실패: ${(validation.errors ?? []).join(', ')}`);
+          const msg = `brief 검증 실패: ${(validation.errors ?? []).join(', ')}`;
+          sendRuntimeErrorTelegram('generateVideoExecutionBrief', msg, project_id).catch(() => {});
+          ctx.throw(400, msg);
         }
 
         const record_id = randomUUID();
@@ -4013,7 +4237,7 @@ function registerCmoResource(app: any, db: any) {
           );
           const creds = yt.loadCredentials();
           const client = new yt.YouTubeClient(creds);
-          const sonnet = createClaudeCLIClient({ model: 'sonnet', timeoutMs: 240_000 });
+          const sonnet = createSdkLlmClient();
           const llmComplete = (p: string) => sonnet.complete({ system: '', user: p });
 
           // CDP 확장 어댑터(성과도/기여도 등급) — graceful. 실패 시 조회수만으로 진행.
@@ -4033,7 +4257,7 @@ function registerCmoResource(app: any, db: any) {
           }
           const baseDeps = yt.createLiveDiscoveryDeps({
             client,
-            searchMaxResults: 25,
+            searchMaxResults: 50, // P6: 조회수순 50개 — 5만+ 필터 후에도 안정적 풀(런 편차 완화)
             ...(extensionAdapter ? { extensionAdapter } : {}),
           });
 
@@ -4329,8 +4553,8 @@ function registerCmoResource(app: any, db: any) {
           );
           const creds = yt.loadCredentials();
           const client = new yt.YouTubeClient(creds);
-          // 클러스터링은 큰 입력/출력이라 여유 타임아웃(240s에 끊겨 단일주제로 폴백된 실측 버그 방지).
-          const sonnet = createClaudeCLIClient({ model: 'sonnet', timeoutMs: 360_000 });
+          // 클러스터링은 큰 입력/출력이라 여유 타임아웃 → SDK 직접 호출로 타임아웃 이슈 해소(S3).
+          const sonnet = createSdkLlmClient();
           const llmComplete = (pr: string) => sonnet.complete({ system: '', user: pr });
 
           const reportNotes: string[] = [];
@@ -5721,6 +5945,8 @@ function registerCmoResource(app: any, db: any) {
             new_status = null; // 전진 실패는 업로드 성공 응답을 막지 않는다.
           }
         }
+        // 호랑이 회고(베스트에포트) — 업로드 응답을 절대 막지 않는다.
+        await maybeTigerRetro(project_id, new_status ?? projStatus);
 
         ctx.body = {
           ok: true,
@@ -5855,10 +6081,9 @@ function registerCmoResource(app: any, db: any) {
             const creds = yt.loadCredentials();
             const client = new yt.YouTubeClient(creds);
             // Sonnet 분류 함수 주입(모델 고정). classifyDiscoveredVideos를 감싼다.
-            // 타임아웃 240s: launchd 서버 컨텍스트의 claude CLI cold-spawn은 셸보다 훨씬
-            // 느리다(실측 배치 1콜 47~125s). 기본 60s면 양 attempt 모두 타임아웃 →
-            // 배치 10개가 통째로 ambiguous 폴백(classified=false)되던 근본원인. (후속3 2026-06-10)
-            const sonnet = createClaudeCLIClient({ model: 'sonnet', timeoutMs: 240_000 });
+            // SDK 직접 호출로 전환(S3 2026-06-12): CLI cold-spawn 타임아웃(47~125s/call) 제거.
+            // 이전: createClaudeCLIClient(240s) → launchd 환경에서 배치 전체 classified=false 폴백.
+            const sonnet = createSdkLlmClient();
             const classify = (videos: any[], m: 'key' | 'pulling') =>
               classifyDiscoveredVideos(
                 {
@@ -5909,7 +6134,7 @@ function registerCmoResource(app: any, db: any) {
 
             deps = yt.createLiveDiscoveryDeps({
               client,
-              searchMaxResults: 25,
+              searchMaxResults: 50, // P6: 조회수순 50개(런 편차 완화)
               classify,
               ...(extensionAdapter ? { extensionAdapter } : {}),
               ...(viewtrapAdapter ? { viewtrapAdapter } : {}),
@@ -6568,20 +6793,20 @@ async function loadScriptDraftForBrief(
   q: (sql: string, bind: any[]) => Promise<any[]>,
   project_id: string,
   card_id: string,
-): Promise<any | null> {
+): Promise<{ id: string; data: any } | null> {
   let rows = await q(
-    `SELECT data FROM video_room_cards WHERE id = $1 AND video_project_id = $2 AND stage = 'script_draft' ORDER BY "createdAt" DESC LIMIT 1`,
+    `SELECT id, data FROM video_room_cards WHERE id = $1 AND video_project_id = $2 AND stage = 'script_draft' ORDER BY "createdAt" DESC LIMIT 1`,
     [card_id, project_id],
   );
   if (!rows[0]) {
     rows = await q(
-      `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'script_draft' ORDER BY "createdAt" DESC LIMIT 1`,
+      `SELECT id, data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'script_draft' ORDER BY "createdAt" DESC LIMIT 1`,
       [project_id],
     );
   }
   if (!rows[0]) return null;
   const data = rows[0].data;
-  return typeof data === 'string' ? JSON.parse(data) : data;
+  return { id: String(rows[0].id), data: typeof data === 'string' ? JSON.parse(data) : data };
 }
 
 // M4: 프로젝트의 최신 VideoExecutionBrief(payload)를 video_execution_briefs에서 읽는다.
@@ -6813,6 +7038,24 @@ async function sendCycleDoneTelegram(task: any, taskId: string): Promise<void> {
   } catch {
     // Intentionally silent — notification failure must not affect task state.
   }
+}
+
+// T3 런타임 에러 알림 (2026-06-12): 핵심 액션 catch 블록에서 호출.
+// PII 제외 원칙: project_id / action 이름 / error.message 만 전송.
+// 환경변수 미설정 시 silent skip (throw 없음).
+async function sendRuntimeErrorTelegram(action: string, errorMessage: string, projectId?: string): Promise<void> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!botToken || !chatId) return;
+  const pid = projectId ? `\nproject_id: \`${projectId}\`` : '';
+  const text = `🚨 *CMO 런타임 에러*\n\naction: \`${action}\`${pid}\n\n\`\`\`\n${errorMessage.slice(0, 400)}\n\`\`\``;
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown', disable_web_page_preview: true }),
+    });
+  } catch { /* 알림 실패는 silent — 메인 흐름에 영향 없음 */ }
 }
 
 function buildDeterministicLLM(rawText: string) {

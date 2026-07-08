@@ -9,7 +9,7 @@ import SynthesisCard from '@/components/SynthesisCard'
 import RoadmapTimeline from '@/components/RoadmapTimeline'
 import { AgentOutputDetail } from '@/components/AgentOutputDetail'
 import Icon from '@/components/Icon'
-import { api } from '@/lib/api'
+import { api, type CtoPlan } from '@/lib/api'
 import { useBusiness } from '@/lib/business-context'
 import { InboxNavContext, useInboxNav, type InboxTaskRef } from '@/lib/inbox-nav'
 
@@ -80,7 +80,7 @@ type SynthesisPayload = {
 
 type CEOMessage = {
   id: string
-  role: 'founder' | 'ceo' | 'chief_of_staff'
+  role: 'founder' | 'ceo' | 'chief_of_staff' | 'cto'
   text: string
   instructionId?: string
   synthesis?: SynthesisPayload
@@ -93,7 +93,16 @@ type CEOMessage = {
   }
   proposedTasks?: ProposedTask[]
   planStatus?: 'pending' | 'approved' | 'rejected'
+  // @CTO 인라인 스레드 — CTO가 PRD를 phase(roadmap)로 분리해 제안하면 카드로 렌더.
+  ctoMessageId?: string
+  ctoPlan?: CtoPlan | null
+  ctoPlanStatus?: 'proposed' | 'approved' | string | null
+  createdAt?: string
 }
+
+// CEO 채팅에서 CTO를 부르는 멘션. "@CTO PRD내용..." → CTO 플래닝 턴으로 라우팅.
+const CTO_MENTION = /^@cto\b[,:]?\s*/i
+const ctoThreadId = (projectId: string) => `ceo-chat-${projectId}`
 
 // ── Agent chip (monogram square + label) ────────────────────────────────────
 function AgentChip({ agent, showLabel = true }: { agent: string; showLabel?: boolean }) {
@@ -274,6 +283,167 @@ function ProposedTasksPanel({
   )
 }
 
+// ── CTO Plan Card (@CTO PRD → phase 분리 제안 → 승인 시 Claude Code 실행) ────
+function CtoPlanCard({
+  plan,
+  planStatus,
+  ctoMessageId,
+  onApproved,
+}: {
+  plan: CtoPlan
+  planStatus?: string | null
+  ctoMessageId: string
+  onApproved: () => void
+}) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [showPrd, setShowPrd] = useState(false)
+
+  const items = [...(plan.roadmap_items ?? [])].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
+  const tasksBySeq = new Map<number, number>()
+  for (const t of plan.tasks ?? []) {
+    const seq = Number(t.roadmap_sequence ?? 1)
+    tasksBySeq.set(seq, (tasksBySeq.get(seq) ?? 0) + 1)
+  }
+
+  const approve = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      await api.ctoApprovePlan(ctoMessageId)
+      onApproved()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '플랜 승인 실패')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{
+      marginTop: 12,
+      border: '1px solid var(--silver-2)',
+      borderRadius: 8,
+      overflow: 'hidden',
+      background: 'var(--paper-elevated)',
+    }}>
+      <div style={{
+        padding: '8px 13px',
+        borderBottom: '1px solid var(--silver-1)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}>
+        <span className="j-overline">CTO Phase 플랜 · {items.length}단계 / Task {plan.tasks?.length ?? 0}건</span>
+        {plan.project_proposal?.is_new_project && (
+          <span className="j-badge j-badge-ref">새 프로젝트: {plan.project_proposal.suggested_project_title}</span>
+        )}
+      </div>
+
+      {/* PRD (접이식) */}
+      {plan.prd && (
+        <div style={{ borderBottom: '1px solid var(--silver-1)' }}>
+          <button
+            type="button"
+            onClick={() => setShowPrd(v => !v)}
+            style={{
+              width: '100%', textAlign: 'left', background: 'none', border: 'none',
+              padding: '8px 13px', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+              color: 'var(--green-press)', fontFamily: 'inherit',
+            }}
+          >
+            {showPrd ? '▾ PRD 접기' : '▸ PRD 보기'}
+          </button>
+          {showPrd && (
+            <pre style={{
+              margin: 0, padding: '0 13px 12px', fontSize: 12, lineHeight: 1.6,
+              color: 'var(--ink-2)', whiteSpace: 'pre-wrap', fontFamily: 'inherit',
+              maxHeight: 280, overflowY: 'auto',
+            }}>
+              {plan.prd}
+            </pre>
+          )}
+        </div>
+      )}
+
+      {/* Phase rows */}
+      {items.map((it, i) => (
+        <div key={i} style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 11,
+          padding: '10px 13px',
+          borderBottom: i < items.length - 1 ? '1px solid var(--silver-1)' : 'none',
+        }}>
+          <span style={{
+            width: 22, height: 22, borderRadius: 4, flexShrink: 0,
+            background: 'var(--ink-2)', color: '#fff',
+            fontSize: 10.5, fontWeight: 700, fontFamily: 'var(--font-mono)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            P{it.sequence}
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink-1)', lineHeight: 1.3 }}>
+              {it.title}
+            </div>
+            {it.summary && (
+              <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 2, lineHeight: 1.45 }}>
+                {it.summary}
+              </div>
+            )}
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+            task {tasksBySeq.get(it.sequence) ?? 0}건
+          </span>
+        </div>
+      ))}
+
+      {error && (
+        <div style={{ padding: '8px 13px', fontSize: 12, color: 'var(--red)', background: 'var(--red-tint)' }}>
+          {error}
+        </div>
+      )}
+
+      {/* CTA footer */}
+      {planStatus !== 'approved' ? (
+        <div style={{
+          padding: '11px 13px',
+          background: 'var(--paper-surface)',
+          borderTop: '1px solid var(--silver-1)',
+          display: 'flex',
+          gap: 9,
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 12, color: 'var(--ink-3)', flex: 1, minWidth: 140 }}>
+            승인하면 phase 순서대로 CTO가 Claude Code로 개발을 시작합니다.
+          </span>
+          <button onClick={approve} disabled={loading} className="j-btn j-btn-primary j-btn-sm">
+            <Icon name="check" size={13} stroke={2.2} />
+            {loading ? '승인 중…' : '플랜 승인 — 개발 시작'}
+          </button>
+        </div>
+      ) : (
+        <div style={{
+          padding: '10px 13px',
+          background: 'var(--green-tint)',
+          borderTop: '1px solid var(--green-tint-2)',
+          fontSize: 12.5,
+          color: 'var(--green-press)',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+        }}>
+          <Icon name="check" size={14} stroke={2} />
+          승인됨 — phase 순서대로 CTO가 Claude Code 작업을 진행합니다 (진행상황: 인박스/로드맵)
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── High-risk embed card (shown on narrow screens, above message list) ───────
 function ApprovalEmbedCard({ tasks }: { tasks: ProposedTask[] }) {
   const highRisk = tasks.filter(t => t.risk_level === 'D4' || t.risk_level === 'D5')
@@ -385,13 +555,17 @@ function ChatTab({ businessId }: { businessId: string | null }) {
     setLoading(true)
     setError('')
     try {
-      const history = await api.chatHistory(projId)
+      const [history, ctoRows] = await Promise.all([
+        api.chatHistory(projId),
+        api.ctoThreadHistory(ctoThreadId(projId)),
+      ])
       const formatted = history.map(m => {
         const meta = m.metadata ?? {}
         return {
           id: m.id,
           role: m.role,
           text: m.text,
+          createdAt: (m as any).createdAt,
           instructionId: meta.instructionId,
           interpretation: {
             goal: meta.goal,
@@ -410,7 +584,32 @@ function ChatTab({ businessId }: { businessId: string | null }) {
           } : undefined,
         } as CEOMessage
       })
-      setMessages(formatted)
+
+      // @CTO 인라인 스레드 머지 — founder 발화는 일반 버블, cto 발화는 CTO 버블(+플랜 카드).
+      const ctoFormatted: CEOMessage[] = (ctoRows ?? []).map(r => {
+        let plan: CtoPlan | null = null
+        if (r.plan) {
+          try {
+            plan = typeof r.plan === 'string' ? JSON.parse(r.plan) : r.plan
+          } catch { plan = null }
+        }
+        return {
+          id: `cto-${r.id}`,
+          role: r.role === 'cto' ? 'cto' : 'founder',
+          text: r.text,
+          createdAt: r.createdAt,
+          ctoMessageId: r.id,
+          ctoPlan: plan,
+          ctoPlanStatus: r.plan_status ?? null,
+        } as CEOMessage
+      })
+
+      const merged = [...formatted, ...ctoFormatted].sort((a, b) => {
+        const ta = a.createdAt ? Date.parse(a.createdAt) : 0
+        const tb = b.createdAt ? Date.parse(b.createdAt) : 0
+        return ta - tb
+      })
+      setMessages(merged)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '대화 기록 로드 실패')
       setMessages([])
@@ -436,11 +635,53 @@ function ChatTab({ businessId }: { businessId: string | null }) {
     .flatMap(m => m.proposedTasks ?? [])
     .filter(t => t.risk_level === 'D4' || t.risk_level === 'D5')
 
+  // "새 대화" — 이전 대화는 DB에 보관(archived), 화면만 비운다.
+  const startNewChat = async () => {
+    if (!selectedProjectId || loading) return
+    if (!window.confirm('새 대화를 시작할까요? 이전 대화는 보관되어 기록은 유지됩니다.')) return
+    setError('')
+    try {
+      await api.chatArchive(selectedProjectId)
+      setMessages([])
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '새 대화 시작 실패')
+    }
+  }
+
+  // @CTO 멘션 — CTO 플래닝 턴으로 라우팅. PRD를 주면 phase 분리 플랜이 카드로 온다.
+  const sendToCto = async (text: string) => {
+    if (!selectedProjectId) {
+      setError('@CTO 호출은 프로젝트를 먼저 선택해야 합니다.')
+      return
+    }
+    const body = text.replace(CTO_MENTION, '').trim() || text
+    const founderMsg: CEOMessage = { id: Date.now().toString(), role: 'founder', text: body }
+    setMessages(prev => [...prev, founderMsg])
+    setLoading(true)
+    try {
+      await api.ctoPlanMessage(ctoThreadId(selectedProjectId), body, {
+        business_id: businessId,
+        project_id: selectedProjectId,
+      })
+      await fetchHistory(selectedProjectId)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'CTO 호출 실패')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const send = async () => {
     const text = input.trim()
     if (!text || loading) return
     setInput('')
     setError('')
+
+    // @CTO 멘션이면 CEO 해석 대신 CTO 플래닝으로 보낸다.
+    if (CTO_MENTION.test(text)) {
+      await sendToCto(text)
+      return
+    }
 
     const founderMsg: CEOMessage = { id: Date.now().toString(), role: 'founder', text }
     setMessages(prev => [...prev, founderMsg])
@@ -609,6 +850,23 @@ function ChatTab({ businessId }: { businessId: string | null }) {
           )}
         </div>
 
+        {/* Toolbar: 새 대화 (이전 대화는 보관) */}
+        {selectedProjectId && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+            <button
+              type="button"
+              onClick={startNewChat}
+              disabled={loading || messages.length === 0}
+              title="이전 대화를 보관하고 새 대화를 시작합니다"
+              className="j-btn j-btn-ghost j-btn-sm"
+              style={{ gap: 5 }}
+            >
+              <Icon name="refresh" size={13} stroke={1.8} />
+              새 대화
+            </button>
+          </div>
+        )}
+
         {/* Message list */}
         <div className="flex-1 overflow-auto my-3 pr-1" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {messages.length === 0 && (
@@ -620,6 +878,9 @@ function ChatTab({ businessId }: { businessId: string | null }) {
               <div style={{ fontSize: 14 }}>비즈니스 지시를 입력해보세요</div>
               <div style={{ fontSize: 12, marginTop: 6, color: 'var(--ink-4)' }}>
                 예: &quot;PMF 메시지 실험 계획해줘&quot;, &quot;신규 고객 온보딩 프로세스 만들어줘&quot;
+              </div>
+              <div style={{ fontSize: 12, marginTop: 4, color: 'var(--ink-4)' }}>
+                <strong style={{ color: 'var(--ink-3)' }}>@CTO</strong> 로 시작하면 CTO와 직접 대화 — PRD를 주면 phase로 분리해 승인 후 Claude Code로 개발합니다
               </div>
             </div>
           )}
@@ -642,6 +903,33 @@ function ChatTab({ businessId }: { businessId: string | null }) {
                   lineHeight: 1.55,
                 }}>
                   {msg.text}
+                </div>
+              ) : msg.role === 'cto' ? (
+                // CTO bubble — left, ink accent (@CTO 인라인 스레드)
+                <div style={{
+                  maxWidth: '90%',
+                  background: 'var(--paper-surface)',
+                  border: '1px solid var(--silver-2)',
+                  borderLeft: '4px solid var(--ink-2)',
+                  borderRadius: '4px 14px 14px 4px',
+                  padding: '12px 15px',
+                  fontSize: 14,
+                  color: 'var(--ink-1)',
+                  lineHeight: 1.55,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+                    <AgentChip agent="CTO" showLabel={false} />
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-3)' }}>CTO Agent</span>
+                  </div>
+                  <div style={{ fontWeight: 500, whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+                  {msg.ctoPlan && msg.ctoMessageId && (
+                    <CtoPlanCard
+                      plan={msg.ctoPlan}
+                      planStatus={msg.ctoPlanStatus}
+                      ctoMessageId={msg.ctoMessageId}
+                      onApproved={() => selectedProjectId && fetchHistory(selectedProjectId)}
+                    />
+                  )}
                 </div>
               ) : (
                 // CEO bubble — left, paper-surface + 4px green accent bar
@@ -753,7 +1041,7 @@ function ChatTab({ businessId }: { businessId: string | null }) {
               padding: '11px 18px',
               fontSize: 14,
             }}
-            placeholder="비즈니스 지시를 입력하세요…"
+            placeholder="비즈니스 지시를 입력하세요… (@CTO 로 CTO 호출 — PRD를 주면 phase로 분리해 개발합니다)"
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}

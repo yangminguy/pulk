@@ -333,3 +333,105 @@ export async function runTaskArchiverLive() {
   );
 }
 
+
+// ── 영상 일괄 렌더 (video-batch-render) ──────────────────────────────────────
+// 승인 게이트를 모두 통과해 'rendering' 상태로 모인 프로젝트들의 factory 잡을
+// 순차 렌더하고(잡 내부는 Remotion이 CPU 병렬화), 끝나면 텔레그램 요약 알림.
+// 외부 액션(YouTube 업로드 등)은 절대 수행하지 않는다 — 기존 승인 게이트 그대로.
+
+import { spawn } from "node:child_process";
+import { runVideoBatchRender } from "./tasks/video-batch-render.js";
+import type { VideoBatchRenderDeps } from "./tasks/video-batch-render.js";
+import { createTelegramClient } from "./notifier/telegram.js";
+import {
+  fetchRenderingVideoProjects,
+  fetchCmoRenderStatus,
+} from "./api/nocobase-client.js";
+import type { BatchRenderCandidate } from "@l5/core";
+
+const VIDEO_FACTORY_DIR =
+  process.env.VIDEO_FACTORY_DIR ?? "/Users/wonminyang/ai-slide-video-factory";
+// remotion 렌더는 수 분 — 기본 30분 타임아웃.
+const RENDER_TIMEOUT_MS = Number(process.env.VIDEO_RENDER_TIMEOUT_MS ?? 30 * 60 * 1000);
+
+/** factory에서 잡 1건 렌더: `npx tsx scripts/render-final-v2.ts --job <path>` (cwd=factory). */
+function renderFactoryJob(jobPath: string): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const proc = spawn("npx", ["tsx", "scripts/render-final-v2.ts", "--job", jobPath], {
+      cwd: VIDEO_FACTORY_DIR,
+      env: process.env,
+    });
+    let tail = "";
+    const keepTail = (chunk: Buffer) => {
+      tail = (tail + chunk.toString()).slice(-1000);
+    };
+    proc.stdout.on("data", keepTail);
+    proc.stderr.on("data", keepTail);
+
+    const timer = setTimeout(() => {
+      proc.kill("SIGKILL");
+      resolve({ ok: false, error: `render timeout ${RENDER_TIMEOUT_MS}ms` });
+    }, RENDER_TIMEOUT_MS);
+
+    proc.on("error", (err) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: err.message });
+    });
+    proc.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve({ ok: true });
+      else resolve({ ok: false, error: `render exit ${code}: ${tail.slice(-300)}` });
+    });
+  });
+}
+
+export async function runVideoBatchRenderLive() {
+  const projects = await fetchRenderingVideoProjects();
+
+  const deps: VideoBatchRenderDeps = {
+    batchId: new Date().toISOString(),
+
+    fetchCandidates: async (): Promise<BatchRenderCandidate[]> => {
+      const candidates: BatchRenderCandidate[] = [];
+      for (const p of projects) {
+        try {
+          const snap = await fetchCmoRenderStatus(p.id);
+          candidates.push({
+            project_id: p.id,
+            project_title: p.title,
+            project_status: p.status,
+            factory_slug: snap.slug,
+            job_path: snap.job_path,
+            observed_status: (snap.status ?? null) as BatchRenderCandidate["observed_status"],
+          });
+        } catch (err) {
+          // slug 미존재(submitRender 미실행) 등 — 관찰 실패로 기록, 스킵 처리는 l5-core가.
+          console.warn(`[video-batch-render] ${p.id} 상태 조회 실패:`, (err as Error).message);
+          candidates.push({
+            project_id: p.id,
+            project_title: p.title,
+            project_status: p.status,
+            observed_status: null,
+          });
+        }
+      }
+      return candidates;
+    },
+
+    renderJob: (item) => renderFactoryJob(item.job_path),
+
+    reconcile: async (item) => {
+      const snap = await fetchCmoRenderStatus(item.project_id);
+      return {
+        status: (snap.status ?? "not_found") as
+          | "not_found" | "queued" | "rendering" | "completed" | "failed",
+        total_seconds: snap.total_seconds,
+        qa_result: snap.qa_result ?? null,
+      };
+    },
+
+    notify: (msg) => createTelegramClient().send(msg),
+  };
+
+  return runVideoBatchRender(deps);
+}

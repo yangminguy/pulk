@@ -21,7 +21,8 @@ const NAV_TOOLS = [
   { href: '/video-room', label: '영상룸', icon: 'video' },
   { href: '/monitor', label: '현황 모니터', icon: 'activity' },
   { href: '/memory', label: '지식', icon: 'database' },
-  { href: '/control-room', label: 'Control Room', icon: 'sliders' },
+  // Control Room(ACR 시대 대시보드)은 ACR 은퇴로 네비에서 숨김 — CTO 대화는 CEO 채팅 @CTO로.
+  // 페이지 코드는 /control-room에 보존(직접 URL 접근은 가능).
   { href: '/tool-requests', label: 'Tool Requests', icon: 'wrench' },
   { href: '/self-improve', label: '🐯 자가개선', icon: 'refresh' },
   { href: '/incidents', label: '🔔 장애 감시', icon: 'activity' },

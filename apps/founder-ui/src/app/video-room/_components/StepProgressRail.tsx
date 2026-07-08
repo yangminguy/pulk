@@ -4,6 +4,11 @@ import { api } from '@/lib/api'
 import { PHASES, STATUS_LABEL, phaseState, statusOrder, type PhaseKey } from '../_lib/phases'
 import { PHASE_TO_PAGE } from './PhaseTimeline'
 
+// 레일에서 숨길 상태 — viewtrap_key_research는 보고서 흐름에서 실작업 없이 자동 통과되는
+// 구 수동 플로우 잔재라, 사장님 눈에 '기획서 → 승인'으로 보이도록 레일에서만 접는다.
+// (state-machine.ts 흐름·statusOrder는 유지 → 기존 프로젝트/게이팅 로직 불변. 2026-06-12)
+const RAIL_HIDDEN_STATUSES = new Set<string>(['viewtrap_key_research'])
+
 type StageGuides = Record<string, { label: string; focus: string }>
 
 function PhaseIcon({ state }: { state: 'done' | 'active' | 'pending' }) {
@@ -149,7 +154,7 @@ export default function StepProgressRail({
                   borderLeft: '1.5px solid var(--silver-2)',
                   paddingLeft: 16,
                 }}>
-                  {phase.statuses.map(status => {
+                  {phase.statuses.filter(status => !RAIL_HIDDEN_STATUSES.has(status)).map(status => {
                     const sOrder = statusOrder(status)
                     const curOrder = statusOrder(currentStatus)
                     const statusState: 'done' | 'current' | 'pending' =

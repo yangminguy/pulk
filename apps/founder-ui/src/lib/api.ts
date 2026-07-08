@@ -500,6 +500,17 @@ export type RoadmapProgressResult = { items: RoadmapProgressItem[]; summary: Roa
 
 export type CtoPlanMessageResult = { reply: string; plan: CtoPlan | null; cto_message_id: string }
 
+// CEO 채팅 인라인 CTO 스레드 row (cto_planning_messages REST list).
+export type CtoPlanningMessageItem = {
+  id: string
+  thread_id: string
+  role: 'founder' | 'cto' | string
+  text: string
+  plan?: CtoPlan | string | null
+  plan_status?: 'proposed' | 'approved' | string | null
+  createdAt?: string
+}
+
 // CMO conversational marketing planning.
 export type CmoMarketingPlan = {
   decision: string
@@ -891,6 +902,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ project_id }),
     }).then(r => unwrap(r)) as Promise<{ status: string; gate_id: string }>,
+
+  // 호랑이 회고 루프 프로젝트별 토글 — ON이면 파이프라인 완료 시 오류/병목 회고가 돌고
+  // CTO 개선 제안(🐯 자가개선 승인 게이트)으로 올라간다.
+  cmoSetTigerEnabled: (project_id: string, enabled: boolean) =>
+    request<{ data: { ok: boolean; data: { project_id: string; tiger_enabled: boolean } } }>('/api/cmo:setTigerEnabled', {
+      method: 'POST',
+      body: JSON.stringify({ project_id, enabled }),
+    }).then(r => unwrap(r)) as Promise<{ project_id: string; tiger_enabled: boolean }>,
+
+  // 호랑이 회고 수동 트리거(멱등 — 이미 제안이 있으면 0건).
+  cmoRunTigerRetro: (project_id: string) =>
+    request<{ data: { ok: boolean; data: { project_id: string; proposals_created: number } } }>('/api/cmo:runTigerRetro', {
+      method: 'POST',
+      body: JSON.stringify({ project_id }),
+    }).then(r => unwrap(r)) as Promise<{ project_id: string; proposals_created: number }>,
 
   cmoSaveCard: (input: CmoSaveCardInput) =>
     request<{ data: { ok: boolean; data: { card_id: string } } }>('/api/cmo:saveCard', {
@@ -1526,6 +1552,21 @@ export const api = {
     )
       .then(r => unwrap(r) as ChatMessageItem[])
       .catch(() => [] as ChatMessageItem[]),
+
+  // "새 대화" — 이전 대화를 보관(archived=true)하고 빈 화면으로 시작. 기록은 영속 보존.
+  chatArchive: (projectId: string) =>
+    request<{ data: { ok: boolean; data: { archived: boolean } } }>('/api/chat:archive', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId }),
+    }).then(r => unwrap(r)),
+
+  // CEO 채팅 인라인 CTO 스레드(ceo-chat-<projectId>)의 메시지 이력.
+  ctoThreadHistory: (threadId: string) =>
+    request<{ data: CtoPlanningMessageItem[] }>(
+      `/api/cto_planning_messages:list?paginate=false&filter[thread_id]=${encodeURIComponent(threadId)}&sort=createdAt`
+    )
+      .then(r => (r.data ?? []) as CtoPlanningMessageItem[])
+      .catch(() => [] as CtoPlanningMessageItem[]),
 
   getProjectRoadmapEvents: (projectId: string) =>
     request<{ data: ProjectRoadmapEventItem[] }>(

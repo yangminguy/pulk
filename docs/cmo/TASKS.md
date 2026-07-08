@@ -3,6 +3,21 @@
 > 라우터 = [CLAUDE.md](./CLAUDE.md) · 현재 상태 = [HANDOFF.md](./HANDOFF.md).
 > 범례: `[x]` 완료·검증 · `[~]` 부분/검증 필요 · `[ ]` 미착수.
 
+## ✅ 안정성 개선 완료 (2026-06-12)
+
+- [x] **S3** Sonnet 분류 CLI → Anthropic SDK 직접 호출 전환 (4곳, launchd cold-spawn 제거)
+- [x] **S1** 상태머신 단일화 검증 (state-machine.ts 이미 완전 구현 확인)
+- [x] **Q3** generateVideoExecutionBrief 400 폴백 강화 (fullScript/title 빈값 처리)
+- [x] **T3** 런타임 에러 텔레그램 알림 (sendRuntimeErrorTelegram + QA fail 알림)
+- [x] Tiger 진행 중 프로젝트 2개 활성화
+
+## 📋 다음 안정성 개선 작업 (ACR Work Order)
+
+- [ ] **S2** CDP RPC 세션 자동 재연결 강화 (viewtrap WebSocket close → reconnect 1회)
+- [ ] **S4** rebuild-plugin.mjs 스크립트 정규화 (src→build→launchctl 자동화)
+- [ ] **Q1** Viewtrap Skill → 키 콘텐츠 파이프라인 내부 통합 (C3, PRD Phase 3)
+- [ ] **Q4** 말투 변환 Voice Style Agent 구현 (l5-core/cmo-strategy/voice-style.ts 신규)
+
 ## 🎯 다음 마일스톤 — 발굴 자동화 배선 (M1~M3)
 
 오늘 실증한 YouTube/Viewtrap 발굴을 키/풀링 기획에 실제 연결. 가장 우선.
@@ -54,6 +69,12 @@
   - 검증: 회귀 68 suites/865 tests 0실패 · tsc 0 · `next build` 0 · dist node --check OK. **활성화 = NocoBase 재기동(dev 프로세스)** → 라이브 HTTP/Playwright smoke 후속.
 
 ## 🎬 영상 산출 마감 (M4)
+
+- [x] **M4+. 영상 일괄 렌더 + 텔레그램 알림** *(2026-06-12 코드 완료 · launchd 라이브)*
+  - 도메인 = `l5-core/video-room/batch-render.ts`(`planBatchRender`/`summarizeBatchRender`, jest 13) · 오케스트레이터 = hermes `tasks/video-batch-render.ts`(jest 6) + `runVideoBatchRenderLive`(runner.ts) + nocobase-client 2함수.
+  - 데몬 = `services/hermes-runtime/scripts/video-batch-render-daemon.mjs`(--once/5분 폴링) + `launchd/com.l5.video-batch-render.plist`. 잡 단위 **순차** 렌더(Remotion 내부 병렬 — 동시 N프로세스 비채택).
+  - [x] **launchd 등록 완료**(2026-06-12, PID 7874): `~/Library/LaunchAgents/com.l5.video-batch-render.plist`에 NOCOBASE_TOKEN/TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID 주입(PlistBuddy). 첫 사이클 로그 `~/.l5/video-batch-render/daemon.out.log` "렌더 대상 없음" (rendering 0건이라 텔레그램 0스팸 정책 작동). 폴링 5분 간격.
+  - [ ] 후속: 실 'rendering' 프로젝트 도달 시 텔레그램 요약 1건 수신 확인.
 
 - [x] **M4. 영상 제작 파이프라인 잔여** (2026-06-10): 도메인 = `l5-core/video-room/render-pipeline.ts`(신규).
   - brief 직접참조 슬라이드덱(`buildSlideDeckSpecFromBrief`) → factory 렌더 잡(`buildFactoryJobFromSlideDeck`→transport.submitJob, jobs/ 인박스) → 파일 기반 상태 폴링(transport `getRenderJobStatus` facts + `deriveRenderJobStatus`/`reconcileRenderJob`) → 산출물 QA(`evaluateRenderArtifacts`: 파일·길이·해상도·메타) → 업로드 **초안만**(`buildYoutubeUploadDraftFromBrief`, private/pending — 실제 업로드 절대 없음).
@@ -120,3 +141,8 @@
 
 - [x] R1 풀링 v3 · [x] R4 콘텐츠 제작 · [x] R6 실 factory 전달 · [x] R7 재학습 코드 · 전체 E2E 19/19.
 - [x] YouTube/Viewtrap 발굴 **실증** + API 키·OAuth refresh_token 발급(2026-06-10).
+
+## CMO 인사이트 루프 (2026-06-12 라이브)
+
+- [x] `services/cmo-insight-loop/` 구축 — 매일 21시 유튜브 후킹 분석 5개→텔레그램 HTML, 일요일 22시 세컨 브레인(Supabase) 동기화. Cowork 스케줄 태스크 2종.
+- [ ] followup: (1) 사장님 피드백 1주 누적 후 guidelines.md 기준 정교화 (2) 키워드 셋 튜닝(config.json) (3) viewtrap 핫비디오 소스 통합 검토.

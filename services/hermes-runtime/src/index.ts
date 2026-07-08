@@ -44,7 +44,15 @@ export {
   runStalledTaskDetectorLive,
   runCTOPhaseReviewLive,
   syncD3AutoApprovals,
+  runVideoBatchRenderLive,
 } from "./runner.js";
+
+export { runVideoBatchRender } from "./tasks/video-batch-render.js";
+export type {
+  VideoBatchRenderDeps,
+  VideoBatchRenderResult,
+  ReconcileOutcome,
+} from "./tasks/video-batch-render.js";
 
 export { fetchAgentTasks, createAgentTask, updateAgentTask, saveFounderMemory, fetchFounderMemories } from "./api/nocobase-client.js";
 export type { FounderMemoryEntry } from "./api/nocobase-client.js";

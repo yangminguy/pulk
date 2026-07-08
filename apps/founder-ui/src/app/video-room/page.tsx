@@ -21,6 +21,7 @@ function VideoRoomContent() {
   const [deciding, setDeciding] = useState<string | null>(null)
   // 승인중심 전환: 챗은 보조 → 기본 접힘. 메인은 좌 레일 + 중 카드 + 승인.
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [tigerBusy, setTigerBusy] = useState(false)
 
   const loadDetail = useCallback(async (id: string, initPage?: boolean) => {
     setLoadingDetail(true)
@@ -53,6 +54,20 @@ function VideoRoomContent() {
       // ignore
     } finally {
       setDeciding(null)
+    }
+  }
+
+  // 호랑이 회고 루프 토글 — ON이면 파이프라인 완료 시 오류/병목 회고 → CTO 개선 제안.
+  const handleToggleTiger = async (next: boolean) => {
+    if (!projectId) return
+    setTigerBusy(true)
+    try {
+      await api.cmoSetTigerEnabled(projectId, next)
+      await loadDetail(projectId)
+    } catch {
+      // ignore — 다음 로드에서 실제 상태로 복원
+    } finally {
+      setTigerBusy(false)
     }
   }
 
@@ -123,7 +138,12 @@ function VideoRoomContent() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 56px)', background: 'var(--bg)' }}>
       {/* Header */}
-      <VideoRoomHeader project={project} gates={gates} />
+      <VideoRoomHeader
+        project={project}
+        gates={gates}
+        tigerBusy={tigerBusy}
+        onToggleTiger={handleToggleTiger}
+      />
 
       {/* Body: left rail + main board + right drawer */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>

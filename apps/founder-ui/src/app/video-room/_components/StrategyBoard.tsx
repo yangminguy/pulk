@@ -168,7 +168,9 @@ export default function StrategyBoard({
         </div>
       )}
 
-      {/* Viewtrap 수동 입력 폼 — 리서치 단계 게이팅 */}
+      {/* Viewtrap 수동 입력 폼 — 구 수동 키콘텐츠 플로우 전용. 보고서 흐름(key_content_report 카드 존재)에선 숨김.
+          키 콘텐츠는 YouTube 성과도/기여도 크롤 기반이라 수동 viewtrap 입력이 불필요(2026-06-12 사장님 확정). */}
+      {!cards.some(c => c.stage === 'key_content_report') && (
       <div style={{ marginTop: 16 }}>
         <StageGate title="Viewtrap 리서치 수동 입력" state={blockState({ from: 'key_content_ideation', to: 'hook_draft_approval' }, currentStatus)}>
           <div style={{
@@ -226,6 +228,7 @@ export default function StrategyBoard({
           </div>
         </StageGate>
       </div>
+      )}
     </div>
   )
 }

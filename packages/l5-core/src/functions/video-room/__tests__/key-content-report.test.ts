@@ -58,14 +58,20 @@ describe('decideVerdict', () => {
   it('평균 조회수 낮으면 제외', () => {
     expect(decideVerdict({ ...strong, avgViews: 3_000 }, '높음', '높음').verdict).toBe('제외');
   });
-  it('롱폼 비중 낮으면 제외', () => {
-    expect(decideVerdict({ ...strong, longformRatio: 0.1 }, '높음', '높음').verdict).toBe('제외');
+  it('롱폼 비중 낮아도 형식으로 제외하지 않는다 (쇼츠 우세 + 수요·타깃 충족 → 진행 추천)', () => {
+    // 회귀 가드: 고수요·고적합인 쇼츠 우세 키워드(예: 카페 마케팅 아이디어)를 형식만으로 버리면 안 됨.
+    const v = decideVerdict({ ...strong, longformRatio: 0.1, shortsRatio: 0.9 }, '높음', '높음');
+    expect(v.verdict).toBe('진행 추천');
+    expect(v.reason).toContain('쇼츠 우세');
   });
   it('타깃 적합 낮으면 제외', () => {
     expect(decideVerdict(strong, '낮음', '높음').verdict).toBe('제외');
   });
   it('강한 시장성 + 타깃 높음 → 진행 추천', () => {
     expect(decideVerdict(strong, '높음', '높음').verdict).toBe('진행 추천');
+  });
+  it('영상 수가 적어도(≥3) 수요·타깃 충족이면 진행 추천 (소표본 강한 키워드)', () => {
+    expect(decideVerdict({ ...strong, videoCount: 3 }, '높음', '높음').verdict).toBe('진행 추천');
   });
   it('판매연결 낮으면 진행 추천이 아니라 보류', () => {
     expect(decideVerdict(strong, '높음', '낮음').verdict).toBe('보류');
@@ -76,8 +82,11 @@ describe('decideVerdict', () => {
 });
 
 describe('isQualifiedCandidate', () => {
-  it('쇼츠는 탈락', () => {
-    expect(isQualifiedCandidate(vid('a', 100_000, { 성과도: 'Great' }), dur('a', true, ''))).toBe(false);
+  it('쇼츠는 성과도/기여도 Good+ 면 통과 (상품이 쇼츠도 확장 채널)', () => {
+    expect(isQualifiedCandidate(vid('a', 100_000, { 성과도: 'Great' }), dur('a', true, ''))).toBe(true);
+  });
+  it('쇼츠는 등급이 없으면 탈락 (품질 보증 불가)', () => {
+    expect(isQualifiedCandidate(vid('a', 100_000), dur('a', true, ''))).toBe(false);
   });
   it('5만 미만은 탈락', () => {
     expect(isQualifiedCandidate(vid('a', 40_000, { 성과도: 'Great' }), dur('a', false, ''))).toBe(false);
