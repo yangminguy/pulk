@@ -135,3 +135,31 @@ describe('createLiveDiscoveryDeps — scrapeMetrics 조립', () => {
     });
   });
 });
+
+describe('createLiveDiscoveryDeps — searchVideos 정렬/윈도우(P6 크롤 안정화)', () => {
+  function spyClient(): { client: YouTubeClient; calls: Array<{ q: string; opts: any }> } {
+    const calls: Array<{ q: string; opts: any }> = [];
+    const client = {
+      searchVideos: async (q: string, opts: any) => { calls.push({ q, opts }); return []; },
+      getVideoStats: async () => [],
+    } as unknown as YouTubeClient;
+    return { client, calls };
+  }
+
+  it('기본 발굴은 order=viewCount · maxResults=50으로 검색한다(런 편차 완화)', async () => {
+    const { client, calls } = spyClient();
+    const deps = createLiveDiscoveryDeps({ client });
+    await deps.searchVideos('카페 마케팅 아이디어');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].opts.order).toBe('viewCount');
+    expect(calls[0].opts.maxResults).toBe(50);
+  });
+
+  it('searchOrder/searchMaxResults 오버라이드를 존중한다', async () => {
+    const { client, calls } = spyClient();
+    const deps = createLiveDiscoveryDeps({ client, searchOrder: 'relevance', searchMaxResults: 10 });
+    await deps.searchVideos('x');
+    expect(calls[0].opts.order).toBe('relevance');
+    expect(calls[0].opts.maxResults).toBe(10);
+  });
+});

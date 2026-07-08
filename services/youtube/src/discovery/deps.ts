@@ -73,8 +73,14 @@ export interface LiveDiscoveryDeps {
 
 export interface CreateLiveDiscoveryDepsOptions {
   client: YouTubeClient;
-  /** 검색 옵션(maxResults 등). 기본 maxResults=25. */
+  /** 검색 옵션(maxResults 등). 기본 maxResults=50(5만+ 필터 후에도 충분한 풀 확보). */
   searchMaxResults?: number;
+  /**
+   * 발굴 검색 정렬. 기본 'viewCount' — 상위 고조회 영상을 안정적으로 확보한다.
+   * 'relevance'(YouTube 기본)는 최신·저조회 영상이 섞여 키워드당 5만+ 통과 수가
+   * 런마다 크게 출렁이는 원인이었다(같은 키워드 9↔2). 2026-06-12 P6.
+   */
+  searchOrder?: 'relevance' | 'viewCount' | 'date' | 'rating';
   /**
    * 2단계: YouTube 검색결과 확장(deepWalk) per-video 지표 어댑터(옵션).
    * 주입되면 scrapeMetrics의 1차 소스가 된다 — 영상별 기여도/성과도/노출확률을
@@ -134,7 +140,9 @@ export function createLiveDiscoveryDeps(
   const deps: LiveDiscoveryDeps = {
     async searchVideos(query: string): Promise<DiscoverySearchResultMirror[]> {
       const results = await client.searchVideos(query, {
-        maxResults: options.searchMaxResults ?? 25,
+        maxResults: options.searchMaxResults ?? 50,
+        // 조회수순 발굴 — relevance 기본은 런 편차의 주원인(P6). 상위 고조회 안정 확보.
+        order: options.searchOrder ?? 'viewCount',
       });
       return results.map((r) => ({
         videoId: r.videoId,
