@@ -44,6 +44,25 @@ export interface ExecutorConfig {
   claudeBin?: string;
 }
 
+// Anthropic의 분당 burst 한도(시간당 잔여와 별개)에 걸리면 claude CLI는 stdout에
+// 짧은 안내 문자열만 뱉고 종료한다. 그 텍스트가 그대로 텔레그램으로 전달되면
+// 사장님이 의미 없는 알림을 반복해서 받게 되므로 — 게이트웨이가 직접 감지하고
+// 백오프 재시도로 흡수한다. 정상 답변에 우연히 'rate limit' 단어가 섞이는 경우와
+// 구분하려고 "짧은 stdout 안에서만" 매칭한다.
+const RATE_LIMIT_RE =
+  /rate[-_ ]?limit(ing|ed|er)?|overloaded_error|429 too many requests|provider is rate-limit/i;
+
+export function looksRateLimited(stdout: string, stderr: string): boolean {
+  const out = (stdout ?? '').trim();
+  if (out && RATE_LIMIT_RE.test(out) && out.length < 400) return true;
+  if (RATE_LIMIT_RE.test(stderr ?? '')) return true;
+  return false;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export interface ExecutorResult {
   /** Final assistant text (sent to Telegram). */
   reply: string;
@@ -86,6 +105,44 @@ async function collectFiles(deliverDir: string): Promise<string[]> {
   }
 }
 
+// Spawn one headless `claude -p` run. Pure side-effect: returns stdout/stderr/exit.
+async function spawnOnce(
+  args: string[],
+  bin: string,
+  cwd: string,
+  timeoutMs: number,
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  let stdout = '';
+  let stderr = '';
+  const exitCode = await new Promise<number>((resolve) => {
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(bin, args, { cwd, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch {
+      resolve(1);
+      return;
+    }
+    let settled = false;
+    const finish = (code: number) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(code);
+    };
+    const timer = setTimeout(() => {
+      try { child.kill('SIGTERM'); } catch { /* ignore */ }
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* ignore */ } }, 5000);
+      finish(124);
+    }, timeoutMs);
+
+    child.stdout?.on('data', (d) => { stdout += d.toString(); });
+    child.stderr?.on('data', (d) => { stderr += d.toString(); });
+    child.on('close', (code) => finish(code ?? 1));
+    child.on('error', () => finish(1));
+  });
+  return { stdout, stderr, exitCode };
+}
+
 export async function runExecutive(
   exec: ExecutiveDef,
   instruction: string,
@@ -102,42 +159,38 @@ export async function runExecutive(
     : [];
   const args = ['-p', prompt, '--model', cfg.model, ...mcpArgs, ...cfg.extraArgs];
 
+  const maxRetries = Math.max(0, Number(process.env.TELEGRAM_RATE_LIMIT_RETRIES ?? 3));
+  const retryWaitMs = Math.max(0, Number(process.env.TELEGRAM_RATE_LIMIT_WAIT_MS ?? 60_000));
+
   let stdout = '';
   let stderr = '';
-  const exitCode = await new Promise<number>((resolve) => {
-    let child: ReturnType<typeof spawn>;
-    try {
-      child = spawn(bin, args, {
-        cwd: cfg.repoRoot,
-        shell: false,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-    } catch {
-      resolve(1);
-      return;
-    }
-    let settled = false;
-    const finish = (code: number) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(code);
-    };
-    const timer = setTimeout(() => {
-      try { child.kill('SIGTERM'); } catch { /* ignore */ }
-      setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* ignore */ } }, 5000);
-      finish(124);
-    }, cfg.timeoutMs);
+  let exitCode = 1;
+  let rateLimited = false;
 
-    child.stdout?.on('data', (d) => { stdout += d.toString(); });
-    child.stderr?.on('data', (d) => { stderr += d.toString(); });
-    child.on('close', (code) => finish(code ?? 1));
-    child.on('error', () => finish(1));
-  });
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const r = await spawnOnce(args, bin, cfg.repoRoot, cfg.timeoutMs);
+    stdout = r.stdout;
+    stderr = r.stderr;
+    exitCode = r.exitCode;
+    rateLimited = looksRateLimited(stdout, stderr);
+    if (!rateLimited) break;
+    if (attempt < maxRetries) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[${new Date().toISOString()}] rate-limited (${exec.id} ${runId}) — retry ${attempt + 1}/${maxRetries} in ${Math.round(retryWaitMs / 1000)}s`,
+      );
+      await sleep(retryWaitMs);
+    }
+  }
 
   const files = await collectFiles(deliverDir);
   let reply = stdout.trim();
-  if (!reply) {
+  if (rateLimited) {
+    // 모든 재시도가 burst 한도에 걸렸음 — 사장님께는 한 번만 짧게 안내한다.
+    reply =
+      `⏳ ${exec.label} 작업이 Anthropic 분당 burst 한도에 반복해서 걸렸습니다 (${maxRetries + 1}회 시도). ` +
+      `잠시 후 다시 한 번 메시지를 보내주세요. 작업은 수행되지 않았습니다.`;
+  } else if (!reply) {
     reply =
       exitCode === 124
         ? `${exec.label} 작업이 시간 초과로 중단됐습니다.`
