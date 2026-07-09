@@ -45,7 +45,24 @@
   "경계 버그 없음" 판정. MUST-FIX 1건(§1 표의 델타 함수 인자 표기 → snapshot으로 교정),
   NICE 1건(AC-2 인자 서술을 `toHaveBeenCalledWith(start, end)` 기준으로 명확화) — 둘 다 반영 완료.
 
-## 다음 phase(test/구현)에서 할 것
+## test phase (2026-07-09) — 완료 (red)
+
+- 산출물: `services/hermes-runtime/src/tasks/__tests__/weekly-executive-brief.test.ts` (신규, 유일한 변경).
+- spec §6 AC-1~AC-4 커버: AC-1 창 계산 5케이스(①월09:00/②수요일/③월00:00정각/④7일 길이/결정성),
+  AC-2 파이프라인 4케이스(fetch 2회 인자순서·delta(cur,prev)·format(curSummaries,delta)·send 1회),
+  AC-3 dry-run(`발송 준비 완료` 로그+sent:false/dryRun:true), AC-4 fail-closed 2케이스.
+- **red 확인**: `pnpm test -- weekly-executive-brief` →
+  `TS2307: Cannot find module '../weekly-executive-brief.js'` — 구현 phase가 모듈 생성 시 해소.
+- QA 1회전 (codex 사용량 한도 지속 → agy 대체): MUST-FIX 0, NICE 1(③ 케이스 단언 확장) — 반영 완료.
+  날짜 픽스처(2026-07-13 월 등) 실제 달력 일치 판정.
+- 설계 결정: `@l5/core` 타입(`ExecutiveBriefAgentSummary` 등)이 아직 미구현이라 테스트는
+  로컬 구조적 픽스처 + `as unknown as WeeklyExecutiveBriefDeps` 캐스트로 형제 미구현과 디커플링.
+  red 실패 원인이 오직 "태스크 모듈 부재" 하나로 귀속되도록 함.
+- 환경 함정: 이 worktree는 `NODE_ENV=production`이 셸에 설정돼 있어 pnpm install이
+  devDependencies(jest)를 스킵함 → **`NODE_ENV=development corepack pnpm install`/`test` 필요**.
+- 커밋 안 함(acceptance 준수) — untracked 1파일 상태로 다음 phase에 인계.
+
+## 다음 phase(구현)에서 할 것
 
 1. 구현 순서 의존: `@l5/core` export 3종(집계 d0c45403 / 델타 34246ece / 포맷터 2058b1fd)
    구현 이후 runner 배선 가능. 순수 부분(창 계산+파이프라인)은 먼저 test/red 가능.
