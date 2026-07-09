@@ -36,6 +36,10 @@ export function cleanInstruction(rawText: string, botUserId: string): string {
     const re = new RegExp(`<@${escapeRe(botUserId)}(\\|[^>]+)?>`, 'g');
     t = t.replace(re, ' ');
   }
+  // Slack appends a "sent via <app>" trailer when a user posts through a
+  // connected app (e.g. the Founder sending via Claude). It is not part of the
+  // instruction and breaks the exact-match approval classifier — strip it.
+  t = t.replace(/\*?(다음을 사용하여 보냄|sent via)\*?\s*<@[A-Z0-9]+(\|[^>]+)?>\s*$/i, ' ');
   return t.replace(/\s+/g, ' ').trim();
 }
 

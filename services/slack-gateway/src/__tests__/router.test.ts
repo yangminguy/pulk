@@ -31,6 +31,11 @@ describe('cleanInstruction', () => {
     // @ts-expect-error testing runtime guard
     expect(cleanInstruction(null, BOT)).toBe('');
   });
+
+  it('strips the Slack "sent via app" trailer (Korean and English)', () => {
+    expect(cleanInstruction(`<@${BOT}> 승인\n*다음을 사용하여 보냄* <@U0B1HP588D9|Claude>`, BOT)).toBe('승인');
+    expect(cleanInstruction(`<@${BOT}> approve\nsent via <@U0B1HP588D9>`, BOT)).toBe('approve');
+  });
 });
 
 describe('wantsFiles', () => {

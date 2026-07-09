@@ -5,8 +5,8 @@
 
 ## 🔗 Notion 동기화 (2026-07-08)
 
-- [~] **CtoPlan(agent_tasks) ↔ Notion 양방향 동기화** — `l5-core/notion-sync`(순수, jest 16) + `services/notion-gateway`(raw-fetch, jest 3) + `agent_tasks.notion_page_id` 컬럼. 무료(워커 미사용, API 폴링). 코드·단위검증 완료. **라이브 E2E는 사장님 토큰/DB 준비 후** (`services/notion-gateway/README.md`).
-- [~] **Slack CTO 기획 → PRD저장소 → 태스크 실행 추적 루프** (2026-07-08) — ① Slack `@CTO` 구조화 기획/승인 브리지(`slack-gateway`: classifyCtoIntent+PulkClient+cto-planning-bridge, jest 21) ② PRD저장소 어댑터(`l5-core/notion-prd-sync` 순수 매핑 + `notion-gateway/prd-sync.ts`, `NOTION_PRD_DATABASE_ID`) ③ `cto_planning_messages.instruction_id/notion_prd_page_id` 컬럼(src+dist) ④ 태스크 Notion 메타데이터 9종 확장(스키마 존재 시만) ⑤ 스모크 3종. 단위검증 GREEN(core 35/notion 7/slack 21 + typecheck 0). **라이브는 NocoBase 재기동 + PRD DB id + Slack 실호출 필요** (READMEs 참조).
+- [x] **CtoPlan(agent_tasks) ↔ Notion 양방향 동기화** — `l5-core/notion-sync`(순수, jest 16) + `services/notion-gateway`(raw-fetch, jest 3) + `agent_tasks.notion_page_id` 컬럼. 무료(워커 미사용, API 폴링). **2026-07-09 라이브 전환**: launchd `com.l5.notion-gateway` 상시 폴링 데몬(60s), 태스크 생성/상태 반영 실측.
+- [x] **Slack CTO 기획 → PRD저장소 → 태스크 실행 추적 루프** (2026-07-08 코드 → **2026-07-09 라이브 E2E 완료**) — ① Slack `@CTO` 구조화 기획/승인 브리지(`slack-gateway`: classifyCtoIntent+PulkClient+cto-planning-bridge, jest 22) ② PRD저장소 어댑터(`l5-core/notion-prd-sync` + `notion-gateway/prd-sync.ts`, `NOTION_PRD_DATABASE_ID` 설정 완료) ③ `cto_planning_messages.instruction_id/notion_prd_page_id` 컬럼 실기록 확인 ④ 태스크 Notion 메타(`Pulk PRD`/`Pulk Updated` 컬럼 라이브) ⑤ 실 Slack 왕복: `#exec-cto` 기획→승인→태스크 생성→PRD저장소/워크플로우 로그 자동 투영→ACR 실행 레일 claim까지 검증. Slack "sent via" 트레일러 오분류 버그 수정(`router.ts`, 커밋 대기).
 
 ## 🗺️ CMO 콘텐츠 시스템 — 앞으로 작업 로드맵 (2026-06-09 기준, 트랙 B)
 

@@ -1,6 +1,21 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-07-08 (Slack CTO 기획 → Notion PRD저장소 → 태스크 실행 추적 루프 완성)
+최종 업데이트: 2026-07-09 (Slack CTO 기획 루프 **라이브 전환 완료** — 전 구간 실왕복 검증)
+
+## 🟢 2026-07-09 — Slack CTO 기획 루프 라이브 전환 (실 Slack 왕복 + 실행 레일까지 E2E 검증)
+
+이전 세션의 "라이브 미검증" 3항목을 전부 실행·검증 완료. 루프 전 구간이 상시 운영 중.
+
+**수행·검증한 것 (전부 이 세션 실측)**:
+- ① **기획 스모크** — NocoBase는 이미 커밋 후 재기동돼 있었음(21:49). `cto-planning-smoke.mjs`(+`--approve`) PASS: planMessage가 plan(roadmap 1/tasks 2) 제안, approvePlan이 roadmap+tasks 생성, `cto_planning_messages.instruction_id` 실기록(새 DDL 동작 확인).
+- ② **PRD저장소 연결** — Notion search로 "PRD저장소" DB id(`39737e66cadf80828282dce9644e1f51`) 발견 → `.env.local`에 `NOTION_PRD_DATABASE_ID` 추가. PRD저장소에 pulk 관리 프로퍼티 4종(Pulk Status select/Thread/Message ID/Updated) API로 생성(스키마 어댑터가 자동 인식). 코딩 워크플로우 로그에도 `Pulk PRD`/`Pulk Updated` 추가 → 태스크 row에 소스 PRD page id 기록 확인. `prd-smoke.mjs` PASS(생성 후 재실행 시 updated만 — idempotent). **launchd `com.l5.notion-gateway` 신설**(60s 폴링 데몬, RunAtLoad+KeepAlive, 시크릿은 홈 plist 주입) — 상시 라이브.
+- ③ **실 Slack 왕복** — `#exec-cto`에서 `@CTO "…PRD 만들어줘"` → plan 제안 스레드 회신 → "승인" → plan 승인+새 프로젝트(project 3)+roadmap 1/tasks 2 생성 → notion-gateway 데몬이 **자동으로** PRD저장소에 페이지 생성(Pulk Status=approved, Pulk Thread=`slack-C0BFR510WLB-…`), 태스크 2개 코딩 워크플로우 로그 투영(+Pulk PRD 링크). 실행 레일도 확인: task-dispatcher가 실행 플랜(4/7 phases) 생성 → acr-phase-runner가 claim해 codex/claude-code로 실행 시작(running→In Progress로 Notion 반영).
+- **버그 수정** — Slack이 앱 경유 발송(예: 사장님이 Claude로 전송) 시 붙이는 "*다음을 사용하여 보냄* <@app>" 트레일러가 승인 정확매칭(≤30자)을 깨는 문제 발견(라이브에서 generic 오분류 실측) → `router.ts cleanInstruction`에 트레일러 스트립(한/영) 추가 + 테스트 2건. slack-gateway 22/22 GREEN, 재빌드·재기동 후 `instr="승인"` → `planning(approve)` 정상 분류 실측.
+- **운영 변경** — `com.l5.slack-gateway` plist에 `NOCOBASE_URL`/`NOCOBASE_TOKEN` 주입(기존엔 없어서 라이브 기획 브리지가 동작 불가였음) 후 재기동.
+
+**현재 상시 운영**: `com.l5.slack-gateway`(임원 3 socket) + `com.l5.notion-gateway`(60s 폴링, PRD sync enabled). 로그: `~/.l5/logs/{slack,notion}-gateway.log`.
+
+**주의**: 스모크/라이브 테스트로 생성된 태스크 6개(방문자 카운터 2·헬스체크 2 등)가 실제 실행 레일에서 running — 테스트 산출물이므로 필요시 kill. Slack "sent via" 트레일러 수정은 커밋 대기(uncommitted).
 
 ## 🟢 2026-07-08 — Slack CTO 기획 루프: Slack → cto:planMessage/approvePlan → Notion PRD저장소 + 태스크 추적 (코드·단위검증 완료, 라이브는 토큰 필요)
 
