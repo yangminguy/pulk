@@ -48,7 +48,7 @@ import type {
   PlannedExecutionRun,
 } from "@l5/core";
 import { createExecutionRun } from "./acr-execution-client.js";
-import { dispatchToNativeOrchestrator } from "../orchestrator/index.js";
+import { dispatchToNativeOrchestrator, dispatchToWorkflowOrchestrator } from "../orchestrator/index.js";
 import { readFileSync } from "node:fs";
 
 export type CTOAgentInput = AgentInput;
@@ -646,7 +646,13 @@ export async function runCTOAgent(
   });
 
   await registerWithACR(input.task);
-  if (process.env["NATIVE_ORCHESTRATION"] === "on") {
+  if (process.env["WORKFLOW_ORCHESTRATION"] === "on") {
+    try {
+      await dispatchToWorkflowOrchestrator(acrIntent);
+    } catch {
+      // non-fatal: workflow orchestrator errors must not block CTO output
+    }
+  } else if (process.env["NATIVE_ORCHESTRATION"] === "on") {
     try {
       await dispatchToNativeOrchestrator(acrIntent);
     } catch {

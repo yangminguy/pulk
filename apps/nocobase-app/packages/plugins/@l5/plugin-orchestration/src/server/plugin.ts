@@ -81,8 +81,12 @@ const {
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/chief-of-staff'));
 
 // M10: CTO conversational planning — founder↔CTO turn that yields a PRD+roadmap+tasks plan.
+// S1(scout)/S3(critic)까지 같은 모듈에서 온다: 계획 전 repo 실측 + 확정 전 3관점 교차검증.
 const {
   runCtoPlanningTurn,
+  scoutRepo,
+  extractScoutKeywords,
+  runCriticPanel,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cto-planning'));
 
 // M9.5: roadmap burndown — derive per-milestone progress from linked dev-tasks.
@@ -1554,6 +1558,17 @@ function registerCrudResources(app: any) {
           verifyIntegrateNow;
         if (shouldVerify) {
           try {
+            // S6 — expected_output에 동반 기록된 [완료조건] 블록을 구조화해
+            // verifier가 조건별 판정을 하도록 전달한다.
+            const criteriaMatch = String(task.expected_output ?? '').match(
+              /\[완료조건\]\n([\s\S]*)$/,
+            );
+            const acceptance_criteria = criteriaMatch
+              ? criteriaMatch[1]
+                  .split('\n')
+                  .map((l: string) => l.replace(/^-\s*/, '').trim())
+                  .filter(Boolean)
+              : undefined;
             const verifierInput = {
               task_title: task.title,
               expected_output: task.expected_output ?? '',
@@ -1566,6 +1581,7 @@ function registerCrudResources(app: any) {
                 typeof modified_existing_files === 'number'
                   ? modified_existing_files
                   : undefined,
+              acceptance_criteria,
             };
             if (verifyIntegrateNow) {
               // 결정적만 — LLM이 task 전체를 평가해 중간 phase를 오판하지 않도록.
@@ -1577,6 +1593,47 @@ function registerCrudResources(app: any) {
           } catch (err) {
             // eslint-disable-next-line no-console
             console.warn('[taskCallback] verifier threw:', err);
+          }
+
+          // S7 — 결정 원장: 예측(완료조건/산출물) vs 실측(verdict/diff)을 JSONL로
+          // 축적한다. 주간 보정 루프(scripts/ledger-calibration.mjs)가 이 원장을
+          // 읽어 분류 임계·프롬프트 보정안을 제안한다. 실패해도 본 흐름 무영향.
+          if (verifierVerdict) {
+            try {
+              const fsl = require('fs');
+              const os = require('os');
+              const dir = `${os.homedir()}/.l5/ledger`;
+              fsl.mkdirSync(dir, { recursive: true });
+              const now = new Date().toISOString();
+              fsl.appendFileSync(
+                `${dir}/decisions.jsonl`,
+                JSON.stringify({
+                  id: randomUUID(),
+                  kind: 'verify',
+                  subject_id: task.id,
+                  prediction: {
+                    kind: 'verify',
+                    subject_id: task.id,
+                    predicted: {
+                      expected_output: String(task.expected_output ?? '').slice(0, 400),
+                      has_criteria: /\[완료조건\]/.test(String(task.expected_output ?? '')),
+                    },
+                    at: String(task.createdAt ?? now),
+                  },
+                  observation: {
+                    subject_id: task.id,
+                    observed: {
+                      verdict: verifierVerdict.verdict,
+                      reason: String(verifierVerdict.reason ?? '').slice(0, 400),
+                      changed_files: typeof changed_files === 'number' ? changed_files : null,
+                      exit_code: typeof exit_code === 'number' ? exit_code : null,
+                    },
+                    at: now,
+                  },
+                  at: now,
+                }) + '\n',
+              );
+            } catch { /* 원장 기록 실패는 무시 */ }
           }
         }
 
@@ -2405,11 +2462,41 @@ function registerCtoPlanningResource(app: any, db: any) {
           { bind: [founderId, thread_id, business_id, project_id, founder_message] },
         );
 
+        // S1 Plan Grounding — 대상 repo를 실측해 계획 컨텍스트에 주입(실패해도 기획은 계속).
+        try {
+          const fs = require('fs');
+          const repoPath =
+            process.env.PULK_REPO_PATH ?? path.resolve(__dirname, '../../../../../../..');
+          (ctx2 as any).repo_scout = scoutRepo(
+            repoPath,
+            extractScoutKeywords(founder_message),
+            {
+              readdir: (p: string) => fs.readdirSync(p),
+              readFile: (p: string) => {
+                try { return fs.readFileSync(p, 'utf8'); } catch { return null; }
+              },
+              isDirectory: (p: string) => {
+                try { return fs.statSync(p).isDirectory(); } catch { return false; }
+              },
+            },
+          );
+        } catch { /* scout 실패는 계획을 막지 않는다 */ }
+
         // Run the planning turn.
         const llm = buildLLMClient(founder_message);
         const result = await runCtoPlanningTurn(history, founder_message, ctx2, { llm });
-        const reply = String(result?.reply ?? '계속 이야기해 주세요.');
+        let reply = String(result?.reply ?? '계속 이야기해 주세요.');
         const plan = result?.plan ?? null;
+
+        // S3 — plan이 나오면 승인 큐에 올리기 전 critic 패널(3관점) 요약을 붙인다.
+        let critic_summary: string | null = null;
+        if (plan && llm) {
+          try {
+            const panel = await runCriticPanel(plan, llm);
+            critic_summary = panel?.summary ?? null;
+            if (critic_summary) reply = `${reply}\n\n${critic_summary}`;
+          } catch { /* critic 실패는 계획을 막지 않는다 */ }
+        }
 
         // Persist the CTO reply (+ plan when present).
         const ctoId = randomUUID();
@@ -2429,7 +2516,7 @@ function registerCtoPlanningResource(app: any, db: any) {
           },
         );
 
-        ctx.body = { ok: true, data: { reply, plan, cto_message_id: ctoId } };
+        ctx.body = { ok: true, data: { reply, plan, critic_summary, cto_message_id: ctoId } };
         await next();
       },
 
@@ -2518,6 +2605,14 @@ function registerCtoPlanningResource(app: any, db: any) {
           for (const tk of plan.tasks ?? []) {
             const id = randomUUID();
             const roadmap_item_id = seqToItem[Number(tk.roadmap_sequence ?? 1)] ?? null;
+            // S6 — acceptance criteria를 expected_output에 동반 기록(스키마 무변경).
+            // 실행 phase 프롬프트와 verifier가 expected_output을 읽으므로 그대로 전달된다.
+            const criteria: string[] = Array.isArray(tk.acceptance_criteria)
+              ? tk.acceptance_criteria.filter((c: unknown) => typeof c === 'string' && c)
+              : [];
+            const expectedWithCriteria = criteria.length
+              ? `${String(tk.expected_output ?? '')}\n[완료조건]\n${criteria.map((c: string) => `- ${c}`).join('\n')}`
+              : String(tk.expected_output ?? '');
             await db.sequelize.query(
               `INSERT INTO agent_tasks
                  (id, instruction_id, assigned_agent, title, rationale, expected_output,
@@ -2529,7 +2624,7 @@ function registerCtoPlanningResource(app: any, db: any) {
                   instruction_id,
                   String(tk.title ?? ''),
                   String(tk.rationale ?? ''),
-                  String(tk.expected_output ?? ''),
+                  expectedWithCriteria,
                   roadmap_item_id,
                   business_id,
                   project_id,
@@ -2548,6 +2643,20 @@ function registerCtoPlanningResource(app: any, db: any) {
             { bind: [cto_message_id, instruction_id], transaction: t },
           );
         });
+
+        // R5 — 이벤트 kick: 승인 즉시 dispatcher를 1회 깨운다(60초 폴링 대기 제거).
+        // HERMES_KICK_CMD 미설정이면 no-op(기존 폴링이 그대로 안전망).
+        const kickCmd = process.env.HERMES_KICK_CMD;
+        if (kickCmd) {
+          try {
+            const { spawn } = require('child_process');
+            const child = spawn('/bin/sh', ['-c', kickCmd], {
+              detached: true,
+              stdio: 'ignore',
+            });
+            child.unref();
+          } catch { /* kick 실패는 승인 흐름에 영향 없음 — 폴링이 처리 */ }
+        }
 
         ctx.body = {
           ok: true,

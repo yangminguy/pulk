@@ -1,6 +1,21 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-07-09 (Slack CTO 기획 루프 **라이브 전환 완료** — 전 구간 실왕복 검증)
+최종 업데이트: 2026-07-09 (CTO 판단·실행 하네스 R/S 트랙 구현 — 코드·검증 완료, NocoBase 재기동 대기)
+
+## 🟢 2026-07-09 — CTO 판단(S1~S7)·실행(R1~R6) 하네스 강화 (검증 GREEN, 라이브 반영은 재기동)
+
+**무엇**: 진단 리포트의 폐루프(Scout→Plan→Ambiguity→Critic→Execute→Verify→Ledger→Calibrate)를 구현. 판단은 pulk 유지, 실행 하네스는 Claude Code 네이티브(hooks/skills/subagents/Workflow) 활용. 상세 목록/파일은 `docs/TASKS.md` "CTO 판단·실행 하네스" 섹션.
+
+**핵심 배선**:
+- 기획: `cto:planMessage`가 ①repo 스카우트(S1, 결정적 fs) 주입 → ②plan-turn(S4 스키마 재시도 + S5 blocking 게이트 + S6 완료조건) → ③critic 3관점 패널(S3) 요약을 reply에 첨부. src+dist 이중 패치 완료, `node --check` OK.
+- 실행: taskCallback verifier가 `[완료조건]` 파싱→조건별 판정(S6) + 예측vs실측을 `~/.l5/ledger/decisions.jsonl`에 축적(S7) → `scripts/ledger-calibration.mjs`로 보정 제안.
+- 하네스: 프로젝트 hooks 가동(command-guard **실세션 차단 실증** + Stop 리마인드), skills 3종, dev subagent 2종. `WORKFLOW_ORCHESTRATION=on`(기본 off) 시 phase DAG→Workflow 스크립트(레벨 병렬+verify)로 claude -p 1회 상주 실행. 승인 시 `HERMES_KICK_CMD` 즉시 kick(R5).
+
+**검증**: l5-core jest 2287/2287 + tsc 0 · agent-runtime 53/53 + tsc 0 · plugin dist node --check OK · 판단 루프 6단계 dist e2e PASS · hook self-test 차단12/허용10 · workflow 스크립트 생성→node --check PASS · l5-core/agent-runtime dist 재빌드 완료.
+
+**남은 것(사장님 손)**: ① NocoBase 재기동(`launchctl kickstart -k gui/501/com.l5.nocobase`) — 패치된 plugin dist 반영. ② 선택: `com.l5.nocobase` plist에 `HERMES_KICK_CMD=launchctl kickstart gui/501/com.l5.hermes.task-dispatcher`·`PULK_REPO_PATH` 주입. ③ Workflow 레일 A/B는 `docs/cto/CTO_WORKFLOW_MIGRATION.md` 절차. ACR 은퇴는 동등성 3건 PASS+승인 전까지 보류(기존 레일 100% 보존, flag off=구동작 불변).
+
+**함정**: plugin은 l5-core를 **dist에서 require** — l5-core 수정 시 반드시 `pnpm --filter @l5/core build` 후 재기동. command-guard 훅은 따옴표 안 금지 문자열도 보수적으로 차단(문서/스크립트에 `rm -rf` 리터럴 포함 명령은 우회 필요).
 
 ## 🟢 2026-07-09 — Slack CTO 기획 루프 라이브 전환 (실 Slack 왕복 + 실행 레일까지 E2E 검증)
 

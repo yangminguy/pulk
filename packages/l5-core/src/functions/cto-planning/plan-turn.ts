@@ -13,10 +13,13 @@ import type {
   CtoPlanningTurnResult,
   CtoPlan,
   CtoPlanTaskDraft,
+  OpenQuestion,
   ProjectProposal,
 } from './types';
 import type { RoadmapItemDraft } from '../roadmap/types';
 import { estimatePlanTokens } from '../token-estimate';
+import { completeJsonWithRetry } from '../llm-json';
+import { formatScoutForPrompt } from './scout';
 
 const DEFAULT_MAX_ROADMAP = 6;
 
@@ -26,7 +29,12 @@ const SYSTEM = [
   '',
   '대화 원칙:',
   '- 아이디어가 모호하면 한 번에 1~2개의 핵심 질문만 한다(과도한 질문 금지).',
+  '- 매 턴 open_questions에 "아직 정해지지 않은 결정 항목"을 전부 나열한다(대상 사용자, 저장 위치, 기존 기능과의 관계 등).',
+  '  각 항목에 blocking(이 답 없이는 계획 확정 불가)을 정직하게 표시한다. blocking이 남아 있으면 plan을 제안하지 말고 그 항목을 질문하라.',
   '- 충분히 구체화되면 계획(plan)을 제안한다.',
+  '- repo 실측 정보가 주어지면 반드시 근거로 사용한다: 기존 코드 재사용을 우선하고, 이미 있는 것을 다시 만드는 태스크를 내지 마라.',
+  '- 각 태스크에 acceptance_criteria(측정 가능한 완료 조건 2~4개)를 붙인다. 각 조건은 "무엇을 실행/확인하면 통과인지"가 명확해야 한다',
+  '  (예: "pnpm test -- foo 통과", "GET /api/x 가 200과 items[]를 반환"). "잘 동작한다" 같은 모호한 조건 금지.',
   '- 기존 프로젝트와 명확히 다른 새로운 일이면 project_proposal로 "새 프로젝트"를 제안하고,',
   '  주어진 businesses 중 어디에 넣을지(business_id)와 프로젝트 이름을 제시한다.',
   '- 기존 프로젝트에 들어갈 일이면 project_proposal은 null로 둔다.',
@@ -35,10 +43,11 @@ const SYSTEM = [
   '{',
   '  "reply": string,           // 창업자에게 할 말',
   '  "ready": boolean,          // 계획을 제안할 준비가 됐으면 true',
+  '  "open_questions": [ { "question": string, "blocking": boolean } ],  // 미정 결정 항목(없으면 빈 배열)',
   '  "plan": {                  // ready=true일 때만',
   '    "prd": string,           // 평이한 제품 요구 문서',
   '    "roadmap_items": [ { "title": string, "summary": string, "objective": string, "sequence": number } ],',
-  '    "tasks": [ { "title": string, "rationale": string, "expected_output": string, "roadmap_sequence": number, "size": "tiny"|"small"|"feature"|"big" } ],',
+  '    "tasks": [ { "title": string, "rationale": string, "expected_output": string, "roadmap_sequence": number, "size": "tiny"|"small"|"feature"|"big", "acceptance_criteria": string[] } ],',
   '    // size = 시니어 개발자로서 판단한 작업 규모. tiny=한 줄/사소, small=작은 수정, feature=일반 기능, big=대형/구조 변경. 토큰 비용 추정에 쓰인다.',
   '    "project_proposal": { "is_new_project": boolean, "business_id": string|null, "suggested_project_title": string, "rationale": string } | null',
   '  } | null',
@@ -64,6 +73,11 @@ function buildUser(
         .join(', ')}`,
     );
   }
+  // S1 Plan Grounding — repo 실측 요약이 있으면 프롬프트에 주입한다.
+  const scout = formatScoutForPrompt(ctx.repo_scout);
+  if (scout) {
+    lines.push('', scout);
+  }
   lines.push('', '대화 내역:');
   for (const m of history) {
     lines.push(`${m.role === 'founder' ? '창업자' : 'CTO'}: ${m.text}`);
@@ -72,13 +86,27 @@ function buildUser(
   return lines.join('\n');
 }
 
-function extractJson(raw: string): string {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const body = fenced ? fenced[1] : raw;
-  const start = body.indexOf('{');
-  const end = body.lastIndexOf('}');
-  if (start === -1 || end === -1 || end < start) return body.trim();
-  return body.slice(start, end + 1);
+/** S5 — 모델이 낸 open_questions를 정규화한다(비정형 입력 graceful). */
+function normalizeOpenQuestions(raw: unknown): OpenQuestion[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((it): it is Record<string, unknown> => !!it && typeof it === 'object')
+    .filter((it) => typeof it.question === 'string' && (it.question as string).trim())
+    .slice(0, 10)
+    .map((it) => ({
+      question: String(it.question).trim(),
+      blocking: it.blocking === true,
+    }));
+}
+
+/** S6 — acceptance_criteria 정규화: 문자열 배열, 항목당 트림, 최대 5개. */
+function normalizeCriteria(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const list = raw
+    .filter((c): c is string => typeof c === 'string' && c.trim().length > 0)
+    .map((c) => c.trim())
+    .slice(0, 5);
+  return list.length ? list : undefined;
 }
 
 function normalizeRoadmap(
@@ -112,6 +140,7 @@ function normalizeTasks(
         it.size === 'tiny' || it.size === 'small' || it.size === 'feature' || it.size === 'big'
           ? it.size
           : undefined;
+      const criteria = normalizeCriteria(it.acceptance_criteria);
       return {
         title: String(it.title).trim(),
         rationale: String(it.rationale ?? '').trim(),
@@ -120,6 +149,7 @@ function normalizeTasks(
         roadmap_sequence:
           roadmapLen > 0 ? Math.min(Math.max(1, seq), roadmapLen) : 1,
         ...(size ? { size } : {}),
+        ...(criteria ? { acceptance_criteria: criteria } : {}),
       };
     });
 }
@@ -169,26 +199,39 @@ export async function runCtoPlanningTurn(
   const max = opts.max_roadmap_items ?? DEFAULT_MAX_ROADMAP;
 
   if (opts.llm) {
-    try {
-      const raw = await opts.llm.complete({
-        system: SYSTEM,
-        user: buildUser(history, founderMessage, ctx),
-        trace_name: 'cto.planningTurn',
-      });
-      const obj = JSON.parse(extractJson(raw)) as {
-        reply?: string;
-        ready?: boolean;
-        plan?: unknown;
-      };
-      const reply =
-        typeof obj.reply === 'string' && obj.reply.trim()
-          ? obj.reply.trim()
-          : '계속 이야기해 주세요.';
-      const plan = obj.ready ? normalizePlan(obj.plan, max) : null;
-      return { reply, plan };
-    } catch {
-      // fall through to deterministic reply
+    // S4 — 스키마 강제 + 자동 재시도. regex 1-shot 파싱의 silent fallback을 제거한다.
+    const { value } = await completeJsonWithRetry(opts.llm, {
+      system: SYSTEM,
+      user: buildUser(history, founderMessage, ctx),
+      trace_name: 'cto.planningTurn',
+      validate: (v) => {
+        if (!v || typeof v !== 'object') return null;
+        const o = v as Record<string, unknown>;
+        if (typeof o.reply !== 'string' || !o.reply.trim()) return null;
+        return o as { reply: string; ready?: boolean; plan?: unknown; open_questions?: unknown };
+      },
+    });
+
+    if (value) {
+      const reply = value.reply.trim();
+      const open_questions = normalizeOpenQuestions(value.open_questions);
+      let plan = value.ready ? normalizePlan(value.plan, max) : null;
+
+      // S5 모호성 게이트 — blocking 미정 항목이 남아 있으면 계획을 확정하지 않는다.
+      // 감(ready=true)이 아니라 산출물(blocking 목록)이 게이트다.
+      const blocking = open_questions.filter((q) => q.blocking);
+      if (plan && blocking.length > 0) {
+        plan = null;
+        const asks = blocking.map((q, i) => `${i + 1}. ${q.question}`).join('\n');
+        return {
+          reply: `${reply}\n\n계획을 확정하기 전에 먼저 정해야 할 항목이 있습니다:\n${asks}`,
+          plan: null,
+          open_questions,
+        };
+      }
+      return { reply, plan, open_questions };
     }
+    // 재시도까지 실패 → deterministic reply로 강등(아래).
   }
 
   return {

@@ -4,6 +4,7 @@
 
 export * from './types';
 export * from './complexity-router';
+export * from './complexity-evidence';
 export * from './command-guard';
 export * from './boundary-check';
 export * from './work-order';

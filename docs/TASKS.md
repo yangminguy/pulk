@@ -1,7 +1,27 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-06-09 (CTO SOP integrate phase 신설 — 트랙 A). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-07-09 (CTO 판단·실행 하네스 R/S 트랙 구현). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+
+## 🧠 CTO 판단·실행 하네스 강화 — R/S 트랙 (2026-07-09)
+
+> 진단 근거: CTO 개발환경 진단 리포트(아티팩트) — 실행은 cold spawn/직렬, 판단은 1-shot+무근거. 판단(pulk)은 유지하고 실행 하네스를 Claude Code 네이티브로.
+
+- [x] **S4 스키마 강제+재시도** — `l5-core/llm-json`(extractJsonBlock/parseJsonWithValidator/completeJsonWithRetry, jest 11). plan-turn·verifier에 배선(실패 시 원문 첨부 재호출 → deterministic 강등).
+- [x] **S1 Plan Grounding** — `cto-planning/scout.ts`(deps 주입 fs, 결정적·무LLM) + plan-turn 프롬프트 주입 + plugin `cto:planMessage`에 실측 스카우트 배선(src+dist). 라이브 스모크: pulk repo 11모듈/notion 매칭 1건.
+- [x] **S5 모호성 게이트** — plan-turn이 `open_questions[{question,blocking}]` 강제 산출, blocking 존재 시 plan 차단+질문 회신.
+- [x] **S6 acceptance criteria** — 태스크별 측정 가능 완료조건 2~4개 생성 → `agent_tasks.expected_output`에 `[완료조건]` 블록 동반 기록(스키마 무변경) → plugin taskCallback이 파싱해 verifier에 구조화 전달, verifier는 조건별 판정 모드.
+- [x] **S2 evidence 복잡도** — `cto-harness/complexity-evidence.ts`: 위험 키워드는 터치 예상 경로 근거 있을 때만 승격(discounted evidence 기록), expectedFiles로 fileCount 실측 추정. jest 8.
+- [x] **S3 Critic 패널** — `cto-planning/critic.ts`: 3관점(단순화/리스크/검증가능성) 병렬 채점 → 승인 카드에 요약 첨부(자동 수정 없음, 판단은 사장님). plugin planMessage 배선(src+dist).
+- [x] **S7 결정 원장** — `l5-core/decision-ledger`(entry/delta/calibration, jest 12+) + plugin verify 지점에서 예측vs실측 JSONL append(`~/.l5/ledger/decisions.jsonl`) + `scripts/ledger-calibration.mjs`(보정 제안 — night-bpr 레일/수동, 신규 데몬 없음).
+- [x] **R1 hooks** — `.claude/settings.json`에 PreToolUse(command-guard)+Stop(HANDOFF 리마인드). `scripts/hooks/command-guard.mjs` self-test 차단12/허용10 PASS, **실세션 차단 실증**. stop-handoff-reminder는 additionalContext만(비차단).
+- [x] **R2 Workflow 파이프라인** — `cto-native/workflow-script.ts`(phase DAG→Workflow 스크립트, planPhaseLevels 재사용, 레벨 병렬+verify 스테이지+worktree 격리) + `orchestrator/workflow-dispatch.ts`(claude -p 1회 상주) + cto.ts:649 `WORKFLOW_ORCHESTRATION=on` flag(기본 off, 비파괴). e2e: 샘플 intent→스크립트 생성→node --check PASS.
+- [x] **R3 skills** — `.claude/skills/{cto-implement,cto-verify,nocobase-dist-patch}` (context pack 승격).
+- [x] **R4 dev subagents** — `.claude/agents/{dev-executor,dev-verifier}.md`.
+- [x] **R5 이벤트 kick** — `cto:approvePlan` 성공 시 `HERMES_KICK_CMD` fire-and-forget spawn(미설정 시 no-op, 폴링 안전망 유지). 권장값: `launchctl kickstart gui/501/com.l5.hermes.task-dispatcher`.
+- [~] **R6 ACR 은퇴** — `docs/cto/CTO_WORKFLOW_MIGRATION.md`(A/B 동등성 절차+롤백+은퇴 체크리스트) 작성. **은퇴는 미실행** — 동등성 3건 PASS + 사장님 승인 후.
+- **검증**: l5-core jest **2287/2287**(+84) + tsc 0 / agent-runtime **53/53** + tsc 0 / plugin dist `node --check` OK / 판단 루프 6단계 dist e2e PASS(scout→gate→plan→critic→complexity→verify).
+- **라이브 반영 필요(사장님)**: NocoBase 재기동(plugin dist 반영), 필요 시 plist에 `HERMES_KICK_CMD`/`PULK_REPO_PATH` 주입. Workflow 레일은 `WORKFLOW_ORCHESTRATION=on`으로 A/B.
 
 ## 🔗 Notion 동기화 (2026-07-08)
 

@@ -25,3 +25,8 @@ export {
   type GroupStatus,
   type BatchRunnerOverrides,
 } from './batch-runner.js';
+export {
+  dispatchToWorkflowOrchestrator,
+  type WorkflowDispatchResult,
+  type WorkflowDispatchDeps,
+} from './workflow-dispatch.js';

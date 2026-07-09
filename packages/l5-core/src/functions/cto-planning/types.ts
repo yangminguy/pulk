@@ -35,6 +35,15 @@ export interface CtoPlanningContext {
   /** Catalog the CTO uses to decide placement / detect "this is a new project". */
   businesses?: PlanningBusinessRef[];
   existing_projects?: PlanningProjectRef[];
+  /** S1 Plan Grounding — 대상 repo 실측 스카우트 리포트(있으면 프롬프트에 주입). */
+  repo_scout?: import('./scout').RepoScoutReport | null;
+}
+
+/** S5 모호성 게이트 — 계획 확정 전 CTO가 명시 산출하는 미정 결정 항목. */
+export interface OpenQuestion {
+  question: string;
+  /** true = 이 답 없이는 계획을 확정할 수 없음(게이트가 plan을 막는다). */
+  blocking: boolean;
 }
 
 /** When the CTO judges the idea is a NEW project (not a fit for an existing one),
@@ -58,6 +67,9 @@ export interface CtoPlanTaskDraft {
   /** CTO's size judgment, used for the token forecast. Defaults to keyword
    * classification when the model omits it. */
   size?: TaskSizeHint;
+  /** S6 — 측정 가능한 완료 조건(명령·기대 결과·관측 방법) 2~4개. verifier가
+   * 이 기준으로 판정하고, 실행 phase 프롬프트에도 목표로 주입된다. */
+  acceptance_criteria?: string[];
 }
 
 /** The full plan the CTO proposes at the end of planning — approved as one unit. */
@@ -77,6 +89,11 @@ export interface CtoPlanningTurnResult {
   reply: string;
   /** Present when the CTO is ready to propose a plan for approval; else null. */
   plan: CtoPlan | null;
+  /** S5 — 이번 턴에 CTO가 인지한 미정 결정 항목. blocking이 하나라도 있으면
+   * plan은 게이트에 막혀 null이 된다(질문이 reply로 나감). */
+  open_questions?: OpenQuestion[];
+  /** S3 — critic 패널 요약(승인 카드에 첨부). 패널 미실행이면 없음. */
+  critic_summary?: string | null;
 }
 
 export interface CtoPlanningOptions {

@@ -12,6 +12,7 @@
  */
 
 import type { LLMClient } from '../ceo-orchestration/types';
+import { completeJsonWithRetry } from '../llm-json';
 
 export interface VerifyCTOPhaseInput {
   task_title: string;
@@ -33,6 +34,11 @@ export interface VerifyCTOPhaseInput {
    * weaker no-change rule still applies).
    */
   modified_existing_files?: number;
+  /**
+   * S6 — 계획 단계에서 정의된 측정 가능 완료 조건. 주어지면 LLM verifier가
+   * regex 표면 신호 대신 조건별로 충족 여부를 판정한다.
+   */
+  acceptance_criteria?: string[];
 }
 
 // expected_output phrasing that implies the phase must produce code/file changes.
@@ -198,47 +204,57 @@ export async function verifyCTOPhase(
   }
   if (!llm) return deterministic;
 
-  const system =
-    'You are a CTO QA verifier. Given a phase task, expected output, and the resulting git diff + log tail, decide whether the work actually meets the expected output. Respond with a JSON object: {"verdict":"pass"|"fail"|"inconclusive","reason":string,"retry_recommended":boolean,"confidence":"high"|"medium"|"low"}. Do not include any other text.';
+  // S6 — acceptance criteria가 있으면 조건별 판정을, 없으면 기존 expected_output
+  // 대비 판정을 요구한다. S4 — 파싱은 llm-json 재시도 경로로 강제한다.
+  const hasCriteria = (input.acceptance_criteria?.length ?? 0) > 0;
+  const system = hasCriteria
+    ? 'You are a CTO QA verifier. Judge the work against EACH acceptance criterion using the git diff + log tail as evidence. The overall verdict is "pass" only if every criterion is met (or is clearly out of this phase\'s scope). Respond with a JSON object: {"verdict":"pass"|"fail"|"inconclusive","reason":string,"retry_recommended":boolean,"confidence":"high"|"medium"|"low","criteria":[{"criterion":string,"met":boolean|null,"evidence":string}]}. Do not include any other text.'
+    : 'You are a CTO QA verifier. Given a phase task, expected output, and the resulting git diff + log tail, decide whether the work actually meets the expected output. Respond with a JSON object: {"verdict":"pass"|"fail"|"inconclusive","reason":string,"retry_recommended":boolean,"confidence":"high"|"medium"|"low"}. Do not include any other text.';
 
   const user = [
     `Task: ${input.task_title}`,
     `Expected output: ${input.expected_output}`,
+    ...(hasCriteria
+      ? [
+          `Acceptance criteria:\n${input
+            .acceptance_criteria!.map((c, i) => `${i + 1}. ${c}`)
+            .join('\n')}`,
+        ]
+      : []),
     `Exit code: ${input.exit_code ?? 'n/a'}`,
     `Diff stat:\n${input.diff_summary || '(none)'}`,
     `Log tail:\n${input.log_tail || '(none)'}`,
   ].join('\n\n');
 
-  let raw: string;
-  try {
-    raw = await llm.complete({ system, user });
-  } catch {
-    return deterministic;
-  }
+  const { value: parsed } = await completeJsonWithRetry<LLMVerdictShape>(llm, {
+    system,
+    user,
+    trace_name: 'cto.verifyPhase',
+    validate: (v) => {
+      if (!v || typeof v !== 'object') return null;
+      const o = v as LLMVerdictShape;
+      if (o.verdict !== 'pass' && o.verdict !== 'fail' && o.verdict !== 'inconclusive') {
+        return null;
+      }
+      return o;
+    },
+  });
+  if (!parsed) return deterministic;
 
-  try {
-    const trimmed = raw.trim().replace(/^```json\s*|\s*```$/g, '');
-    const parsed = JSON.parse(trimmed) as LLMVerdictShape;
-    const verdict: VerifyCTOPhaseResult['verdict'] =
-      parsed.verdict === 'pass' || parsed.verdict === 'fail' || parsed.verdict === 'inconclusive'
-        ? parsed.verdict
-        : deterministic.verdict;
-    const confidence: VerifyCTOPhaseResult['confidence'] =
-      parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low'
-        ? parsed.confidence
-        : 'medium';
-    return {
-      verdict,
-      reason: typeof parsed.reason === 'string' ? parsed.reason : deterministic.reason,
-      retry_recommended:
-        typeof parsed.retry_recommended === 'boolean'
-          ? parsed.retry_recommended
-          : verdict === 'fail',
-      confidence,
-    };
-  } catch {
-    return deterministic;
-  }
+  const verdict = parsed.verdict as VerifyCTOPhaseResult['verdict'];
+  const confidence: VerifyCTOPhaseResult['confidence'] =
+    parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low'
+      ? parsed.confidence
+      : 'medium';
+  return {
+    verdict,
+    reason: typeof parsed.reason === 'string' ? parsed.reason : deterministic.reason,
+    retry_recommended:
+      typeof parsed.retry_recommended === 'boolean'
+        ? parsed.retry_recommended
+        : verdict === 'fail',
+    confidence,
+  };
 }
 
 /**

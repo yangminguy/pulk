@@ -1168,3 +1168,13 @@ l5-core tsc 0 + jest dev-workflow-spec 60/60(신규 M9.8 5군 포함) GREEN, age
 **Verify**: l5-core 2203/2203 GREEN(신규 19건), notion-gateway typecheck 0 + jest 3/3. 라이브 E2E는 사장님 토큰/DB 준비 후(README 참조).
 
 **주의 — "second brain"**: 사장님 지칭 "second brain"은 Notion integration 표시 이름(코드 무관). 코드베이스의 기존 `secondbrain-transport.ts`는 로컬 Python 메모리 시스템(`/Users/wonminyang/세컨 브레인`)으로 이 작업과 **별개**.
+
+## 2026-07-09 — CTO 판단·실행 하네스: 자체 재발명 대신 Claude Code 네이티브 + 3층 판단 구조
+
+**결정 1 — 실행 하네스는 Claude Code 네이티브를 쓴다(재발명 금지)**: phase 큐/직렬 runner/cold spawn을 유지·개량하는 대신, hooks(규율 강제)·skills(context pack 승격)·subagents(실행 계층)·Workflow(phase DAG 병렬 파이프라인)로 대체한다. 새 ACR류 오케스트레이터를 만들지 않는다. 근거: 실측 6분48초 vs 직접 40초(10배), 프롬프트 지시 준수율 0%. 비파괴 원칙: `WORKFLOW_ORCHESTRATION` flag(기본 off), ACR 은퇴는 A/B 동등성 3건 + 승인 후(`docs/cto/CTO_WORKFLOW_MIGRATION.md`).
+
+**결정 2 — 판단은 3층 구조(증거→검증→학습)로 강화한다**: ①판단 전 repo 실측(scout, 결정적 fs — LLM 스카우트 아님: 비용/재현성) ②확정 전 다관점 critic 패널(자동 수정 없음 — 판단은 사장님, 요약만 첨부) ③예측vs실측 결정 원장(JSONL) + 보정 제안 스크립트(신규 데몬 금지 — night-bpr 레일/수동 실행).
+
+**결정 3 — acceptance criteria는 스키마 무변경으로 전달한다**: `agent_tasks`에 컬럼을 추가하지 않고 `expected_output`에 `[완료조건]` 블록으로 동반 기록, verifier가 파싱해 구조화 판정. 근거: DDL 리스크 없이 실행 프롬프트·verifier·Notion 투영이 기존 경로로 그대로 전달받음. 컬럼 승격은 원장 데이터로 필요성이 입증되면.
+
+**결정 4 — R5 이벤트 kick은 `HERMES_KICK_CMD` env 간접 실행**: plugin이 hermes를 직접 import하지 않고 fire-and-forget spawn(미설정 시 no-op). 근거: NocoBase↔hermes 결합 금지, 60초 폴링은 안전망으로 유지(kick 실패해도 동작 불변).
