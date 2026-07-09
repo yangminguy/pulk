@@ -9,7 +9,7 @@
 - **ACR 은퇴(사장님 승인)**: launchd 5종(acr-phase-runner/daemon/web/resilience/git-acr-cleanup) bootout, plist는 `~/Library/LaunchAgents/retired-acr/`로 이동(**가역** — 되돌리려면 다시 bootstrap). 3001 응답 없음 확인.
 - **Slack 대범위 기획 실주행**(#exec-cto "임원 주간 브리핑 자동화"): ① **S5 게이트 실작동** — 계획 대신 blocking 질문 2개(데이터소스/변화지표) 선행 ② 답변 후 계획 제안(새 프로젝트+로드맵 6+태스크 6) ③ **S3 critic 실전 성과** — must_fix 2건 적중(Trigger.dev cron 타임존 UTC 함정, gateway 재사용 지시와 모순되는 신규 엔드포인트) ④ 태스크 6건 전부 `[완료조건]` 포함 ⑤ 승인→kick→Native 레일→**worktree 격리→verify PASS→자율 병합 커밋 3ccd4ab** 실증(아래 "Slack 메시지 포맷팅 함수" 엔트리가 그 에이전트의 산출).
 - **라이브 버그 2건 발견·수정**: (a) dispatcher plist PATH 부재 → claude/codex spawn 실패(exit 1, 전 phase 병합 보류 — 안전장치는 정상 작동) → PATH 주입+stuck 태스크 재큐잉으로 해소. (b) 은퇴한 ACR로의 등록 fetch 노이즈 → cto.ts에서 non-ACR 레일이면 registerWithACR 스킵(tsc 0/jest 20 GREEN, dist 재빌드).
-- **발견(미수정, 개선 후보)**: 기획 스레드의 후속 답변이 PLANNING_RE 키워드 없으면 generic 경로로 샘 → 스레드에 진행 중 planning이 있으면 후속 발화를 planning으로 라우팅하는 sticky 분류 필요(slack-gateway router).
+- **발견(미수정, 개선 후보 — 우선순위 상향)**: 기획 스레드의 후속 답변이 PLANNING_RE 키워드 없으면 generic 경로로 샘. **실피해 확인**: 샌 메시지를 받은 generic 헤드리스 실행자가 이를 구현 지시로 해석해 **main repo에 직접(worktree 미격리) 브리핑 코드 5파일을 작성**(12:23~12:27, 승인 전). → `git stash`(stash@{0})로 격리 완료. 수정 방향 2가지: ① slack-gateway sticky 분류(스레드에 proposed/진행 planning 있으면 후속 발화를 planning으로) ② generic 실행자에도 worktree 격리 적용(rule 30 준수).
 
 **진행 중**: 브리핑 프로젝트 태스크 6건이 Native 레일에서 순차 실행 중(phase당 수 분). 결정 원장(verify 경유)은 태스크 all_done 콜백 도달 시 축적 시작.
 
