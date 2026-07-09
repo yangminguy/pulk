@@ -105,7 +105,7 @@ export interface WeekWindow {
 /** now 기준 직전 월요일 00:00(로컬)을 경계로 완결 주 2개를 반환. */
 export function getWeeklyBriefWindows(now: Date): {
   currentWeek: WeekWindow;   // [boundary-7d, boundary)
-  previousWeek: WeekWindow;  // [boundary-14d, boundary)
+  previousWeek: WeekWindow;  // [boundary-14d, boundary-7d)
 };
 ```
 

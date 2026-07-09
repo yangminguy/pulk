@@ -61,6 +61,34 @@
 - 환경 함정: 이 worktree는 `NODE_ENV=production`이 셸에 설정돼 있어 pnpm install이
   devDependencies(jest)를 스킵함 → **`NODE_ENV=development corepack pnpm install`/`test` 필요**.
 - 커밋 안 함(acceptance 준수) — untracked 1파일 상태로 다음 phase에 인계.
+  → 이후 오케스트레이터가 30f37f8("l5 phase: 실패 테스트 작성")로 커밋 완료 (review phase 실측).
+
+## review phase (2026-07-09) — 완료
+
+- 검토 범위: task 커밋 3개(451b290 research / 951d3fd spec / 30f37f8 test-red)의 diff 전체
+  = `docs/research/hermes-weekly-schedule-task.md` + `docs/specs/executive-weekly-brief-schedule-spec.md`
+  + `services/hermes-runtime/src/tasks/__tests__/weekly-executive-brief.test.ts` + 진행 노트.
+- 방법: Claude 직접 검토(달력 검산·좌표 실측·AC 매핑·red 재현) + agy 교차 QA
+  (codex는 사용량 한도 지속 → agy 대체, 이전 phase와 동일 경로).
+- **판정: 수정 1건 반영 후 LGTM.**
+  - MUST-FIX 1 (반영 완료): spec §3 FR-1 인터페이스 주석
+    `docs/specs/executive-weekly-brief-schedule-spec.md:108` —
+    `previousWeek // [boundary-14d, boundary)` → `[boundary-14d, boundary-7d)`.
+    §2-4 정의(63행) 및 테스트 AC-1 단언과 정합하도록 교정. 로직·테스트 수정 불필요(주석 오기).
+  - NICE 1 (반영 완료): 진행 노트 test phase의 "커밋 안 함/untracked" 서술이 stale
+    (30f37f8로 커밋됨) → 실측 병기.
+- 통과 확인 항목:
+  - 날짜 픽스처 전부 2026 실제 달력 일치(07-13 월/07-15 수/07-06 월/06-29 월).
+  - `localMidnight`(1-based) vs `new Date`(0-based) 혼용 라인별 검산 — 오프바이원 없음.
+  - 테스트가 spec §6 AC-1(5케이스)·AC-2(4)·AC-3(1)·AC-4(2)를 정확 커버,
+    AC-2①은 상대 단언+절대값 고정(134-135행)으로 자기참조 통과 불가.
+  - spec 참조 코드 좌표 실측 일치: launchd plist 13개, `cto-weekly-review.plist`
+    Weekday=1/Hour=10, `gateway.ts` TASK_RUNNERS(30행), `trigger-schedules.ts`
+    HERMES_SCHEDULES(14행), `install-launchd.sh` PLISTS(51행).
+  - `delete deps.send` 방식 — `send?` optional이므로 타입/의미상 문제 없음.
+  - red 재현: `NODE_ENV=development corepack pnpm test -- weekly-executive-brief` →
+    `TS2307 ../weekly-executive-brief.js` 단일 원인 실패 확인(구현 phase에서 해소 예정).
+  - `.js` 확장자 import는 jest.config.cjs moduleNameMapper가 strip — 컨벤션 문제 없음.
 
 ## 다음 phase(구현)에서 할 것
 
