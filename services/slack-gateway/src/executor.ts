@@ -34,6 +34,82 @@ export interface ExecutorConfig {
   extraArgs: string[];
   timeoutMs: number;
   claudeBin?: string;
+  /** Injectable git runner (tests provide a fake); defaults to real `git`. */
+  git?: GitExec;
+}
+
+// ---------------------------------------------------------------------------
+// Isolated git worktree per run (rule 30: agents never touch the main repo).
+// A generic executive run edits code inside a throwaway worktree on branch
+// `agent/slack-<runId>`; the orchestrator (the Founder) reviews/merges. This is
+// the guardrail for the live incident where a run wrote straight into main.
+
+export type GitExec = (
+  args: string[],
+  cwd: string,
+) => Promise<{ code: number; stdout: string; stderr: string }>;
+
+export interface WorktreeHandle {
+  dir: string;
+  branch: string;
+}
+
+const realGit: GitExec = (args, cwd) =>
+  new Promise((resolve) => {
+    let stdout = '';
+    let stderr = '';
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn('git', args, { cwd, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch {
+      resolve({ code: 1, stdout: '', stderr: 'git spawn failed' });
+      return;
+    }
+    child.stdout?.on('data', (d) => (stdout += d.toString()));
+    child.stderr?.on('data', (d) => (stderr += d.toString()));
+    child.on('close', (c) => resolve({ code: c ?? 1, stdout, stderr }));
+    child.on('error', (e) => resolve({ code: 1, stdout, stderr: String(e) }));
+  });
+
+/** Off-repo worktree path for a run (tmp so it never pollutes the repo tree). */
+export function slackWorktreeDir(runId: string): string {
+  return join(tmpdir(), 'l5-slack-worktrees', runId);
+}
+
+/**
+ * Create the run's isolated worktree. Returns null on any git failure —
+ * fail-closed: the caller must NOT fall back to the main repo (that fallback is
+ * exactly what let a run write into main pre-approval).
+ */
+export async function createSlackWorktree(
+  git: GitExec,
+  repoRoot: string,
+  runId: string,
+): Promise<WorktreeHandle | null> {
+  const dir = slackWorktreeDir(runId);
+  const branch = `agent/slack-${runId}`;
+  const r = await git(['-C', repoRoot, 'worktree', 'add', '-b', branch, dir, 'HEAD'], repoRoot);
+  if (r.code !== 0) return null;
+  return { dir, branch };
+}
+
+/**
+ * Tear down or preserve a run's worktree. No changes → remove worktree + delete
+ * branch (returns changed:false). Changes present (incl. untracked) → keep both
+ * for the Founder to review (returns changed:true). A failed status check is
+ * treated as "changed" so we never remove something possibly dirty.
+ */
+export async function cleanupSlackWorktree(
+  git: GitExec,
+  repoRoot: string,
+  wt: WorktreeHandle,
+): Promise<{ changed: boolean }> {
+  const st = await git(['-C', wt.dir, 'status', '--porcelain'], wt.dir);
+  const changed = st.code === 0 ? st.stdout.trim().length > 0 : true;
+  if (changed) return { changed: true };
+  await git(['-C', repoRoot, 'worktree', 'remove', wt.dir, '--force'], repoRoot);
+  await git(['-C', repoRoot, 'branch', '-D', wt.branch], repoRoot);
+  return { changed: false };
 }
 
 // When Anthropic's per-minute burst limit is hit, the CLI prints a short notice
@@ -59,7 +135,12 @@ export interface ExecutorResult {
   exitCode: number;
 }
 
-function buildPrompt(exec: ExecutiveDef, instruction: string, deliverDir: string): string {
+function buildPrompt(
+  exec: ExecutiveDef,
+  instruction: string,
+  deliverDir: string,
+  worktreeDir: string,
+): string {
   return [
     `You are operating as the ${exec.label} executive of L5 Business OS, invoked from Slack by the Founder (사장님).`,
     `Use the "${exec.id}" subagent to handle this request — adopt that persona, role, and guardrails.`,
@@ -71,6 +152,7 @@ function buildPrompt(exec: ExecutiveDef, instruction: string, deliverDir: string
     '- 대화로 끝내지 말고 로컬에서 실제 작업을 수행하라. 합의가 필요하면 짧게 되묻되, 명확하면 바로 착수.',
     `- 산출물 파일(문서/html/mp4/png 등)은 반드시 이 디렉토리에 저장하라: ${deliverDir}`,
     '- 외부 발행/전송/결제 등 위험 액션은 승인 게이트를 지키고 직접 실행하지 마라.',
+    `- 이 디렉토리(${worktreeDir})는 격리된 git worktree다. 코드 변경은 여기서만 하고, git 커밋/푸시는 하지 마라.`,
     '- 마지막 답변은 한국어로 간결하게: 무엇을 했는지 + 파일 위치 + 한 줄 요약. (이 텍스트가 Slack 스레드로 전송된다)',
   ].join('\n');
 }
@@ -150,7 +232,20 @@ export async function runExecutive(
   const deliverDir = join(cfg.repoRoot, '.slack-runs', runId);
   await mkdir(deliverDir, { recursive: true });
 
-  const prompt = buildPrompt(exec, instruction, deliverDir);
+  // rule 30: run in an isolated worktree, never the main repo. fail-closed —
+  // if the worktree can't be created we stop rather than run against main.
+  const git = cfg.git ?? realGit;
+  const wt = await createSlackWorktree(git, cfg.repoRoot, runId);
+  if (!wt) {
+    return {
+      reply: `⚠️ ${exec.label} 작업을 시작하지 못했습니다: 격리 worktree 생성 실패. 안전을 위해 main repo에서 실행하지 않고 중단했습니다.`,
+      files: [],
+      dir: deliverDir,
+      exitCode: 1,
+    };
+  }
+
+  const prompt = buildPrompt(exec, instruction, deliverDir, wt.dir);
   const bin = cfg.claudeBin ?? 'claude';
   const mcpArgs = EMPTY_MCP_CONFIG_PATH
     ? ['--strict-mcp-config', '--mcp-config', EMPTY_MCP_CONFIG_PATH]
@@ -166,7 +261,7 @@ export async function runExecutive(
   let rateLimited = false;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const r = await spawnOnce(args, bin, cfg.repoRoot, cfg.timeoutMs);
+    const r = await spawnOnce(args, bin, wt.dir, cfg.timeoutMs);
     stdout = r.stdout;
     stderr = r.stderr;
     exitCode = r.exitCode;
@@ -193,5 +288,13 @@ export async function runExecutive(
         ? `${exec.label} 작업이 시간 초과로 중단됐습니다.`
         : `${exec.label} 작업이 응답 없이 종료됐습니다 (exit ${exitCode}). ${stderr.slice(-300)}`.trim();
   }
+
+  // No changes → clean up the worktree. Changes → leave it for the Founder to
+  // review (never auto-merge; git commit/push is the orchestrator's job).
+  const { changed } = await cleanupSlackWorktree(git, cfg.repoRoot, wt);
+  if (changed) {
+    reply += `\n\n🌱 코드 변경이 격리 worktree에 남아 있습니다 (자동 병합 안 함): ${wt.dir} (branch ${wt.branch})`;
+  }
+
   return { reply, files, dir: deliverDir, exitCode };
 }

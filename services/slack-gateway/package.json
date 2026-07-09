@@ -11,11 +11,14 @@
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "jest --config jest.config.cjs"
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.cjs"
   },
   "keywords": ["l5", "slack", "gateway", "agents", "socket-mode"],
   "author": "L5 Team",
   "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "slackify-markdown": "^5.0.0"
+  },
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "@types/node": "catalog:",

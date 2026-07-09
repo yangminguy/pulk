@@ -1,7 +1,12 @@
 // CTO structured-planning: classifier + bridge (fake pulk port, no network).
 
 import { classifyCtoIntent } from '../router';
-import { handleCtoPlanning, slackThreadId } from '../cto-planning-bridge';
+import {
+  handleCtoPlanning,
+  resolveCtoIntent,
+  isPlanningThread,
+  slackThreadId,
+} from '../cto-planning-bridge';
 import type { PulkPlanningPort, PlanMessageResult, ApprovePlanResult } from '../pulk-api';
 
 describe('classifyCtoIntent', () => {
@@ -49,6 +54,7 @@ function fakePulk(overrides: Partial<PulkPlanningPort> = {}): PulkPlanningPort {
       task_ids: ['t1', 't2', 't3'],
     }),
     latestProposedPlan: async () => ({ cto_message_id: 'msg-a' }),
+    threadHasMessages: async () => true,
     ...overrides,
   };
 }
@@ -113,5 +119,55 @@ describe('handleCtoPlanning', () => {
     const out = await handleCtoPlanning('plan', 'PRD 만들어줘', 'slack-C01-1', pulk);
     expect(out).toContain('pulk 기획 API 호출 실패');
     expect(out).toContain('NOCOBASE_URL');
+  });
+});
+
+describe('resolveCtoIntent (sticky planning)', () => {
+  it('promotes a generic follow-up inside an existing planning thread to plan', async () => {
+    const pulk = fakePulk({ threadHasMessages: async () => true });
+    const r = await resolveCtoIntent('generic', true, 'slack-C01-1', pulk);
+    expect(r).toEqual({ intent: 'plan', sticky: true });
+  });
+
+  it('keeps a generic follow-up generic when the thread has no planning record', async () => {
+    const pulk = fakePulk({ threadHasMessages: async () => false });
+    const r = await resolveCtoIntent('generic', true, 'slack-C01-1', pulk);
+    expect(r).toEqual({ intent: 'generic', sticky: false });
+  });
+
+  it('never promotes a new (non-thread) message — no pulk lookup', async () => {
+    let called = false;
+    const pulk = fakePulk({
+      threadHasMessages: async () => {
+        called = true;
+        return true;
+      },
+    });
+    const r = await resolveCtoIntent('generic', false, 'slack-C01-1', pulk);
+    expect(r).toEqual({ intent: 'generic', sticky: false });
+    expect(called).toBe(false);
+  });
+
+  it('leaves an already-classified plan/approve intent untouched', async () => {
+    const pulk = fakePulk();
+    expect(await resolveCtoIntent('plan', true, 'slack-C01-1', pulk)).toEqual({
+      intent: 'plan',
+      sticky: false,
+    });
+    expect(await resolveCtoIntent('approve', true, 'slack-C01-1', pulk)).toEqual({
+      intent: 'approve',
+      sticky: false,
+    });
+  });
+
+  it('pulk lookup throwing → no promotion (fail-open)', async () => {
+    const pulk = fakePulk({
+      threadHasMessages: async () => {
+        throw new Error('NocoBase 503');
+      },
+    });
+    expect(await isPlanningThread('slack-C01-1', pulk)).toBe(false);
+    const r = await resolveCtoIntent('generic', true, 'slack-C01-1', pulk);
+    expect(r).toEqual({ intent: 'generic', sticky: false });
   });
 });

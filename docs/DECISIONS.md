@@ -1,5 +1,8 @@
 # DECISIONS — L5 Business OS
 
+## slack-gateway 첫 runtime dep — slackify-markdown (2026-07-09)
+slack-gateway는 "raw fetch, dep 0" 정책이었으나, LLM 응답(표준 Markdown)의 Slack mrkdwn 깨짐 해결을 위해 slackify-markdown v5(ESM-only, MIT, 356k/주)를 첫 예외로 채택. 래퍼 `formatting.ts` 뒤에 감춰 교체 가능성 확보.
+
 ## 2026-07-08 — Slack CTO 기획 브리지 = 기존 cto:planMessage 레일 재사용 · Notion PRD = 단방향 프로젝션 · Notion 컬럼은 schema-adapter로만 확장
 
 **컨텍스트**: Slack에서 CTO와 개발 기획→PRD를 Notion "PRD저장소"에 저장→태스크 분해→실행 추적까지 한 루프로 잇는 요구. 기존 자산: cto:planMessage/approvePlan(M10), slack-gateway(헤드리스 임원), notion-gateway(agent_tasks 양방향).

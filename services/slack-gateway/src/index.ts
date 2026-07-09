@@ -17,7 +17,8 @@ import { SocketModeClient, type SlackEvent } from './socket-mode.js';
 import { EXECUTIVES, cleanInstruction, classifyCtoIntent } from './router.js';
 import { runExecutive } from './executor.js';
 import { PulkClient } from './pulk-api.js';
-import { handleCtoPlanning, slackThreadId } from './cto-planning-bridge.js';
+import { handleCtoPlanning, resolveCtoIntent, slackThreadId } from './cto-planning-bridge.js';
+import { formatSlackText } from './formatting.js';
 
 function log(msg: string): void {
   // eslint-disable-next-line no-console
@@ -85,7 +86,17 @@ async function startBot(bot: BotConfig, cfg: Awaited<ReturnType<typeof loadConfi
     // the pulk planning rail (cto:planMessage / cto:approvePlan). Everything
     // else (and CEO/CMO entirely) keeps the existing generic executive path.
     if (bot.id === 'cto' && cfg.ctoPlanningEnabled) {
-      const intent = classifyCtoIntent(instruction);
+      const pulk = new PulkClient(cfg.nocobaseUrl, cfg.nocobaseToken);
+      // Sticky planning: a generic-looking follow-up *inside an existing planning
+      // thread* stays on the structured rail (otherwise it leaks to the generic
+      // executor). event.thread_ts present == reply in an existing thread.
+      const { intent, sticky } = await resolveCtoIntent(
+        classifyCtoIntent(instruction),
+        Boolean(event.thread_ts),
+        slackThreadId(channel, threadTs),
+        pulk,
+      );
+      if (sticky) log(`${bot.label} sticky-planning: generic follow-up → plan ${runId}`);
       if (intent !== 'generic') {
         await api.postMessage({
           channel,
@@ -95,7 +106,6 @@ async function startBot(bot: BotConfig, cfg: Awaited<ReturnType<typeof loadConfi
               ? ':clipboard: CTO가 구조화 기획을 시작합니다… (PRD/로드맵/태스크)'
               : ':white_check_mark: 계획 승인을 처리합니다…',
         });
-        const pulk = new PulkClient(cfg.nocobaseUrl, cfg.nocobaseToken);
         const reply = await handleCtoPlanning(
           intent,
           instruction,
@@ -119,7 +129,7 @@ async function startBot(bot: BotConfig, cfg: Awaited<ReturnType<typeof loadConfi
       await api.postMessage({
         channel,
         thread_ts: threadTs,
-        text: `*${bot.label}*\n\n${result.reply}`,
+        text: `*${bot.label}*\n\n${formatSlackText(result.reply)}`,
       });
 
       if (result.files.length > 0) {

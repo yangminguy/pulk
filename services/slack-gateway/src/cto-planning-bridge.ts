@@ -17,6 +17,42 @@ export function slackThreadId(channel: string, threadTs: string): string {
   return `slack-${channel}-${threadTs}`;
 }
 
+/**
+ * True when this Slack thread already hosts a CTO planning conversation (any
+ * cto_planning_messages record exists for it). Lookup failure → false
+ * (fail-open: preserve the existing generic-executive behavior).
+ */
+export async function isPlanningThread(
+  threadId: string,
+  pulk: PulkPlanningPort,
+): Promise<boolean> {
+  try {
+    return await pulk.threadHasMessages(threadId);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sticky-planning promotion. A 'generic' CTO intent that arrives as a *follow-up
+ * inside an existing planning thread* is promoted to 'plan' so it stays on the
+ * structured rail. Without this, a follow-up whose wording lacks a planning
+ * keyword leaks to the generic executor — which treated it as an implementation
+ * order and wrote into main pre-approval (the live incident). New messages (no
+ * thread reply) and already-classified intents pass through unchanged.
+ */
+export async function resolveCtoIntent(
+  baseIntent: CtoIntent,
+  isThreadReply: boolean,
+  threadId: string,
+  pulk: PulkPlanningPort,
+): Promise<{ intent: CtoIntent; sticky: boolean }> {
+  if (baseIntent === 'generic' && isThreadReply && (await isPlanningThread(threadId, pulk))) {
+    return { intent: 'plan', sticky: true };
+  }
+  return { intent: baseIntent, sticky: false };
+}
+
 function planSummaryText(plan: CtoPlanSummary, ctoMessageId: string): string {
   const lines: string[] = [];
   const title =

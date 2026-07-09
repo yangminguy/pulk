@@ -39,6 +39,8 @@ export interface PulkPlanningPort {
   planMessage(threadId: string, founderMessage: string): Promise<PlanMessageResult>;
   approvePlan(ctoMessageId: string): Promise<ApprovePlanResult>;
   latestProposedPlan(threadId: string): Promise<PendingPlanRef | null>;
+  /** True when this Slack thread already hosts a CTO planning conversation. */
+  threadHasMessages(threadId: string): Promise<boolean>;
 }
 
 export class PulkClient implements PulkPlanningPort {
@@ -88,5 +90,12 @@ export class PulkClient implements PulkPlanningPort {
     );
     const row = (data?.data ?? [])[0];
     return row ? { cto_message_id: String(row.id) } : null;
+  }
+
+  /** True when any planning message exists for this Slack-thread's planning log. */
+  async threadHasMessages(threadId: string): Promise<boolean> {
+    const filter = encodeURIComponent(JSON.stringify({ thread_id: threadId }));
+    const data = await this.api(`/api/cto_planning_messages:list?pageSize=1&filter=${filter}`);
+    return (data?.data ?? []).length > 0;
   }
 }

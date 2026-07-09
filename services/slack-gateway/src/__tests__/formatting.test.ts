@@ -18,10 +18,11 @@ let formatSlackText: (markdown: string) => string;
 
 beforeAll(async () => {
   // 실 라이브러리를 먼저 로드해 두고, mock의 기본 구현으로 위임한다.
-  realSlackify = ((await import('slackify-markdown')) as unknown as { default: Slackify }).default;
+  realSlackify = ((await import('slackify-markdown')) as unknown as { slackifyMarkdown: Slackify })
+    .slackifyMarkdown;
   slackify.mockImplementation(realSlackify);
 
-  jest.unstable_mockModule('slackify-markdown', () => ({ default: slackify }));
+  jest.unstable_mockModule('slackify-markdown', () => ({ slackifyMarkdown: slackify }));
   ({ formatSlackText } = await import('../formatting.js'));
 });
 
@@ -45,7 +46,10 @@ describe('formatSlackText — 변환 커버리지 (FR-1/FR-2)', () => {
 
   it('AC-2b①: unordered list는 • 불릿으로 변환된다', () => {
     const out = formatSlackText('- item');
-    expect(out).toContain('• item');
+    // slackify-markdown v5는 `- item` → `•   item`(불릿 뒤 공백 3) 형태로 낸다.
+    // AC-2b① 취지(FR-2: `-` 리스트 → `•` 불릿 변환)를 실제 출력에 맞춰 검증한다.
+    expect(out).toMatch(/•\s+item/);
+    expect(out).not.toContain('- item');
   });
 
   it('AC-2b②: 인라인 코드는 그대로 보존된다', () => {
