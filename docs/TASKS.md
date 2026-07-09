@@ -27,11 +27,21 @@
 
 - [x] **[research] 오픈소스 조사** — 후보 비교(slackify-markdown / md-to-slack / @tryfabric/mack / slack-block-builder) + npm 실측(버전·다운로드·deps·라이선스). **채택: slackify-markdown**(md→mrkdwn, 356k/주, ESM v5, MIT), 래퍼 `formatting.ts` 뒤에 은닉해 교체 가능성 확보. 산출물: `docs/research/slack-message-formatting-libs.md`, 진행 노트 `docs/_acr-progress/slack-메시지-포맷팅-함수.md`.
 - [x] **[spec] 스펙 작성** — FR 7·NFR 4·AC 10(전부 측정 가능: unit test/grep/명령, codex QA 3회전 최종 PASS) + 영향 파일 7개. 적용은 index.ts executive 응답 1곳만, planning 경로 미적용(+AC-5 회귀), 40k truncation(39,900+suffix), fail-open, slackify-markdown import는 formatting.ts 단독. 산출물: `docs/specs/slack-message-formatting-spec.md`.
-- [ ] **[구현] formatting.ts + 배선** — 스펙 AC-1~AC-8 충족. ESM-only×jest는 모듈 mock 전략(NFR-2). dep 예외는 DECISIONS.md 기록.
+- [x] **[구현] formatting.ts + 배선** (2026-07-09) — `formatting.ts` 신설(named import `slackifyMarkdown` — v5는 default export 아님 주의) + index.ts executive 응답 1곳 배선 + dep `slackify-markdown ^5.0.0`(DECISIONS.md 예외 기록). AC-1~9 충족(AC-2b①은 v5 실제 출력 `•\s+`로 테스트 조정, AC-7은 테스트 파일의 mock용 모듈명 참조 1건 허용 — 프로덕션 import는 formatting.ts 단독). typecheck 0·**43/43**·build OK. **라이브 E2E**: 실 Slack `#exec-cto` 왕복에서 `*볼드*`/`•` 리스트/`<url|링크>` mrkdwn 렌더 실증.
+
+## 🛡️ Slack 기획 분류누수 수정 — sticky 분류 + generic 실행자 worktree 격리 (2026-07-09)
+
+> 배경: 기획 스레드 후속 발화가 키워드 없으면 generic으로 새고, generic 헤드리스 실행자가 main repo에 직접 파일 작성(실피해, HANDOFF 2026-07-09). 두 방향 모두 수정.
+
+- [x] **sticky 분류** — `cto-planning-bridge.ts`에 `isPlanningThread`(pulk `cto_planning_messages` 스레드 조회, 실패 시 fail-open)+`resolveCtoIntent`(순수 결정 함수), `pulk-api.ts`에 `threadHasMessages`. index.ts CTO 블록이 generic+스레드 후속이면 planning으로 승격(`sticky-planning` 로그). 단위테스트 5케이스.
+- [x] **generic 실행자 worktree 격리 (rule 30)** — `executor.ts`가 run마다 `agent/slack-<runId>` 브랜치로 tmpdir worktree 생성 후 그 안에서 spawn. 무변경 시 worktree+브랜치 자동 정리, 변경 시 보존+reply에 경로 표기(자동 병합 금지). worktree 생성 실패는 **fail-closed**(main 폴백 없음). deliverDir(`.slack-runs/`)는 절대경로 유지. 단위테스트 6케이스 + 실 git worktree 스모크.
+- [x] **검증**: slack-gateway typecheck 0 · jest **43/43**(포맷팅 포함 4 suites) · build OK · `com.l5.slack-gateway` 재기동(임원 3 socket 재연결).
+- [x] **라이브 E2E (실 Slack 사용자 흐름, 2026-07-09)**: ① generic 요청 → worktree 실행 → mrkdwn 변환 응답, main repo status 해시 불변+잔여 worktree 0 ② 기획 요청 → S5 blocking 질문 ③ **키워드 없는 후속 발화 → `sticky-planning` 승격 로그 → 기획 턴 문맥 응답**(generic 미발동 — 재발 경로 차단 실증). 테스트 plan은 미승인(proposed 잔존, 태스크 미생성).
 
 ## 🔗 Notion 동기화 (2026-07-08)
 
 - [x] **CtoPlan(agent_tasks) ↔ Notion 양방향 동기화** — `l5-core/notion-sync`(순수, jest 16) + `services/notion-gateway`(raw-fetch, jest 3) + `agent_tasks.notion_page_id` 컬럼. 무료(워커 미사용, API 폴링). **2026-07-09 라이브 전환**: launchd `com.l5.notion-gateway` 상시 폴링 데몬(60s), 태스크 생성/상태 반영 실측.
+- [x] **사장님 컬럼 자동 채움 (영역/워크플로우 태그/PR·이슈 링크)** (2026-07-09) — `l5-core/notion-sync/founder-props.ts`(title-우선 2-pass 파생 + fill-if-empty, 기존 옵션만 사용, PR은 acr_pr_url 있을 때만) + `notion-gateway/sync.ts` 병합 배선. jest 38/38·typecheck·build GREEN, 라이브 15 rows 자동 채움 + 오분류 교정 재채움 검증.
 - [x] **Slack CTO 기획 → PRD저장소 → 태스크 실행 추적 루프** (2026-07-08 코드 → **2026-07-09 라이브 E2E 완료**) — ① Slack `@CTO` 구조화 기획/승인 브리지(`slack-gateway`: classifyCtoIntent+PulkClient+cto-planning-bridge, jest 22) ② PRD저장소 어댑터(`l5-core/notion-prd-sync` + `notion-gateway/prd-sync.ts`, `NOTION_PRD_DATABASE_ID` 설정 완료) ③ `cto_planning_messages.instruction_id/notion_prd_page_id` 컬럼 실기록 확인 ④ 태스크 Notion 메타(`Pulk PRD`/`Pulk Updated` 컬럼 라이브) ⑤ 실 Slack 왕복: `#exec-cto` 기획→승인→태스크 생성→PRD저장소/워크플로우 로그 자동 투영→ACR 실행 레일 claim까지 검증. Slack "sent via" 트레일러 오분류 버그 수정(`router.ts`, 커밋 대기).
 
 ## 🗺️ CMO 콘텐츠 시스템 — 앞으로 작업 로드맵 (2026-06-09 기준, 트랙 B)

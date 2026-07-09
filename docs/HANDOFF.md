@@ -1,6 +1,21 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-07-09 (R/S 트랙 **라이브 전환 + ACR 은퇴 + 대범위 기획 실주행 검증**)
+최종 업데이트: 2026-07-09 (분류누수 수정 + Slack 포맷팅 구현 — **실 Slack E2E PASS, 라이브 반영 완료**)
+
+## 🟢 2026-07-09 — Slack 분류누수 수정(sticky+worktree 격리) + 포맷팅 구현: 병렬 에이전트 → 실 Slack E2E
+
+**무엇**: HANDOFF 아래 엔트리의 "발견(미수정)" 실피해 2건 + 포맷팅 구현 phase를 병렬 에이전트 2개로 처리하고, 실 Slack 사용자 흐름 E2E까지 완료. 전부 `services/slack-gateway`.
+
+**수행(전부 이 세션 실측)**:
+- **sticky 분류** — 기획 스레드의 후속 발화(PLANNING_RE 키워드 없음)가 generic으로 새던 문제. `resolveCtoIntent`(bridge, 순수)+`isPlanningThread`(pulk `cto_planning_messages` 조회, fail-open)+`threadHasMessages`(pulk-api). generic+스레드 후속이면 planning 승격.
+- **generic 실행자 worktree 격리(rule 30)** — `executor.ts`가 run마다 tmpdir worktree(`agent/slack-<runId>`)에서 spawn. 무변경 자동정리/변경 보존+경로 보고. 생성 실패는 **fail-closed**(main 폴백 금지 — 이번 사고의 원인 패턴).
+- **포맷팅 구현** — `formatting.ts`(slackify-markdown v5, **named export `slackifyMarkdown` — default import는 undefined로 무증상 fail-open 되니 주의**) + index.ts executive 응답 1곳 + DECISIONS.md dep 예외 기록. 스펙 AC-1~9 충족.
+- **검증**: typecheck 0 · jest **43/43** · build OK → `com.l5.slack-gateway` kickstart(임원 3 socket 재연결).
+- **실 Slack E2E(#exec-cto)**: ① generic 요청 → mrkdwn 변환 응답(`*볼드*`/`•`/`<url|링크>`) + main repo status 해시 불변 + 잔여 worktree/브랜치 0 ② 기획 요청 → S5 blocking 질문 ③ 키워드 없는 후속 발화 → 로그 `sticky-planning: generic follow-up → plan` → 기획 턴이 문맥 이어 응답. **재발 경로 차단 실증.** 테스트 plan은 미승인(proposed 잔존).
+
+**함정/잔여**: (1) planning 경로 reply는 스펙(FR-4)대로 formatSlackText 미적용 — plan-turn LLM reply에 `**`가 섞여 나올 수 있음(관찰됨, 스펙 범위 밖 — 원하면 plan-turn 프롬프트에서 mrkdwn 강제). (2) 에이전트가 환경 복구로 `corepack pnpm install` 전체 1회 실행(NODE_ENV=production이 devDeps 차단하던 문제 → `--prod=false`). (3) 변경 전부 미커밋. (4) stash@{0}(사고 격리분)은 불변.
+
+
 
 ## 🟢 2026-07-09 — R/S 트랙 라이브: ACR 은퇴, Slack 대범위 기획 실주행, 실행 레일 실측
 
@@ -55,6 +70,10 @@
 **현재 상시 운영**: `com.l5.slack-gateway`(임원 3 socket) + `com.l5.notion-gateway`(60s 폴링, PRD sync enabled). 로그: `~/.l5/logs/{slack,notion}-gateway.log`.
 
 **주의**: 스모크/라이브 테스트로 생성된 태스크 6개(방문자 카운터 2·헬스체크 2 등)가 실제 실행 레일에서 running — 테스트 산출물이므로 필요시 kill. Slack "sent via" 트레일러 수정은 커밋 대기(uncommitted).
+
+**추가 (2026-07-09 오후) — 사장님 컬럼 자동 채움 + 보드 정리**:
+- `영역`/`워크플로우 태그`/`PR·이슈 링크` 자동 채움(사장님 지시) — `l5-core/notion-sync/founder-props.ts`(deriveArea/deriveWorkflowTags **title-우선 2-pass** + buildFounderFillProps **fill-if-empty**: 사장님 편집 불가침, 기존 옵션만 사용, PR은 `acr_pr_url` 있을 때만) + `sync.ts` 병합 배선(`SyncRoundOptions.founderProps`) + jest 38/38·typecheck·build GREEN. 라이브 검증: 15 rows 자동 채움, detail-노이즈 오분류(방문자 API→Frontend 등) 발견 → title-우선으로 교정 후 재채움 확인.
+- 보드 정합성 실사: Notion 보드=NocoBase 정확 일치. 단 **ACR launchd 5종이 이날 12:17 은퇴됨**(다른 세션, `~/Library/LaunchAgents/retired-acr/`) → ACR 시절 claim된 running들은 실행자 없는 orphan이었음. 스모크 산출물 4개(방문자 카운터 2·헬스체크 2)는 **killed 정리 완료**(Notion Killed 반영 확인). 세컨브레인 running 2·blocked 2와 사장님 신규 plan의 "Slack 메시지 포맷팅 함수"(orphan running)는 native 전환 세션 소관으로 보존 — 재큐잉 여부는 그쪽에서 결정.
 
 ## 🟢 2026-07-08 — Slack CTO 기획 루프: Slack → cto:planMessage/approvePlan → Notion PRD저장소 + 태스크 추적 (코드·단위검증 완료, 라이브는 토큰 필요)
 

@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L5 Business OS — 개발 현황 보고서</title>
+<style>
+  :root{
+    --bg:#f7f7f5; --card:#ffffff; --ink:#1a1a1a; --muted:#6b6b6b;
+    --line:#e5e3dd; --accent:#2f6f4f; --accent-soft:#e7f0ea;
+    --amber:#9a6b1f; --amber-soft:#f6eddb; --blue:#2b5b8c; --blue-soft:#e6eef6;
+    --red:#a33; --shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#161616; --card:#1e1e1e; --ink:#ececec; --muted:#9a9a9a;
+      --line:#2e2e2e; --accent:#5fbf8f; --accent-soft:#1b2b22;
+      --amber:#d6a24e; --amber-soft:#2a2417; --blue:#7fb0dd; --blue-soft:#182430;
+      --red:#e78; --shadow:0 1px 3px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#f7f7f5; --card:#ffffff; --ink:#1a1a1a; --muted:#6b6b6b; --line:#e5e3dd;
+    --accent:#2f6f4f; --accent-soft:#e7f0ea; --amber:#9a6b1f; --amber-soft:#f6eddb;
+    --blue:#2b5b8c; --blue-soft:#e6eef6;
+  }
+  :root[data-theme="dark"]{
+    --bg:#161616; --card:#1e1e1e; --ink:#ececec; --muted:#9a9a9a; --line:#2e2e2e;
+    --accent:#5fbf8f; --accent-soft:#1b2b22; --amber:#d6a24e; --amber-soft:#2a2417;
+    --blue:#7fb0dd; --blue-soft:#182430;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",Segoe UI,Roboto,sans-serif;
+    line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:920px;margin:0 auto;padding:40px 22px 80px}
+  header.top{margin-bottom:8px}
+  .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  h1{font-size:30px;line-height:1.25;margin:.35em 0 .15em;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:15px}
+  .meta{margin-top:14px;font-size:13px;color:var(--muted)}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:28px 0 8px}
+  @media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 14px;box-shadow:var(--shadow)}
+  .stat .n{font-size:26px;font-weight:700;letter-spacing:-.02em}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:2px}
+  h2{font-size:20px;margin:44px 0 6px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px}
+  h2 .dot{width:10px;height:10px;border-radius:50%;flex:none}
+  .sectnote{color:var(--muted);font-size:13.5px;margin:0 0 16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:12px 0;box-shadow:var(--shadow)}
+  .card h3{margin:0 0 4px;font-size:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .card p{margin:6px 0 0;font-size:14px;color:var(--ink)}
+  .card .why{color:var(--muted);font-size:13px;margin-top:8px}
+  .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;letter-spacing:.02em}
+  .b-live{background:var(--accent-soft);color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)}
+  .b-code{background:var(--blue-soft);color:var(--blue);border:1px solid color-mix(in srgb,var(--blue) 30%,transparent)}
+  .b-wip{background:var(--amber-soft);color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 30%,transparent)}
+  .b-date{background:transparent;color:var(--muted);border:1px solid var(--line)}
+  ul.tight{margin:8px 0 0;padding-left:18px;font-size:13.5px}
+  ul.tight li{margin:3px 0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+    background:color-mix(in srgb,var(--muted) 14%,transparent);padding:1px 5px;border-radius:5px}
+  .todo{display:flex;gap:11px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--line)}
+  .todo:last-child{border-bottom:0}
+  .todo .mark{flex:none;width:20px;height:20px;border-radius:6px;border:2px solid var(--line);margin-top:2px}
+  .todo.hot .mark{border-color:var(--red)}
+  .todo .t{font-size:14px}
+  .todo .t small{display:block;color:var(--muted);font-size:12.5px;margin-top:1px}
+  .pri{font-size:10.5px;font-weight:700;color:var(--red);border:1px solid color-mix(in srgb,var(--red) 40%,transparent);
+    border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+  footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin:18px 0 0;font-size:12.5px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="eyebrow">L5 Business OS · 개발 현황</div>
+    <h1>지금까지 무엇을 만들었나 — 완료 · 진행 중 · 남은 일</h1>
+    <div class="sub">Founder 운영체계의 CTO 판단·실행 파이프라인, 임원 에이전트, 콘텐츠 시스템을 관통하는 현재 상태 요약</div>
+    <div class="meta">기준일 2026-07-09 · 브랜치 <code>feat/notion-gateway</code> · 출처: docs/HANDOFF.md · docs/TASKS.md · git log</div>
+    <div class="legend">
+      <span><i style="background:var(--accent)"></i> 라이브 운영 중</span>
+      <span><i style="background:var(--blue)"></i> 코드·검증 완료 (배선/재기동 대기)</span>
+      <span><i style="background:var(--amber)"></i> 진행 중 / 부분 완료</span>
+    </div>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><div class="n">2287</div><div class="l">l5-core 테스트 GREEN</div></div>
+    <div class="stat"><div class="n">7종</div><div class="l">라이브 상시 운영 시스템</div></div>
+    <div class="stat"><div class="n">S1~S7 · R1~R6</div><div class="l">CTO 하네스 신규 트랙</div></div>
+    <div class="stat"><div class="n">ACR → Native</div><div class="l">실행 엔진 세대 교체</div></div>
+  </div>
+
+  <!-- ============ 최신 업그레이드 ============ -->
+  <h2><span class="dot" style="background:var(--accent)"></span>🆕 이번 최신 업그레이드 — 개발 과정 자체를 강화</h2>
+  <p class="sectnote">다른 세션에서 진행된 핵심 변화. "무엇을 만드느냐"가 아니라 <b>"CTO가 어떻게 판단하고 실행하느냐"</b>를 폐루프로 재설계하고 라이브 전환했습니다.</p>
+
+  <div class="card">
+    <h3>CTO 판단·실행 하네스 — R/S 트랙 <span class="badge b-live">라이브</span> <span class="badge b-date">2026-07-09</span></h3>
+    <p>진단 결과 "실행은 콜드스타트·직렬, 판단은 1-shot·무근거"였던 개발 파이프라인을 <b>Scout → Plan → 모호성 게이트 → Critic → Execute → Verify → Ledger → Calibrate</b> 폐루프로 재구성했습니다.</p>
+    <ul class="tight">
+      <li><b>S1 Plan Grounding</b> — 기획 전 repo 실측 스카우트를 프롬프트에 주입 (추측 대신 실제 코드 기준)</li>
+      <li><b>S4 스키마 강제+재시도</b> — LLM JSON 산출 검증 실패 시 원문 첨부 재호출 → 결정론 강등</li>
+      <li><b>S5 모호성 게이트</b> — blocking 질문이 있으면 계획을 막고 먼저 질문 (실전에서 실제 작동)</li>
+      <li><b>S6 완료조건(Acceptance Criteria)</b> — 태스크별 측정 가능한 완료조건 생성 → verifier가 조건별 판정</li>
+      <li><b>S3 Critic 3관점 패널</b> — 단순화·리스크·검증가능성 병렬 채점을 승인 카드에 첨부</li>
+      <li><b>S7 결정 원장</b> — 예측 vs 실측을 JSONL로 축적 → 보정 제안 스크립트</li>
+      <li><b>R1~R6 실행 하네스</b> — command-guard 훅(실세션 위험명령 차단 실증), skills 3종, dev subagent 2종, Workflow 파이프라인, 승인 즉시 kick</li>
+    </ul>
+    <p class="why">검증: l5-core 2287/2287 + agent-runtime 53/53 GREEN · 판단 루프 6단계 dist E2E PASS · hook self-test 차단12/허용10.</p>
+  </div>
+
+  <div class="card">
+    <h3>ACR 은퇴 → Claude Code Native Orchestration <span class="badge b-live">라이브</span> <span class="badge b-date">2026-07-09</span></h3>
+    <p>기존 실행 엔진(ACR, 별도 Next.js/Python 레포)을 <b>사장님 승인 하에 은퇴</b>(launchd 5종 bootout, plist는 <code>retired-acr/</code>로 가역 이동). 실행은 Claude Code 네이티브 레일이 worktree 격리 → verify → 자율 병합까지 수행합니다.</p>
+    <p class="why">실증: Slack 대범위 기획("임원 주간 브리핑 자동화")이 게이트 질문 2건 → 계획 제안 → critic must_fix 2건 적중 → 승인 → Native 레일 worktree 격리 → verify PASS → 자율 병합 커밋(3ccd4ab)까지 전 구간 실주행.</p>
+  </div>
+
+  <!-- ============ 라이브 완료 ============ -->
+  <h2><span class="dot" style="background:var(--accent)"></span>✅ 완료 — 라이브 상시 운영 중</h2>
+  <p class="sectnote">코드·검증을 넘어 실제 서비스로 돌고 있는 것들.</p>
+
+  <div class="card">
+    <h3>Slack CTO 기획 루프 <span class="badge b-live">라이브 E2E</span> <span class="badge b-date">07-08~09</span></h3>
+    <p>사장님이 Slack <code>@CTO</code>로 개발을 기획 → PRD/로드맵/태스크 자동 생성 → 같은 스레드 "승인" → 태스크 생성 → 실행 레일 claim까지 실제 Slack 왕복으로 검증. <code>com.l5.slack-gateway</code> 상시 운영(임원 3 socket).</p>
+  </div>
+
+  <div class="card">
+    <h3>Notion ↔ agent_tasks 양방향 동기화 + PRD저장소 <span class="badge b-live">라이브</span> <span class="badge b-date">07-08~09</span></h3>
+    <p>승인된 CTO 태스크가 Notion "코딩 워크플로우 로그"에 row로 동기화(상태 양방향), PRD는 "PRD저장소"에 단방향 투영. <code>com.l5.notion-gateway</code> 60s 폴링 데몬 상시. <b>사장님 컬럼(영역/워크플로우 태그/PR·이슈 링크) 자동 채움</b>도 라이브(15 rows 검증, 전액 무료 — API 폴링).</p>
+  </div>
+
+  <div class="card">
+    <h3>임원 서브에이전트 9종 + 인바운드 텔레그램 게이트웨이 <span class="badge b-live">라이브</span> <span class="badge b-date">06-11~12</span></h3>
+    <p><code>@ceo @cmo @cto @cpo @cro @coo @cfo @chief-of-staff @risk-qa</code>를 이 세션·텔레그램에서 호출해 실제 작업/파일을 받음. 허용목록 밖 메시지 차단, 외부 발행·결제는 승인 게이트 의존.</p>
+  </div>
+
+  <div class="card">
+    <h3>호랑이(Tiger) 자가개선 루프 + 실시간 장애 감시(watchdog) <span class="badge b-live">라이브</span> <span class="badge b-date">06-06~12</span></h3>
+    <p>매일 밤 전 임원 워크플로우의 오류·병목을 cross-repo로 수집 → Claude가 분석해 개선 카드 → <code>/self-improve</code>에서 일괄 승인 → CTO가 repo별 병렬 수정→merge→검증. watchdog은 멈춤 감지→진단→승인→복구(4회 상한) 전 경로 실증.</p>
+    <p class="why">승인 전엔 코드가 바뀌지 않는 게이트가 전 구간에 유지됨.</p>
+  </div>
+
+  <div class="card">
+    <h3>원격 운영 통로 (모바일에서 운영) <span class="badge b-live">라이브</span> <span class="badge b-date">06-11</span></h3>
+    <p>Vercel founder-ui → cloudflared 터널 → 로컬 백엔드. 폰에서 지침/승인 → 로컬 hermes dispatcher 실행. 좀비 터널 자동 감지·복구(ZOMBIE GUARD, 3분 probe) 내장.</p>
+  </div>
+
+  <!-- ============ 코드 완료 ============ -->
+  <h2><span class="dot" style="background:var(--blue)"></span>🧩 완료 — 코드·검증 끝, 배선/재기동만 남음</h2>
+
+  <div class="card">
+    <h3>CMO Video Room v3 — 반자동 콘텐츠 시스템 <span class="badge b-code">코드 완료</span> <span class="badge b-date">06-05~09</span></h3>
+    <p>키콘텐츠 11스텝 순차 자동초안(각 스텝이 이전 산출물을 컨텍스트로) → 3주제 후보 + 선정이유 → HTML 보고서 → 선택까지 <b>라이브 LLM 실작동 검증</b>(progress 8/8, 178초). PRD v3 10스킬 오케스트레이션·상태머신 29 전환 검증·공통 UI 컴포넌트까지 포함.</p>
+    <p class="why">잔여: 풀링→제작 단계 v3화, 속도 최적화(순차 LLM 병렬화), Viewtrap Playwright 자동화.</p>
+  </div>
+
+  <!-- ============ 진행 중 ============ -->
+  <h2><span class="dot" style="background:var(--amber)"></span>🔄 진행 중 / 부분 완료</h2>
+
+  <div class="card">
+    <h3>Slack 메시지 포맷팅 함수 <span class="badge b-wip">research+spec 완료</span> <span class="badge b-date">07-09</span></h3>
+    <p>LLM 표준 Markdown이 Slack mrkdwn에서 깨지는 문제. 라이브러리 4종 비교 → <b>slackify-markdown 채택</b>, FR 7·NFR 4·AC 10 스펙 확정. <b>구현 phase만 남음</b>(<code>formatting.ts</code> 래퍼 + postMessage 배선).</p>
+  </div>
+
+  <div class="card">
+    <h3>브리핑 프로젝트 태스크 6건 <span class="badge b-wip">Native 레일 실행 중</span> <span class="badge b-date">07-09</span></h3>
+    <p>"임원 주간 브리핑 자동화" 승인 후 태스크 6건이 Native 레일에서 순차 실행 중(phase당 수 분). 결정 원장은 태스크 all_done 콜백 도달 시 축적 시작.</p>
+  </div>
+
+  <!-- ============ 남은 일 ============ -->
+  <h2><span class="dot" style="background:var(--red)"></span>📋 남은 작업</h2>
+  <p class="sectnote">우선순위 상위 = 라이브에서 발견된 실피해 관련.</p>
+
+  <div class="card">
+    <div class="todo hot">
+      <div class="mark"></div>
+      <div class="t">Slack 기획 스레드 sticky 분류 + generic 실행자 worktree 격리 <span class="pri">HOT · 실피해</span>
+        <small>기획 스레드 후속 답변이 키워드 없으면 generic 경로로 새고, 그 실행자가 승인 전 main repo에 직접 5파일 작성함(현재 git stash로 격리). rule 30(worktree 정책) 위반 방지 필요.</small></div>
+    </div>
+    <div class="todo">
+      <div class="mark"></div>
+      <div class="t">Slack 메시지 포맷팅 구현 phase
+        <small>스펙 AC-1~AC-8 충족. slackify-markdown ESM-only × jest CJS → 모듈 mock 전략. dep 예외 DECISIONS.md 기록.</small></div>
+    </div>
+    <div class="todo">
+      <div class="mark"></div>
+      <div class="t">CMO 콘텐츠 로드맵 R1~R7
+        <small>선택→풀링 진입 v3, 텔레그램 알림 실작동, 속도 최적화(178초→병렬), 제작 단계(제목/썸네일/원고), Viewtrap Playwright 자동화, 성과 재학습 루프.</small></div>
+    </div>
+    <div class="todo">
+      <div class="mark"></div>
+      <div class="t">NocoBase / founder-ui 재기동 반영
+        <small>패치된 plugin dist·UI 빌드가 라이브에 반영되려면 kickstart 필요. 선택: plist에 HERMES_KICK_CMD/PULK_REPO_PATH 주입.</small></div>
+    </div>
+    <div class="todo">
+      <div class="mark"></div>
+      <div class="t">브라우저 E2E 확인 (사장님 확인)
+        <small>CMO Video Room 단계 레일·키콘텐츠 초안 흐름, 텔레그램 게이트웨이 라이브 실증 등 최종 눈으로 확인 항목들.</small></div>
+    </div>
+    <div class="todo">
+      <div class="mark"></div>
+      <div class="t">실행·비용 관측 마감 (Phase 6)
+        <small>실제 누적 토큰/비용을 hermes-agent→콜백→컨트롤룸까지 결선. 비용 상한·장애 모니터.</small></div>
+    </div>
+  </div>
+
+  <footer>
+    L5 Business OS 개발 현황 보고서 · 생성 2026-07-09 · 자동 정리(HANDOFF/TASKS/git 기반).
+    상세 이력은 <code>docs/HANDOFF.md</code>와 <code>docs/TASKS.md</code> 참조.
+  </footer>
+
+</div>
+</body>
+</html>
