@@ -5,6 +5,7 @@ import {
   reconcile,
   mapTaskToProperties,
   mapTaskToUpdateProperties,
+  buildFounderFillProps,
 } from '@l5/core';
 import type { TaskLink, NotionPage, NotionPropertiesPayload, TaskStatus, TaskSyncExtras } from '@l5/core';
 
@@ -32,6 +33,10 @@ export interface SyncRoundOptions {
   availableProps?: ReadonlySet<string>;
   /** instruction_id → Notion PRD page id (from the PRD sync round). */
   prdPageByInstruction?: ReadonlyMap<string, string>;
+  /** Founder-owned columns (영역/워크플로우 태그/PR·이슈 링크) present in the live
+   * schema. Auto-filled ONLY when empty on the Notion side (founder edits win).
+   * Undefined → founder columns untouched (backward compatible). */
+  founderProps?: ReadonlySet<string>;
 }
 
 export async function runSyncRound(
@@ -41,6 +46,7 @@ export async function runSyncRound(
 ): Promise<SyncSummary> {
   const [links, pages] = await Promise.all([noco.listTaskLinks(), notion.queryDatabase()]);
   const plan = reconcile(links, pages);
+  const pageById = new Map<string, NotionPage>(pages.map((p) => [p.id, p]));
 
   const extrasFor = (task: TaskLink['task']): TaskSyncExtras => ({
     availableProps: opts.availableProps,
@@ -52,17 +58,19 @@ export async function runSyncRound(
     await noco.setStatus(task_id, status);
   }
 
-  // Push pulk-owned fields to existing rows.
+  // Push pulk-owned fields to existing rows (+ fill empty founder columns).
   for (const { pageId, task, includeStatus } of plan.toUpdate) {
     const props = includeStatus
       ? mapTaskToProperties(task, extrasFor(task))
       : mapTaskToUpdateProperties(task, extrasFor(task));
-    await notion.updatePage(pageId, props);
+    const founderFill = buildFounderFillProps(task, opts.founderProps, pageById.get(pageId) ?? null);
+    await notion.updatePage(pageId, { ...props, ...founderFill });
   }
 
   // Create rows for tasks not yet in Notion, then persist the page id link.
   for (const { task } of plan.toCreate) {
-    const pageId = await notion.createPage(mapTaskToProperties(task, extrasFor(task)));
+    const founderFill = buildFounderFillProps(task, opts.founderProps, null);
+    const pageId = await notion.createPage({ ...mapTaskToProperties(task, extrasFor(task)), ...founderFill });
     await noco.setNotionPageId(task.id, pageId);
   }
 

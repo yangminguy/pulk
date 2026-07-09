@@ -29,12 +29,16 @@ export interface NotionDateProperty {
 export interface NotionUrlProperty {
   url: string | null;
 }
+export interface NotionMultiSelectProperty {
+  multi_select: Array<{ name: string }>;
+}
 export type NotionWriteProperty =
   | NotionTitleProperty
   | NotionRichTextProperty
   | NotionSelectProperty
   | NotionDateProperty
-  | NotionUrlProperty;
+  | NotionUrlProperty
+  | NotionMultiSelectProperty;
 
 export type NotionPropertiesPayload = Record<string, NotionWriteProperty>;
 
@@ -52,6 +56,8 @@ export interface NotionReadProperty {
   title?: Array<{ plain_text?: string }>;
   rich_text?: Array<{ plain_text?: string }>;
   select?: { name: string } | null;
+  multi_select?: Array<{ name: string }>;
+  url?: string | null;
 }
 
 /** Notion database property names — matches the founder's "코딩 워크플로우 로그" DB.

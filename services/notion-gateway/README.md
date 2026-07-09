@@ -25,8 +25,16 @@ task들을 Notion DB에 task별 row로 내보내고, Notion에서 편집한 상�
 | `날짜` | date | task.created_at | pulk→Notion |
 | `Pulk Task ID` | rich_text | task.id | 매핑키 (pulk→Notion) |
 
-> 사장님 소유 컬럼(`단계`·`영역`·`워크플로우 태그`·`PR/이슈 링크`·`메모`)은 **절대 쓰지 않는다**.
+> 사장님 소유 컬럼 중 `단계`·`메모`는 **절대 쓰지 않는다**.
 > `상태` select 옵션: `Queued`, `In Progress`, `Blocked`, `Needs Review`, `Done`, `Killed`.
+
+### 사장님 컬럼 자동 채움 (2026-07-09, 사장님 지시 — fill-if-empty)
+
+`영역`(select)·`워크플로우 태그`(multi_select)·`PR/이슈 링크`(url)는 **비어 있을 때만**
+pulk가 자동으로 채운다(`@l5/core notion-sync/founder-props.ts`). 사장님이 손으로 넣은
+값은 절대 덮지 않는다. 파생은 결정론(태스크 title 우선, rationale/expected_output 보조)
+이고, 값은 사장님 기존 옵션 목록 안에서만 고른다(새 옵션 생성 금지 — 미결정 시
+`Etc`/`구현`). `PR/이슈 링크`는 `task.acr_pr_url`이 생겼을 때만 기록(없으면 안 씀).
 
 ## 환경변수 (repo-root `.env.local`)
 

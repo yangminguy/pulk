@@ -6,7 +6,7 @@
 //   2) Task round: agent_tasks ↔ 코딩 워크플로우 로그, with optional metadata
 //      columns (schema-checked) and a source-PRD link from the PRD round.
 
-import { filterManagedProps } from '@l5/core';
+import { filterManagedProps, filterFounderProps } from '@l5/core';
 import { loadConfig } from './config.js';
 import { NotionClient } from './notion-client.js';
 import { NocoBaseClient } from './nocobase-client.js';
@@ -32,9 +32,12 @@ async function main(): Promise<void> {
         console.log(`[notion-gateway] prd: +${prd.created} created, ${prd.updated} updated`);
       }
 
-      // Optional metadata columns: intersect our pulk-managed names with the live schema.
+      // Optional pulk columns + founder columns (영역/워크플로우 태그/PR·이슈 링크,
+      // fill-if-empty): intersect with the live schema.
       try {
-        opts.availableProps = filterManagedProps(await notion.retrieveDatabaseSchema());
+        const schema = await notion.retrieveDatabaseSchema();
+        opts.availableProps = filterManagedProps(schema);
+        opts.founderProps = filterFounderProps(schema);
       } catch (err) {
         console.error(`[notion-gateway] schema check failed (core columns only): ${(err as Error).message}`);
       }

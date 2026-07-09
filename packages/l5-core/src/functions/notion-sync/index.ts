@@ -4,3 +4,4 @@ export * from './status-map';
 export * from './map-task-to-properties';
 export * from './map-properties-to-task';
 export * from './reconcile';
+export * from './founder-props';
