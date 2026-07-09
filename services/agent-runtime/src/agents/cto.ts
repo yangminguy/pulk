@@ -645,7 +645,14 @@ export async function runCTOAgent(
     blockedFiles: DEFAULT_BLOCKED,
   });
 
-  await registerWithACR(input.task);
+  // ACR 등록은 ACR 레일일 때만 — 네이티브/워크플로우 레일에서는 은퇴한 ACR로의
+  // fetch 실패 노이즈만 만든다(2026-07-09 라이브 도그푸드에서 실측).
+  const nonAcrRail =
+    process.env["WORKFLOW_ORCHESTRATION"] === "on" ||
+    process.env["NATIVE_ORCHESTRATION"] === "on";
+  if (!nonAcrRail) {
+    await registerWithACR(input.task);
+  }
   if (process.env["WORKFLOW_ORCHESTRATION"] === "on") {
     try {
       await dispatchToWorkflowOrchestrator(acrIntent);
