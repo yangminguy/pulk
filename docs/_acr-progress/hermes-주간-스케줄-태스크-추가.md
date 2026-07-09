@@ -21,10 +21,33 @@
   `WeeklySnapshot` 계약 정본), 델타 계산(`packages/l5-core/src/functions/executive-brief.ts` +
   실패 테스트 작성됨), Slack 포맷팅(`services/slack-gateway/src/__tests__/formatting.test.ts` 작성됨).
 
-## 다음 phase(spec)에서 결정할 것
+## spec phase (2026-07-09) — 완료
 
-1. 실행 시각(월 09:30 제안 — 10:00 cto-weekly-review와 회피) + 집계 주간 창 정의와 정합.
-2. 태스크명 `executive-weekly-brief` / plist Label `com.l5.hermes.executive-weekly-brief` 확정.
-3. runner `runExecutiveWeeklyBriefLive()`의 파이프라인 순서(집계→델타→포맷→발송)와 실패 처리.
-4. 발송은 내부 Slack(founder 대상) — D1~D2, 승인 게이트 불요 명문화.
-5. 머신 꺼짐으로 유실된 주 처리: MVP는 스킵(catch-up 없음) 제안.
+- 산출물: `docs/specs/executive-weekly-brief-schedule-spec.md`
+- research 미결정 5건 전부 확정:
+  1. **실행 시각 월 09:00 KST 확정** (09:30 제안 기각 — expected_output의 측정 조건
+     `'0 9 * * 1'` 우선, launchd 태스크는 독립 프로세스라 09:00 공존 무해).
+  2. 이름 확정: 파일 `tasks/weekly-executive-brief.ts`(expected_output 경로) /
+     gateway 태스크명 `executive-weekly-brief` / plist Label `com.l5.hermes.executive-weekly-brief`.
+  3. 파이프라인: 순수 `runWeeklyExecutiveBrief(deps)`(포트 주입) + `runExecutiveWeeklyBriefLive()` 배선.
+     실패 처리 fail-closed(어느 단계든 reject → exit 1, 부분 브리핑 합성 금지).
+  4. 발송 D1(내부 Slack, founder) — 승인 게이트 불요 명문화. 전송은 `POST /brief`(f6a9f7c7) 위임,
+     `SLACK_GATEWAY_BRIEF_URL` env 미설정 시 dry-run('발송 준비 완료' 로그).
+  5. 유실 주 스킵(catch-up 없음) 확정.
+- 주간 창 정의: 직전 월요일 00:00 로컬(KST) boundary, currentWeek=[b−7d,b) / previousWeek=[b−14d,b−7d)
+  — 집계 spec 반개구간 의미론과 정합, 실행 당일 꼬리 배제.
+- expected_output의 "Trigger.dev" 문구는 research 판정(launchd)으로 대체하되 측정 가능한
+  완료조건 4건(테스트/cron 표현식/KST/dry-run 로그)은 전부 유지 — spec §2-1 매핑 표.
+- DB 실측: project_id=4 형제 6개 task의 expected_output 원문 확인(REST). 델타 계약
+  `calculateWeeklyDelta(current, previous)` 인자 순서, 포맷터 `formatExecutiveBrief(briefData, deltaData)`,
+  /brief body `{message, channel_id?}` 를 spec에 고정.
+- QA 1회전 (codex 사용량 한도로 agy 대체, 2026-07-09): 코드 좌표 전부 통과, 주간 창 로직
+  "경계 버그 없음" 판정. MUST-FIX 1건(§1 표의 델타 함수 인자 표기 → snapshot으로 교정),
+  NICE 1건(AC-2 인자 서술을 `toHaveBeenCalledWith(start, end)` 기준으로 명확화) — 둘 다 반영 완료.
+
+## 다음 phase(test/구현)에서 할 것
+
+1. 구현 순서 의존: `@l5/core` export 3종(집계 d0c45403 / 델타 34246ece / 포맷터 2058b1fd)
+   구현 이후 runner 배선 가능. 순수 부분(창 계산+파이프라인)은 먼저 test/red 가능.
+2. 신규/수정 파일 7개는 spec §5 표. AC-1~AC-9는 spec §6, 검증 명령은 §7.
+3. launchctl load(라이브 등록)는 이 태스크 스코프 밖 — 통합 태스크(ff35e829) 소관.
