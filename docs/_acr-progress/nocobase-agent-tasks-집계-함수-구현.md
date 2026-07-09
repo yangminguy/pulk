@@ -21,7 +21,17 @@
   - null/빈 assigned_agent → `"UNASSIGNED"` 그룹.
 - DB 실측(2026-07-09): status 분포 running 5/killed 4/queued 3/blocked 2 — **done 0건, approval_required=true 0건, agent는 CTO뿐** → AC-9에서 CEO 시드(psql 직접) 필수인 근거.
 
-## 다음 phase(test/red → 구현)가 알아야 할 것
+## phase: test/red (2026-07-09) — 완료
+
+- 산출물: `packages/l5-core/src/functions/__tests__/executive-brief.test.ts` (신규, 12 케이스 — spec AC-1~AC-7 전부 커버, AC-8/9/10은 구현·verify phase 소관).
+- **red 확인**: `corepack pnpm test -- executive-brief` (packages/l5-core에서) → `Test Suites: 1 failed` — `Cannot find module '../executive-brief'` (구현 파일 미존재가 원인, 의도된 red). 커밋 없음.
+- codex QA 1회전: AC-1~7 누락/오검증 없음 + spec 어긋난 기대값 없음 + NFR-3(기본 fetcher 미실행) 위반 없음 → **VERDICT: PASS**.
+- 환경 함정(구현 phase 필독):
+  - worktree에 node_modules 없음 + 쉘 `NODE_ENV=production` → pnpm이 devDeps(jest) 스킵. 해결: `CI=true NODE_ENV=development corepack pnpm install --filter "@l5/core..." --frozen-lockfile --prod=false` (CI=true 없으면 재설치 인터랙티브 프롬프트에 걸림).
+  - 테스트 실행도 `NODE_ENV=development corepack pnpm test -- executive-brief`.
+  - jest.config.js의 `globals['ts-jest']` deprecated 경고는 기존 것 — 이 태스크에서 건드리지 말 것.
+
+## 다음 phase(구현)가 알아야 할 것
 
 - 테스트 파일: `packages/l5-core/src/functions/__tests__/executive-brief.test.ts`. 실행: `pnpm --filter @l5/core test -- executive-brief` (worktree에 pnpm이 PATH에 없으면 `corepack pnpm ...` — codex 2차 QA에서 exit 127 실측).
 - 구현 대상 4함수: `aggregateExecutiveBriefData` / `getExecutiveBriefData` / `createNocoBaseTaskFetcher`(§6 레시피: camelCase 필터+페이지네이션 순회 의무) / `toWeeklySnapshot`. + AC-9 스크립트 `packages/l5-core/scripts/verify-executive-brief-live.mjs`.
