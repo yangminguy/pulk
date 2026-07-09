@@ -23,6 +23,11 @@
 - **검증**: l5-core jest **2287/2287**(+84) + tsc 0 / agent-runtime **53/53** + tsc 0 / plugin dist `node --check` OK / 판단 루프 6단계 dist e2e PASS(scout→gate→plan→critic→complexity→verify).
 - **라이브 반영 필요(사장님)**: NocoBase 재기동(plugin dist 반영), 필요 시 plist에 `HERMES_KICK_CMD`/`PULK_REPO_PATH` 주입. Workflow 레일은 `WORKFLOW_ORCHESTRATION=on`으로 A/B.
 
+## 💬 Slack 메시지 포맷팅 함수 (2026-07-09)
+
+- [x] **[research] 오픈소스 조사** — 후보 비교(slackify-markdown / md-to-slack / @tryfabric/mack / slack-block-builder) + npm 실측(버전·다운로드·deps·라이선스). **채택: slackify-markdown**(md→mrkdwn, 356k/주, ESM v5, MIT), 래퍼 `formatting.ts` 뒤에 은닉해 교체 가능성 확보. 산출물: `docs/research/slack-message-formatting-libs.md`, 진행 노트 `docs/_acr-progress/slack-메시지-포맷팅-함수.md`.
+- [ ] **[구현] formatting.ts + 배선** — 발신 직전 변환, cto-planning-bridge 손 mrkdwn 이중 변환 회귀 테스트, 40k truncation.
+
 ## 🔗 Notion 동기화 (2026-07-08)
 
 - [x] **CtoPlan(agent_tasks) ↔ Notion 양방향 동기화** — `l5-core/notion-sync`(순수, jest 16) + `services/notion-gateway`(raw-fetch, jest 3) + `agent_tasks.notion_page_id` 컬럼. 무료(워커 미사용, API 폴링). **2026-07-09 라이브 전환**: launchd `com.l5.notion-gateway` 상시 폴링 데몬(60s), 태스크 생성/상태 반영 실측.

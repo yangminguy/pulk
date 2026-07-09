@@ -2,6 +2,12 @@
 
 최종 업데이트: 2026-07-09 (CTO 판단·실행 하네스 R/S 트랙 구현 — 코드·검증 완료, NocoBase 재기동 대기)
 
+## 🟢 2026-07-09 — Slack 메시지 포맷팅 함수: research phase 완료
+
+**무엇**: slack-gateway 발신 텍스트(LLM 표준 Markdown)가 Slack mrkdwn에서 깨지는 문제 → 변환 라이브러리 4종 비교 조사(npm registry 실측). **채택: slackify-markdown**(356k/주, v5 ESM-only ↔ 게이트웨이 ESM 일치, MIT). mack은 4년 비유지보수+Block Kit 강제로 배제, md-to-slack은 fallback 후보.
+**산출물**: `docs/research/slack-message-formatting-libs.md`(비교표+판정) · 진행 노트 `docs/_acr-progress/slack-메시지-포맷팅-함수.md`.
+**다음(구현 phase)**: `services/slack-gateway/src/formatting.ts` 래퍼 신설 후 postMessage 직전 배선. 함정: cto-planning-bridge 손 mrkdwn 이중 변환 회귀 테스트 + 40k truncation.
+
 ## 🟢 2026-07-09 — CTO 판단(S1~S7)·실행(R1~R6) 하네스 강화 (검증 GREEN, 라이브 반영은 재기동)
 
 **무엇**: 진단 리포트의 폐루프(Scout→Plan→Ambiguity→Critic→Execute→Verify→Ledger→Calibrate)를 구현. 판단은 pulk 유지, 실행 하네스는 Claude Code 네이티브(hooks/skills/subagents/Workflow) 활용. 상세 목록/파일은 `docs/TASKS.md` "CTO 판단·실행 하네스" 섹션.
