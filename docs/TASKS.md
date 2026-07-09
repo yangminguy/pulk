@@ -26,7 +26,8 @@
 ## 💬 Slack 메시지 포맷팅 함수 (2026-07-09)
 
 - [x] **[research] 오픈소스 조사** — 후보 비교(slackify-markdown / md-to-slack / @tryfabric/mack / slack-block-builder) + npm 실측(버전·다운로드·deps·라이선스). **채택: slackify-markdown**(md→mrkdwn, 356k/주, ESM v5, MIT), 래퍼 `formatting.ts` 뒤에 은닉해 교체 가능성 확보. 산출물: `docs/research/slack-message-formatting-libs.md`, 진행 노트 `docs/_acr-progress/slack-메시지-포맷팅-함수.md`.
-- [ ] **[구현] formatting.ts + 배선** — 발신 직전 변환, cto-planning-bridge 손 mrkdwn 이중 변환 회귀 테스트, 40k truncation.
+- [x] **[spec] 스펙 작성** — FR 7·NFR 4·AC 10(전부 측정 가능: unit test/grep/명령, codex QA 3회전 최종 PASS) + 영향 파일 7개. 적용은 index.ts executive 응답 1곳만, planning 경로 미적용(+AC-5 회귀), 40k truncation(39,900+suffix), fail-open, slackify-markdown import는 formatting.ts 단독. 산출물: `docs/specs/slack-message-formatting-spec.md`.
+- [ ] **[구현] formatting.ts + 배선** — 스펙 AC-1~AC-8 충족. ESM-only×jest는 모듈 mock 전략(NFR-2). dep 예외는 DECISIONS.md 기록.
 
 ## 🔗 Notion 동기화 (2026-07-08)
 

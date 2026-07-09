@@ -2,6 +2,13 @@
 
 최종 업데이트: 2026-07-09 (CTO 판단·실행 하네스 R/S 트랙 구현 — 코드·검증 완료, NocoBase 재기동 대기)
 
+## 🟢 2026-07-09 — Slack 메시지 포맷팅 함수: spec phase 완료
+
+**무엇**: research 채택안(slackify-markdown)을 구현 가능한 스펙으로 확정 — FR 7·NFR 4·AC 10(전부 unit test/grep/명령으로 측정 가능, codex QA 3회전 최종 PASS)·영향 파일 7개.
+**핵심 결정**: ①적용은 `index.ts` executive 응답 postMessage 1곳만(`result.reply`) ②cto-planning-bridge(손 mrkdwn)는 미적용+AC-5 회귀 테스트 ③40k truncation(39,900+`(truncated)`) ④fail-open(변환 실패 시 원본) ⑤라이브러리 import는 `formatting.ts` 단독(grep 검증).
+**산출물**: `docs/specs/slack-message-formatting-spec.md`.
+**다음(구현 phase)**: 스펙 §4 파일 생성/수정 → §5 검증 명령. 함정: slackify-markdown v5 ESM-only × jest CJS → 테스트는 모듈 mock(NFR-2), dep 0 정책 예외는 DECISIONS.md 기록.
+
 ## 🟢 2026-07-09 — Slack 메시지 포맷팅 함수: research phase 완료
 
 **무엇**: slack-gateway 발신 텍스트(LLM 표준 Markdown)가 Slack mrkdwn에서 깨지는 문제 → 변환 라이브러리 4종 비교 조사(npm registry 실측). **채택: slackify-markdown**(356k/주, v5 ESM-only ↔ 게이트웨이 ESM 일치, MIT). mack은 4년 비유지보수+Block Kit 강제로 배제, md-to-slack은 fallback 후보.
