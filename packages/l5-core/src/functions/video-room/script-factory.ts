@@ -45,6 +45,8 @@ export const FACTORY_SCENE_TYPES = [
   'orbital',
   'chart_reveal',
   'kinetic_typo',
+  'broll',
+  'gallery',
 ] as const;
 
 export type FactorySceneType = (typeof FACTORY_SCENE_TYPES)[number];
@@ -59,6 +61,48 @@ export const FACTORY_THEMES = [
   'warm_ivory_deck',
 ] as const;
 export type FactoryTheme = (typeof FACTORY_THEMES)[number];
+
+// ── background_media / broll / gallery contract (D3 Phase 8) ──────────────────
+// Shared shape with the Phase 6 media agent — planner (scene-decision.ts) and
+// media sourcing both read/write these exact fields so factory zod validates
+// either origin identically.
+
+export type BackgroundMediaKind = 'stock_video' | 'stock_photo' | 'screenshot' | 'upload';
+
+export interface BackgroundMediaTreatment {
+  grade?: 'duotone' | 'desaturate' | 'none';
+  blur?: number;
+  scrim?: number;
+  grain?: boolean;
+  ken_burns?: boolean;
+}
+
+/** Real-footage background overlay attachable to most regular scene types. */
+export interface BackgroundMedia {
+  kind: BackgroundMediaKind;
+  /** stock_*: English Pexels search query. */
+  query?: string;
+  /** upload: public-relative path / screenshot: captured asset URL. */
+  src?: string;
+  focus?: string;
+  treatment?: BackgroundMediaTreatment;
+}
+
+/** broll.media — same shape as BackgroundMedia minus treatment (treatment sits alongside it). */
+export interface BrollMedia {
+  kind: BackgroundMediaKind;
+  query?: string;
+  src?: string;
+  focus?: string;
+}
+
+/** gallery.items entry (2~4 per scene). */
+export interface GalleryItem {
+  kind: BackgroundMediaKind;
+  query?: string;
+  src?: string;
+  label?: string;
+}
 
 // ── ScriptBeat ─────────────────────────────────────────────────────────────────
 
@@ -119,6 +163,14 @@ export interface ScriptBeat {
   chart_kind?: 'bar' | 'line';
   /** kinetic_typo emphasised lines */
   lines?: string[];
+  /** Real-footage background overlay (most regular scene types except data/comparison scenes). */
+  background_media?: BackgroundMedia;
+  /** broll scene media (full-bleed real footage). */
+  media?: BrollMedia;
+  /** broll scene treatment (sibling of media, not nested). */
+  treatment?: BackgroundMediaTreatment;
+  /** gallery scene items (2~4). */
+  gallery_items?: GalleryItem[];
 }
 
 // ── FactoryScene union (all 16 types) ─────────────────────────────────────────
@@ -131,6 +183,8 @@ interface BaseScene {
   mood?: 'light' | 'dark' | 'clean';
   transition?: 'cut' | 'fade' | 'fade_scale' | 'slide_up';
   caption?: string;
+  /** Real-footage background overlay (planner or media agent assigned). */
+  background_media?: BackgroundMedia;
 }
 
 export interface FactoryHeroScene extends BaseScene {
@@ -241,6 +295,17 @@ export interface FactoryKineticTypoScene extends BaseScene {
   headline: string;
   lines?: string[];
 }
+export interface FactoryBrollScene extends BaseScene {
+  type: 'broll';
+  headline?: string;
+  media: BrollMedia;
+  treatment?: BackgroundMediaTreatment;
+}
+export interface FactoryGalleryScene extends BaseScene {
+  type: 'gallery';
+  headline?: string;
+  items: GalleryItem[];
+}
 
 export type FactoryScene =
   | FactoryHeroScene
@@ -260,7 +325,9 @@ export type FactoryScene =
   | FactorySpotlightScene
   | FactoryOrbitalScene
   | FactoryChartRevealScene
-  | FactoryKineticTypoScene;
+  | FactoryKineticTypoScene
+  | FactoryBrollScene
+  | FactoryGalleryScene;
 
 // ── FactoryVideoJob ────────────────────────────────────────────────────────────
 
@@ -370,6 +437,7 @@ function mapBeatToScene(beat: ScriptBeat, index: number): FactoryScene {
     ...(beat.mood !== undefined ? { mood: beat.mood } : {}),
     ...(beat.transition !== undefined ? { transition: beat.transition } : {}),
     caption: beat.speaker_text.trim(),
+    ...(beat.background_media ? { background_media: beat.background_media } : {}),
   };
 
   switch (sceneType) {
@@ -602,6 +670,29 @@ function mapBeatToScene(beat: ScriptBeat, index: number): FactoryScene {
         headline: beat.headline.trim(),
         ...(beat.lines && beat.lines.length > 0 ? { lines: beat.lines } : {}),
       };
+
+    case 'broll': {
+      const media: BrollMedia = beat.media ?? { kind: 'stock_video' };
+      return {
+        ...base,
+        type: 'broll',
+        ...(beat.headline ? { headline: beat.headline.trim() } : {}),
+        media,
+        ...(beat.treatment ? { treatment: beat.treatment } : {}),
+      };
+    }
+
+    case 'gallery': {
+      if (!beat.gallery_items || beat.gallery_items.length < 2) {
+        return insightFallback(base, beat);
+      }
+      return {
+        ...base,
+        type: 'gallery',
+        ...(beat.headline ? { headline: beat.headline.trim() } : {}),
+        items: beat.gallery_items.slice(0, 4),
+      };
+    }
   }
 }
 
