@@ -1,0 +1,30 @@
+{
+  "name": "@l5/research-engine",
+  "version": "0.1.0",
+  "description": "L5 Business OS - General-purpose YouTube research engine (WO-B: I/O adapters + CLI runner). Wraps the pure @l5/core research-engine domain with concrete ports (youtube-cli, fs store, embeddings bridge, brain cards, Notion, Slack, docs-verify).",
+  "main": "dist/cli.js",
+  "types": "dist/cli.d.ts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/cli.js",
+    "typecheck": "tsc --noEmit",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.cjs",
+    "test:skill": "node --test vendor/youtube-research/youtube.test.mjs"
+  },
+  "keywords": ["l5", "research", "youtube", "engine", "second-brain"],
+  "author": "L5 Team",
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "@l5/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "catalog:",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "catalog:"
+  }
+}

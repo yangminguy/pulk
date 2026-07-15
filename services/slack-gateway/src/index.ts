@@ -14,10 +14,11 @@
 import { loadConfig, type BotConfig } from './config.js';
 import { SlackApi } from './slack-api.js';
 import { SocketModeClient, type SlackEvent } from './socket-mode.js';
-import { EXECUTIVES, cleanInstruction, classifyCtoIntent } from './router.js';
+import { EXECUTIVES, cleanInstruction, classifyCtoIntent, classifyCmoIntent } from './router.js';
 import { runExecutive } from './executor.js';
 import { PulkClient } from './pulk-api.js';
 import { handleCtoPlanning, resolveCtoIntent, slackThreadId } from './cto-planning-bridge.js';
+import { parseResearchRequest, launchResearchRun } from './research-bridge.js';
 import { formatSlackText } from './formatting.js';
 
 function log(msg: string): void {
@@ -116,6 +117,39 @@ async function startBot(bot: BotConfig, cfg: Awaited<ReturnType<typeof loadConfi
         log(`${bot.label} planning(${intent}) done ${runId}`);
         return;
       }
+    }
+
+    // CMO research bridge: an explicit "리서치 …" request launches the general
+    // research engine (detached) instead of the generic executive. The engine
+    // reports back into this same thread with a Notion link. Anything that isn't
+    // an explicit research trigger (all other CMO/CEO messages) falls through.
+    if (bot.id === 'cmo' && cfg.cmoResearchEnabled && classifyCmoIntent(instruction) === 'research') {
+      const request = parseResearchRequest(instruction);
+      await api.postMessage({
+        channel,
+        thread_ts: threadTs,
+        text:
+          `🔎 리서치 시작: ${request.topic || '(주제 미상)'} (목적: ${request.researchPurpose}) — ` +
+          '완료되면 이 스레드에 Notion 링크로 회신합니다.',
+      });
+      try {
+        const r = launchResearchRun({ request, channel, threadTs, repoRoot: cfg.repoRoot });
+        if (r.ok) {
+          log(`${bot.label} research launched ${runId} pid=${r.pid ?? '?'} cli=${r.cliPath}`);
+        } else {
+          await api.postMessage({
+            channel,
+            thread_ts: threadTs,
+            text: `⚠️ 리서치 엔진을 시작하지 못했습니다: ${r.error}`,
+          });
+          log(`${bot.label} research launch failed ${runId}: ${r.error}`);
+        }
+      } catch (err) {
+        const m = errMsg(err);
+        await api.postMessage({ channel, thread_ts: threadTs, text: `⚠️ ${bot.label} 리서치 시작 중 오류: ${m}` });
+        log(`${bot.label} research error ${runId}: ${m}`);
+      }
+      return;
     }
 
     await api.postMessage({

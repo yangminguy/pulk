@@ -105,6 +105,8 @@ const {
   discoverTitleReferences,
   // 갭 #10: 업로드 후 제목 교체 신호 (강의 기준: 1주일 100회 미만 → 교체)
   shouldSwapTitle,
+  // FR-7 버전 로그: 시드(교차 치환)→8단계→최종 선정 타임라인 파생.
+  buildTitleVersionLog,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/cmo-strategy'));
 
 // CMO v3 orchestrator — skill-chain execution.
@@ -116,6 +118,11 @@ const {
 const {
   advanceStatus: advanceVideoRoomStatus,
   requiresApproval: videoRoomRequiresApproval,
+  // FR-6 게이트 리포트 사전조건: 검토 리포트 카드 없으면 승인/전진 차단.
+  missingGateReports,
+  // FR-4/FR-5 승인 게이트 HTML 기획서/리포트 생성기.
+  buildKeyContentPlanDoc,
+  buildPullingPlanDoc,
   pageForStatus,
   buildMiniRoadmap,
   buildSlideDeckSpec,
@@ -169,6 +176,8 @@ const {
   extractCompletionInsight,
   // M4 영상 제작 파이프라인 잔여: brief 직접참조 슬라이드덱 → 렌더 잡 → 상태 폴링 → QA → 업로드 초안
   buildSlideDeckSpecFromBrief,
+  splitIntoSlideChunks,
+  shortHeadline,
   buildFactoryJobFromSlideDeck,
   markRenderJobSubmitted,
   deriveRenderJobStatus,
@@ -270,7 +279,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'proposeProductDefinition', 'proposeKeyContentReport', 'selectKeyContentCandidate', 'proposePullingCandidates', 'proposePullingReport', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeThumbnailMatrix', 'recordImageSources', 'proposeTitleDevelopment', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights', 'learnThumbnailReferences', 'developThumbnailCandidate', 'reviewThumbnail', 'channelFirstDiscovery', 'evaluateHookAlignment', 'checkSwapSignals', 'publishUpload', 'setTigerEnabled', 'runTigerRetro'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'rejectStageGate', 'listArtifacts', 'decideResearchCandidate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'proposeProductDefinition', 'proposeKeyContentReport', 'selectKeyContentCandidate', 'proposePullingCandidates', 'proposePullingReport', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeThumbnailMatrix', 'recordImageSources', 'proposeTitleDevelopment', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights', 'learnThumbnailReferences', 'developThumbnailCandidate', 'reviewThumbnail', 'channelFirstDiscovery', 'evaluateHookAlignment', 'checkSwapSignals', 'publishUpload', 'setTigerEnabled', 'runTigerRetro'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -2901,27 +2910,66 @@ function registerCmoResource(app: any, db: any) {
     return { yt: _ytModule, client: new _ytModule.YouTubeClient(creds), creds };
   }
 
+  // Shared helper: YouTube API 429(일일 쿼터 소진) 시 CDP ytInitialData 검색 폴백 (FR-9).
+  // 검색 결과 전체가 담긴 페이지 내 JSON을 파싱 — 확장 주입/lazy render/창 상태와 무관.
+  // 반환: { id, title, ch, views(숫자|null) }[]. 세션은 매 호출 열고 닫는다(single-tenant).
+  async function cdpSearchYtInitialData(yt: any, query: string, max = 12): Promise<Array<{ id: string; title: string; ch: string; views: number | null }>> {
+    const session = await yt.connectCdp({ endpoint: yt.DEFAULT_CDP_ENDPOINT });
+    try {
+      return await cdpSearchYtInitialDataWithSession(session, query, max);
+    } finally {
+      try { await session.browser.close(); } catch { /* ignore */ }
+    }
+  }
+
+  // 이미 열린 CDP 세션을 재사용하는 변형 — 핸들러가 세션을 쥔 상태(single-tenant lock)에서 사용.
+  async function cdpSearchYtInitialDataWithSession(session: any, query: string, max = 12): Promise<Array<{ id: string; title: string; ch: string; views: number | null }>> {
+    {
+      let pg = session.context.pages().find((p: any) => p.url().includes('youtube.com'));
+      if (!pg) pg = await session.context.newPage();
+      await pg.goto(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, { waitUntil: 'domcontentloaded', timeout: 25_000 });
+      await pg.waitForTimeout(2_000);
+      const rawJson = await pg.evalExpr(`(() => {
+        const out = [];
+        try {
+          const secs = window.ytInitialData.contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer.contents;
+          for (const sec of secs) {
+            for (const item of (sec.itemSectionRenderer && sec.itemSectionRenderer.contents) || []) {
+              const v = item.videoRenderer;
+              if (!v || !v.videoId) continue;
+              out.push({
+                id: v.videoId,
+                title: ((v.title && v.title.runs && v.title.runs[0]) || {}).text || '',
+                views: (v.viewCountText && (v.viewCountText.simpleText || (v.viewCountText.runs || []).map(r => r.text).join(''))) || '',
+                ch: ((v.ownerText && v.ownerText.runs && v.ownerText.runs[0]) || {}).text || '',
+              });
+            }
+          }
+        } catch (e) { /* 구조 변경 시 빈 배열 */ }
+        return JSON.stringify(out.slice(0, 20));
+      })()`);
+      const parseKoViews = (s: string): number | null => {
+        const m = String(s ?? '').match(/([\d.,]+)\s*(억|만|천)?\s*회/);
+        if (!m) return null;
+        const n = parseFloat(m[1].replace(/,/g, ''));
+        const mul = m[2] === '억' ? 1e8 : m[2] === '만' ? 1e4 : m[2] === '천' ? 1e3 : 1;
+        return Math.round(n * mul);
+      };
+      const parsed: any[] = JSON.parse(String(rawJson ?? '[]'));
+      return parsed
+        .filter((r) => r.id && r.title)
+        .slice(0, max)
+        .map((r) => ({ id: String(r.id), title: String(r.title), ch: String(r.ch ?? ''), views: parseKoViews(r.views) }));
+    }
+  }
+
   // Shared helper: Sonnet SDK 직접 호출 클라이언트 — launchd 환경에서 CLI cold-spawn 대비
   // 타임아웃 불안정(47~125s, 배치 전체 classified=false 폴백) 문제를 제거한다.
   // (S3 안정화 2026-06-12: createClaudeCLIClient → @anthropic-ai/sdk 직접 호출 전환)
   function createSdkLlmClient(_opts?: { timeoutMs?: number }) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const Anthropic = require('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    return {
-      async complete({ system, user }: { system: string; user: string }): Promise<string> {
-        const resp = await client.messages.create({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 8192,
-          ...(system?.trim() ? { system } : {}),
-          messages: [{ role: 'user', content: user }],
-        });
-        return (resp.content as any[])
-          .filter((b: any) => b.type === 'text')
-          .map((b: any) => (b as any).text)
-          .join('');
-      },
-    };
+    // LLM 백엔드 정책은 buildLLMClient 한 곳으로 통일(2026-07-12):
+    // ANTHROPIC_API_KEY 있으면 SDK(sonnet), 없으면(launchd 기본) claude CLI(sonnet, 240s).
+    return buildLLMClient('');
   }
 
   // Shared helper: Sonnet llmComplete(prompt→string) — l5-core deps { llmComplete } 주입용.
@@ -3219,10 +3267,36 @@ function registerCmoResource(app: any, db: any) {
         const gateRows = await q(`SELECT * FROM video_room_gates WHERE id = $1`, [gate_id]);
         if (!gateRows[0]) ctx.throw(404, `gate ${gate_id} not found`);
         const gateRow = gateRows[0];
+        // FR-6: 승인 결정 시 게이트 리포트 사전조건 강제 (반려/수정요청은 리포트 불필요).
+        if (decision === 'approved') {
+          const projStatusRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [gateRow.video_project_id]);
+          const projStatus = projStatusRows[0]?.status;
+          if (projStatus && videoRoomRequiresApproval(projStatus)) {
+            const stageRows = await q(
+              `SELECT DISTINCT stage FROM video_room_cards WHERE video_project_id = $1`,
+              [gateRow.video_project_id],
+            );
+            const missing = missingGateReports(projStatus, stageRows.map((r: any) => String(r.stage)));
+            if (missing.length > 0) {
+              ctx.throw(400, `리포트 생성 대기 — 승인 전에 검토 리포트가 필요합니다: ${missing.join(', ')}`);
+            }
+          }
+        }
         // 승인=진행 원자화: approved면 approveGateForProject 내부에서
         // advanceVideoRoomStatus(status, { gateApproved: true })까지 수행해
         // 같은 호출에서 다음 status로 자동 전이한다. 별도 advanceStatus 호출 불필요.
         const advancedStatus = await approveGateForProject(gateRow.video_project_id, gate_id, decision);
+        // FR-6: 반려/수정요청 사유를 재작업 입력으로 기록 (revision_request 카드).
+        const note = String(v.note ?? '').trim();
+        if (decision !== 'approved' && note) {
+          await upsertVideoRoomCard(
+            db,
+            gateRow.video_project_id,
+            'revision_request',
+            `revision_request (${gateRow.gate_type}): ${note.slice(0, 80)}`,
+            { gate_id, gate_type: gateRow.gate_type, decision, note },
+          );
+        }
         const projRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [gateRow.video_project_id]);
         const status = advancedStatus ?? projRows[0]?.status ?? null;
         ctx.body = { ok: true, data: { gate_id, decision, status, advanced: decision === 'approved' && advancedStatus != null } };
@@ -3243,6 +3317,17 @@ function registerCmoResource(app: any, db: any) {
         if (!videoRoomRequiresApproval(status)) {
           ctx.throw(400, `status ${status} is not an approval gate`);
         }
+        // FR-6: 리포트 없는 "바로 승인" 차단 — 게이트별 검토 리포트 카드가 있어야 승인 가능.
+        {
+          const stageRows = await q(
+            `SELECT DISTINCT stage FROM video_room_cards WHERE video_project_id = $1`,
+            [project_id],
+          );
+          const missing = missingGateReports(status, stageRows.map((r: any) => String(r.stage)));
+          if (missing.length > 0) {
+            ctx.throw(400, `리포트 생성 대기 — 승인 전에 검토 리포트가 필요합니다: ${missing.join(', ')}`);
+          }
+        }
         // 감사용 approved gate row (gate_type == 현재 상태, GATE_BY_STATUS 매핑과 동일).
         const gateId = randomUUID();
         await db.sequelize.query(
@@ -3257,6 +3342,111 @@ function registerCmoResource(app: any, db: any) {
         );
         await maybeTigerRetro(project_id, newStatus);
         ctx.body = { ok: true, data: { status: newStatus, gate_id: gateId } };
+        await next();
+      },
+
+      // POST /api/cmo:rejectStageGate  { project_id, decision: 'needs_revision'|'rejected', note }
+      // FR-6 승인 센터: 보드 흐름(게이트 row 없음)에서 반려/수정요청. 상태는 게이트에 머문다.
+      rejectStageGate: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const decision = String(v.decision ?? 'needs_revision').trim();
+        const note = String(v.note ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!['needs_revision', 'rejected'].includes(decision)) {
+          ctx.throw(400, 'decision must be needs_revision or rejected');
+        }
+        if (!note) ctx.throw(400, 'note is required — 반려/수정요청은 사유가 재작업 입력이 됩니다');
+        const projRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const status = projRows[0].status;
+        if (!videoRoomRequiresApproval(status)) {
+          ctx.throw(400, `status ${status} is not an approval gate`);
+        }
+        const gateId = randomUUID();
+        await db.sequelize.query(
+          `INSERT INTO video_room_gates (id, video_project_id, gate_type, page, title, context, status, decided_by, decided_at, "createdAt", "updatedAt")
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'founder', now(), now(), now())`,
+          { bind: [gateId, project_id, status, pageForStatus(status), `${status} ${decision}`, note, decision] },
+        );
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'revision_request',
+          `revision_request (${status}): ${note.slice(0, 80)}`,
+          { gate_id: gateId, gate_type: status, decision, note },
+        );
+        ctx.body = { ok: true, data: { gate_id: gateId, decision, status } };
+        await next();
+      },
+
+      // POST /api/cmo:listArtifacts  { stages?: string[], project_id? }
+      // FR-1: 전 구역 산출물 보드 — 카드에 프로젝트 식별 헤더 필드(제목/상태/키 주제)를 join해서 내려준다.
+      // UI가 N+1 호출로 조립하지 않도록 서버에서 한 번에 준다.
+      listArtifacts: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const stages: string[] = Array.isArray(v.stages)
+          ? (v.stages as unknown[]).map((s) => String(s)).filter(Boolean)
+          : [];
+        const project_id = String(v.project_id ?? '').trim();
+        const where: string[] = [];
+        const binds: unknown[] = [];
+        if (stages.length > 0) {
+          binds.push(stages);
+          where.push(`c.stage = ANY($${binds.length})`);
+        }
+        if (project_id) {
+          binds.push(project_id);
+          where.push(`c.video_project_id = $${binds.length}`);
+        }
+        const rows = await q(
+          `SELECT c.id, c.video_project_id, c.stage, c.summary, c.data, c."createdAt", c."updatedAt",
+                  p.title AS project_title, p.status AS project_status,
+                  (SELECT k.data->>'key_topic_title' FROM video_room_cards k
+                     WHERE k.video_project_id = c.video_project_id AND k.stage = 'key_content_choice'
+                     ORDER BY k."createdAt" DESC LIMIT 1) AS key_topic_title
+             FROM video_room_cards c
+             JOIN video_room_projects p ON p.id = c.video_project_id
+            ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+            ORDER BY c."createdAt" DESC
+            LIMIT 200`,
+          binds,
+        );
+        ctx.body = { ok: true, data: { artifacts: rows } };
+        await next();
+      },
+
+      // POST /api/cmo:decideResearchCandidate  { project_id, video_id, verdict: 'adopt'|'exclude', reason }
+      // FR-2: 뷰트랩 후보 판정(채택/제외 + 사유)을 산출물로 기록한다.
+      decideResearchCandidate: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const video_id = String(v.video_id ?? '').trim();
+        const verdict = String(v.verdict ?? '').trim();
+        const reason = String(v.reason ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        if (!video_id) ctx.throw(400, 'video_id is required');
+        if (!['adopt', 'exclude'].includes(verdict)) ctx.throw(400, "verdict must be 'adopt' or 'exclude'");
+        const rows = await q(
+          `SELECT id, data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'research_judgments' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        const prev = rows[0]?.data
+          ? (typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data)
+          : { judgments: [] };
+        const judgments = Array.isArray(prev.judgments) ? prev.judgments : [];
+        const next_judgments = [
+          ...judgments.filter((j: any) => j.video_id !== video_id),
+          { video_id, verdict, reason, decided_at: new Date().toISOString() },
+        ];
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'research_judgments',
+          `research_judgments (${next_judgments.length}건)`,
+          { judgments: next_judgments },
+        );
+        ctx.body = { ok: true, data: { judgments: next_judgments } };
         await next();
       },
 
@@ -3356,6 +3546,17 @@ function registerCmoResource(app: any, db: any) {
               design_theme,
             });
             source = 'brief';
+            // 2026-07-12 루프5 실측: brief 논리블록이 결정론 빈 뼈대면 슬라이드 텍스트가
+            // 사실상 0 → "빈 화면 80초" 영상. 텍스트 총량 미달 시 spec을 버리고
+            // 실원고(script_draft full_script) 분할 경로로 넘긴다.
+            const totalText = ((spec?.slides ?? []) as any[])
+              .map((s: any) => `${s.speaker_text ?? ''}${s.body ?? ''}`)
+              .join('')
+              .replace(/\s+/g, '').length;
+            if (totalText < 300) {
+              spec = null;
+              source = 'slides';
+            }
           }
         }
 
@@ -3367,14 +3568,32 @@ function registerCmoResource(app: any, db: any) {
             );
             const cardData = scriptCardRows[0]?.data;
             const parsed = typeof cardData === 'string' ? JSON.parse(cardData) : cardData;
-            const summary = parsed?.summary ?? parsed?.full_script ?? proj.title ?? '영상';
-            slides = [{
-              index: 0,
-              headline: String(proj.title ?? '영상'),
-              body: String(summary).slice(0, 200),
-              visual_type: 'text',
-              speaker_text: String(summary).slice(0, 300),
-            }];
+            const fullScript = String(
+              parsed?.integrated_script?.full_script ?? parsed?.full_script ?? '',
+            ).trim();
+            if (fullScript.length >= 300) {
+              // 실원고 문단 분할 → 다장 슬라이드(최대 12장). 낭독 길이는 speaker_text
+              // 글자수 기반(buildFactoryJobFromSlideDeck: 글자수/5.5s, [3,20] 클램프)이라
+              // 원고가 실하면 슬라이드 타이밍도 실해진다.
+              // l5-core splitIntoSlideChunks 재사용(110자≈씬 20초 낭독 동기, 초과분 무손실 병합).
+              // 기존 수동 분할은 300자+ 문단이 한 씬이 되어 20초 클램프로 영상<낭독이 되던 문제.
+              const merged: string[] = splitIntoSlideChunks(fullScript);
+              slides = merged.map((text, i) => ({
+                index: i,
+                headline: i === 0 ? String(proj.title ?? '영상') : shortHeadline(text),
+                visual_type: 'text',
+                speaker_text: text,
+              }));
+            } else {
+              const summary = parsed?.summary ?? parsed?.full_script ?? proj.title ?? '영상';
+              slides = [{
+                index: 0,
+                headline: String(proj.title ?? '영상'),
+                body: String(summary).slice(0, 200),
+                visual_type: 'text',
+                speaker_text: String(summary).slice(0, 300),
+              }];
+            }
             source = 'script_draft';
           }
 
@@ -3952,6 +4171,9 @@ function registerCmoResource(app: any, db: any) {
         if (!project_id) ctx.throw(400, 'project_id is required');
 
         let brief: any = v.brief ?? null;
+        // 저장 시 content_card_id는 폴백으로 찾은 카드 id까지 반영해야
+        // sendBriefToFactory의 content_card_id 조회가 성립한다(빈 card_id 저장 버그 수정).
+        let effectiveCardIdForStore: string = card_id;
 
         if (!brief) {
           // 전략패키지→Brief 파이프라인: 승인된 키 콘텐츠(choice) + script_draft(원고/논리블록/도입)
@@ -3964,6 +4186,7 @@ function registerCmoResource(app: any, db: any) {
           }
           const { id: foundCardId, data: scriptDraft } = scriptDraftResult;
           const effectiveCardId = card_id || foundCardId;
+          effectiveCardIdForStore = effectiveCardId;
 
           const proj = (await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]))[0] ?? {};
           const strategyBrief = buildStrategyBriefFromCards(scriptDraft, proj, effectiveCardId);
@@ -4025,7 +4248,7 @@ function registerCmoResource(app: any, db: any) {
           {
             bind: [
               record_id,
-              card_id,
+              effectiveCardIdForStore,
               project_id,
               brief.schema_version ?? 'cmo_to_factory_v2',
               JSON.stringify(handoff),
@@ -4059,6 +4282,14 @@ function registerCmoResource(app: any, db: any) {
           row = (await q(
             `SELECT * FROM video_execution_briefs WHERE content_card_id = $1 AND project_id = $2 ORDER BY "createdAt" DESC LIMIT 1`,
             [card_id, project_id],
+          ))[0] ?? null;
+        }
+        // 최종 폴백: 프로젝트 최신 brief(과거 저장분이 content_card_id 없이 남았거나
+        // 호출자가 다른 card_id를 넘긴 경우에도 전송 경로가 끊기지 않게).
+        if (!row) {
+          row = (await q(
+            `SELECT * FROM video_execution_briefs WHERE project_id = $1 ORDER BY "createdAt" DESC LIMIT 1`,
+            [project_id],
           ))[0] ?? null;
         }
 
@@ -4274,6 +4505,7 @@ function registerCmoResource(app: any, db: any) {
           const kwPrompt = [
             '아래 분석을 바탕으로 YouTube/Viewtrap에서 실제로 검색할 짧은 키워드 6개를 뽑아라.',
             '규칙: 각 2~4어절. 문장형·추상적 표현 금지. 사용자가 실제로 검색창에 칠 형태(예: "인스타 마케팅 자동화", "소상공인 마케팅 대행").',
+            '규칙2(지식베이스 06 §4-3 일반명사화): 우리 상품에서만 쓰는 기능명·조어(예: 문진표, 유입 추적 시스템)는 금지. 실제 검색 수요가 있는 카테고리 일반명사로 뽑되, 최소 3개는 넓은 카테고리 키워드(타깃 업종+마케팅/손님/매출 류)여야 한다.',
             `상품: ${product.product_name}`,
             `타깃: ${product.target_audience}`,
             customer_problem ? `핵심 문제: ${customer_problem}` : '',
@@ -4388,20 +4620,63 @@ function registerCmoResource(app: any, db: any) {
           });
 
           // 키워드 1개 발굴 → 영상[](성과도/기여도 병합). 분류(classify) 미주입 → videos만 사용.
+          // API 429(일일 쿼터 소진) 시 CDP ytInitialData 폴백 — 메타만(등급 미실측) 수집 + 노트.
           const discover = async (keyword: string) => {
-            const res = await runDiscoveryPipeline(
-              { query: keyword, product: discoveryProduct, target, mode: 'key' },
-              baseDeps,
-            );
-            return (res.videos ?? []).map((x: any) => ({
-              videoId: x.videoId,
-              title: x.title,
-              channelTitle: x.channelTitle,
-              viewCount: x.viewCount,
-              metrics: x.metrics,
-            }));
+            try {
+              const res = await runDiscoveryPipeline(
+                { query: keyword, product: discoveryProduct, target, mode: 'key' },
+                baseDeps,
+              );
+              const vids = (res.videos ?? []).map((x: any) => ({
+                videoId: x.videoId,
+                title: x.title,
+                channelTitle: x.channelTitle,
+                viewCount: x.viewCount,
+                metrics: x.metrics,
+              }));
+              // 파이프라인이 API 429를 내부에서 삼키고 표본 부족으로 나오는 경우 —
+              // 3건 미만이면 CDP ytInitialData로 보강 병합(등급 미실측, 2026-07-12 루프2 실측).
+              if (vids.length < 3 && cdpSession) {
+                reportNotes.push(`발굴 ${vids.length}건(<3) → CDP ytInitialData 보강("${keyword}")`);
+                try {
+                  const rows = await cdpSearchYtInitialDataWithSession(cdpSession, keyword, 20);
+                  const seen = new Set(vids.map((v: any) => v.videoId));
+                  for (const r of rows) {
+                    if (!seen.has(r.id)) {
+                      vids.push({ videoId: r.id, title: r.title, channelTitle: r.ch, viewCount: r.views ?? 0, metrics: {} });
+                    }
+                  }
+                } catch (fe: any) {
+                  reportNotes.push(`CDP 보강 실패("${keyword}"): ${String(fe?.message ?? fe).slice(0, 80)}`);
+                }
+              }
+              return vids;
+            } catch (e: any) {
+              if (!cdpSession) {
+                reportNotes.push(`발굴 실패("${keyword}") — CDP 미연결로 폴백 불가: ${String(e?.message ?? e).slice(0, 80)}`);
+                return [];
+              }
+              reportNotes.push(`YouTube API 발굴 실패 → CDP ytInitialData 폴백("${keyword}"): ${String(e?.message ?? e).slice(0, 80)}`);
+              const rows = await cdpSearchYtInitialDataWithSession(cdpSession, keyword, 20);
+              return rows.map((r) => ({
+                videoId: r.id,
+                title: r.title,
+                channelTitle: r.ch,
+                viewCount: r.views ?? 0,
+                metrics: {},
+              }));
+            }
           };
-          const getDurations = (ids: string[]) => client.getVideoDurations(ids);
+          // durations도 같은 쿼터 — 실패 시 보수적 폴백(롱폼 가정·최근 90일)로 파이프라인 유지 + 노트.
+          const getDurations = async (ids: string[]) => {
+            try {
+              return await client.getVideoDurations(ids);
+            } catch (e: any) {
+              reportNotes.push(`durations 조회 실패 → 보수적 폴백(롱폼 가정): ${String(e?.message ?? e).slice(0, 80)}`);
+              const publishedAt = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString();
+              return ids.map((videoId: string) => ({ videoId, isShort: false, durationSeconds: 300, publishedAt }));
+            }
+          };
           // 자막: 로그인 CDP 브라우저의 "Show transcript" 패널 스크랩(서버 raw fetch는 빈 본문/pot로 막힘).
           // CDP 없으면 서버 fetch 폴백(대개 빈 결과 — graceful, 판매논리는 메타데이터로).
           const fetchTranscript = async (id: string) => {
@@ -4418,10 +4693,41 @@ function registerCmoResource(app: any, db: any) {
           // 시청자 정체성 판단 근거 — 인기순 상위 댓글(YouTube Data API).
           const getComments = (id: string) => client.getTopComments(id, 8);
 
+          const reportDeps = { discover, getDurations, fetchTranscript, getComments, llmComplete };
           report = await runKeyContentReport(
             { product: reportProduct, keywords, maxKeywords: 6, extraNotes: reportNotes },
-            { discover, getDurations, fetchTranscript, getComments, llmComplete },
+            reportDeps,
           );
+
+          // KB 06 §4-3: 표본 부족 등으로 적격 후보 0건이면 "일반명사화" 키워드로 1회 재검색.
+          // (상품 고유 기능명 키워드는 검색 표본이 없어 후보가 통째로 비는 문제 — 2026-07-12 루프2 실측)
+          if ((report?.candidates ?? []).length === 0) {
+            try {
+              const broadenPrompt = [
+                '아래 키워드들은 YouTube 검색 표본이 부족해(영상 3개 미만) 콘텐츠 후보를 찾지 못했다.',
+                '지식베이스 06 §4-3 "일반명사화" 규칙에 따라, 같은 타깃이 실제로 검색하는 더 넓은 카테고리 키워드 6개로 바꿔라.',
+                '규칙: 각 2~4어절, 상품 고유 기능명 금지, 업종/문제 레벨의 일반명사(예: "미용실 마케팅", "미용실 손님 없을때", "자영업 마케팅", "인스타 손님").',
+                `상품: ${reportProduct.product_name}`,
+                `타깃: ${reportProduct.target_audience}`,
+                `표본 부족 키워드: ${keywords.join(' / ')}`,
+                'JSON 배열만 출력: ["키워드1",...]',
+              ].join('\n');
+              const raw = await llmComplete(broadenPrompt);
+              const m = raw.match(/\[[\s\S]*\]/);
+              const broadened = m
+                ? (JSON.parse(m[0]) as unknown[])
+                    .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+                    .slice(0, 6)
+                : [];
+              if (broadened.length > 0) {
+                reportNotes.push(`적격 후보 0건 → 일반명사화 재검색(06 §4-3): ${broadened.join(', ')}`);
+                report = await runKeyContentReport(
+                  { product: reportProduct, keywords: broadened, maxKeywords: 6, extraNotes: reportNotes },
+                  reportDeps,
+                );
+              }
+            } catch { /* graceful — 원 보고서 유지 */ }
+          }
         } catch (err: any) {
           ctx.throw(400, err?.message ?? String(err));
         } finally {
@@ -4468,6 +4774,55 @@ function registerCmoResource(app: any, db: any) {
             'key_content_draft (from product_definition)',
             cardData.draft,
           );
+        }
+
+        // FR-4: 승인 게이트 검토용 HTML 기획서(key_content_plan_doc).
+        // 이 카드가 없으면 key_content_approval 게이트 승인이 차단된다(missingGateReports).
+        // 후보 0건이면 기획서를 만들지 않는다 — 빈 기획서로 게이트가 열리던 구멍 방지(2026-07-12 루프2).
+        if ((report.candidates ?? []).length === 0) {
+          sendRuntimeErrorTelegram('keyContentPlanDoc', '후보 0건 — 기획서 미생성(게이트 차단 유지). 발굴 재시도 필요', project_id).catch(() => {});
+        } else try {
+          // 판매 논리 필수화 — 리포트가 null이면 topPick 퍼널 기반 결정론 폴백으로 채운다.
+          let salesLogic = report.applied_sales_logic ?? null;
+          if (!salesLogic) {
+            const topPick = (report.candidates ?? []).find((c: any) => c.topPick) ?? (report.candidates ?? [])[0];
+            salesLogic = {
+              content_topic: keyTopic || String(report.product ?? ''),
+              core_target: String(report.target ?? ''),
+              target_phenomenon: topPick?.funnel?.phenomenon ?? `${report.target}이(가) 지금 겪는 문제`,
+              desire_to_trigger: topPick?.funnel?.desire ?? '문제를 해결하고 싶은 욕구',
+              plan_user_makes: topPick?.funnel?.plan ?? '해결 방법을 찾아 배우기',
+              action_to_our_product: topPick?.funnel?.action ?? `${report.product} 상담/도입`,
+              reward_user_expects: topPick?.funnel?.reward ?? '문제 해결과 성과',
+            };
+          }
+          // FR-4 §4: 풀링 키워드 계획 — 시장 검증 통과 키워드 우선, 폴백으로 전체/승인 키워드.
+          const market: any[] = Array.isArray(report.market) ? report.market : [];
+          let keywordPlan = market
+            .filter((m) => m.verdict === '진행 추천')
+            .map((m) => ({ keyword: m.keyword, reason: m.verdictReason || '시장 검증 통과 (KB 06)' }));
+          if (keywordPlan.length === 0) {
+            keywordPlan = market.map((m) => ({ keyword: m.keyword, reason: m.verdictReason || '시장 분석 대상' }));
+          }
+          if (keywordPlan.length === 0) {
+            keywordPlan = keywords.map((k: string) => ({ keyword: k, reason: '상품정의 승인 키워드' }));
+          }
+          const doc = buildKeyContentPlanDoc({
+            project: { id: project_id, title: String(proj.title ?? '') },
+            report: { ...report, applied_sales_logic: salesLogic },
+            key_topic_title: keyTopic,
+            pulling_keyword_plan: keywordPlan,
+          });
+          await upsertVideoRoomCard(
+            db,
+            project_id,
+            'key_content_plan_doc',
+            doc.summary,
+            { html: doc.html, key_topic_title: doc.key_topic_title, pulling_keyword_plan: keywordPlan, applied_sales_logic: salesLogic },
+          );
+        } catch (e: any) {
+          // 기획서 생성 실패 시 게이트가 열리지 않는다(의도) — 사유는 텔레그램으로 표면화.
+          sendRuntimeErrorTelegram('keyContentPlanDoc', e?.message ?? String(e), project_id).catch(() => {});
         }
 
         ctx.body = { ok: true, data: report };
@@ -4786,6 +5141,25 @@ function registerCmoResource(app: any, db: any) {
           `pulling_content_report (${report.provenance.topics_selected} topics / ${report.search_summary.qualified_count} videos)`,
           report,
         );
+
+        // FR-5: 승인 게이트 검토용 HTML 리포트(pulling_plan_doc).
+        // 이 카드가 없으면 pulling_content_set_approval 게이트 승인이 차단된다.
+        try {
+          const projTitleRows = await q(`SELECT title FROM video_room_projects WHERE id = $1`, [project_id]);
+          const doc = buildPullingPlanDoc({
+            project: { id: project_id, title: String(projTitleRows[0]?.title ?? '') },
+            report,
+          });
+          await upsertVideoRoomCard(
+            db,
+            project_id,
+            'pulling_plan_doc',
+            doc.summary,
+            { html: doc.html, key_topic_title: doc.key_topic_title },
+          );
+        } catch (e: any) {
+          sendRuntimeErrorTelegram('pullingPlanDoc', e?.message ?? String(e), project_id).catch(() => {});
+        }
 
         // 새 보고서 흐름 배선(2026-06-11): 보고서 승인 경로는 commitPullingPlan을 거치지
         // 않으므로, downstream(proposeTitleDevelopment 등)이 읽는 'pulling_plan' 카드를
@@ -5136,23 +5510,88 @@ function registerCmoResource(app: any, db: any) {
           let cdpLockHeld = false;
           try {
             const { yt, client } = await loadYoutube();
+            // API 429(일일 쿼터 소진) 시 CDP 유튜브 검색결과 크롤링 폴백 (FR-9 오버레이 경로).
+            // 폴백 검색이 수집한 조회수는 캐시해 getStats 폴백에도 쓴다(videos.list도 같은 쿼터).
+            const cdpViewsCache: Record<string, number> = {};
             const search = async (query: string, maxResults?: number) => {
-              const hits = await client.searchVideos(query, { maxResults: maxResults ?? 10 });
-              return hits.map((h: any) => ({
-                video_id: h.videoId,
-                title: h.title,
-                channel_title: h.channelTitle,
-                url: `https://www.youtube.com/watch?v=${h.videoId}`,
-              }));
+              try {
+                const hits = await client.searchVideos(query, { maxResults: maxResults ?? 10 });
+                return hits.map((h: any) => ({
+                  video_id: h.videoId,
+                  title: h.title,
+                  channel_title: h.channelTitle,
+                  url: `https://www.youtube.com/watch?v=${h.videoId}`,
+                }));
+              } catch (apiErr: any) {
+                if (!cdpSession) throw apiErr;
+                discovery_notes.push(`YouTube API 검색 실패 → CDP ytInitialData 폴백("${query}"): ${String(apiErr?.message ?? apiErr).slice(0, 80)}`);
+                // 확장 등급 주입/lazy render와 무관하게 검색 결과 전체가 담긴 ytInitialData를 파싱한다.
+                // (창 minimized 상태에서도 동작 — DOM 렌더 의존 없음)
+                let pg = cdpSession.context.pages().find((p: any) => p.url().includes('youtube.com'));
+                if (!pg) pg = await cdpSession.context.newPage();
+                await pg.goto(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, { waitUntil: 'domcontentloaded', timeout: 25_000 });
+                await pg.waitForTimeout(2_000);
+                const rawJson = await pg.evalExpr(`(() => {
+                  const out = [];
+                  try {
+                    const secs = window.ytInitialData.contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer.contents;
+                    for (const sec of secs) {
+                      for (const item of (sec.itemSectionRenderer && sec.itemSectionRenderer.contents) || []) {
+                        const v = item.videoRenderer;
+                        if (!v || !v.videoId) continue;
+                        out.push({
+                          id: v.videoId,
+                          title: ((v.title && v.title.runs && v.title.runs[0]) || {}).text || '',
+                          views: (v.viewCountText && (v.viewCountText.simpleText || (v.viewCountText.runs || []).map(r => r.text).join(''))) || '',
+                          ch: ((v.ownerText && v.ownerText.runs && v.ownerText.runs[0]) || {}).text || '',
+                        });
+                      }
+                    }
+                  } catch (e) { /* 구조 변경 시 빈 배열 */ }
+                  return JSON.stringify(out.slice(0, 20));
+                })()`);
+                const parsed: any[] = JSON.parse(String(rawJson ?? '[]'));
+                const parseKoViews = (s: string): number | null => {
+                  const m = String(s ?? '').match(/([\d.,]+)\s*(억|만|천)?\s*회/);
+                  if (!m) return null;
+                  const n = parseFloat(m[1].replace(/,/g, ''));
+                  const mul = m[2] === '억' ? 1e8 : m[2] === '만' ? 1e4 : m[2] === '천' ? 1e3 : 1;
+                  return Math.round(n * mul);
+                };
+                for (const r of parsed) {
+                  const vc = parseKoViews(r.views);
+                  if (r.id && vc != null) cdpViewsCache[r.id] = vc;
+                }
+                // 폴백은 표본을 넓게(항상 20) — 50k+ 적격 후보가 니치에서 희소해 2개를 못 채우던 문제 완화.
+                return parsed.filter((r) => r.id && r.title).slice(0, Math.max(20, maxResults ?? 10)).map((r) => ({
+                  video_id: r.id,
+                  title: r.title,
+                  channel_title: r.ch || undefined,
+                  url: `https://www.youtube.com/watch?v=${r.id}`,
+                }));
+              }
             };
             const getStats = async (ids: string[]) => {
-              const stats = await client.getVideoStats(ids);
-              return Object.fromEntries(stats.map((s: any) => [s.videoId, s.viewCount]));
+              try {
+                const stats = await client.getVideoStats(ids);
+                return Object.fromEntries(stats.map((s: any) => [s.videoId, s.viewCount]));
+              } catch (apiErr: any) {
+                const out: Record<string, number> = {};
+                for (const id of ids) if (cdpViewsCache[id] != null) out[id] = cdpViewsCache[id];
+                if (Object.keys(out).length === 0) throw apiErr;
+                discovery_notes.push(`YouTube API stats 실패 → CDP 수집 조회수 캐시 사용(${Object.keys(out).length}/${ids.length})`);
+                return out;
+              }
             };
 
             // 확장 등급 스크랩(graceful): CDP 단일 테넌트 — 발굴 lock이 비어 있을 때만 시도.
             // 연결은 1회 재시도, 사용 후 반드시 close(크롬은 launchd가 유지).
+            // lock이 잡혀 있으면 최대 2분 해제 대기 — 직전 리포트 핸들러의 잔여 작업이 락을 쥔 채
+            // titledev가 폴백 없이 429로 죽던 문제(2026-07-12 루프3). API 쿼터 소진 시 CDP가 유일한 검색 경로다.
             let scrapeGrades: any;
+            for (let waited = 0; _discoveryInFlight && waited < 120_000; waited += 5_000) {
+              await new Promise((r) => setTimeout(r, 5_000));
+            }
             if (!_discoveryInFlight) {
               _discoveryInFlight = true;
               cdpLockHeld = true;
@@ -5192,6 +5631,9 @@ function registerCmoResource(app: any, db: any) {
                 [
                   '유튜브 검색어 확장. 아래 풀링 주제와 "같은 의미 범위"(시청자가 얻으려는 결과가 같은)의',
                   '더 일반적인(일반명사화된) 검색어 4개를 만들어라. 각 2~4어절, 조회수 많은 영상이 있을 법한 말로.',
+                  '중요(KB 06 §4-3): 특정 업종(예: 미용실/헤어샵)에 갇히지 마라 — 같은 문제를 겪는 상위 레벨',
+                  '(소상공인/자영업/사장님/매장)로 일반명사화한 검색어를 최소 2개 포함하라. 니치 업종 검색어만으로는',
+                  '조회수 5만+ 검증 영상이 부족하다(2026-07-12 실측).',
                   '주제에서 벗어난 일반론(브랜딩 일반론/동기부여/마인드셋)은 금지.',
                   `주제: ${eq.pulling_topic}`,
                   `타깃: ${eq.target_audience}`,
@@ -5303,12 +5745,17 @@ function registerCmoResource(app: any, db: any) {
         }
 
         const proposal = buildTitleDevelopmentProposal(result.run);
+        // FR-7: 시드(교차 치환)→8단계→최종 선정 버전 로그를 카드에 함께 저장 (UI 타임라인용).
+        let version_log: any[] = [];
+        try {
+          version_log = buildTitleVersionLog(result.run);
+        } catch { /* 파생 실패는 카드 저장을 막지 않는다 */ }
         await upsertVideoRoomCard(
           db,
           project_id,
           'title_development',
           proposal.summary,
-          result.run,
+          { ...result.run, version_log },
         );
 
         ctx.body = {
@@ -5373,6 +5820,8 @@ function registerCmoResource(app: any, db: any) {
               safe_claims: Array.isArray(strat.safe_claims) ? strat.safe_claims : undefined,
               proof_points: Array.isArray(strat.proof_points) ? strat.proof_points : undefined,
               risk_notes: Array.isArray(strat.risk_notes) ? strat.risk_notes : undefined,
+              // FR-8: 도입부 벤치마킹 근거 — 키 리포트 추천 영상을 생성 시점에 주입.
+              benchmark_video_id: String(choice.recommended_video_id ?? '').trim() || undefined,
             },
             { llmComplete },
           );
@@ -5540,7 +5989,20 @@ function registerCmoResource(app: any, db: any) {
           const { yt, client } = await loadYoutube();
           refs = await yt.collectThumbnailReferences({ query }, client);
         } catch (err: any) {
-          ctx.throw(400, `썸네일 레퍼런스 수집 실패: ${err?.message ?? String(err)}`);
+          // API 429(쿼터 소진) 등 실패 → CDP ytInitialData 검색 폴백 (FR-9 오버레이 경로).
+          try {
+            const { yt } = await loadYoutube();
+            const rows = await cdpSearchYtInitialData(yt, query, 12);
+            refs = rows.map((r) => ({
+              video_id: r.id,
+              title: r.title,
+              thumbnail_url: `https://i.ytimg.com/vi/${r.id}/hqdefault.jpg`,
+              view_count: r.views ?? 0,
+            }));
+            if (refs.length === 0) throw err;
+          } catch {
+            ctx.throw(400, `썸네일 레퍼런스 수집 실패: ${err?.message ?? String(err)}`);
+          }
         }
 
         // ThumbnailReference → ThumbnailReferenceInput (등급은 YouTube 프록시 단계라 미실측).
@@ -6662,9 +7124,34 @@ function registerDelegationResource(app: any, db: any) {
 }
 
 function buildLLMClient(rawText: string) {
-  // Default: claude-cli (haiku) via createDefaultLLMClient.
-  // Falls back to OpenAI only if L5_LLM_BACKEND=openai + OPENAI_API_KEY set.
-  // If both backends unavailable / throw, fall back to deterministic LLM.
+  // 2026-07-12 루프3 실측: launchd에서 createDefaultLLMClient(haiku CLI, 짧은 timeout)가
+  // cold-spawn에 밀려 스텝별 결정론 폴백 → 원고가 "제목 3회 반복 + LLM 거절문"으로 저장되던
+  // 문제. createSdkLlmClient와 동일 정책으로 통일: 키 없으면 CLI(sonnet, 240s), 있으면 SDK.
+  try {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return createClaudeCLIClient({ model: 'sonnet', timeoutMs: 240_000 });
+    }
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    return {
+      async complete({ system, user }: { system: string; user: string }): Promise<string> {
+        const resp = await client.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 8192,
+          ...(system?.trim() ? { system } : {}),
+          messages: [{ role: 'user', content: user }],
+        });
+        return (resp.content as any[])
+          .filter((b: any) => b.type === 'text')
+          .map((b: any) => (b as any).text)
+          .join('');
+      },
+    } as ReturnType<typeof createDefaultLLMClient>;
+  } catch {
+    // fall through
+  }
+  // 구형 폴백 사다리 유지: haiku CLI → deterministic.
   if (typeof createDefaultLLMClient === 'function') {
     try {
       return createDefaultLLMClient('default');
@@ -6956,9 +7443,13 @@ async function loadLatestBriefForProject(
 function buildStrategyBriefFromCards(scriptDraft: any, proj: any, content_id: string): any {
   const blocks: any[] = Array.isArray(scriptDraft?.logic_blocks) ? scriptDraft.logic_blocks : [];
   const topic = String(proj?.title ?? scriptDraft?.topic ?? '콘텐츠').trim() || '콘텐츠';
+  // core_message는 화면(인트로 슬라이드 body)에 그대로 노출된다 — QA 정렬 노트의
+  // "block-1 — main_claim:" 메타 접두어가 영상에 노출되던 문제 수정(2026-07-12 루프1 육안 QA).
+  const stripBlockMeta = (s: string) => s.replace(/^block-\d+\s*—\s*main_claim:\s*/i, '').trim();
   const coreMessage =
-    String(scriptDraft?.qa?.logic_block_alignment?.[0] ?? '').trim() ||
-    String(blocks[0]?.main_claim ?? blocks[0]?.draft ?? '').trim() ||
+    String(blocks[0]?.main_claim ?? '').trim() ||
+    stripBlockMeta(String(scriptDraft?.qa?.logic_block_alignment?.[0] ?? '')) ||
+    String(blocks[0]?.draft ?? '').trim() ||
     topic;
 
   // ScriptPart(block_id/draft) → LogicBlock 형태로 정규화.

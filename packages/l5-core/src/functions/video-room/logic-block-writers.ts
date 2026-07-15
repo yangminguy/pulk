@@ -42,11 +42,8 @@ export function writeLogicBlockPart(input: WriteLogicBlockPartInput): ScriptPart
     if (found) draftParts.push(found);
   }
 
-  // Append viewer_emotion framing
-  if (block.viewer_emotion) {
-    draftParts.push(`[viewer emotion: ${block.viewer_emotion}]`);
-  }
-
+  // viewer_emotion은 낭독 원고(draft)에 넣지 않는다 — 메타 정보라 영상에 그대로
+  // 노출되는 문제가 있었음(2026-07-12 점검). brief 경로의 viewer_reaction_target으로 전달된다.
   const draft = draftParts.filter(Boolean).join(' ');
 
   // --- used_materials: supporting_materials cross-referenced with pack ---

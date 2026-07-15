@@ -34,6 +34,7 @@ import {
   generateTitleSearchTerms,
   isAwkward,
   isTitleTooLong,
+  truncateTitleToMax,
   recommendFromScore,
   scoreFinalTitle,
   validateTitleReferences,
@@ -623,8 +624,12 @@ export async function runTitleDevelopmentWorkflow(
     deps,
   );
 
-  // 베스트 = 최고 total_score (동점이면 앞 순서)
-  const best = evals.evaluations.reduce((acc, e) => (e.total_score > acc.total_score ? e : acc));
+  // 베스트 = 최고 total_score (동점이면 앞 순서).
+  // §13.4 강제: 35자 이내 후보를 우선하고, 전부 초과면 결정론 절단으로 35자 이내를 보장한다.
+  const withinLimit = evals.evaluations.filter((e) => !isTitleTooLong(e.title));
+  const pool = withinLimit.length > 0 ? withinLimit : evals.evaluations;
+  const best = pool.reduce((acc, e) => (e.total_score > acc.total_score ? e : acc));
+  const enforcedTitle = isTitleTooLong(best.title) ? truncateTitleToMax(best.title) : best.title;
 
   const now = new Date().toISOString();
   const run: TitleDevelopmentWorkflowRun = {
@@ -641,7 +646,7 @@ export async function runTitleDevelopmentWorkflow(
     combinations: judged.combinations,
     step_results: steps.step_results,
     final_candidates: evals.evaluations,
-    selected_title: best.title,
+    selected_title: enforcedTitle,
     selected_thumbnail_direction: best.thumbnail_direction,
     approval_status: 'draft', // AC-13: Founder 승인 전 외부 게시 금지
     created_at: now,

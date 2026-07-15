@@ -18,6 +18,8 @@ const PHASE_SHORT: Record<string, string> = {
 
 const NAV_TOOLS = [
   { href: '/cmo', label: 'CMO 마케팅', icon: 'megaphone' },
+  // 비즈니스PT 매니저 — 별도 앱(port 3003, apps/bizpt-manager). 새 탭으로 이동만.
+  { href: 'http://localhost:3003', label: '비즈니스PT 매니저', icon: 'folder' },
   { href: '/video-room', label: '영상룸', icon: 'video' },
   { href: '/monitor', label: '현황 모니터', icon: 'activity' },
   { href: '/memory', label: '지식', icon: 'database' },

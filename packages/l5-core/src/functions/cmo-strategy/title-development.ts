@@ -186,7 +186,7 @@ export function generateCrossCombinations(
 // §13.4 제목 길이 (35자 제한) — grapheme 단위
 // ---------------------------------------------------------------------------
 
-const TITLE_MAX_LENGTH = 35;
+export const TITLE_MAX_LENGTH = 35;
 
 // tsconfig lib가 ES2020이라 Intl.Segmenter(ES2022) 타입이 없다. 런타임(Node 16+)에는
 // 존재하므로 로컬 타입으로만 보강한다. tsconfig 변경은 WO-1 범위 밖.
@@ -205,6 +205,20 @@ export function countTitleLength(title: string): number {
 
 export function isTitleTooLong(title: string, max: number = TITLE_MAX_LENGTH): boolean {
   return countTitleLength(title) > max;
+}
+
+/**
+ * §13.4 강제 가드: 35자 초과 제목을 단어 경계에서 잘라 35자 이내로 만든다.
+ * (2026-07-12 점검: 39자 산출물이 승인 큐까지 도달 — 산출 단계 강제 부재의 수정)
+ * LLM 재작성이 아닌 결정론 폴백이므로, 우선순위는 "≤35자 후보 선택 > 이 함수".
+ */
+export function truncateTitleToMax(title: string, max: number = TITLE_MAX_LENGTH): string {
+  const trimmed = title.trim();
+  const graphemes = [...graphemeSegmenter.segment(trimmed)].map((g) => g.segment);
+  if (graphemes.length <= max) return trimmed;
+  const cut = graphemes.slice(0, max).join('');
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace >= Math.floor(max * 0.6) ? cut.slice(0, lastSpace) : cut).trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -321,6 +335,77 @@ export function buildTitleDevelopmentProposal(
       title_development_workflow: run,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// FR-7 버전 로그 — 시드(교차 치환)부터 최종 선정까지 "이전→변경→왜"를 타임라인화.
+// run에 이미 있는 재료(combinations/step_results/final_candidates)의 파생 뷰 —
+// §19 타입은 수정 금지이므로 별도 구조로 파생한다(순수).
+// ---------------------------------------------------------------------------
+
+export interface TitleVersionLogEntry {
+  /** 0 = 시드(교차 치환), 1~8 = 디벨롭 단계, 9 = 최종 선정. */
+  version: number;
+  label: string;
+  titles_before: string[];
+  titles_after: string[];
+  /** 적용 기법(무엇을 했는지). */
+  technique: string;
+  /** 왜 바꿨는지(근거 서술). */
+  reason: string;
+  rejected: { title: string; reason: string }[];
+}
+
+export function buildTitleVersionLog(run: TitleDevelopmentWorkflowRun): TitleVersionLogEntry[] {
+  const [ref1, ref2] = run.references;
+  const log: TitleVersionLogEntry[] = [];
+
+  // v0 — 시드: 레퍼런스 2개의 제목↔썸네일 문구 교차 치환 (KB 07 §시드 생성).
+  const seedCombos = run.combinations.filter((c) => c.selected_for_next_step || c.passed);
+  const seedPool = seedCombos.length > 0 ? seedCombos : run.combinations;
+  log.push({
+    version: 0,
+    label: '시드 생성 — 교차 치환',
+    titles_before: [ref1.title, ref2.title, ref1.thumbnail_text, ref2.thumbnail_text].filter(Boolean),
+    titles_after: seedPool.map((c) => c.title_draft),
+    technique: '같은 주제 레퍼런스 2개의 썸네일 문구↔제목 교차 치환 (KB 07)',
+    reason: seedPool
+      .map((c) => c.awkwardness_reason)
+      .filter((r): r is string => Boolean(r && r.trim()))
+      .join(' / ') || '어색함 판정 통과 조합을 디벨롭 출발점으로 선택',
+    rejected: run.combinations
+      .filter((c) => !c.passed)
+      .map((c) => ({ title: c.title_draft, reason: c.awkwardness_reason ?? '어색함 판정 탈락' })),
+  });
+
+  // v1..n — 디벨롭 단계별.
+  for (const step of run.step_results) {
+    log.push({
+      version: step.step_number,
+      label: `${step.step_number}단계 — ${step.step_name}`,
+      titles_before: step.input_titles,
+      titles_after: step.selected_titles_for_next_step,
+      technique: step.method_explanation,
+      reason: step.cmo_reasoning,
+      rejected: step.rejected_titles,
+    });
+  }
+
+  // v9 — 최종 선정.
+  const selected = run.final_candidates.find((c) => c.title === run.selected_title);
+  log.push({
+    version: 9,
+    label: '최종 선정',
+    titles_before: run.final_candidates.map((c) => c.title),
+    titles_after: [run.selected_title],
+    technique: '최종 평가(타깃 적합·욕구 선명도·문제 예리함·호기심 갭·원고 일치·썸네일 궁합) 합산',
+    reason: selected?.reason ?? '최고 총점 후보 선택',
+    rejected: run.final_candidates
+      .filter((c) => c.title !== run.selected_title)
+      .map((c) => ({ title: c.title, reason: `총점 ${c.total_score}점 — ${c.reason}` })),
+  });
+
+  return log;
 }
 
 // ---------------------------------------------------------------------------

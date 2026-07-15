@@ -12,8 +12,8 @@
 // Security: slug is sanitized to [a-z0-9-] only; path traversal is blocked.
 
 import { execFile } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
-import { resolve, basename } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'fs';
+import { resolve, basename, dirname } from 'path';
 
 type VideoFactoryTransport = import('../../../../../../../../packages/l5-core/dist/functions/memory/video-factory').VideoFactoryTransport;
 
@@ -244,9 +244,17 @@ export function makeVideoFactoryTransport(): (VideoFactoryTransport & {
         }
         const briefRelPath = `briefs/${filename}`;
         const briefAbsPath = resolve(dir, briefRelPath);
+        // briefs/ 인박스가 없으면 만든다 — 부재 시 writeFileSync ENOENT로 handoff가
+        // 통째로 failed되던 근본 원인(2026-07-12 점검: sendBriefToFactory 400).
+        mkdirSync(dirname(briefAbsPath), { recursive: true });
         // Always write the brief file (leave it on disk even if validation fails).
         writeFileSync(briefAbsPath, JSON.stringify(brief, null, 2), 'utf8');
 
+        // factory에 validate-brief.ts가 없으면 외부 검증은 스킵(graceful) —
+        // 서버측 validateVideoExecutionBrief가 이미 valid 판정한 brief만 여기 온다.
+        if (!existsSync(resolve(dir, 'scripts/validate-brief.ts'))) {
+          return { ok: true, data: { brief_path: briefAbsPath, validated: false } };
+        }
         const result = await runValidateBrief(dir, briefRelPath);
         if (!result.ok) {
           return { ok: false, error: result.error };

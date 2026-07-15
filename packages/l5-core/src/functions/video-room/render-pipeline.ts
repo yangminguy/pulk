@@ -52,6 +52,53 @@ export interface BuildSlideDeckSpecFromBriefIds {
   design_theme?: string;
 }
 
+/**
+ * 원고 텍스트를 슬라이드 낭독 단위로 분할한다(결정론).
+ * 문단(빈 줄) 우선, 없으면 문장 단위로 나눈 뒤 maxLen까지 병합.
+ * maxChunks 초과분은 마지막 청크에 병합 — 원고를 절대 버리지 않는다.
+ */
+// maxLen 110 ≈ 한국어 낭독 20초(5.5자/초) — factory 씬 최대 20초 클램프와 동기.
+// (220자였을 때 모든 씬이 20초 클램프에 걸려 낭독-씬 전환이 어긋나던 문제, 2026-07-12 루프2 QA)
+export function splitIntoSlideChunks(text: string, maxLen = 110, maxChunks = 24): string[] {
+  const t = (text ?? '').trim();
+  if (!t) return [];
+  const paras = t.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
+  const sentenceSplit = (s: string) => s.split(/(?<=[.!?…])\s+/).map((x) => x.trim()).filter(Boolean);
+  // maxLen을 넘는 문단은 문장 단위로 재분할 — 300자 문단이 한 씬이 되어 20초 클램프에
+  // 걸리면 영상이 낭독보다 짧아진다(2026-07-12 루프4: 낭독 311s vs 영상 204s).
+  const units = (paras.length > 1 ? paras : sentenceSplit(t)).flatMap((u) =>
+    u.length > maxLen ? sentenceSplit(u) : [u],
+  );
+  const merged: string[] = [];
+  for (const u of units) {
+    const last = merged[merged.length - 1];
+    if (last && last.length + u.length + 1 <= maxLen) {
+      merged[merged.length - 1] = `${last} ${u}`;
+    } else {
+      merged.push(u);
+    }
+  }
+  if (merged.length > maxChunks) {
+    const head = merged.slice(0, maxChunks - 1);
+    head.push(merged.slice(maxChunks - 1).join(' '));
+    return head;
+  }
+  return merged;
+}
+
+/**
+ * 슬라이드 헤드라인용 짧은 문구(결정론). 첫 문장을 max자 이내로 자른다.
+ * headline=main_claim 전문이 낭독 원고와 그대로 중복되던 문제의 수정(2026-07-12 점검 잔여 1).
+ */
+export function shortHeadline(text: string, max = 30): string {
+  const first = ((text ?? '').trim().split(/(?<=[.!?…])\s+/)[0] ?? '').replace(/\s+/g, ' ').trim();
+  if (!first) return '—';
+  if (first.length <= max) return first;
+  const cut = first.slice(0, max);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${lastSpace > 10 ? cut.slice(0, lastSpace) : cut}…`;
+}
+
 /** visual_intent_hint / role 텍스트에서 SlideVisualType을 결정론적으로 추론. */
 export function inferSlideVisualType(block: BriefLogicBlock): SlideVisualType {
   const hint = `${block.visual_intent_hint ?? ''} ${block.role ?? ''}`.toLowerCase();
@@ -101,18 +148,48 @@ export function buildSlideDeckSpecFromBrief(
     },
   ];
 
-  for (const block of brief.script.logic_blocks) {
-    slides.push({
-      index: slides.length,
-      headline: (block.communication_goal ?? '').trim() || block.block_id,
-      body:
-        block.required_evidence && block.required_evidence.length > 0
-          ? block.required_evidence.join(' · ')
-          : undefined,
-      visual_type: inferSlideVisualType(block),
-      speaker_text: block.speaker_text,
-      animation_hint: block.visual_intent_hint,
+  // 2026-07-12 개선(점검 잔여 1): 블록당 1장 압축 → 문단 분할 다장.
+  // 모든 블록 speaker_text가 동일하면(= 블록 마커 부재로 full_script 폴백) 원고를
+  // 한 번만 분할해 블록 메타에 비례 배분한다 — 같은 원고가 N번 반복 낭독되던 문제 방지.
+  const blocks = brief.script.logic_blocks;
+  const blockTexts = blocks.map((b) => (b.speaker_text ?? '').trim());
+  const degenerate = blocks.length > 1 && new Set(blockTexts).size === 1;
+
+  if (degenerate) {
+    let body = blockTexts[0];
+    const introText = (brief.script.intro_30s ?? '').trim();
+    if (introText && body.startsWith(introText)) body = body.slice(introText.length).trim();
+    const chunks = splitIntoSlideChunks(body);
+    chunks.forEach((text, i) => {
+      const block = blocks[Math.min(blocks.length - 1, Math.floor((i * blocks.length) / Math.max(1, chunks.length)))];
+      slides.push({
+        index: slides.length,
+        headline: shortHeadline(i === 0 ? ((block.communication_goal ?? '').trim() || text) : text),
+        visual_type: inferSlideVisualType(block),
+        speaker_text: text,
+        animation_hint: block.visual_intent_hint,
+      });
     });
+  } else {
+    for (const block of blocks) {
+      const chunks = splitIntoSlideChunks((block.speaker_text ?? '').trim());
+      chunks.forEach((text, i) => {
+        slides.push({
+          index: slides.length,
+          headline:
+            i === 0
+              ? shortHeadline((block.communication_goal ?? '').trim() || block.block_id)
+              : shortHeadline(text),
+          body:
+            i === 0 && block.required_evidence && block.required_evidence.length > 0
+              ? block.required_evidence.join(' · ')
+              : undefined,
+          visual_type: inferSlideVisualType(block),
+          speaker_text: text,
+          animation_hint: block.visual_intent_hint,
+        });
+      });
+    }
   }
 
   const bridge = brief.strategy?.bridge_to_key_content?.trim();

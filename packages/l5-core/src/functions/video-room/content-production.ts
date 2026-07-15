@@ -249,6 +249,8 @@ export interface ScriptDraftInput {
   proof_points?: string[];
   /** 위험 메모. */
   risk_notes?: string[];
+  /** 도입부가 벤치마킹한 영상 videoId (FR-8 근거 서술 — 키 리포트 추천 영상 등). */
+  benchmark_video_id?: string;
 }
 
 export const ScriptDraftInputSchema = z.object({
@@ -267,13 +269,38 @@ export const ScriptDraftInputSchema = z.object({
   safe_claims: z.array(z.string()).optional(),
   proof_points: z.array(z.string()).optional(),
   risk_notes: z.array(z.string()).optional(),
+  benchmark_video_id: z.string().optional(),
 });
+
+/** FR-8 — 도입부/본론이 "왜 이렇게 쓰였는지" 근거 서술(생성 시점 필수 산출). */
+export interface ScriptRationale {
+  intro: {
+    /** 벤치마킹 영상 (없으면 null — UI는 '벤치마킹 없음' 표기). */
+    benchmark_video_id: string | null;
+    /** 따온 도입부 구조 공식 이름 (hook_type). */
+    structure_name: string;
+    /** 서술형 이유. */
+    reason: string;
+    used_materials: string[];
+    generation: 'llm' | 'deterministic';
+  };
+  /** 본론 논리 블록 단위 소스 매핑. */
+  blocks: {
+    block_id: string;
+    used_materials: string[];
+    used_voc_lines: string[];
+    used_claims: string[];
+  }[];
+  /** 이 원고가 참조한 리서치 소스(입력 자료 전체). */
+  research_sources: string[];
+}
 
 export interface ProposeScriptDraftResult {
   intro_30s: Intro30s;
   logic_blocks: ScriptPart[];
   integrated_script: IntegratedScript;
   qa: ScriptQaReport;
+  rationale: ScriptRationale;
 }
 
 /** 카드 입력 → 기존 도메인 함수가 요구하는 최소 유효 객체(brief/pack/voc/claims) 조립. */
@@ -410,7 +437,7 @@ export async function proposeScriptDraft(
   const { brief, pack, voc, claims, coveredStages } = assembleContext(input);
 
   // Step 1: 도입 30초.
-  const intro_30s = buildIntro30s({ brief, materials: pack, voc });
+  let intro_30s = buildIntro30s({ brief, materials: pack, voc });
 
   // Step 2: 로직블록 파트 N개.
   const logic_blocks = brief.logic_blocks.map((block) =>
@@ -420,25 +447,85 @@ export async function proposeScriptDraft(
   // Step 3: 통합 원고.
   let integrated_script = integrateScript({ intro: intro_30s, parts: logic_blocks, brief });
 
-  // LLM 주입 시 본문만 매끄럽게 덮어쓴다(구조/메타는 결정론 유지).
+  let llmGenerated = false;
+  // LLM 주입 시: 결정론 초안을 뼈대로 실원고(도입부 200자 내외 + 본론 2,500~3,500자)를 생성한다.
+  // 기존 '다듬기(사실 추가 금지)' 방식은 뼈대가 빈약할 때 껍데기 원고가 그대로 남고,
+  // LLM 거절문까지 원고로 채택되는 문제가 있었다(2026-07-12 라이브 실측). 기준: KB 09
+  // (도입부 200자·본론 3,000자 내외·신뢰도 보강 요소). 가드 미통과 응답은 채택하지 않고
+  // 결정론 초안을 유지한다(미주입 경로·결정론 계약은 불변).
   if (deps.llmComplete) {
+    const blockOutline = brief.logic_blocks
+      .map((b, i) => {
+        const materials = (b.supporting_materials ?? []).join(' / ');
+        return `${i + 1}. ${b.main_claim}${materials ? ` — 근거: ${materials}` : ''} (시청자 감정: ${b.viewer_emotion})`;
+      })
+      .join('\n');
     const prompt = [
-      '아래 원고 초안을 자연스러운 한국어로 매끄럽게 다듬어라(사실/논리 추가·삭제 금지).',
-      '결과는 다듬어진 전체 원고 본문만 출력하라(설명/머리말 금지).',
+      '너는 유튜브 롱폼 낭독용 원고 작가다. 아래 기획을 근거로 한국어 원고를 작성하라.',
+      '출력 형식(이 두 구분자 외 다른 머리말·설명 금지):',
+      '===INTRO===',
+      '(도입부 — 200자 내외(170~280자, 낭독 30~50초). 썸네일을 클릭한 이유를 첫 문장에서 다시 확인시키고 시청자 상황에 공감시킨다. 정답은 아직 말하지 않는다. 170자 미만이면 실패다.)',
+      '===BODY===',
+      '(본론 — 2,500~3,500자. 로직블록 순서대로 전개. 왜 그런지 원리 설명, 직접 해본/국내 사례, 예상 반론에 대한 선반영을 포함해 신뢰도를 보강한다. 마지막은 다음 행동 제안 1문장.)',
       '',
-      integrated_script.full_script,
-    ].join('\n');
+      `주제: ${brief.topic}`,
+      `타깃 시청자: ${brief.target_viewer.who}`,
+      `핵심 메시지: ${brief.core_message}`,
+      `영상의 약속: ${brief.video_promise}`,
+      `로직블록:\n${blockOutline}`,
+      voc.pain_expressions.length ? `시청자의 말(VOC): ${[...voc.pain_expressions, ...voc.desire_expressions].slice(0, 5).join(' / ')}` : '',
+      '',
+      '참고용 결정론 초안(뼈대 — 표현은 자유롭게 재작성):',
+      integrated_script.full_script.slice(0, 1200),
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    // 거절/입력요청형 응답 감지 — 원고로 채택 금지.
+    const REFUSAL_RE = /(어렵습니다|필요합니다|보내\s*주세요|제공해\s*주|다시\s*정리해|미완성|작성할\s*수\s*없)/;
     const attempts = Math.max(0, deps.maxRetries ?? 2) + 1;
+    // 분량 피드백 재시도(2026-07-12 루프4): LLM이 1,700~1,900자 본론을 내는 경향이 있어
+    // 무피드백 재시도는 같은 미달을 반복 → 직전 미달 글자수를 명시해 재생성시킨다.
+    // 전 시도 실패 시 마지막 후보가 1,600자 이상(비거절)이면 채택(전멸 방지 — KB 대조가 표면화).
+    let lastIntro = '';
+    let lastBody = '';
     for (let i = 0; i < attempts; i++) {
       try {
-        const polished = (await deps.llmComplete(prompt)).trim();
-        if (polished.length > 0) {
-          integrated_script = { ...integrated_script, full_script: polished };
+        const feedback = lastBody
+          ? `\n\n[재시도 피드백] 직전 시도의 본론은 ${lastBody.length}자로 기준(2,500자 내외) 미달이었다. 이번에는 반드시 본론을 2,500자 이상으로 써라 — 각 로직블록의 원리 설명·국내 사례·반론 반박을 지금의 2배 깊이로 확장하라.`
+          : '';
+        const raw = (await deps.llmComplete(prompt + feedback)).trim();
+        // 마크다운 마커 제거 — LLM이 섞은 **볼드**/헤딩이 슬라이드 화면에 그대로 노출되던
+        // 문제(2026-07-12 루프3 육안 QA). 낭독 원고는 항상 순수 텍스트여야 한다.
+        const stripMd = (s: string) =>
+          s.replace(/\*\*|__|`+/g, '').replace(/^#{1,4}\s*/gm, '').trim();
+        const introText = stripMd(raw.match(/===INTRO===\s*([\s\S]*?)\s*===BODY===/)?.[1] ?? '');
+        const bodyText = stripMd(raw.match(/===BODY===\s*([\s\S]*)$/)?.[1] ?? '');
+        // 하한 170자 — 138자 도입부가 낭독 25초로 KB 09 기준(30초+) 미달하던 문제(2026-07-12 루프2 KB 대조)
+        const introOk = introText.length >= 170 && introText.length <= 400 && !REFUSAL_RE.test(introText);
+        // 하한 2000자 — KB 09 §6 본론 기준(2,000~4,500). 1772자 통과 사례 방지(루프3 KB 대조).
+        const bodyOk = bodyText.length >= 2000 && !REFUSAL_RE.test(bodyText);
+        if (introOk && bodyOk) {
+          intro_30s = { ...intro_30s, script: introText };
+          integrated_script = { ...integrated_script, full_script: `${introText}\n\n${bodyText}` };
+          llmGenerated = true;
           break;
+        }
+        // 미달이지만 유효한 후보는 보관 — 다음 시도 피드백 + 최종 폴백 후보.
+        if (!REFUSAL_RE.test(bodyText) && bodyText.length > lastBody.length) {
+          lastBody = bodyText;
+          lastIntro = introText;
         }
       } catch {
         // 실패 → 결정론 원고 유지
       }
+    }
+    // 전 시도 미달 시: 최선 후보가 1,600자 이상이면 채택(뼈대 원고로 영상이 나가는 것보다 낫다).
+    // KB 자동 대조(2,000자 하한)가 미달을 표면화하므로 조용히 숨겨지지 않는다.
+    if (!llmGenerated && lastBody.length >= 1600 && lastIntro.length >= 150) {
+      intro_30s = { ...intro_30s, script: lastIntro };
+      integrated_script = { ...integrated_script, full_script: `${lastIntro}\n\n${lastBody}` };
+      llmGenerated = true;
     }
   }
 
@@ -459,5 +546,23 @@ export async function proposeScriptDraft(
     revision_requests: [],
   });
 
-  return { intro_30s, logic_blocks, integrated_script, qa };
+  // FR-8: 근거 서술 — 생성 시점에 필수 산출(사후 추론 금지).
+  const rationale: ScriptRationale = {
+    intro: {
+      benchmark_video_id: input.benchmark_video_id?.trim() || null,
+      structure_name: intro_30s.hook_type,
+      reason: intro_30s.why_it_works,
+      used_materials: intro_30s.used_materials,
+      generation: llmGenerated ? 'llm' : 'deterministic',
+    },
+    blocks: logic_blocks.map((b) => ({
+      block_id: b.block_id,
+      used_materials: b.used_materials,
+      used_voc_lines: b.used_voc_lines,
+      used_claims: b.used_claims,
+    })),
+    research_sources: clean(input.materials ?? []),
+  };
+
+  return { intro_30s, logic_blocks, integrated_script, qa, rationale };
 }

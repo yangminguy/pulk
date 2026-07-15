@@ -9,11 +9,13 @@ const lowPerf = recordVideoPerformance({
   retention_notes: '도입 30초 이탈 큼',
 });
 
+// 양호 = KB 00·10 정량 4요소 목표 전부 충족 (CTR 목표 10% — 2026-07-12 정합화).
 const goodPerf = recordVideoPerformance({
   project_id: 'p1',
   view_count: 50000,
   completion_rate: 0.6,
-  ctr: 0.09,
+  ctr: 0.12,
+  intro_retention_30s: 0.7,
 });
 
 describe('extractCompletionInsight', () => {

@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import type { PerformanceRecord } from './performance-ingestion';
+import { QUANT_TARGETS } from './quantitative-factors';
 
 export const INSIGHT_USAGES = ['hook', 'intro', 'pulling', 'topic'] as const;
 export type InsightUsage = (typeof INSIGHT_USAGES)[number];
@@ -45,10 +46,12 @@ export interface ExtractCompletionInsightDeps {
   maxRetries?: number;
 }
 
-// 결정론 폴백 임계값 (followup: 외부 설정화). 보수적 기본.
-const LOW_COMPLETION = 0.4; // 완료율 40% 미만 → 훅/도입 재검토
-const LOW_CTR = 0.04; // CTR 4% 미만 → 썸네일/제목(topic) 재검토
-const LOW_VIEWS = 1000; // 조회수 1000 미만 → 풀링 노출 부족
+// 결정론 폴백 임계값 — KB 00·10 정량 4요소 정본(quantitative-factors.ts)과 동기.
+// (2026-07-12 점검: 문서 CTR 10% vs 코드 4% 불일치 → 정본 상수로 정합화)
+const LOW_COMPLETION = QUANT_TARGETS.completion_rate; // 시청 지속 35% 미만 → 훅/도입 재검토
+const LOW_CTR = QUANT_TARGETS.ctr; // CTR 10% 미만 → 썸네일/제목(topic) 재검토
+const LOW_VIEWS = QUANT_TARGETS.views; // 조회수 1000 미만 → 풀링 노출 부족
+const LOW_INTRO = QUANT_TARGETS.intro_retention_30s; // 도입부 30초 유지 60% 미만 → 도입부 재검토
 
 // LLM 출력 스키마 (id 없이 받음 — 코드가 인덱스 id 부여) ───────────────────────
 const LlmInsightSchema = InsightCandidateSchema.omit({ id: true });
@@ -111,6 +114,12 @@ function buildFallbackInsights(input: ExtractCompletionInsightInput): InsightCan
     });
     out.push({
       insight: `초반 이탈이 큼 → 도입부 구조를 문제 공감 중심으로 다시 설계`,
+      usage: 'intro',
+    });
+  }
+  if (p.intro_retention_30s != null && p.intro_retention_30s < LOW_INTRO) {
+    out.push({
+      insight: `도입부 30초 유지율 ${Math.round(p.intro_retention_30s * 100)}%로 목표(60%) 미달 → 첫 문장/긴장/약속 구조 재검토`,
       usage: 'intro',
     });
   }

@@ -86,3 +86,29 @@ export function classifyCtoIntent(instruction: string): CtoIntent {
   if (PLANNING_RE.test(t)) return 'plan';
   return 'generic';
 }
+
+// ---------------------------------------------------------------------------
+// CMO research-intent classifier (CMO app only).
+//
+// The CMO app is the entrypoint for the general-purpose YouTube research engine
+// (RESEARCH_ENGINE_SPEC §8). Only *explicit* research triggers are intercepted;
+// ordinary CMO conversation ("이번 콘텐츠 리서치 어떻게 됐어?") keeps flowing to
+// the generic executive. Deliberately conservative to avoid over-detection:
+//   - a "리서치" / "research" command *prefix* (with `:` or whitespace), or
+//   - a "리서치해줘" / "리서치 해줘" phrase anywhere.
+// A mid-sentence mention of "리서치" without those forms stays generic.
+//
+// Contract: input MUST be cleanInstruction()-processed text (bot mention and the
+// "sent via" trailer already stripped), same as classifyCtoIntent.
+
+export type CmoIntent = 'research' | 'generic';
+
+const RESEARCH_RE = /^리서치[:\s]|^research[:\s]|리서치\s*해줘/i;
+
+/** Classify a (mention-stripped) CMO instruction as an explicit research request. */
+export function classifyCmoIntent(instruction: string): CmoIntent {
+  if (typeof instruction !== 'string') return 'generic';
+  const t = instruction.trim();
+  if (!t) return 'generic';
+  return RESEARCH_RE.test(t) ? 'research' : 'generic';
+}

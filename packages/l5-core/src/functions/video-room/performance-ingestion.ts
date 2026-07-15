@@ -26,6 +26,8 @@ export const RecordVideoPerformanceInputSchema = z.object({
   impressions: z.number().int().nonnegative().nullable().optional(),
   /** 미수집 지표가 있을 때 사유 기록 (예: Reporting API 미활성화). */
   metrics_note: z.string().optional(),
+  /** 도입부 30초 시청 유지율 0~1 (KB 00·10 정량 4요소 — 목표 60%). 미수집이면 null. */
+  intro_retention_30s: z.number().min(0).max(1).nullable().optional(),
   /** 시청 유지 관련 자유 메모 (예: '도입 30초 이탈 큼'). */
   retention_notes: z.string().optional(),
   /** 댓글/반응 등 정성 피드백. */
@@ -39,6 +41,7 @@ export interface PerformanceRecord {
   view_count: number;
   completion_rate: number | null;
   ctr: number | null;
+  intro_retention_30s?: number | null;
   impressions?: number | null;
   metrics_note?: string;
   retention_notes?: string;
@@ -65,6 +68,7 @@ export function recordVideoPerformance(input: RecordVideoPerformanceInput): Perf
     view_count: v.view_count,
     completion_rate: v.completion_rate,
     ctr: v.ctr,
+    ...(v.intro_retention_30s !== undefined ? { intro_retention_30s: v.intro_retention_30s } : {}),
     ...(v.impressions !== undefined ? { impressions: v.impressions } : {}),
     ...(v.metrics_note?.trim() ? { metrics_note: v.metrics_note.trim() } : {}),
     ...(v.retention_notes?.trim() ? { retention_notes: v.retention_notes.trim() } : {}),

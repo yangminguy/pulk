@@ -32,6 +32,8 @@ export interface GatewayConfig {
   ctoPlanningEnabled: boolean;
   nocobaseUrl: string;
   nocobaseToken: string;
+  /** CMO research-engine entry (explicit "리서치" triggers → research-engine CLI). */
+  cmoResearchEnabled: boolean;
 }
 
 const BOT_DEFS: { id: ExecutiveId; label: string; envPrefix: string }[] = [
@@ -85,5 +87,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     ctoPlanningEnabled: (env.SLACK_CTO_PLANNING_ENABLED ?? 'true') !== 'false',
     nocobaseUrl: env.NOCOBASE_URL ?? 'http://localhost:13000',
     nocobaseToken: env.NOCOBASE_TOKEN ?? '',
+    // On by default; if the research-engine CLI isn't built yet the bridge
+    // reports a clear error into the Slack thread (no spawn attempted).
+    cmoResearchEnabled: (env.SLACK_CMO_RESEARCH_ENABLED ?? 'true') !== 'false',
   };
 }

@@ -1,4 +1,4 @@
-import { cleanInstruction, wantsFiles, EXECUTIVES } from '../router.js';
+import { cleanInstruction, wantsFiles, EXECUTIVES, classifyCmoIntent } from '../router.js';
 
 describe('cleanInstruction', () => {
   const BOT = 'U0BOT123';
@@ -56,5 +56,35 @@ describe('EXECUTIVES', () => {
     expect(EXECUTIVES.ceo.label).toBe('CEO');
     expect(EXECUTIVES.cmo.label).toBe('CMO');
     expect(EXECUTIVES.cto.label).toBe('CTO');
+  });
+});
+
+describe('classifyCmoIntent', () => {
+  it('routes explicit "리서치" command prefixes to research', () => {
+    expect(classifyCmoIntent('리서치: AI 코딩 에이전트 시장')).toBe('research');
+    expect(classifyCmoIntent('리서치 AI 코딩 에이전트 시장')).toBe('research');
+  });
+
+  it('routes "research" command prefixes (case-insensitive) to research', () => {
+    expect(classifyCmoIntent('research: AI coding agents')).toBe('research');
+    expect(classifyCmoIntent('Research AI coding agents')).toBe('research');
+  });
+
+  it('routes "리서치해줘" / "리서치 해줘" phrases anywhere to research', () => {
+    expect(classifyCmoIntent('AI 코딩 에이전트 시장 리서치해줘')).toBe('research');
+    expect(classifyCmoIntent('AI 코딩 에이전트 시장 리서치 해줘')).toBe('research');
+  });
+
+  it('does NOT over-detect ordinary CMO conversation that merely mentions 리서치', () => {
+    expect(classifyCmoIntent('지난 리서치 결과 요약해줘')).toBe('generic');
+    expect(classifyCmoIntent('이번 콘텐츠 리서치 어떻게 됐어?')).toBe('generic');
+    expect(classifyCmoIntent('리서치라는 채널 분석해줘')).toBe('generic');
+  });
+
+  it('keeps plain CMO requests and empty input generic', () => {
+    expect(classifyCmoIntent('키 콘텐츠 기획서 만들어줘')).toBe('generic');
+    expect(classifyCmoIntent('')).toBe('generic');
+    // @ts-expect-error runtime guard
+    expect(classifyCmoIntent(null)).toBe('generic');
   });
 });

@@ -132,6 +132,12 @@ export type {
 // R7 성과 재학습 루프: 완료 영상 성과(수동 입력) → 인사이트 → 다음 기획 입력.
 export * from './performance-ingestion';
 export * from './completion-insight-extraction';
+// KB 00·10 정량 4요소 자동 판정 (2026-07-12 점검 후속).
+export * from './quantitative-factors';
+// FR-4/FR-5 승인 게이트 HTML 기획서/리포트 생성기.
+export * from './gate-report-docs';
+// FR-9 리서치 데이터 소싱 라우터 (API > 오버레이 > 뷰트랩 사이트).
+export * from './sourcing-router';
 // M3 발굴 의도 분류: 크롤링 결과 → 상품·타깃 적합/모호/부적합 (모델 = Claude Sonnet 고정).
 export * from './discovery-classification';
 // M1~M3 통합 발굴 파이프라인: 발굴→통계·필터→(옵션)크롤링→Sonnet 분류→후보 + 키/풀링 Step 변환.

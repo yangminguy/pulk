@@ -76,13 +76,44 @@ describe('proposeScriptDraft', () => {
     expect(result.qa.overall_pass).toBe(true);
   });
 
-  it('주입 LLM 경로: 통합 원고 본문을 LLM 결과로 덮어쓴다', async () => {
+  it('주입 LLM 경로: INTRO/BODY 형식 + 분량 충족 시 도입부·통합 원고를 LLM 결과로 교체', async () => {
+    const intro = '인'.repeat(200);
+    const body = '본'.repeat(2000);
     const result = await proposeScriptDraft(scriptInput, {
-      llmComplete: async () => '매끄럽게 다듬어진 전체 원고',
+      llmComplete: async () => `===INTRO===\n${intro}\n===BODY===\n${body}`,
     });
-    expect(result.integrated_script.full_script).toBe('매끄럽게 다듬어진 전체 원고');
+    expect(result.intro_30s.script).toBe(intro);
+    expect(result.integrated_script.full_script).toBe(`${intro}\n\n${body}`);
     // 구조/QA는 결정론 유지.
     expect(result.qa.overall_pass).toBe(true);
+  });
+
+  it('가드: LLM 거절문 응답은 원고로 채택하지 않는다 (결정론 유지)', async () => {
+    const det = await proposeScriptDraft(scriptInput);
+    const refusal = '제공하신 원고가 단편적이라 다듬기 어렵습니다. 완전한 초안을 보내주세요. ' + '채'.repeat(2000);
+    const result = await proposeScriptDraft(scriptInput, {
+      llmComplete: async () => `===INTRO===\n${'인'.repeat(200)}\n===BODY===\n${refusal}`,
+      maxRetries: 0,
+    });
+    expect(result.integrated_script.full_script).toBe(det.integrated_script.full_script);
+  });
+
+  it('가드: 형식 없는 짧은 응답은 채택하지 않는다 (결정론 유지)', async () => {
+    const det = await proposeScriptDraft(scriptInput);
+    const result = await proposeScriptDraft(scriptInput, {
+      llmComplete: async () => '매끄럽게 다듬어진 전체 원고',
+      maxRetries: 0,
+    });
+    expect(result.integrated_script.full_script).toBe(det.integrated_script.full_script);
+  });
+
+  it('가드: 본론 1,500자 미만이면 채택하지 않는다', async () => {
+    const det = await proposeScriptDraft(scriptInput);
+    const result = await proposeScriptDraft(scriptInput, {
+      llmComplete: async () => `===INTRO===\n${'인'.repeat(200)}\n===BODY===\n${'짧'.repeat(300)}`,
+      maxRetries: 0,
+    });
+    expect(result.integrated_script.full_script).toBe(det.integrated_script.full_script);
   });
 
   it('LLM 실패 시 결정론 원고 유지', async () => {
