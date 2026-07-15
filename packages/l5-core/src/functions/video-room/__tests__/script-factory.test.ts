@@ -238,6 +238,73 @@ describe('comparison', () => {
   });
 });
 
+describe('chart_reveal', () => {
+  it('uses provided chartItems (2~6, label+numeric value)', () => {
+    const chartItems = [
+      { label: '1월', value: 120, unit: '명' },
+      { label: '2월', value: 340, unit: '명' },
+    ];
+    const result = job([beat({ scene_type: 'chart_reveal', chartItems })]);
+    const s = result.scenes[0] as { type: string; items: typeof chartItems };
+    expect(s.type).toBe('chart_reveal');
+    expect(s.items).toEqual(chartItems);
+  });
+
+  it('passes through optional chart_kind', () => {
+    const result = job([
+      beat({
+        scene_type: 'chart_reveal',
+        chartItems: [
+          { label: '이전', value: 3, unit: '%' },
+          { label: '이후', value: 12, unit: '%' },
+        ],
+        chart_kind: 'line',
+      }),
+    ]);
+    const s = result.scenes[0] as { chart_kind?: string };
+    expect(s.chart_kind).toBe('line');
+  });
+
+  it('caps items at 6', () => {
+    const chartItems = Array.from({ length: 8 }, (_, i) => ({ label: `${i}`, value: i }));
+    const result = job([beat({ scene_type: 'chart_reveal', chartItems })]);
+    const s = result.scenes[0] as { items: unknown[] };
+    expect(s.items).toHaveLength(6);
+  });
+
+  it('falls back to insight without chartItems', () => {
+    const result = job([beat({ scene_type: 'chart_reveal' })]);
+    expect(result.scenes[0].type).toBe('insight');
+  });
+
+  it('falls back to insight with fewer than 2 chartItems', () => {
+    const result = job([beat({ scene_type: 'chart_reveal', chartItems: [{ label: '1월', value: 120 }] })]);
+    expect(result.scenes[0].type).toBe('insight');
+  });
+});
+
+describe('kinetic_typo', () => {
+  it('maps headline and passes through optional lines', () => {
+    const result = job([
+      beat({ scene_type: 'kinetic_typo', headline: '광고는 증폭기일 뿐', lines: ['광고는 증폭기일 뿐', '엔진이 아니다'] }),
+    ]);
+    const s = result.scenes[0] as { type: string; headline: string; lines?: string[] };
+    expect(s.type).toBe('kinetic_typo');
+    expect(s.headline).toBe('광고는 증폭기일 뿐');
+    expect(s.lines).toEqual(['광고는 증폭기일 뿐', '엔진이 아니다']);
+  });
+
+  it('omits lines when not provided', () => {
+    const result = job([beat({ scene_type: 'kinetic_typo' })]);
+    const s = result.scenes[0] as { lines?: string[] };
+    expect(s.lines).toBeUndefined();
+  });
+
+  it('does not throw without lines', () => {
+    expect(() => job([beat({ scene_type: 'kinetic_typo' })])).not.toThrow();
+  });
+});
+
 // ── Fallback-to-insight cases ──────────────────────────────────────────────────
 
 describe('insight fallback', () => {
@@ -387,7 +454,10 @@ describe('spotlight', () => {
 
 describe('caption propagation', () => {
   it('every mappable scene carries caption equal to speaker_text', () => {
-    const types = ['hero', 'problem', 'reframe', 'flow', 'metric_cards', 'comparison', 'insight', 'cta', 'quote'];
+    const types = [
+      'hero', 'problem', 'reframe', 'flow', 'metric_cards', 'comparison', 'insight', 'cta', 'quote',
+      'kinetic_typo', 'chart_reveal',
+    ];
     for (const t of types) {
       const result = job([beat({ scene_type: t, speaker_text: '나레이션' })]);
       const s = result.scenes[0] as { caption?: string };

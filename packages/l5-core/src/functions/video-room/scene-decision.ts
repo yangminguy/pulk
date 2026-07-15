@@ -3,9 +3,11 @@
 // VideoExecutionBrief의 logic_blocks(긴 speaker_text 문단)를 받아
 //   1. 문장 경계 기반 페이싱 분할(씬당 8~12초 목표, 글자수÷5.5)
 //   2. 한국어 텍스트 분석 스코어링으로 scene_type 결정(숫자밀도→metric_cards,
-//      비교→comparison, 순서→steps/flow, 인용→quote, 나열→orbital/split,
-//      재정의→reframe, 문제제기→problem, 장전환→section, 마무리→cta, 그 외→insight)
-//   3. insight 과반 방지 다양성 밸런싱
+//      라벨+수치 쌍 2개 이상→chart_reveal(metric_cards보다 우선), 비교→comparison,
+//      순서→steps/flow, 인용→quote, 나열→orbital/split, 재정의→reframe, 문제제기→problem,
+//      장전환→section, 마무리→cta, hook/tension/insight 위치의 단정 선언문→kinetic_typo(15% 캡),
+//      그 외→insight)
+//   3. insight 과반 방지 다양성 밸런싱(초과분은 chart_reveal/kinetic_typo도 후보)
 //   4. emphasis / mood / transition / rhythm_role 결정론 배정
 // 을 수행해 factory 호환 ScriptBeat[]를 만든다.
 //
@@ -49,6 +51,8 @@ export const DECIDABLE_SCENE_TYPES = [
   'steps',
   'spotlight',
   'orbital',
+  'chart_reveal',
+  'kinetic_typo',
 ] as const;
 
 export type DecidedSceneType = (typeof DECIDABLE_SCENE_TYPES)[number];
@@ -289,6 +293,83 @@ export function countCtaSignals(text: string): number {
   ).length;
 }
 
+// ── 3.5 chart_reveal / kinetic_typo 신호 ─────────────────────────────────────
+
+/** chart_reveal.items 후보(라벨 + 수치 + 단위). */
+export interface ChartItemCandidate {
+  label: string;
+  value: number;
+  unit?: string;
+}
+
+/** "N월"/"N분기"/"N주차"/"N번째" 같은 순번 라벨 뒤에 붙는 수치 나열(예: "1월 120명, 2월 340명"). */
+const ORDINAL_LABEL_UNIT = '(?:월|분기|주차|일차|번째|년차|주년)';
+
+function extractOrdinalLabeledPairs(text: string): ChartItemCandidate[] {
+  const re = new RegExp(
+    `(\\d{1,2}\\s*${ORDINAL_LABEL_UNIT})\\s*[:,]?\\s*(\\d[\\d,.]*)\\s*(${METRIC_UNIT})`,
+    'g',
+  );
+  const out: ChartItemCandidate[] = [];
+  for (const m of text.matchAll(re)) {
+    out.push({ label: m[1].replace(/\s+/g, ''), value: Number(m[2].replace(/,/g, '')), unit: m[3] });
+  }
+  return out;
+}
+
+/** "전환율 3%→12%"처럼 화살표로 이어진 전/후 수치 한 쌍. */
+function extractArrowPair(text: string): ChartItemCandidate[] {
+  const re = new RegExp(
+    `(\\d[\\d,.]*)\\s*(${METRIC_UNIT})\\s*(?:→|->|~)\\s*(\\d[\\d,.]*)\\s*(${METRIC_UNIT})?`,
+  );
+  const m = re.exec(text);
+  if (!m) return [];
+  return [
+    { label: '이전', value: Number(m[1].replace(/,/g, '')), unit: m[2] },
+    { label: '이후', value: Number(m[3].replace(/,/g, '')), unit: m[4] ?? m[2] },
+  ];
+}
+
+/** 라벨 없이 나열된 수치+단위(2개 이상)를 순번 라벨로 변환(최후 폴백). */
+function extractSequentialNumericItems(text: string): ChartItemCandidate[] {
+  const spans = extractNumericSpans(text);
+  if (spans.length < 2) return [];
+  return spans.map((span, i) => {
+    const m = span.match(new RegExp(`^(\\d[\\d,.]*)\\s*(${METRIC_UNIT})$`));
+    return {
+      label: `${i + 1}구간`,
+      value: m ? Number(m[1].replace(/,/g, '')) : 0,
+      unit: m?.[2],
+    };
+  });
+}
+
+/**
+ * chart_reveal 후보 아이템(라벨+수치 쌍 2개 이상)을 추출한다.
+ * 우선순위: 순번 라벨 나열(1월/2월…) → 화살표 전/후(3%→12%) → 라벨 없는 순수 나열.
+ * 2개 미만이면 빈 배열(= chart_reveal 부적격, metric_cards 등 기존 로직 유지).
+ */
+export function extractChartItems(text: string): ChartItemCandidate[] {
+  const ordinal = extractOrdinalLabeledPairs(text);
+  if (ordinal.length >= 2) return ordinal;
+  const arrow = extractArrowPair(text);
+  if (arrow.length >= 2) return arrow;
+  return extractSequentialNumericItems(text);
+}
+
+const KINETIC_TYPO_MAX_CHARS = 40;
+
+/** 짧고 단정적인 한 문장 선언문인지: 문장 1개·40자 이하·물음이 아니고 나열도 아님. */
+export function isShortDeclarative(text: string): boolean {
+  const sentences = splitSentences(text);
+  if (sentences.length !== 1) return false;
+  const s = sentences[0].trim();
+  if (s.length === 0 || s.length > KINETIC_TYPO_MAX_CHARS) return false;
+  if (/[?？]\s*$/.test(s)) return false;
+  if (countEnumerationSignals(s) > 0) return false;
+  return true;
+}
+
 export interface SceneTypeScores {
   metric_cards: number;
   comparison: number;
@@ -301,6 +382,8 @@ export interface SceneTypeScores {
   problem: number;
   section: number;
   cta: number;
+  chart_reveal: number;
+  kinetic_typo: number;
 }
 
 export interface DecideSceneTypeContext {
@@ -310,6 +393,8 @@ export interface DecideSceneTypeContext {
   isFinalChunk?: boolean;
   /** "---" 섹션의 첫 chunk 여부. */
   isSectionStart?: boolean;
+  /** hook(앞1/4)/tension(문제 제기 직후)/insight(뒤1/4) 리듬 위치 여부 — kinetic_typo 배정 후보 조건. */
+  isRhythmPunchZone?: boolean;
 }
 
 /** chunk 텍스트의 타입별 점수를 계산한다(결정론). */
@@ -318,6 +403,7 @@ export function scoreSceneTypes(text: string, ctx: DecideSceneTypeContext = {}):
   const metric = countMetricSignals(text);
   const seq = countSequenceSignals(text);
   const hasArrow = /->|→/.test(text);
+  const chartItems = extractChartItems(text);
 
   const scores: SceneTypeScores = {
     metric_cards: metric >= 2 ? metric + 1 : 0,
@@ -331,6 +417,10 @@ export function scoreSceneTypes(text: string, ctx: DecideSceneTypeContext = {}):
     problem: countProblemSignals(text),
     section: ctx.isSectionStart && hasSectionTransition(firstSentence) ? 6 : 0,
     cta: ctx.isFinalChunk ? countCtaSignals(text) * 3 : 0,
+    // 라벨+수치 쌍 2개 이상이면 metric_cards보다 우선(수치 1개뿐이면 0 → metric_cards 로직 그대로 유지).
+    chart_reveal: chartItems.length >= 2 ? chartItems.length + 3 : 0,
+    // hook/tension/insight 위치 + 짧은 단정 선언문일 때만 후보(threshold 동점 시 우선순위 최하단).
+    kinetic_typo: ctx.isRhythmPunchZone && isShortDeclarative(text) ? DECISION_THRESHOLD : 0,
   };
 
   if (ctx.hintType && ctx.hintType in scores) {
@@ -343,6 +433,7 @@ export function scoreSceneTypes(text: string, ctx: DecideSceneTypeContext = {}):
 const TYPE_PRIORITY: (keyof SceneTypeScores)[] = [
   'cta',
   'section',
+  'chart_reveal',
   'metric_cards',
   'comparison',
   'flow',
@@ -352,6 +443,7 @@ const TYPE_PRIORITY: (keyof SceneTypeScores)[] = [
   'reframe',
   'problem',
   'split',
+  'kinetic_typo',
 ];
 
 const DECISION_THRESHOLD = 2;
@@ -465,8 +557,8 @@ export function assignRhythmRole(
   if (type === 'cta') return 'cta';
   if (type === 'problem') return 'tension';
   if (type === 'section') return 'reset';
-  if (type === 'metric_cards' || type === 'quote') return 'proof';
-  if (type === 'reframe') return 'insight';
+  if (type === 'metric_cards' || type === 'quote' || type === 'chart_reveal') return 'proof';
+  if (type === 'reframe' || type === 'kinetic_typo') return 'insight';
   // 마지막 1/4 구간(cta 직전)은 insight로 조여준다.
   if (total >= 4 && index >= Math.floor((total - 1) * 0.75)) return 'insight';
   return 'explain';
@@ -479,6 +571,7 @@ export function pickTransition(type: DecidedSceneType, index: number): Transitio
   if (index === 0) return 'fade';
   if (type === 'section') return 'fade_scale';
   if (type === 'cta') return 'slide_up';
+  if (type === 'kinetic_typo') return 'cut';
   return index % 2 === 0 ? 'fade' : 'cut';
 }
 
@@ -486,8 +579,8 @@ type Mood = NonNullable<ScriptBeat['mood']>;
 
 /** hook/cta는 dark로 대비, 증거(proof) 씬은 clean, 본문은 light. */
 export function pickMood(type: DecidedSceneType): Mood {
-  if (type === 'hero' || type === 'cta' || type === 'section') return 'dark';
-  if (type === 'metric_cards' || type === 'quote') return 'clean';
+  if (type === 'hero' || type === 'cta' || type === 'section' || type === 'kinetic_typo') return 'dark';
+  if (type === 'metric_cards' || type === 'quote' || type === 'chart_reveal') return 'clean';
   return 'light';
 }
 
@@ -611,6 +704,30 @@ function buildSplitCards(chunk: PacedChunk): Array<{ label: string; accent?: boo
   return labels.map((label, i) => (i === labels.length - 1 ? { label, accent: true } : { label }));
 }
 
+/** chart_reveal.items — 라벨+수치 쌍을 최대 6개로 자른다(스코어링 단계에서 이미 2개 이상 확인됨). */
+function buildChartItems(chunk: PacedChunk): ChartItemCandidate[] {
+  const items = extractChartItems(chunk.text).slice(0, 6);
+  // 방어적 폴백 — decideSceneType이 chart_reveal을 고른 경우 실제로는 도달하지 않는다.
+  return items.length >= 2 ? items : [{ label: '이전', value: 0 }, { label: '이후', value: 0 }];
+}
+
+/** chart_reveal.chart_kind — 화살표/추이 어휘가 있으면 line, 아니면 막대(bar). */
+function pickChartKind(text: string): 'bar' | 'line' {
+  return /→|->|~|추이|증가|감소|늘어|줄어/.test(text) ? 'line' : 'bar';
+}
+
+/** kinetic_typo.lines — 쉼표 절 기준 최대 2줄로 분리(단문이면 1줄). */
+function buildKineticLines(chunk: PacedChunk): string[] {
+  const sentence = chunk.sentences[0] ?? chunk.text;
+  const clauses = sentence
+    .split(/,\s*/)
+    .map((c) => stripSentenceEnding(c.trim()).replace(/[.!?…]+$/, '').trim())
+    .filter((c) => c.length > 0);
+  if (clauses.length >= 2) return clauses.slice(0, 2);
+  const single = stripSentenceEnding(sentence).replace(/[.!?…]+$/, '').trim();
+  return [single || condenseHeadline(sentence)];
+}
+
 // ── 7. 장면 계획(블록 → beats) ───────────────────────────────────────────────
 
 export interface SceneDecisionContext {
@@ -650,24 +767,65 @@ export function hintTypeFromText(hint: string | undefined): DecidedSceneType | u
 }
 
 const INSIGHT_SHARE_CAP = 0.4; // 과반(50%) 금지 + 여유 마진
+const KINETIC_TYPO_SHARE_CAP = 0.15; // kinetic_typo 남용 방지
+
+/** hook(앞1/4) / tension(problem 직후) / insight(뒤1/4) 리듬 위치 판정. */
+function isKineticTypoZone(index: number, total: number, prevType?: DecidedSceneType): boolean {
+  if (total <= 0) return false;
+  if (index < total * 0.25) return true;
+  if (index >= total * 0.75) return true;
+  return prevType === 'problem';
+}
 
 /**
  * insight 비중이 과반이 되지 않도록 다양성 밸런싱.
- * 초과분은 등장 순서대로 spotlight ↔ split(카드 도출 가능 시)로 교대 재배정.
+ * 초과분은 등장 순서대로: chart_reveal(라벨+수치 쌍 2개 이상 추출 가능 시) →
+ * kinetic_typo(hook/tension/insight 위치의 단정 선언문, 15% 캡 이내) →
+ * spotlight ↔ split(카드 도출 가능 시) 교대 재배정.
  */
 export function balanceInsightShare(drafts: PlannedSceneDraft[]): PlannedSceneDraft[] {
   const result = drafts.map((d) => ({ ...d }));
+  const total = result.length;
   const insightIdx = result
     .map((d, i) => (d.type === 'insight' ? i : -1))
     .filter((i) => i >= 0);
   let insightCount = insightIdx.length;
   let flip = 0;
+  let kineticCount = result.filter((d) => d.type === 'kinetic_typo').length;
+  const kineticCap = Math.floor(total * KINETIC_TYPO_SHARE_CAP);
   for (const i of insightIdx) {
-    if (insightCount / result.length <= INSIGHT_SHARE_CAP) break;
-    const wantSplit = flip % 2 === 1 && buildSplitCards(result[i].chunk) !== null;
-    result[i].type = wantSplit ? 'split' : 'spotlight';
-    flip += 1;
+    if (insightCount / total <= INSIGHT_SHARE_CAP) break;
+    const chunkText = result[i].chunk.text;
+    if (extractChartItems(chunkText).length >= 2) {
+      result[i].type = 'chart_reveal';
+    } else if (
+      kineticCount < kineticCap &&
+      isKineticTypoZone(i, total, result[i - 1]?.type) &&
+      isShortDeclarative(chunkText)
+    ) {
+      result[i].type = 'kinetic_typo';
+      kineticCount += 1;
+    } else {
+      const wantSplit = flip % 2 === 1 && buildSplitCards(result[i].chunk) !== null;
+      result[i].type = wantSplit ? 'split' : 'spotlight';
+      flip += 1;
+    }
     insightCount -= 1;
+  }
+  return result;
+}
+
+/** kinetic_typo 비중이 전체의 15%를 넘지 않도록 초과분(뒤에서부터)을 insight로 되돌리는 안전망. */
+export function capKineticTypoShare(drafts: PlannedSceneDraft[]): PlannedSceneDraft[] {
+  const result = drafts.map((d) => ({ ...d }));
+  const total = result.length;
+  if (total === 0) return result;
+  const cap = Math.floor(total * KINETIC_TYPO_SHARE_CAP);
+  const idx = result.map((d, i) => (d.type === 'kinetic_typo' ? i : -1)).filter((i) => i >= 0);
+  let excess = idx.length - cap;
+  for (let k = idx.length - 1; k >= 0 && excess > 0; k--) {
+    result[idx[k]].type = 'insight';
+    excess -= 1;
   }
   return result;
 }
@@ -752,6 +910,13 @@ function draftToBeat(
       beat.action = condenseLabel(imperative ?? chunk.text, 32) || '지금 확인해보세요';
       break;
     }
+    case 'chart_reveal':
+      beat.chartItems = buildChartItems(chunk);
+      beat.chart_kind = pickChartKind(chunk.text);
+      break;
+    case 'kinetic_typo':
+      beat.lines = buildKineticLines(chunk);
+      break;
     default:
       break;
   }
@@ -774,25 +939,32 @@ export function normalizeForDedupe(text: string): string {
  * 블록별 페이싱 분할 + 타입 결정(밸런싱 전 draft).
  * 정규화된 speaker_text가 이미 처리한 블록과 사실상 동일한 블록은 스킵한다
  * (메타(hint 등)는 자연스럽게 첫 블록 것만 반영됨).
+ * 전체 chunk 수를 먼저 모은 뒤 순차 결정해 kinetic_typo의 hook/tension/insight
+ * 위치 판정(isKineticTypoZone)에 필요한 index/total/직전 타입을 확보한다.
  */
 function draftScenesFromBlocks(blocks: BriefLogicBlock[]): PlannedSceneDraft[] {
-  const drafts: PlannedSceneDraft[] = [];
   const seen = new Set<string>();
+  const rawChunks: Array<{ chunk: PacedChunk; ci: number; hint?: DecidedSceneType }> = [];
   for (const block of blocks) {
     const key = normalizeForDedupe(block.speaker_text);
     if (key.length === 0 || seen.has(key)) continue;
     seen.add(key);
     const hint = hintTypeFromText(`${block.visual_intent_hint ?? ''} ${block.role ?? ''}`);
     paceSpeakerText(block.speaker_text).forEach((chunk, ci) => {
-      drafts.push({
-        type: decideSceneType(chunk.text, {
-          hintType: ci === 0 ? hint : undefined,
-          isSectionStart: chunk.isSectionStart,
-        }),
-        chunk,
-      });
+      rawChunks.push({ chunk, ci, hint });
     });
   }
+
+  const total = rawChunks.length;
+  const drafts: PlannedSceneDraft[] = [];
+  rawChunks.forEach(({ chunk, ci, hint }, i) => {
+    const type = decideSceneType(chunk.text, {
+      hintType: ci === 0 ? hint : undefined,
+      isSectionStart: chunk.isSectionStart,
+      isRhythmPunchZone: isKineticTypoZone(i, total, drafts[i - 1]?.type),
+    });
+    drafts.push({ type, chunk });
+  });
   return drafts;
 }
 
@@ -801,7 +973,7 @@ function draftScenesFromBlocks(blocks: BriefLogicBlock[]): PlannedSceneDraft[] {
  * (hero/cta 제외 — planScenesFromBrief가 앞뒤를 붙인다).
  */
 export function planScenesFromLogicBlocks(blocks: BriefLogicBlock[]): ScriptBeat[] {
-  return finalizeBeats(balanceInsightShare(draftScenesFromBlocks(blocks)));
+  return finalizeBeats(capKineticTypoShare(balanceInsightShare(draftScenesFromBlocks(blocks))));
 }
 
 /** 섹션 번호 부여 + index 재배열 + rhythm/transition/mood 최종화. */
@@ -863,7 +1035,7 @@ export function planScenesFromBrief(
     bodyDrafts.pop();
   }
 
-  const balancedBody = balanceInsightShare(bodyDrafts);
+  const balancedBody = capKineticTypoShare(balanceInsightShare(bodyDrafts));
 
   // bridge — pulling 콘텐츠는 cta 직전 section으로.
   const bridge = (ctx.bridge_to_key_content ?? '').trim();
@@ -970,7 +1142,7 @@ export function planScenesFromSlides(slides: SlideSpec[]): ScriptBeat[] {
     if (d.type === 'cta' && i !== drafts.length - 1) d.type = 'spotlight';
   });
 
-  const balanced = balanceInsightShare(drafts);
+  const balanced = capKineticTypoShare(balanceInsightShare(drafts));
 
   const heroSlide = slides[0];
   const heroChunk = paceSpeakerText(heroSlide.speaker_text)[0];

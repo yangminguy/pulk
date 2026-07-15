@@ -7,7 +7,8 @@
 // VideoJob that is structurally compatible with the factory's VideoJobSchema /
 // SceneSchema (ai-slide-video-factory/src/lib/schema.ts).
 //
-// All 16 factory scene types are accepted. Each type is mapped using fields
+// All 18 factory scene types are accepted (incl. chart_reveal / kinetic_typo,
+// Phase 3 additions). Each type is mapped using fields
 // provided on the beat; when a required sub-structure field is absent a sane
 // minimum default is derived from headline / speaker_text so the output always
 // passes factory Zod validation. Types whose required structure cannot be
@@ -42,6 +43,8 @@ export const FACTORY_SCENE_TYPES = [
   'steps',
   'spotlight',
   'orbital',
+  'chart_reveal',
+  'kinetic_typo',
 ] as const;
 
 export type FactorySceneType = (typeof FACTORY_SCENE_TYPES)[number];
@@ -110,6 +113,12 @@ export interface ScriptBeat {
   /** orbital center node */
   center?: { label: string; hint?: string };
   label?: string;
+  /** chart_reveal items (label + numeric value, min 2 after mapping) */
+  chartItems?: Array<{ label: string; value: number; unit?: string }>;
+  /** chart_reveal chart kind */
+  chart_kind?: 'bar' | 'line';
+  /** kinetic_typo emphasised lines */
+  lines?: string[];
 }
 
 // ── FactoryScene union (all 16 types) ─────────────────────────────────────────
@@ -221,6 +230,17 @@ export interface FactoryOrbitalScene extends BaseScene {
   center: { label: string; hint?: string };
   items: Array<{ icon: string; label: string; hint?: string }>;
 }
+export interface FactoryChartRevealScene extends BaseScene {
+  type: 'chart_reveal';
+  headline: string;
+  chart_kind?: 'bar' | 'line';
+  items: Array<{ label: string; value: number; unit?: string }>;
+}
+export interface FactoryKineticTypoScene extends BaseScene {
+  type: 'kinetic_typo';
+  headline: string;
+  lines?: string[];
+}
 
 export type FactoryScene =
   | FactoryHeroScene
@@ -238,7 +258,9 @@ export type FactoryScene =
   | FactorySplitScene
   | FactoryStepsScene
   | FactorySpotlightScene
-  | FactoryOrbitalScene;
+  | FactoryOrbitalScene
+  | FactoryChartRevealScene
+  | FactoryKineticTypoScene;
 
 // ── FactoryVideoJob ────────────────────────────────────────────────────────────
 
@@ -559,6 +581,27 @@ function mapBeatToScene(beat: ScriptBeat, index: number): FactoryScene {
         ...(beat.label ? { label: beat.label } : {}),
       };
     }
+
+    case 'chart_reveal': {
+      if (!beat.chartItems || beat.chartItems.length < 2) {
+        return insightFallback(base, beat);
+      }
+      return {
+        ...base,
+        type: 'chart_reveal',
+        headline: beat.headline.trim(),
+        items: beat.chartItems.slice(0, 6),
+        ...(beat.chart_kind ? { chart_kind: beat.chart_kind } : {}),
+      };
+    }
+
+    case 'kinetic_typo':
+      return {
+        ...base,
+        type: 'kinetic_typo',
+        headline: beat.headline.trim(),
+        ...(beat.lines && beat.lines.length > 0 ? { lines: beat.lines } : {}),
+      };
   }
 }
 

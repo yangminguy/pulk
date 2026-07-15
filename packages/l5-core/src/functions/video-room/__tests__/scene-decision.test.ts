@@ -2,7 +2,7 @@
 // 스코어링 규칙별(프로젝트 규칙: 모든 scoring rule 단위테스트 필수) + 페이싱 분할 +
 // 축약/강조 추출 + rhythm/transition/mood + 밸런싱 + 브리프/슬라이드 계획 통합.
 
-import type { VideoExecutionBrief, SlideSpec } from '../types';
+import type { VideoExecutionBrief, SlideSpec, BriefLogicBlock } from '../types';
 import {
   stripScriptArtifacts,
   splitSentences,
@@ -19,6 +19,8 @@ import {
   countProblemSignals,
   hasSectionTransition,
   countCtaSignals,
+  extractChartItems,
+  isShortDeclarative,
   scoreSceneTypes,
   decideSceneType,
   extractQuotedSpans,
@@ -29,6 +31,7 @@ import {
   pickTransition,
   pickMood,
   balanceInsightShare,
+  capKineticTypoShare,
   hintTypeFromText,
   planScenesFromBrief,
   planScenesFromLogicBlocks,
@@ -252,11 +255,68 @@ describe('countCtaSignals', () => {
   });
 });
 
+// ── 3.5 chart_reveal / kinetic_typo 신호 ────────────────────────────────────
+
+describe('extractChartItems', () => {
+  it('extracts ordinal-labeled pairs (1월 120명, 2월 340명 style)', () => {
+    const items = extractChartItems('1월 120명, 2월 340명 순서로 늘었어요.');
+    expect(items).toEqual([
+      { label: '1월', value: 120, unit: '명' },
+      { label: '2월', value: 340, unit: '명' },
+    ]);
+  });
+
+  it('extracts an arrow before/after pair (전환율 3%→12% style)', () => {
+    const items = extractChartItems('전환율 3%→12%로 뛰었어요.');
+    expect(items).toHaveLength(2);
+    expect(items[0]).toEqual({ label: '이전', value: 3, unit: '%' });
+    expect(items[1]).toEqual({ label: '이후', value: 12, unit: '%' });
+  });
+
+  it('falls back to ordinal generic labels for an unlabeled numeric sequence', () => {
+    const items = extractChartItems('1,800명, 2,400명, 3,100명으로 계속 늘었어요.');
+    expect(items.length).toBeGreaterThanOrEqual(2);
+    expect(items.every((it) => typeof it.value === 'number' && !Number.isNaN(it.value))).toBe(true);
+  });
+
+  it('returns fewer than 2 items when only one numeric value is present', () => {
+    expect(extractChartItems('이번 달 매출이 300만원 늘었어요.').length).toBeLessThan(2);
+  });
+
+  it('returns empty for text without any numeric span', () => {
+    expect(extractChartItems('숫자가 전혀 없는 문장입니다.')).toEqual([]);
+  });
+});
+
+describe('isShortDeclarative', () => {
+  it('accepts a single short non-question, non-enumeration sentence', () => {
+    expect(isShortDeclarative('구조가 없으면 광고비는 그대로 샙니다.')).toBe(true);
+  });
+
+  it('rejects multi-sentence text', () => {
+    expect(isShortDeclarative('첫 문장입니다. 두 번째 문장입니다.')).toBe(false);
+  });
+
+  it('rejects text longer than 40 chars', () => {
+    expect(isShortDeclarative('가'.repeat(45) + '.')).toBe(false);
+  });
+
+  it('rejects questions', () => {
+    expect(isShortDeclarative('정말 그게 맞는 걸까요?')).toBe(false);
+  });
+
+  it('rejects enumerations', () => {
+    expect(isShortDeclarative("'발레아쥬', '핸드페인팅', '멜팅' 세 가지입니다.")).toBe(false);
+  });
+});
+
 // ── 4. 타입 결정 ─────────────────────────────────────────────────────────────
 
 describe('decideSceneType', () => {
   it('routes each signal family to its scene type', () => {
-    expect(decideSceneType('팔로워 1,800명, 매달 12개, 신규 서너 명 수준이었어요.')).toBe('metric_cards');
+    // "연속된 숫자 나열"(라벨 없는 순수 나열도 라벨+수치 쌍 2개 이상으로 카운트) →
+    // chart_reveal이 metric_cards보다 우선 배정된다(Work Order B3).
+    expect(decideSceneType('팔로워 1,800명, 매달 12개, 신규 서너 명 수준이었어요.')).toBe('chart_reveal');
     expect(decideSceneType('저장과 예약은 완전히 다른 심리 상태예요. 반면 예약은 다른 문제죠.')).toBe('comparison');
     expect(decideSceneType('첫째, 링크를 답니다. 둘째, 가격표를 만듭니다.')).toBe('steps');
     expect(decideSceneType('전략 입력 → 스크립트 생성 → 렌더 순서로 갑니다.')).toBe('flow');
@@ -279,6 +339,39 @@ describe('decideSceneType', () => {
 
   it('applies hint weight from visual_intent_hint', () => {
     expect(decideSceneType('중립적인 설명 문장입니다.', { hintType: 'comparison' })).toBe('comparison');
+  });
+
+  it('prefers chart_reveal over metric_cards when 2+ label+value pairs are extractable', () => {
+    expect(decideSceneType('1월 120명, 2월 340명으로 늘었어요.')).toBe('chart_reveal');
+    expect(decideSceneType('전환율 3%→12%로 뛰었어요.')).toBe('chart_reveal');
+  });
+
+  it('keeps metric_cards when only a single metric value is present', () => {
+    // 수치 1개뿐이면 chart_reveal 후보가 되지 않고 기존 로직(metric_cards 임계 미달 → insight) 유지.
+    expect(decideSceneType('이번 달 매출이 300만원 늘었어요.')).not.toBe('chart_reveal');
+  });
+
+  it('keeps metric_cards when metric signals are Korean-numeral only (no extractable chart pair)', () => {
+    // "두 배"/"세 배"는 countMetricSignals에는 잡히지만 extractChartItems(digit 기반)로는 추출되지 않는다.
+    expect(decideSceneType('고객이 두 배로 늘고, 문의는 세 배로 늘었어요.')).toBe('metric_cards');
+  });
+
+  it('assigns kinetic_typo only when isRhythmPunchZone and text is a short declarative sentence', () => {
+    const punchText = '광고는 증폭기일 뿐입니다.';
+    expect(decideSceneType(punchText, { isRhythmPunchZone: true })).toBe('kinetic_typo');
+    expect(decideSceneType(punchText, { isRhythmPunchZone: false })).not.toBe('kinetic_typo');
+
+    const longText = '광고는 증폭기일 뿐이고 엔진이 없으면 아무리 밟아도 앞으로 나가지 않습니다.';
+    expect(decideSceneType(longText, { isRhythmPunchZone: true })).not.toBe('kinetic_typo');
+
+    const questionText = '광고가 문제일까요?';
+    expect(decideSceneType(questionText, { isRhythmPunchZone: true })).not.toBe('kinetic_typo');
+  });
+
+  it('lets a stronger structural signal outrank kinetic_typo even in a punch zone', () => {
+    // 짧은 단문이라도 비교 신호가 강하면 comparison이 우선한다(kinetic_typo는 최하 우선순위).
+    const comparisonPunch = '저장과 예약은 완전히 다른 문제예요.';
+    expect(decideSceneType(comparisonPunch, { isRhythmPunchZone: true })).toBe('comparison');
   });
 });
 
@@ -340,6 +433,8 @@ describe('assignRhythmRole', () => {
     expect(assignRhythmRole('insight', 2, 10)).toBe('explain');
     expect(assignRhythmRole('insight', 8, 10)).toBe('insight'); // 마지막 1/4 조임
     expect(assignRhythmRole('cta', 9, 10)).toBe('cta');
+    expect(assignRhythmRole('chart_reveal', 4, 10)).toBe('proof');
+    expect(assignRhythmRole('kinetic_typo', 1, 10)).toBe('insight');
   });
 });
 
@@ -350,6 +445,7 @@ describe('pickTransition', () => {
     expect(pickTransition('cta', 9)).toBe('slide_up');
     expect(pickTransition('insight', 1)).toBe('cut');
     expect(pickTransition('insight', 2)).toBe('fade');
+    expect(pickTransition('kinetic_typo', 4)).toBe('cut');
   });
 });
 
@@ -361,19 +457,22 @@ describe('pickMood', () => {
     expect(pickMood('metric_cards')).toBe('clean');
     expect(pickMood('quote')).toBe('clean');
     expect(pickMood('insight')).toBe('light');
+    expect(pickMood('chart_reveal')).toBe('clean');
+    expect(pickMood('kinetic_typo')).toBe('dark');
   });
 });
 
 // ── 7. 밸런싱 ────────────────────────────────────────────────────────────────
 
 describe('balanceInsightShare', () => {
+  const chunk = (text: string, isSectionStart = false) => ({
+    text,
+    sentences: splitSentences(text),
+    sectionIndex: 0,
+    isSectionStart,
+  });
+
   it('keeps insight share below half by reassigning to spotlight/split', () => {
-    const chunk = (text: string) => ({
-      text,
-      sentences: splitSentences(text),
-      sectionIndex: 0,
-      isSectionStart: false,
-    });
     const drafts = Array.from({ length: 10 }, (_, i) => ({
       type: 'insight' as const,
       chunk: chunk(`중립 서술 문장 ${i}번입니다. 부연 설명 문장도 하나 있습니다.`),
@@ -382,6 +481,66 @@ describe('balanceInsightShare', () => {
     const insightCount = balanced.filter((d) => d.type === 'insight').length;
     expect(insightCount / balanced.length).toBeLessThan(0.5);
     expect(balanced.some((d) => d.type === 'spotlight' || d.type === 'split')).toBe(true);
+  });
+
+  it('reassigns excess insight chunks with 2+ chart items to chart_reveal', () => {
+    const drafts = [
+      { type: 'insight' as const, chunk: chunk('1월 120명, 2월 340명으로 늘었어요.') },
+      ...Array.from({ length: 9 }, (_, i) => ({
+        type: 'insight' as const,
+        chunk: chunk(`중립 서술 문장 ${i}번입니다. 부연 설명 문장도 하나 있습니다.`),
+      })),
+    ];
+    const balanced = balanceInsightShare(drafts);
+    expect(balanced[0].type).toBe('chart_reveal');
+  });
+
+  it('reassigns excess insight chunks in a punch zone to kinetic_typo within the 15% cap', () => {
+    const drafts = [
+      { type: 'insight' as const, chunk: chunk('광고는 증폭기일 뿐입니다.') }, // index 0 = hook zone
+      ...Array.from({ length: 9 }, (_, i) => ({
+        type: 'insight' as const,
+        chunk: chunk(`중립 서술 문장 ${i}번입니다. 부연 설명 문장도 하나 있습니다.`),
+      })),
+    ];
+    const balanced = balanceInsightShare(drafts);
+    expect(balanced[0].type).toBe('kinetic_typo');
+    expect(balanced.filter((d) => d.type === 'kinetic_typo').length).toBeLessThanOrEqual(
+      Math.floor(drafts.length * 0.15),
+    );
+  });
+});
+
+describe('capKineticTypoShare', () => {
+  const chunk = (text: string) => ({
+    text,
+    sentences: splitSentences(text),
+    sectionIndex: 0,
+    isSectionStart: false,
+  });
+
+  it('demotes excess kinetic_typo (beyond 15%) back to insight, keeping earliest ones', () => {
+    const drafts = Array.from({ length: 10 }, (_, i) => ({
+      type: 'kinetic_typo' as const,
+      chunk: chunk(`짧은 선언 ${i}번.`),
+    }));
+    const capped = capKineticTypoShare(drafts);
+    const kineticCount = capped.filter((d) => d.type === 'kinetic_typo').length;
+    expect(kineticCount).toBe(Math.floor(drafts.length * 0.15));
+    expect(capped[0].type).toBe('kinetic_typo');
+    expect(capped[capped.length - 1].type).toBe('insight');
+  });
+
+  it('leaves drafts unchanged when kinetic_typo share is already within the cap', () => {
+    const drafts = [
+      { type: 'kinetic_typo' as const, chunk: chunk('짧은 선언입니다.') },
+      ...Array.from({ length: 9 }, (_, i) => ({
+        type: 'insight' as const,
+        chunk: chunk(`중립 서술 문장 ${i}번입니다.`),
+      })),
+    ];
+    const capped = capKineticTypoShare(drafts);
+    expect(capped.filter((d) => d.type === 'kinetic_typo').length).toBe(1);
   });
 });
 
@@ -548,5 +707,71 @@ describe('planScenesFromSlides (legacy spec path)', () => {
 
   it('returns empty for empty slides', () => {
     expect(planScenesFromSlides([])).toEqual([]);
+  });
+});
+
+// ── 10. chart_reveal / kinetic_typo 통합(합성 브리프) ────────────────────────
+
+describe('planScenesFromBrief assigns chart_reveal and kinetic_typo end-to-end', () => {
+  const block = (overrides: Partial<BriefLogicBlock>): BriefLogicBlock => ({
+    block_id: 'b1',
+    role: '논리 블록',
+    speaker_text: '',
+    communication_goal: '정보 전달',
+    viewer_reaction_target: '이해',
+    ...overrides,
+  });
+
+  // kinetic_typo는 15% 캡이 있어 body 전체 chunk 수가 충분해야 1개가 캡을 통과한다
+  // (floor(total*0.15) >= 1 이려면 total >= 7). 필러 블록 6개 + 타깃 2개 = 8개.
+  const fillerBlocks = Array.from({ length: 6 }, (_, i) =>
+    block({
+      block_id: `filler-${i}`,
+      speaker_text: `중립 서술 문장 ${i}번입니다. 부연 설명 문장도 하나 있습니다.`,
+    }),
+  );
+
+  const brief = makeBrief({
+    script: {
+      full_script: '합성 브리프 전체 원고.',
+      intro_30s: '이 브랜드가 왜 SNS에서 계속 성장하는지 오늘 그 구조를 짚어드릴게요.',
+      logic_blocks: [
+        // 짧은 단정 선언문(hook 위치) → kinetic_typo 직접 배정 대상.
+        block({ block_id: 'b1', speaker_text: '광고는 증폭기일 뿐입니다.' }),
+        // 라벨+수치 쌍 2개 이상 → chart_reveal이 metric_cards보다 우선 배정.
+        block({ block_id: 'b2', speaker_text: '1월 120명, 2월 340명으로 늘었어요.' }),
+        ...fillerBlocks,
+      ],
+    },
+  });
+
+  const beats = planScenesFromBrief(brief);
+
+  it('produces a well-formed chart_reveal scene (2~6 label+value items)', () => {
+    const chart = beats.find((b) => b.scene_type === 'chart_reveal');
+    expect(chart).toBeDefined();
+    expect(chart!.chartItems).toBeDefined();
+    expect(chart!.chartItems!.length).toBeGreaterThanOrEqual(2);
+    expect(chart!.chartItems!.length).toBeLessThanOrEqual(6);
+    for (const item of chart!.chartItems!) {
+      expect(item.label.length).toBeGreaterThan(0);
+      expect(typeof item.value).toBe('number');
+      expect(Number.isNaN(item.value)).toBe(false);
+    }
+    expect(['bar', 'line']).toContain(chart!.chart_kind);
+  });
+
+  it('produces a well-formed kinetic_typo scene (short headline, non-empty lines)', () => {
+    const kinetic = beats.find((b) => b.scene_type === 'kinetic_typo');
+    expect(kinetic).toBeDefined();
+    expect(kinetic!.headline.length).toBeGreaterThan(0);
+    if (kinetic!.lines) {
+      for (const line of kinetic!.lines) expect(line.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps kinetic_typo share within the 15% cap for the full plan', () => {
+    const kineticCount = beats.filter((b) => b.scene_type === 'kinetic_typo').length;
+    expect(kineticCount / beats.length).toBeLessThanOrEqual(0.15 + Number.EPSILON);
   });
 });
