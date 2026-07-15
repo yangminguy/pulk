@@ -1120,3 +1120,13 @@ l5-core tsc 0 + jest dev-workflow-spec 60/60(신규 M9.8 5군 포함) GREEN, age
 **사업별 모니터 = 신규 테이블**: 기존 `agent_tasks`(ACR 경로) 재사용 대신 `native_phase_runs` 전용 테이블 + `monitor:nativeRuns` 조회 액션 + founder-ui 전용 뷰. 근거: phase 단위 세밀도(풀·상태·전체 output·타이밍)는 task 단위 모델로 표현 불가. 오케스트레이터는 `PhaseRunSink` 콜백(NocoBase 비의존, 테스트 가능)으로만 영속화하고, 데몬이 표준 REST(:create/:update)로 기록 — 커스텀 쓰기 액션 불필요. 결과 본문 회수: phase 프롬프트에 "마지막 출력에 전체 보고서 본문" 지시 + spawn stdout 전체를 `output`에 보존.
 
 **ESM 디렉토리 임포트 수정**: dist `native-orchestrator.js`가 `@l5/core/dist/functions/cto-native`(디렉토리)를 value 임포트해 ESM 런타임에서 `ERR_UNSUPPORTED_DIR_IMPORT`로 데몬 기동 실패(jest는 CJS라 통과). `/index.js` 명시로 수정. 데몬 드라이런(빈 큐 기동→모듈 로드→폴링)이 잡은 잠복 버그 — 데몬이 실제 기동된 적이 없어 미발견이었다.
+
+## CMO 영상 파이프라인 업그레이드 — 구조 결정 4건 (2026-07-15)
+
+**Scene Decision = l5-core 결정론 스코어링(LLM 아님)**: 브리프→잡 변환의 장면 배정을 `video-room/scene-decision.ts` 순수 함수로 구현. 근거: ① 계약(CMO_TO_FACTORY_CONTRACT §12)상 Scene Decision은 변환 계층 책임 ② l5-core는 NocoBase 없이 테스트 가능해야 하고 스코어링 규칙은 단위테스트 의무 ③ 데몬 무인 경로에서 API 키 의존 제거. LLM은 `ScenePlanRefiner` 주입점(기본 noop)으로 후속 확장.
+
+**전환은 TransitionSeries 금지, 오버랩 방식**: 내레이션 mp3가 씬별 오디오를 각 씬 duration에 패딩·concat하므로 씬 N 시작 프레임 = 누적 duration 경계가 불변이어야 한다. TransitionSeries는 타임라인을 압축해 이 경계를 옮김 → 오디오·단어자막 전체 어긋남. 대신 들어오는 씬 entrance + 나가는 씬 Sequence 연장(z-order 하위)으로 크로스페이드를 구현(`src/lib/transitions.ts`).
+
+**단어 타임스탬프 = faster-whisper(python) 재사용, install-whisper-cpp 미도입**: HTML은 @remotion/install-whisper-cpp를 제안했으나 팩토리에 이미 faster-whisper subprocess 선례(generate-narration 정렬 모드)와 모델 캐시가 있어 word_timestamps=True로 확장. 신규 네이티브 빌드 의존성 0. 함정: 기본 python3(homebrew)에 모듈 없음 → /usr/bin/python3 폴백 체인(`WHISPER_PYTHON` 오버라이드).
+
+**내레이션 = scene.caption 전용**: headline/subtitle/body는 시각 전용. 낭독하면 원고가 이중·역순으로 들림(루프1 실측 F1). caption 공백 시에만 quote→headline 폴백. footage own-audio 씬은 duration만큼 무음 삽입으로 경계 보존.

@@ -3,6 +3,19 @@
 > 라우터 = [CLAUDE.md](./CLAUDE.md) · 현재 상태 = [HANDOFF.md](./HANDOFF.md).
 > 범례: `[x]` 완료·검증 · `[~]` 부분/검증 필요 · `[ ]` 미착수.
 
+## 영상 파이프라인 업그레이드 — 연결감사 HTML Phase 1~5 (2026-07-15)
+
+- [x] **P1 핸드오프 수리**: 자동 내레이션(TTS)+whisper 단어자막+emphasis 실발화 싱크, 잡 영속화. 루프1 실렌더로 무음 해소 실증.
+- [x] **P2 Scene 플래너**: scene-decision 엔진(스코어링 규칙+페이싱 분할+dedupe). hero1+insight23 → 45씬/13~15종. 테스트 2,273 GREEN.
+- [x] **P3 시각 다양성**: transition 실소비(씬 경계 불변) + chart_reveal/kinetic_typo + 오도미터/드로우온/noise. 스틸 26장 검증.
+- [x] **P4 footage**: external_clip/recorded_ui/talking_head + footage-runner(Playwright·silencedetect·probe). 러너 E2E ready=3.
+- [x] **P5 QA 게이트**: auto_gate(렌더 전) + artifactQa 15체크(렌더 후). 루프1 산출물 14/15 PASS.
+- [x] **검증 루프 1**: 풀렌더 384s + 결함 5건(F1~F5) 수정 반영.
+- [~] **검증 루프 2**: footage 러너 E2E·잡 구성 완료, 풀렌더는 사장님 지시로 중단(스틸로 대체 검증). 잡 `jobs/l5-test-loop2-full.json` 렌더만 남음.
+- [ ] **루프 3 (보류)**: 체크리스트 28항목 사장님 전달 완료 — 최종 렌더 검증은 사장님 판단 후.
+- [ ] **라이브 배선(followup)**: 팩토리 `feature/cmo-video-upgrade`→main 머지, pulk 브랜치→main 머지, l5-core 재빌드+NocoBase plugin dist 반영+재기동.
+- [ ] **followup**: 상류 브리프 logic_blocks 중복 버그(별도 세션 진행 중) · 플래너 footage 자동 배정(자산 업로드 플로우 필요) · kinetic_typo 실발화 렌더 실측.
+
 ## 🎯 다음 마일스톤 — 발굴 자동화 배선 (M1~M3)
 
 오늘 실증한 YouTube/Viewtrap 발굴을 키/풀링 기획에 실제 연결. 가장 우선.

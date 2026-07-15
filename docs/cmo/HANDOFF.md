@@ -1,7 +1,30 @@
 # CMO — HANDOFF (현재 상태)
 
-> 최종 업데이트: 2026-06-11. 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
+> 최종 업데이트: 2026-07-15. 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
 > 300줄 넘으면 오래된 항목을 `docs/archive/`로 이관하고 요약만 남긴다.
+
+## 🟢 2026-07-15 — 영상 파이프라인 업그레이드 Phase 1~5 전체 구현 (연결감사 HTML 로드맵)
+
+정본 계획: `~/Downloads/cmo-video-integration-and-upgrade.html` (연결 감사 & 업그레이드 리서치, 2026-07-14). 진단("파이프는 살아있고 약한 건 플래너·핸드오프")대로 수리 완료.
+
+**팩토리(ai-slide-video-factory) — 브랜치 `feature/cmo-video-upgrade` (HEAD 604c7d8, main 미머지)**
+- **P1 핸드오프**: render-final-v2에 자동 내레이션([narrate] 스텝) — audioPath 없으면 TTS(say Yuna)→mp3, faster-whisper(word_timestamps, /usr/bin/python3 폴백)→`public/captions/<slug>.json`(words-v1)→잡 영속화. CaptionLayer 단어 하이라이트, Emphasis 실발화 싱크(NarrationContext), 자막 표기는 씬 원고와 그리디 정렬 교정.
+- **P3 시각 다양성**: scene.transition 실소비(cut/fade/fade_scale/slide_up — TransitionSeries 대신 오버랩 방식, **씬 시작 프레임 불변**=AV싱크 보존), 신규 chart_reveal·kinetic_typo, metric_cards 오도미터, flow 드로우온, 배경 noise. @remotion/shapes·paths·noise@4.0.468(버전 일치 필수).
+- **P4 footage**: external_clip/recorded_ui/talking_head 씬 + `footage-runner/`(Playwright 녹화+커서트랙, silencedetect 무음컷, ffprobe 클램프, 전부 폴백 안전) + `--with-footage`. own_audio 씬은 내레이션에 무음 삽입.
+- **P5 QA**: 렌더 전 auto_gate.json(rule 사전검사, validateJob·CTA 부재만 하드 차단) + 렌더 후 실측 QA 15체크(artifactQa: 오디오싱크±0.5s/볼륨/자막 커버리지/CTA/페이싱/다양성/전환) + `scripts/qa-check.ts`.
+- 씬 22종. typecheck 0. 커밋 체인: 03522eb(P1)→12e1516(narrate fix)→fcb74a1(루프1 픽스)→8fa44ec/f6c35d8(P3+P4 머지)→604c7d8(P5).
+
+**pulk(l5-core) — 이 worktree 브랜치 `claude/cmo-video-integration-upgrade-49af96` (HEAD 0973137)**
+- **P2 Scene Decision**: `video-room/scene-decision.ts` — 한국어 스코어링 규칙(수치→metric_cards/chart_reveal, 비교→comparison, 단계→steps, 인용→quote, 나열→orbital/split, 반전→reframe 등) + 8~12s 페이싱 분할 + emphasis/mood/transition/rhythm 아크 배정 + insight 40% 밸런싱 + CTA 보장 + "---" 정제 + **중복 logic_block dedupe**(상류 버그 방어) + hero 캡션 기반 duration + headline 어미 3중 방어 + body-caption 중복 제거. LLM 리파이너 주입점(noop). 테스트 2,273 GREEN, tsc 0.
+
+**검증 루프 실측 (실브리프 b302482b 미용실 SNS)**
+- 루프1(45씬/384s 풀렌더): 무음 해소(aac, mean -20.3dB), 단어 하이라이트 자막, 13종 장면, CTA, 페이싱 3~12s 실증. 결함 5건(F1 제목낭독/F2 hero 과잉/F3 어미잘림·body중복/F4 자막겹침/F5 ASR표기) 전부 수정 반영.
+- 루프2(48씬/17종, footage 3씬 삽입): footage:prepare 러너 E2E ready=3(Playwright 실녹화 6커서샘플, silencedetect 4세그먼트, 클립 프로브) 성공. **풀렌더는 사장님 지시로 중단**(시간) — Phase 3·4 시각 검증은 스틸 30장으로 대체 완료. 루프3 미실행(체크리스트만 전달: 사장님 보관).
+- QA 실측: 루프1 산출물 14/15 PASS + insight 4연속 WARN(정당).
+
+**함정/잔여**
+- (함정) TTS 씬 wav 파일명: i≥10에서 raw/padded 충돌났었음(_raw 접미사로 수정) · whisper는 /usr/bin/python3(homebrew에 faster_whisper 없음) · @remotion/* 신규 설치는 4.0.468 정확 일치 · TransitionSeries 금지(씬 경계 이동=AV싱크 붕괴).
+- (잔여) ① 팩토리 feature 브랜치 → main 머지 + pulk 브랜치 → main 머지 + **l5-core 재빌드·NocoBase plugin dist 반영·재기동**(라이브 배선) ② 루프2 잡(jobs/l5-test-loop2-full.json, footage enriched)은 렌더만 하면 됨 ③ 상류 브리프 중복 버그(별도 세션 진행 중) ④ 플래너 footage 자동 배정(CMO 자산 업로드 플로우 필요) ⑤ kinetic_typo 실발화 경로는 코드검증만(렌더 실측 미완).
 
 ## 🟢 2026-06-12 — 마스터 HTML §14 전수 구현 + B1~B7 + 신규 프로젝트 라이브 E2E 업로드 직전 관통
 
