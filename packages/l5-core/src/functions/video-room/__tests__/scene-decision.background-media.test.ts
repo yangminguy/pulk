@@ -61,25 +61,47 @@ describe('decideBackgroundMedia', () => {
     );
   });
 
-  it('prioritises screenshot over a stock hit when the text describes app UI (사장님 방침)', () => {
-    // "인스타"(스톡 후보)와 "바이오에 링크"(스크린샷 신호)가 함께 있으면 스크린샷이 우선.
+  it('G2: screenshot-subject text without a capture URL falls back to a related stock (never a src-less screenshot)', () => {
+    // "인스타"(스톡 후보)와 "바이오에 링크"(스크린샷 신호)가 함께 있어도, 캡처 URL이 없으면
+    // 러너가 screenshot을 못 가져오므로 관련 스톡으로 폴백한다.
     const bg = decideBackgroundMedia('insight', '인스타 바이오에 링크를 눌렀을 때 뭐가 나와요?');
     expect(bg).toBeDefined();
-    expect(bg!.kind).toBe('screenshot');
-    expect(bg!.query).toBeUndefined();
-    expect(bg!.focus).toBe('ui');
+    expect(bg!.kind).not.toBe('screenshot');
+    expect(bg!.query).toBeTruthy();
   });
 
-  it('returns undefined when nothing matches the dictionary', () => {
+  it('returns undefined when nothing matches the dictionary and no baseQuery is given', () => {
     expect(decideBackgroundMedia('insight', '완전히 추상적인 철학적 진술')).toBeUndefined();
   });
 
-  it('prefers a matching asset_request over the default dictionary', () => {
+  it('falls back to baseQuery (stock_photo) for a screenshot-subject scene with no dictionary hit', () => {
+    const bg = decideBackgroundMedia('insight', '이 화면의 버튼을 눌러보세요', undefined, 'hair salon');
+    expect(bg).toBeDefined();
+    expect(bg!.kind).toBe('stock_photo');
+    expect(bg!.query).toBe('hair salon');
+  });
+
+  it('G2: assigns kind=screenshot with src ONLY when an asset_request supplies a capture URL', () => {
     const bg = decideBackgroundMedia('insight', '가격표를 스토리에 올려두었어요', [
-      { need: '가격표 화면', preferred_asset_type: 'source_screenshot', reason: '실제 가격표 UI' },
+      {
+        need: '가격표 화면 https://example.com/pricing 캡처',
+        preferred_asset_type: 'source_screenshot',
+        reason: '실제 가격표 UI',
+      },
     ]);
     expect(bg).toBeDefined();
     expect(bg!.kind).toBe('screenshot');
+    expect(bg!.src).toBe('https://example.com/pricing');
+    expect(bg!.focus).toBe('ui');
+  });
+
+  it('G2: a source_screenshot asset_request WITHOUT a URL falls back to stock (never src-less screenshot)', () => {
+    const bg = decideBackgroundMedia('insight', '가격표를 스토리에 올려두었어요', [
+      { need: '가격표 화면', preferred_asset_type: 'source_screenshot', reason: '실제 가격표 UI' },
+    ], 'hair salon');
+    expect(bg).toBeDefined();
+    expect(bg!.kind).not.toBe('screenshot');
+    expect(bg!.query).toBeTruthy();
   });
 
   it('skips background_media when the matching asset_request is face_video (talking_head hint only)', () => {
@@ -161,9 +183,9 @@ describe('background_media wiring on the real salon SNS brief (b302482b)', () =>
   const job = buildFactoryJobFromSlideDeck(roundTripped, { slug: 'bg-media', title: brief.title });
 
   type SceneWithMedia = FactoryScene & {
-    background_media?: { kind: string; query?: string; treatment?: Record<string, unknown> };
-    media?: { kind: string; query?: string };
-    items?: Array<{ kind: string; query?: string; label?: string }>;
+    background_media?: { kind: string; query?: string; src?: string; treatment?: Record<string, unknown> };
+    media?: { kind: string; query?: string; src?: string };
+    items?: Array<{ kind: string; query?: string; src?: string; label?: string }>;
   };
   const scenes = job.scenes as SceneWithMedia[];
 
@@ -229,26 +251,48 @@ describe('background_media wiring on the real salon SNS brief (b302482b)', () =>
     }
   });
 
-  it('matches the factory zod contract shape for broll (media.kind required)', () => {
+  it('matches the factory zod contract shape for broll (media.kind + query required, never screenshot)', () => {
     const broll = scenes.find((s) => s.type === 'broll');
     if (!broll) return; // 이 브리프에 broll이 배치되지 않았다면 스킵(다른 씬 조합에서만 후보 발견될 수 있음).
     expect(broll.media).toBeDefined();
     expect(typeof broll.media!.kind).toBe('string');
+    // broll = 풀블리드 실사 → stock_*이며 query 필수(screenshot 금지).
+    expect(broll.media!.kind).not.toBe('screenshot');
+    expect(broll.media!.query).toBeTruthy();
   });
 
-  it('matches the factory zod contract shape for gallery (2~4 items)', () => {
+  it('G1: every gallery item carries a query (or src) so the runner can fetch media', () => {
     const gallery = scenes.find((s) => s.type === 'gallery');
     if (!gallery) return;
     expect(Array.isArray(gallery.items)).toBe(true);
     expect(gallery.items!.length).toBeGreaterThanOrEqual(2);
     expect(gallery.items!.length).toBeLessThanOrEqual(4);
+    for (const item of gallery.items!) {
+      expect(item.query || item.src).toBeTruthy();
+    }
+    // 서로 다른 앵글 → query가 전부 중복이지 않다.
+    const distinct = new Set(gallery.items!.map((it) => it.query));
+    expect(distinct.size).toBeGreaterThan(1);
   });
 
-  it('routes screenshot-subject scenes (프로필/바이오/링크/가격표 등) to kind=screenshot over stock', () => {
-    const screenshotScenes = scenes.filter((s) => s.background_media?.kind === 'screenshot');
-    expect(screenshotScenes.length).toBeGreaterThan(0);
-    for (const s of screenshotScenes) {
-      expect(s.background_media!.query).toBeUndefined();
+  it('G1: every stock_* background_media carries a non-empty query', () => {
+    for (const s of scenes) {
+      const bg = s.background_media;
+      if (!bg) continue;
+      if (bg.kind === 'stock_video' || bg.kind === 'stock_photo') {
+        expect(bg.query).toBeTruthy();
+      }
     }
+  });
+
+  it('G2: no screenshot background_media is emitted without a src (URL); this brief has no URLs → 0 screenshots', () => {
+    for (const s of scenes) {
+      if (s.background_media?.kind === 'screenshot') {
+        expect(s.background_media.src).toBeTruthy();
+      }
+    }
+    // 실브리프엔 캡처 URL이 없으므로 screenshot이 전부 스톡으로 폴백됐어야 한다.
+    const screenshots = scenes.filter((s) => s.background_media?.kind === 'screenshot');
+    expect(screenshots.length).toBe(0);
   });
 });

@@ -901,6 +901,33 @@ const ASSET_TYPE_TO_KIND: Partial<Record<PreferredAssetType, BackgroundMediaKind
 
 type AssetRequest = NonNullable<VideoExecutionBrief['asset_requests']>[number];
 
+/** 텍스트에서 http(s) URL을 뽑는다(screenshot src 후보 — 러너는 src가 URL이어야 캡처). */
+function extractUrl(text: string): string | undefined {
+  const m = (text ?? '').match(/https?:\/\/[^\s"'<>)\]]+/);
+  return m ? m[0] : undefined;
+}
+
+/** 여러 컨텍스트 텍스트에서 영상 전체의 대표 스톡 주제 검색어를 뽑는다(없으면 generic 폴백). */
+function resolveBaseStockQuery(texts: Array<string | undefined>): string {
+  for (const t of texts) {
+    if (!t) continue;
+    const rule = pickStockQuery(t);
+    if (rule) return rule.query;
+  }
+  return 'small business';
+}
+
+/**
+ * 스톡 폴백 — 러너가 미디어를 가져오려면 stock_* 는 반드시 query가 있어야 한다.
+ * 텍스트 사전 매칭 우선, 없으면 baseQuery, 그것도 없으면 undefined(미배정 — 단색 허용).
+ */
+function stockFallback(text: string, baseQuery?: string): BackgroundMedia | undefined {
+  const rule = pickStockQuery(text);
+  if (rule) return { kind: rule.kind, query: rule.query, treatment: buildTreatment(rule.kind) };
+  if (baseQuery) return { kind: 'stock_photo', query: baseQuery, treatment: buildTreatment('stock_photo') };
+  return undefined;
+}
+
 /** 조사 제거 + 2자 이상 토큰화(불용어 제외) — asset_request 매칭용(등장 횟수 조건 없음). */
 function tokenizeKeywords(text: string): Set<string> {
   const tokens = (text ?? '')
@@ -930,11 +957,16 @@ function findMatchingAssetRequest(
 /**
  * 씬 타입/원고 텍스트(+asset_requests)로 background_media를 결정한다.
  * 우선순위: 데이터 씬 미배정 → asset_request 매칭(있으면 우선 반영) → 스크린샷 신호 → 스톡 사전 → 미배정.
+ *
+ * 러너 계약(G1/G2): stock_* 는 반드시 query, screenshot 은 반드시 src(URL)를 가져야 한다.
+ *   - screenshot 은 asset_request가 실제 캡처 URL을 준 경우에만 배정(그 외엔 스톡 폴백).
+ *   - stock_* 는 query가 없으면 baseQuery 폴백, 그것도 없으면 미배정.
  */
 export function decideBackgroundMedia(
   sceneType: DecidedSceneType,
   text: string,
   assetRequests?: AssetRequest[],
+  baseQuery?: string,
 ): BackgroundMedia | undefined {
   if (NO_BACKGROUND_MEDIA_TYPES.has(sceneType)) return undefined;
 
@@ -942,17 +974,22 @@ export function decideBackgroundMedia(
   if (matchedRequest) {
     const kind = ASSET_TYPE_TO_KIND[matchedRequest.preferred_asset_type];
     if (!kind) return undefined; // face_video 등 — talking_head 힌트일 뿐, 배경 미디어 대상 아님.
-    const stock = pickStockQuery(`${matchedRequest.need} ${matchedRequest.reason} ${text}`);
-    return {
-      kind,
-      ...(kind !== 'screenshot' && stock ? { query: stock.query } : {}),
-      ...(kind === 'screenshot' ? { focus: 'ui' } : {}),
-      treatment: buildTreatment(kind),
-    };
+    const reqText = `${matchedRequest.need} ${matchedRequest.reason ?? ''}`;
+    if (kind === 'screenshot') {
+      const url = extractUrl(reqText);
+      // 실제 캡처 URL이 있을 때만 screenshot. 없으면 러너가 캡처 못 하므로 스톡으로 폴백.
+      if (url) return { kind: 'screenshot', src: url, focus: 'ui', treatment: buildTreatment('screenshot') };
+      return stockFallback(`${reqText} ${text}`, baseQuery);
+    }
+    // reference_image → stock_photo, reference_video → stock_video (요청 kind 유지, query 필수).
+    const query = pickStockQuery(`${reqText} ${text}`)?.query ?? baseQuery;
+    if (!query) return undefined;
+    return { kind, query, treatment: buildTreatment(kind) };
   }
 
   if (isScreenshotSubject(text)) {
-    return { kind: 'screenshot', focus: 'ui', treatment: buildTreatment('screenshot') };
+    // URL을 모르는 스크린샷 신호 씬 → screenshot 대신 관련 스톡으로 폴백(사장님 방침 (b)).
+    return stockFallback(text, baseQuery);
   }
 
   const stock = pickStockQuery(text);
@@ -963,24 +1000,46 @@ export function decideBackgroundMedia(
   return undefined;
 }
 
-/** orbital 후보였던 나열 스팬(3~6개)을 gallery 아이템(2~4개)으로 변환. 스팬<2면 문장 축약으로 폴백. */
-function buildGalleryItems(chunk: PacedChunk): GalleryItem[] {
+/** gallery 아이템의 서로 다른 각도 검색어(같은 주제, 다른 앵글). */
+const GALLERY_ANGLE_SUFFIXES = ['interior', 'people at work', 'customer', 'storefront'];
+
+/** base 검색어 → 서로 다른 앵글의 stock 검색어 count개(예: "hair salon" → interior/people at work/customer). */
+function galleryAngleQueries(base: string, count: number): string[] {
+  return Array.from(
+    { length: count },
+    (_, i) => `${base} ${GALLERY_ANGLE_SUFFIXES[i % GALLERY_ANGLE_SUFFIXES.length]}`,
+  );
+}
+
+/**
+ * orbital 후보였던 나열 스팬(3~6개)을 gallery 아이템(2~4개)으로 변환.
+ * 각 item에 반드시 query를 채운다(G1: 러너는 query 없으면 미디어를 못 가져옴).
+ * 주제 base는 chunk 사전 매칭 → baseQuery → generic 폴백 순. label은 스팬/문장 축약.
+ */
+function buildGalleryItems(chunk: PacedChunk, baseQuery?: string): GalleryItem[] {
   const spans = extractQuotedSpans(chunk.text);
-  const labels =
+  const rawLabels =
     spans.length >= 2
       ? spans.slice(0, 4)
       : chunk.sentences
           .slice(0, 4)
           .map((s) => condenseLabel(s, 18))
           .filter((s) => s.length > 0);
-  return labels.map((label) => {
-    const stock = pickStockQuery(label) ?? pickStockQuery(chunk.text);
-    return {
-      kind: stock?.kind ?? 'stock_photo',
-      ...(stock ? { query: stock.query } : {}),
-      label: label.slice(0, 24),
-    };
-  });
+  const count = Math.min(4, Math.max(2, rawLabels.length));
+  const base = pickStockQuery(chunk.text)?.query ?? baseQuery ?? 'small business';
+  const queries = galleryAngleQueries(base, count);
+  return Array.from({ length: count }, (_, i) => ({
+    kind: 'stock_photo' as const,
+    query: queries[i],
+    ...(rawLabels[i] ? { label: rawLabels[i].slice(0, 24) } : {}),
+  }));
+}
+
+/** 미디어 배정에 필요한 영상 전체 컨텍스트(asset_requests + 대표 스톡 주제 검색어). */
+interface MediaPlanContext {
+  assetRequests?: AssetRequest[];
+  /** 영상 전체 대표 스톡 검색어(screenshot→stock 폴백 및 gallery/broll 채움용). */
+  baseQuery?: string;
 }
 
 const BROLL_CAP_SHARE = 0.1; // broll 남용 방지 — 전체(body draft)의 ~10% 이하.
@@ -1122,7 +1181,7 @@ function draftToBeat(
   draft: PlannedSceneDraft,
   index: number,
   total: number,
-  assetRequests?: AssetRequest[],
+  media?: MediaPlanContext,
 ): ScriptBeat {
   const { type, chunk } = draft;
   const headline = condenseHeadline(chunk.sentences[0] ?? chunk.text);
@@ -1208,19 +1267,15 @@ function draftToBeat(
       beat.lines = buildKineticLines(chunk);
       break;
     case 'broll': {
-      const screenshotSubject = isScreenshotSubject(chunk.text);
+      // broll = 풀블리드 실사(footage). 스크린샷이 아니라 항상 stock_*, query 필수.
       const stock = pickStockQuery(chunk.text);
-      const kind: BackgroundMediaKind = screenshotSubject ? 'screenshot' : stock?.kind ?? 'stock_video';
-      beat.media = {
-        kind,
-        ...(kind !== 'screenshot' && stock ? { query: stock.query } : {}),
-        ...(screenshotSubject ? { focus: 'ui' } : {}),
-      };
+      const kind: 'stock_video' | 'stock_photo' = stock?.kind ?? 'stock_video';
+      beat.media = { kind, query: stock?.query ?? media?.baseQuery ?? 'small business' };
       beat.treatment = buildTreatment(kind);
       break;
     }
     case 'gallery':
-      beat.gallery_items = buildGalleryItems(chunk);
+      beat.gallery_items = buildGalleryItems(chunk, media?.baseQuery);
       break;
     default:
       break;
@@ -1235,7 +1290,8 @@ function draftToBeat(
     const backgroundMedia = decideBackgroundMedia(
       beat.scene_type as DecidedSceneType,
       chunk.text,
-      assetRequests,
+      media?.assetRequests,
+      media?.baseQuery,
     );
     if (backgroundMedia) beat.background_media = backgroundMedia;
   }
@@ -1295,7 +1351,8 @@ export function planScenesFromLogicBlocks(
   const drafts = assignBrollGallery(
     capKineticTypoShare(balanceInsightShare(draftScenesFromBlocks(blocks))),
   );
-  return finalizeBeats(drafts, 0, undefined, assetRequests);
+  const baseQuery = resolveBaseStockQuery(blocks.map((b) => b.speaker_text));
+  return finalizeBeats(drafts, 0, undefined, { assetRequests, baseQuery });
 }
 
 /** 섹션 번호 부여 + index 재배열 + rhythm/transition/mood 최종화. */
@@ -1303,12 +1360,12 @@ function finalizeBeats(
   drafts: PlannedSceneDraft[],
   offset = 0,
   total?: number,
-  assetRequests?: AssetRequest[],
+  media?: MediaPlanContext,
 ): ScriptBeat[] {
   const t = total ?? drafts.length + offset;
   let sectionNo = 0;
   return drafts.map((d, i) => {
-    const beat = draftToBeat(d, i + offset, t, assetRequests);
+    const beat = draftToBeat(d, i + offset, t, media);
     if (beat.scene_type === 'section') {
       sectionNo += 1;
       beat.number = String(sectionNo + 1).padStart(2, '0'); // 01은 인트로 몫
@@ -1364,6 +1421,15 @@ export function planScenesFromBrief(
 
   const balancedBody = assignBrollGallery(capKineticTypoShare(balanceInsightShare(bodyDrafts)));
   const assetRequests = brief.asset_requests;
+  // 영상 전체 대표 스톡 주제(제목·핵심메시지·인트로·첫 블록에서 도출) — 스크린샷→스톡 폴백 및
+  // gallery/broll 아이템 채움에 쓰는 base 검색어.
+  const baseQuery = resolveBaseStockQuery([
+    brief.title,
+    ctx.core_message,
+    introSource,
+    ...(brief.script?.logic_blocks ?? []).map((b) => b.speaker_text),
+  ]);
+  const media: MediaPlanContext = { assetRequests, baseQuery };
 
   // bridge — pulling 콘텐츠는 cta 직전 section으로.
   const bridge = (ctx.bridge_to_key_content ?? '').trim();
@@ -1379,7 +1445,7 @@ export function planScenesFromBrief(
 
   // [0] hero — duration은 캡션 글자수 기반(F2), subtitle은 캡션 중복 시 비움(F3).
   const heroHeadline = ctx.title.trim();
-  const heroBackgroundMedia = decideBackgroundMedia('hero', heroCaption, assetRequests);
+  const heroBackgroundMedia = decideBackgroundMedia('hero', heroCaption, assetRequests, baseQuery);
   beats.push({
     scene_id: 'scene_01',
     scene_type: 'hero',
@@ -1395,12 +1461,12 @@ export function planScenesFromBrief(
   });
 
   // [1..n] 본문
-  beats.push(...finalizeBeats(balancedBody, 1, total, assetRequests));
+  beats.push(...finalizeBeats(balancedBody, 1, total, media));
 
   // bridge section
   if (bridge) {
     const idx = beats.length;
-    const bridgeBackgroundMedia = decideBackgroundMedia('section', bridge, assetRequests);
+    const bridgeBackgroundMedia = decideBackgroundMedia('section', bridge, assetRequests, baseQuery);
     beats.push({
       scene_id: `scene_${String(idx + 1).padStart(2, '0')}`,
       scene_type: 'section',
@@ -1424,7 +1490,7 @@ export function planScenesFromBrief(
   const ctaImperative = ctaDraft
     ? ctaDraft.chunk.sentences.find((s) => countCtaSignals(s) > 0)
     : undefined;
-  const ctaBackgroundMedia = decideBackgroundMedia('cta', ctaCaption, assetRequests);
+  const ctaBackgroundMedia = decideBackgroundMedia('cta', ctaCaption, assetRequests, baseQuery);
   beats.push({
     scene_id: `scene_${String(ctaIdx + 1).padStart(2, '0')}`,
     scene_type: 'cta',
@@ -1474,13 +1540,15 @@ export function planScenesFromSlides(slides: SlideSpec[]): ScriptBeat[] {
   });
 
   const balanced = assignBrollGallery(capKineticTypoShare(balanceInsightShare(drafts)));
+  const baseQuery = resolveBaseStockQuery(slides.map((s) => s.speaker_text));
+  const media: MediaPlanContext = { baseQuery };
 
   const heroSlide = slides[0];
   const heroChunk = paceSpeakerText(heroSlide.speaker_text)[0];
   const heroCaption = heroChunk?.text ?? heroSlide.speaker_text;
   const needSyntheticCta = balanced[balanced.length - 1]?.type !== 'cta';
   const total = 1 + balanced.length + (needSyntheticCta ? 1 : 0);
-  const heroBackgroundMedia = decideBackgroundMedia('hero', heroCaption);
+  const heroBackgroundMedia = decideBackgroundMedia('hero', heroCaption, undefined, baseQuery);
 
   const beats: ScriptBeat[] = [
     {
@@ -1496,7 +1564,7 @@ export function planScenesFromSlides(slides: SlideSpec[]): ScriptBeat[] {
       transition: pickTransition('hero', 0),
       ...(heroBackgroundMedia ? { background_media: heroBackgroundMedia } : {}),
     },
-    ...finalizeBeats(balanced, 1, total),
+    ...finalizeBeats(balanced, 1, total, media),
   ];
 
   if (needSyntheticCta) {
@@ -1504,7 +1572,7 @@ export function planScenesFromSlides(slides: SlideSpec[]): ScriptBeat[] {
     const idx = beats.length;
     const headline = condenseHeadline(lastSlide.headline);
     const ctaSpeakerText = stripScriptArtifacts(lastSlide.speaker_text) || headline;
-    const ctaBackgroundMedia = decideBackgroundMedia('cta', ctaSpeakerText);
+    const ctaBackgroundMedia = decideBackgroundMedia('cta', ctaSpeakerText, undefined, baseQuery);
     beats.push({
       scene_id: `scene_${String(idx + 1).padStart(2, '0')}`,
       scene_type: 'cta',
