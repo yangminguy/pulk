@@ -1,7 +1,9 @@
 // Phase 2 실브리프 검증 — 미용실 SNS 브리프(b302482b)를 실제 변환해 씬 분포를 확인한다.
-// 합격 기준(Work Order A2):
-//   insight 비중 50% 미만 · 장면 타입 5종 이상 · CTA 존재 · 전 씬 duration ≤ 12초(hero 포함)
+// 합격 기준(Work Order A2 + dedupe 후속):
+//   insight 비중 50% 미만 · 장면 타입 5종 이상 · CTA 존재 · 전 씬 duration 3~12초(hero 포함)
 //   · "---" 미유출 · 전 씬 emphasis 채움
+//   · dedupe: 이 브리프는 3개 블록이 동일 원고(상류 버그) → 1블록 분량(약 40~50씬)만 생성
+//   · 총 길이 5~9분대
 // 픽스처는 /Users/wonminyang/ai-slide-video-factory/briefs/b302482b-….json의 스냅샷 사본.
 
 import * as fs from 'fs';
@@ -32,12 +34,25 @@ describe('scene decision on real salon SNS brief (b302482b)', () => {
 
   it('prints the scene distribution (보고용)', () => {
     const total = job.scenes.length;
+    const totalSeconds = job.scenes.reduce((sum, s) => sum + s.duration, 0);
     const lines = Object.entries(distribution)
       .sort((a, b) => b[1] - a[1])
       .map(([t, n]) => `${t}: ${n} (${((n / total) * 100).toFixed(1)}%)`);
     // eslint-disable-next-line no-console
-    console.log(`[scene distribution] total=${total}\n${lines.join('\n')}`);
+    console.log(`[scene distribution] total=${total} totalSeconds=${totalSeconds}\n${lines.join('\n')}`);
     expect(total).toBeGreaterThan(0);
+  });
+
+  it('dedupes the 3 identical logic blocks down to a single block worth of scenes', () => {
+    // 상류 버그: 3개 블록 speaker_text가 전부 full_script 전문과 동일 → 1블록 분량만.
+    expect(job.scenes.length).toBeGreaterThanOrEqual(40);
+    expect(job.scenes.length).toBeLessThanOrEqual(60);
+  });
+
+  it('keeps total duration in the 5~9 minute band', () => {
+    const totalSeconds = job.scenes.reduce((sum, s) => sum + s.duration, 0);
+    expect(totalSeconds).toBeGreaterThanOrEqual(300);
+    expect(totalSeconds).toBeLessThanOrEqual(540);
   });
 
   it('keeps insight share below 50%', () => {

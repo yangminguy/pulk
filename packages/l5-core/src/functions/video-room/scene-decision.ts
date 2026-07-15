@@ -762,10 +762,26 @@ function draftToBeat(
   return beat;
 }
 
-/** 블록별 페이싱 분할 + 타입 결정(밸런싱 전 draft). */
+/**
+ * dedupe 정규화 키 — 아티팩트 제거 + 공백/구두점/따옴표 무시.
+ * 상류 브리프 버그(블록마다 full_script 전문 중복)를 플래너에서 방어하기 위한 비교 기준.
+ */
+export function normalizeForDedupe(text: string): string {
+  return stripScriptArtifacts(text ?? '').replace(/[\s.,!?…"'“”‘’]/g, '');
+}
+
+/**
+ * 블록별 페이싱 분할 + 타입 결정(밸런싱 전 draft).
+ * 정규화된 speaker_text가 이미 처리한 블록과 사실상 동일한 블록은 스킵한다
+ * (메타(hint 등)는 자연스럽게 첫 블록 것만 반영됨).
+ */
 function draftScenesFromBlocks(blocks: BriefLogicBlock[]): PlannedSceneDraft[] {
   const drafts: PlannedSceneDraft[] = [];
+  const seen = new Set<string>();
   for (const block of blocks) {
+    const key = normalizeForDedupe(block.speaker_text);
+    if (key.length === 0 || seen.has(key)) continue;
+    seen.add(key);
     const hint = hintTypeFromText(`${block.visual_intent_hint ?? ''} ${block.role ?? ''}`);
     paceSpeakerText(block.speaker_text).forEach((chunk, ci) => {
       drafts.push({
@@ -821,8 +837,23 @@ export function planScenesFromBrief(
       brief.content_type === 'pulling' ? brief.strategy?.bridge_to_key_content : undefined,
   };
 
-  // 본문 drafts (블록별 분할 + 타입 결정)
+  // hero — 인트로 첫 페이싱 구간만 사용(전문 20초 금지).
+  const introSource =
+    stripScriptArtifacts(brief.script?.intro_30s ?? '') || (ctx.core_message ?? '').trim();
+  const heroChunk = paceSpeakerText(introSource)[0];
+  const heroCaption = heroChunk?.text ?? (introSource || ctx.title);
+
+  // 본문 drafts (블록별 분할 + 타입 결정, 사실상 동일한 블록은 스킵)
   const bodyDrafts = draftScenesFromBlocks(brief.script?.logic_blocks ?? []);
+
+  // hero가 이미 커버한 원고 구간이 본문 첫 씬에서 "그대로" 반복되면 제거.
+  // 정규화 후 완전 일치만 제거한다 — 부분 겹침(후킹 반복 패턴)은 의도로 보고 유지.
+  if (
+    bodyDrafts.length > 0 &&
+    normalizeForDedupe(bodyDrafts[0].chunk.text) === normalizeForDedupe(heroCaption)
+  ) {
+    bodyDrafts.shift();
+  }
 
   // 마지막 chunk가 행동 촉구면 cta로 승격(본문에서 분리).
   let ctaDraft: PlannedSceneDraft | null = null;
@@ -833,12 +864,6 @@ export function planScenesFromBrief(
   }
 
   const balancedBody = balanceInsightShare(bodyDrafts);
-
-  // hero — 인트로 첫 페이싱 구간만 사용(전문 20초 금지).
-  const introSource =
-    stripScriptArtifacts(brief.script?.intro_30s ?? '') || (ctx.core_message ?? '').trim();
-  const heroChunk = paceSpeakerText(introSource)[0];
-  const heroCaption = heroChunk?.text ?? (introSource || ctx.title);
 
   // bridge — pulling 콘텐츠는 cta 직전 section으로.
   const bridge = (ctx.bridge_to_key_content ?? '').trim();

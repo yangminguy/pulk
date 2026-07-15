@@ -448,6 +448,80 @@ describe('planScenesFromLogicBlocks', () => {
   });
 });
 
+// ── 9. 중복 방어(dedupe) ─────────────────────────────────────────────────────
+
+describe('duplicate block defense (상류 브리프 버그 방어)', () => {
+  const singleBlock = makeBrief().script.logic_blocks;
+
+  it('skips blocks whose normalized speaker_text duplicates an earlier block', () => {
+    const tripled = [
+      singleBlock[0],
+      { ...singleBlock[0], block_id: 'b2', role: '논리 블록 2' },
+      { ...singleBlock[0], block_id: 'b3', role: '논리 블록 3' },
+    ];
+    const once = planScenesFromLogicBlocks(singleBlock);
+    const deduped = planScenesFromLogicBlocks(tripled);
+    expect(deduped.length).toBe(once.length);
+  });
+
+  it('treats whitespace/punctuation-only differences as the same block', () => {
+    const variant = {
+      ...singleBlock[0],
+      block_id: 'b2',
+      speaker_text: `${singleBlock[0].speaker_text}  \n`,
+    };
+    expect(planScenesFromLogicBlocks([singleBlock[0], variant]).length).toBe(
+      planScenesFromLogicBlocks(singleBlock).length,
+    );
+  });
+
+  it('keeps genuinely different blocks', () => {
+    const different = {
+      ...singleBlock[0],
+      block_id: 'b2',
+      speaker_text: '완전히 다른 내용의 두 번째 블록입니다. 여기는 새로운 논점을 다룹니다.',
+    };
+    expect(planScenesFromLogicBlocks([singleBlock[0], different]).length).toBeGreaterThan(
+      planScenesFromLogicBlocks(singleBlock).length,
+    );
+  });
+
+  it('brief with 3 identical blocks plans the same scenes as 1 block', () => {
+    const brief1 = makeBrief();
+    const brief3 = makeBrief();
+    brief3.script = {
+      ...brief3.script,
+      logic_blocks: [
+        brief3.script.logic_blocks[0],
+        { ...brief3.script.logic_blocks[0], block_id: 'b2' },
+        { ...brief3.script.logic_blocks[0], block_id: 'b3' },
+      ],
+    };
+    const beats1 = planScenesFromBrief(brief1);
+    const beats3 = planScenesFromBrief(brief3);
+    expect(beats3.length).toBe(beats1.length);
+    expect(beats3.map((b) => b.scene_type)).toEqual(beats1.map((b) => b.scene_type));
+  });
+
+  it('drops the first body scene only when it repeats the hero caption verbatim', () => {
+    const brief = makeBrief();
+    // intro_30s가 블록 1 첫 구간과 완전히 동일한 상류 중복 케이스.
+    const blockText = brief.script.logic_blocks[0].speaker_text;
+    const heroDup = makeBrief();
+    heroDup.script = { ...heroDup.script, intro_30s: blockText };
+    const beats = planScenesFromBrief(heroDup);
+    const hero = beats[0];
+    // hero 이후 어떤 씬도 hero 나레이션을 그대로 반복하지 않는다.
+    const norm = (s: string) => s.replace(/[\s.,!?…"'“”‘’]/g, '');
+    for (const b of beats.slice(1)) {
+      expect(norm(b.speaker_text)).not.toBe(norm(hero.speaker_text));
+    }
+    // 부분 겹침(다른 인트로)은 제거하지 않는다 — 본문 수 그대로.
+    const distinctIntro = planScenesFromBrief(makeBrief());
+    expect(distinctIntro.length).toBeGreaterThanOrEqual(beats.length);
+  });
+});
+
 describe('planScenesFromSlides (legacy spec path)', () => {
   const slides: SlideSpec[] = [
     { index: 0, headline: '제목', visual_type: 'text', speaker_text: '인트로 문장입니다. 흥미로운 도입부죠.' },
