@@ -38,6 +38,7 @@ import {
   type ScriptBeat,
   type FactoryVideoJob,
 } from './script-factory';
+import { planScenesFromBrief, planScenesFromSlides } from './scene-decision';
 
 // ── 1. Brief → SlideDeckSpec ─────────────────────────────────────────────────
 
@@ -50,6 +51,16 @@ export interface BuildSlideDeckSpecFromBriefIds {
   /** Voice recording record id (placeholder UUID 허용). */
   voice_recording_id: string;
   design_theme?: string;
+}
+
+/**
+ * Scene Decision 엔진 산출 beats가 붙은 SlideDeckSpec.
+ * slides는 UI/back-compat용 블록 단위 요약으로 유지되고, factory 렌더 잡은
+ * planned_beats로 만들어진다. plain 데이터라 DB slide_deck 카드의 JSON
+ * 직렬화/복원을 그대로 통과한다(plugin.ts 수정 불필요).
+ */
+export interface SlideDeckSpecWithPlannedBeats extends VideoRoomSlideDeckSpec {
+  planned_beats?: ScriptBeat[];
 }
 
 /** visual_intent_hint / role 텍스트에서 SlideVisualType을 결정론적으로 추론. */
@@ -78,7 +89,7 @@ export function inferSlideVisualType(block: BriefLogicBlock): SlideVisualType {
 export function buildSlideDeckSpecFromBrief(
   brief: VideoExecutionBrief,
   ids: BuildSlideDeckSpecFromBriefIds,
-): VideoRoomSlideDeckSpec {
+): SlideDeckSpecWithPlannedBeats {
   if (!brief.script?.logic_blocks || brief.script.logic_blocks.length === 0) {
     throw new Error('buildSlideDeckSpecFromBrief: brief.script.logic_blocks must not be empty');
   }
@@ -126,7 +137,7 @@ export function buildSlideDeckSpecFromBrief(
     });
   }
 
-  return buildSlideDeckSpec({
+  const spec = buildSlideDeckSpec({
     id: ids.id,
     video_project_id: ids.video_project_id,
     script_draft_id: ids.script_draft_id,
@@ -135,6 +146,9 @@ export function buildSlideDeckSpecFromBrief(
     design_theme: ids.design_theme ?? 'default_deck',
     slides,
   });
+
+  // Scene Decision 엔진: 브리프 전체 컨텍스트로 다양한 타입 + 8~12초 페이싱 beats 계획.
+  return { ...spec, planned_beats: planScenesFromBrief(brief) };
 }
 
 // ── 2. SlideDeckSpec → Factory 렌더 잡 ────────────────────────────────────────
@@ -146,27 +160,15 @@ export function estimateSlideDurationSeconds(speakerText: string): number {
   return Math.min(FACTORY_MAX_SCENE_SECONDS, Math.max(FACTORY_MIN_SCENE_SECONDS, raw));
 }
 
-const VISUAL_TYPE_TO_SCENE_TYPE: Record<SlideVisualType, string> = {
-  text: 'insight',
-  comparison: 'comparison',
-  framework: 'flow',
-  quote: 'quote',
-  checklist: 'steps',
-  bridge: 'section',
-  cta: 'cta',
-};
-
-/** SlideDeckSpec 슬라이드들을 factory ScriptBeat 목록으로 변환(첫 장은 hero). */
-export function slideDeckSpecToScriptBeats(spec: VideoRoomSlideDeckSpec): ScriptBeat[] {
-  return spec.slides.map((slide, i) => ({
-    scene_id: `slide_${String(i + 1).padStart(2, '0')}`,
-    scene_type: i === 0 ? 'hero' : VISUAL_TYPE_TO_SCENE_TYPE[slide.visual_type] ?? 'insight',
-    rhythm_role: i === 0 ? ('hook' as const) : slide.visual_type === 'cta' ? ('cta' as const) : ('explain' as const),
-    headline: slide.headline,
-    speaker_text: slide.speaker_text,
-    duration: estimateSlideDurationSeconds(slide.speaker_text),
-    ...(slide.body ? { body: slide.body, subtitle: slide.body } : {}),
-  }));
+/**
+ * SlideDeckSpec을 factory ScriptBeat 목록으로 변환.
+ * planned_beats(Scene Decision 엔진 산출)가 있으면 그대로 사용하고,
+ * 없는 legacy spec은 같은 엔진(planScenesFromSlides)으로 슬라이드별
+ * 페이싱 분할 + 타입 결정을 수행한다(첫 장 hero, cta 마지막 보장).
+ */
+export function slideDeckSpecToScriptBeats(spec: SlideDeckSpecWithPlannedBeats): ScriptBeat[] {
+  if (spec.planned_beats && spec.planned_beats.length > 0) return spec.planned_beats;
+  return planScenesFromSlides(spec.slides);
 }
 
 export interface BuildFactoryJobFromSlideDeckInput {

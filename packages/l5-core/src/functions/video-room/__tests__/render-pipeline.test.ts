@@ -171,20 +171,29 @@ describe('estimateSlideDurationSeconds', () => {
 });
 
 describe('slideDeckSpecToScriptBeats / buildFactoryJobFromSlideDeck', () => {
-  it('converts slides to beats with hero first and mapped scene types', () => {
+  // Phase 2 갱신: 기존 테스트는 "슬라이드 1장=beat 1개(첫 장 hero, hint 그대로)"를
+  // 고정했으나, Scene Decision 엔진 도입으로 beats는 planned_beats(페이싱 분할 +
+  // 타입 스코어링)에서 나온다. 의도(hero 첫 장, 비교 hint 반영, cta 존재, 유효 범위)는
+  // 유지하고 1:1 매핑 가정만 새 동작(8~12초 페이싱, ≤12초)으로 바꿨다.
+  it('converts slides to beats with hero first, hint respected, and cta last', () => {
     const spec = buildSlideDeckSpecFromBrief(makeBrief(), SPEC_IDS);
     const beats = slideDeckSpecToScriptBeats(spec);
     expect(beats[0].scene_type).toBe('hero');
     expect(beats[0].rhythm_role).toBe('hook');
-    expect(beats[1].scene_type).toBe('comparison'); // 비교 차트 hint
-    expect(beats[2].scene_type).toBe('cta');
-    expect(beats[2].rhythm_role).toBe('cta');
-    expect(beats[3].scene_type).toBe('section'); // bridge
+    expect(beats[0].duration).toBeGreaterThanOrEqual(8); // 인트로 전문 20초 금지
+    expect(beats.some((b) => b.scene_type === 'comparison')).toBe(true); // 비교 차트 hint
+    const last = beats[beats.length - 1];
+    expect(last.scene_type).toBe('cta');
+    expect(last.rhythm_role).toBe('cta');
+    expect(beats.some((b) => b.scene_type === 'section')).toBe(true); // bridge
     for (const b of beats) {
       expect(b.duration).toBeGreaterThanOrEqual(3);
-      expect(b.duration).toBeLessThanOrEqual(20);
+      expect(b.duration).toBeLessThanOrEqual(12);
       expect(b.headline.length).toBeGreaterThan(0);
       expect(b.speaker_text.length).toBeGreaterThan(0);
+      expect(b.emphasis && b.emphasis.length).toBeGreaterThanOrEqual(1);
+      expect(b.mood).toBeDefined();
+      expect(b.transition).toBeDefined();
     }
   });
 
@@ -194,7 +203,8 @@ describe('slideDeckSpecToScriptBeats / buildFactoryJobFromSlideDeck', () => {
     expect(job.id).toBe('l5-spec-1');
     expect(job.slug).toBe('l5-spec-1');
     expect(job.format).toBe('youtube_16_9');
-    expect(job.scenes).toHaveLength(4);
+    // Phase 2 갱신: 페이싱 분할로 4장 고정 → 4장 이상.
+    expect(job.scenes.length).toBeGreaterThanOrEqual(4);
     expect(job.fps).toBe(30);
   });
 

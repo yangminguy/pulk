@@ -39,6 +39,8 @@ export * from './script-room-pipeline';
 export * from './factory-handoff';
 // M4 영상 제작 파이프라인 잔여 — brief 직접참조 슬라이드덱 → 렌더 잡 → 상태 폴링 → QA → 업로드 초안
 export * from './render-pipeline';
+// Phase 2 Scene Decision 엔진 — 페이싱 분할 + 한국어 스코어링 scene_type + emphasis/mood/transition
+export * from './scene-decision';
 // v3 CMO Key Content Planning (Phase 1)
 export * from './key-content-planning.schemas';
 export * from './key-content-planning';

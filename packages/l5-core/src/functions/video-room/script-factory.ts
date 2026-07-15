@@ -65,6 +65,12 @@ export interface ScriptBeat {
   /** Factory scene type. Unknown values fall back to insight. */
   scene_type: string;
   rhythm_role?: 'hook' | 'tension' | 'explain' | 'proof' | 'reset' | 'insight' | 'cta';
+  /** Highlighted keywords/phrases (quoted spans, numbers+units, key nouns). Factory renders these emphasised. */
+  emphasis?: string[];
+  /** Per-scene visual register. Matches factory zod (light | dark | clean). */
+  mood?: 'light' | 'dark' | 'clean';
+  /** Enter transition. Matches factory zod (cut | fade | fade_scale | slide_up). */
+  transition?: 'cut' | 'fade' | 'fade_scale' | 'slide_up';
   headline: string;
   /** Narration / dialogue. Used as the primary sub-field where no richer field is supplied. */
   speaker_text: string;
@@ -112,6 +118,9 @@ interface BaseScene {
   scene_id: string;
   duration: number;
   rhythm_role?: ScriptBeat['rhythm_role'];
+  emphasis?: string[];
+  mood?: 'light' | 'dark' | 'clean';
+  transition?: 'cut' | 'fade' | 'fade_scale' | 'slide_up';
   caption?: string;
 }
 
@@ -335,6 +344,9 @@ function mapBeatToScene(beat: ScriptBeat, index: number): FactoryScene {
     scene_id: beat.scene_id,
     duration: beat.duration,
     ...(beat.rhythm_role !== undefined ? { rhythm_role: beat.rhythm_role } : {}),
+    ...(beat.emphasis && beat.emphasis.length > 0 ? { emphasis: beat.emphasis } : {}),
+    ...(beat.mood !== undefined ? { mood: beat.mood } : {}),
+    ...(beat.transition !== undefined ? { transition: beat.transition } : {}),
     caption: beat.speaker_text.trim(),
   };
 
