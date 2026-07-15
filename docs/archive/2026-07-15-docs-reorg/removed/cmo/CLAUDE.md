@@ -13,8 +13,10 @@ Founder의 상품·타깃을 받아 **키 콘텐츠 → 풀링 콘텐츠 → 콘
 |---|---|---|
 | [HANDOFF](./HANDOFF.md) | CMO 현재 상태 요약 | 세션 시작 시 "지금 어디까지 됐나" |
 | [TASKS](./TASKS.md) | 개발 계획 M1~M8 + 우선순위 | "다음 뭐 할까" |
+| [features/bizpt-manager](./features/bizpt-manager.md) | **비즈니스PT 매니저 앱**(별도 콘솔, 3003) — 구조·운영·e2e 도구·루프 이력 | 매니저 앱/실가동 루프 작업 시 |
 | [features/youtube-viewtrap-discovery](./features/youtube-viewtrap-discovery.md) | YouTube API + Viewtrap CDP 발굴 자동화 | 발굴/지표/크롤링 작업 시 |
 | [features/title-development-workflow](./features/title-development-workflow.md) | 제목 디벨롭 8단계(레퍼런스2개→교차조합→평가→승인3·4) | 제목/썸네일 기획 작업 시 |
+| `prd/bizpt-kb/` (00~11) | **비즈니스 PT 지식베이스 정본** — 방법론·수치 기준 전부 | UI/프롬프트/검증 기준 판단 시 |
 
 ## 기획서 / 스펙 (이 디렉토리에 함께 있음)
 
@@ -44,7 +46,7 @@ Founder의 상품·타깃을 받아 **키 콘텐츠 → 풀링 콘텐츠 → 콘
 |---|---|---|
 | 키 콘텐츠 기획 | `key-content-draft.ts`(11스텝) · `key-content-candidates.ts`(3후보) | 라이브 |
 | 풀링 콘텐츠 기획 | `pulling-content-planning.ts`(12스텝) · `pulling-candidates.ts` | 라이브 |
-| 콘텐츠 제작 | `content-production.ts`(제목/썸네일/원고) | 구현완료 |
+| 콘텐츠 제작 | `content-production.ts`(제목/썸네일/원고 — 원고는 LLM 생성+거절문·분량 가드, 2026-07-12) | 라이브 |
 | 영상 제작 | `content-strategy-package.ts` → `video-execution-brief.ts` → `factory-handoff.ts` | Brief 전달까지 |
 | 성과 재학습 | `performance-ingestion.ts` · `completion-insight-extraction.ts` | 코드완료(수동입력) |
 | Viewtrap 도구 | `viewtrap-tools.ts` · `reference-adapters.ts`(심) | 심만 |

@@ -1,6 +1,34 @@
 # HANDOFF — L5 Business OS
 
-최종 업데이트: 2026-07-09 (분류누수 수정 + Slack 포맷팅 구현 — **실 Slack E2E PASS, 라이브 반영 완료**)
+최종 업데이트: 2026-07-14 (범용 YouTube 리서치 엔진 신설 — 도메인+어댑터+Slack+북 컴포저, 라이브 실증)
+
+## 🟢 2026-07-14 — 범용 YouTube 리서치 엔진 (정본 설계 = docs/RESEARCH_ENGINE_SPEC.md, 결정 = DECISIONS.md 2026-07-14)
+
+**무엇**: 주제 입력 → 한·미 유튜브 100+ 후보 → 자막 있는 15편 선별 → 전체 자막·타임스탬프 보존 → 아톰 추출 → 공통/충돌/통합이론 합성 → fresh-context 검증 → Second Brain 4계층 저장 + Notion 서적형 보고서 + Slack 링크 회신. CMO는 클라이언트 중 하나(엔진 로직 비종속).
+
+**아키텍처(3계층 + 북)**:
+- 순수 도메인 = `packages/l5-core/src/functions/research-engine/`(ports로만 I/O, Jest 167). EXPAND→COLLECT→SELECT→TRANSCRIPT→ANALYZE→SYNTHESIZE→VERIFY→**COMPOSE**→STORE→PUBLISH.
+- I/O 어댑터+CLI = `services/research-engine/`(youtube-cli vendor spawn·store-fs 4계층·brain-cards·embeddings venv 브리지·notion raw fetch·slack·docs-verify, 전부 graceful disable). jest 54.
+- Slack 진입 = `services/slack-gateway`에 `classifyCmoIntent`+`research-bridge`(CLI detached spawn) 추가. jest 65.
+- 북 컴포저 = `book-composer.ts`(OUTLINE→챕터별 WRITE[아톰전문+타임스탬프 주변 원문발췌 주입]→ASSEMBLE 서문+챕터+부록). reports/<runId>.md=북 원고.
+
+**라이브 실증(2026-07-14)**: run1 "AI 에이전트 오케스트레이션 구조"(TECHNICAL) — 후보 302→12편 분석, 아톰 391·그래프 482엣지·임베딩(atom391/seg43)·Notion 페이지·Slack DM·Second Brain biz 스테이징 6카드 전부 실생성 확인. **사장님 피드백**: 첫 보고서가 "메타데이터 덤프"라 반려 → 북 컴포저(§12-A) 도입.
+
+**수정한 라이브 결함**: ① 청크 무결성 검사 false positive(스킬 text=공백join인데 검사가 ''concat 비교) → 공백정규화 비교. ② TRANSCRIPT refill이 shortlist(25)에서 멈춤(12/15) → refill 대기열 이중제안 버그 수정, 전 랭킹 후보로 보충 확장. ③ claude-cli 단발 exit1이 런 전체 크래시 → **CLI에 3회 지수백오프 retry 래퍼**(`llm-retry.ts`) 추가.
+
+**정본/환경**: Notion 부모 페이지 `39d37e66cadf8140959cd30c6264e429`(양원민 Documentation DB 하위, config 기본값). Slack CMO 봇→사장님 DM `D0BFG0USQ9M`. Second Brain venv = `/Users/wonminyang/세컨 브레인/.venv`. env는 .env.local(notionintegrationtoken/SLACK_CMO_BOT_TOKEN) + YOUTUBE creds(services/youtube/.credentials.json).
+
+**남은 것**: 북 스타일 보고서 라이브 재검(진행 중, CONTENT_PLANNING·15편) · 15/15 refill 실측 · 미커밋(전부 WIP).
+
+## 🟢 2026-07-12 — 비즈니스PT 매니저 앱 라이브 + 실가동 루프 5회 완료 (상세 = docs/cmo/HANDOFF.md · features/bizpt-manager.md)
+
+## 🟢 2026-07-12 — 비즈니스PT 매니저 앱 라이브 + 실가동 루프 5회 완료 (상세 = docs/cmo/HANDOFF.md · features/bizpt-manager.md)
+
+- **신규 앱 라이브**: `apps/bizpt-manager/`(Next.js·**3003**·pnpm `--ignore-workspace` 독립 설치·launchd `com.l5.bizpt-manager` 상시 가동). founder-ui 사이드바 링크. Playwright 스모크 2종 PASS(뷰 렌더 + UI 클릭→백엔드 전진 관통). 지식베이스 12문서 `docs/cmo/prd/bizpt-kb/` 반입(정본).
+- **실가동 루프 ×5**: 미용실 상품으로 전 구간 E2E — 실제 영상 3편 산출(최종 9.8MB/80s/1080p/QA pass), 결함 6건 발견·5건 수정. 최종 원고 = 도입부 185자 실공감형 + 본론 2,249자 실콘텐츠, KB 자동 대조 PASS 11/FAIL 3(휴리스틱 한계).
+- **⚠️ 인프라 복구**: NocoBase가 죽어 있었음 — `node_modules/@nocobase/server` 등 소실 → `apps/nocobase-app`에서 `corepack yarn install` 복구. **루트에서 yarn install 절대 금지**(pnpm 오염 — 실수 1회, 오염 전 중단).
+- **백엔드 수정 4건**(전부 dist 재빌드+재기동 완료): ① LLM 정책 `buildLLMClient` 단일화(키 없으면 CLI sonnet 240s — launchd LLM 전멸 수정) ② 검색 키워드 일반명사화 + 후보 0건 재검색(KB 06 §4-3) ③ l5-core 원고 LLM 생성+거절문/분량 가드(jest 12) ④ buildSlideDeck 실원고 문단 분할 폴백. 구조 결정 5건 = docs/DECISIONS.md 2026-07-12.
+- **미커밋**: 앱 신설 + plugin/l5-core 수정 + KB 반입 + e2e 도구 + docs 전부. 잔여 작업 목록 = docs/cmo/HANDOFF.md "잔여".
 
 ## 🟢 2026-07-09 — Slack 분류누수 수정(sticky+worktree 격리) + 포맷팅 구현: 병렬 에이전트 → 실 Slack E2E
 

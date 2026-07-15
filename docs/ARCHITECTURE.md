@@ -1,345 +1,62 @@
-# ARCHITECTURE — L5 Business OS
+# ARCHITECTURE — 문서 구조 인덱스
 
-## System Overview
+> `docs/` 전체의 진입점. "무엇을 어디서 찾는가"만 다룬다. 시스템 기술 구조는 [TRD.md](./TRD.md) 참고.
 
-L5 Business OS는 Founder-facing 경험을 chat-first로 설계한다. Founder는 CEO Agent와 대화하고, CEO Agent가 Executive Agent들을 병렬 orchestration한다. NocoBase는 MVP Shell로 사용하지만 Founder의 최종 UI가 아니라 Agent 작업 상태, 승인, memory, BPR, audit log를 저장하고 모니터링하는 내부 shell이다. 핵심 판단 로직은 `packages/l5-core`에 분리한다.
+## 문서 규칙
 
-```text
-User / Founder
-  ↓
-Founder Chat Interface
-  ↓
-CEO Agent Orchestrator
-  ↓
-Executive Agent Runtime
-  ↓
-packages/l5-core
-  ↓
-NocoBase Internal Shell / PostgreSQL
-  ↓
-Trigger.dev Hermes Runtime
-  ↓
-Langfuse / Formbricks / Activepieces
-```
+1. 문서 1개는 **300줄을 넘지 않는다.**
+2. 내용이 늘어나 300줄을 넘겨야 하면, 그 문서는 **인덱스**로 남기고 실제 내용은 같은 이름의 하위 폴더(`docs/<name>/*.md`)로 쪼갠다. 이 문서(ARCHITECTURE.md)에 그 분리 구조를 반드시 반영한다.
+3. 새 문서를 추가/분리했다면 이 표를 같이 갱신한다.
+4. 문서 언어는 한국어 우선, 코드/타입/API 이름은 원문 그대로.
 
-## Core Architecture Principle
+## 7종 핵심 문서
 
-```text
-Founder Chat = Primary UX
-CEO Agent = Orchestrator
-Executive Agents = Operators
-NocoBase = Internal Shell
-L5 Core = Brain
-Mastra = Agent Runtime
-Trigger.dev = Hermes Runtime
-Langfuse = LLM Trace
-Formbricks = PMF Signal
-Activepieces = External Connector
-PostgreSQL = Source of Truth
-```
+| 문서 | 다루는 것 | 분리 하위 문서 |
+|---|---|---|
+| [PRD.md](./PRD.md) | 제품 비전, 문제정의, 원칙, MVP 범위, 성공지표 | — |
+| [TRD.md](./TRD.md) | 시스템 레이어, 모노레포 구조, 기술스택, 공통 계약 | `trd/agent-protocol.md`, `trd/orchestration.md`, `trd/workflow-hermes.md`, `trd/data-governance.md` |
+| [USER_FLOW.md](./USER_FLOW.md) | 사용자(창업자/운영자) 동선, 승인 게이트, 채팅 인터페이스 흐름 | — |
+| [DB_DESIGN.md](./DB_DESIGN.md) | 데이터 소스오브트루스 원칙, 엔티티 요약, 관계도 | `db-design/core-entities.md`, `db-design/runtime-tables.md`, `db-design/video-room-entities.md` |
+| [SCREEN.md](./SCREEN.md) | 앱별 화면/라우트 목록 | `screen/bizpt-manager.md`, `screen/founder-ui.md` |
+| [TASK.md](./TASK.md) | 현재 진행중/미완료 작업만 (완료 이력은 archive) | — |
+| [CODING_CONVENTION.md](./CODING_CONVENTION.md) | 코딩 규칙, 검증 문화, 금지사항 | — |
 
-## Recommended Monorepo Structure
+루트 [CLAUDE.md](../CLAUDE.md)의 Reading Order가 이 7종 문서를 가리킨다.
+
+## 저장소 최상위 구조 (2026-07-15 기준)
 
 ```text
-project-root/
-  CLAUDE.md
-  AGENTS.md
-  docs/
-  schemas/
-  prompts/
-
-  apps/
-    nocobase/
-      packages/
-        plugins/
-          @l5/plugin-founder-dna/
-          @l5/plugin-culture-engine/
-          @l5/plugin-business-portfolio/
-          @l5/plugin-pmf-experiment/
-          @l5/plugin-bpr-engine/
-          @l5/plugin-tool-request/
-          @l5/plugin-memory-room/
-          @l5/plugin-hermes-control-room/
-          @l5/plugin-workflow-factory/
-          @l5/plugin-agent-staffing/
-
-  packages/
-    l5-core/
-      founder-dna/
-      culture/
-      workflow-factory/
-      pmf-scoring/
-      agent-staffing/
-      bpr/
-      tool-request/
-      memory/
-      decision-rules/
-      workflow-evolution/
-      data-governance/
-
-  services/
-    agent-runtime/
-    hermes-runtime/
-    automation-connectors/
-    pmf-signal/
-    llm-observability/
-    analytics/
+apps/
+  bizpt-manager/     # 콘텐츠 파이프라인 운영 콘솔 (Next.js, :3003)
+  founder-ui/         # 창업자용 메인 콘솔 (Next.js, :3000, Vercel 배포)
+  nocobase-app/       # 내부 운영 DB/API shell + @l5 플러그인 (live)
+  api-server/         # 렌더 잡 큐 스텁 (bullmq/redis, 초기 단계)
+packages/
+  l5-core/            # 도메인 판단 로직 (NocoBase 비종속, 테스트 가능해야 함)
+  l5-ui/              # 공용 UI 컴포넌트 (현재 앱에서 미배선 상태)
+services/
+  agent-runtime/      # C-level 가상 임원 에이전트 실행기
+  hermes-runtime/     # 스케줄 작업 (승인체크/일일브리핑/감시), launchd 상시실행
+  research-engine/    # YouTube 리서치 엔진 (신규, 진행중)
+  notion-gateway/      # agent_tasks ↔ Notion 동기화
+  telegram-gateway/    # 텔레그램 @executive 명령 라우팅
+  youtube/             # YouTube API + 뷰트랩(viewtrap) 크롤링 어댑터
+  slack-gateway/       # Slack 임원 멘션 라우팅 (가장 활발히 개발중)
+  cmo-insight-loop/    # 일일 유튜브 인사이트 수집→텔레그램 (현재 휴면, TASK.md 참고)
+docs/                 # 이 문서 체계
+schemas/               # 포터블 엔티티 스키마 (l5_entities.json 등)
+archive/               # 코드 레벨 보관 (더 안 쓰는 앱/스크립트)
 ```
 
-## Layer Responsibilities
+`apps/nocobase`(레거시 스캐폴드)는 6주 이상 미변경 + workspace 제외 + 코드 참조 0건이 확인되어 `archive/apps-2026-07-15/nocobase`로 이동했다. 아직 `nocobase-app`으로 이식되지 않은 8개 플러그인 설계(agent-staffing, bpr-engine, founder-dna, hermes-control-room, memory-room, pmf-experiment, tool-request, workflow-factory)의 참고자료로만 보관.
 
-### NocoBase Shell
+## 아카이브 정책
 
-Use for:
+- `docs/archive/<날짜>-<주제>/` — 문서 재정리/정리 시 통째로 이동한 과거 문서 묶음.
+- `archive/<영역>-<날짜>/` — 저장소 루트 기준, 코드/스크립트/자산 아카이브.
+- 실제로는 어떤 파일도 강제 삭제하지 않는다(로컬 기기 브릿지가 rm을 막음). "삭제"로 표현된 정리는 전부 위 archive 경로로 이동한 것이며, 검토 후 사용자가 직접 지운다.
+- 2026-07-15 문서 재정리 시 이동한 전체 목록: `docs/archive/2026-07-15-docs-reorg/removed/` (기존 docs/ 100여개 파일 원본 그대로 보존, 새 7종 문서에 핵심만 반영됨). 백업 tarball: `docs/archive/2026-07-15-docs-reorg/pre-reorg-backup.tar.gz`.
 
-- Agent-readable/writable internal records
-- Task, handoff, approval, memory, BPR collections
-- Internal admin/debug UI
-- CRUD collections
-- Approval queue UI
-- Plugin host
-- Status/action blocks
+## 기존 문서 체계와의 관계
 
-Avoid:
-
-- Domain scoring logic
-- Long-running jobs
-- Durable agent loops
-- Final customer-facing SaaS UX
-- Founder-facing primary workflow UX
-
-### L5 Core
-
-Use for:
-
-- Founder Fit scoring
-- PMF scoring
-- Workflow generation rules
-- Agent staffing rules
-- BPR rules
-- Tool Request rules
-- Memory rules
-- Decision authority rules
-- Data governance policies
-
-Rule:
-
-```text
-`l5-core` must run tests without NocoBase.
-```
-
-### L5 NocoBase Plugins
-
-Use for:
-
-- Register collections
-- Render L5 rooms
-- Call `l5-core`
-- Call Mastra APIs
-- Call Trigger.dev task endpoints
-- Store outputs back to PostgreSQL/NocoBase
-- Handle approval/rejection actions
-
-Avoid:
-
-- Hardcoding scoring logic in UI
-- Storing secret prompts in client code
-- Running long jobs in request handlers
-
-### Mastra Agent Runtime
-
-Use for:
-
-- CEO Agent
-- Chief of Staff Agent
-- Agent workflows
-- Tool calling
-- Structured output generation
-- Future RAG / memory retrieval
-
-### Trigger.dev Hermes Runtime
-
-Use for:
-
-- Morning Operating Loop
-- Night BPR Loop
-- Stalled Workflow Detector
-- PMF Deadline Checker
-- Founder Approval Checker
-- Tool Request Candidate Detector
-- Memory Update Suggestion Generator
-
-### Langfuse
-
-Use for:
-
-- LLM traces
-- Prompt versions
-- Cost monitoring
-- Evaluation logs
-- Agent decision debugging
-
-Avoid:
-
-- Source-of-truth business data
-- Raw customer PII traces unless explicitly required and masked
-
-### Formbricks
-
-Use for:
-
-- Waitlist
-- PMF survey
-- Customer interview request
-- Feedback collection
-
-Avoid:
-
-- Source-of-truth CRM
-- Memory database replacement
-
-### Activepieces
-
-Use for:
-
-- Slack / Telegram notifications
-- Gmail draft/send flows
-- Google Sheets logging
-- Notion sync
-- Webhook bridges
-
-Avoid:
-
-- Core decision-making
-- Business OS brain
-- Broad customer data fan-out
-
-## Data Flow — Founder Direction To Agent Execution
-
-```text
-1. Founder sends direction through chat
-2. CEO Agent stores FounderInstruction
-3. CEO Agent creates CEOInterpretation with goal, phase, assumptions, success criteria
-4. CEO Agent decomposes work into parallel AgentTasks
-5. Executive Agents run tasks and update status
-6. Agents create AgentHandoffs when another owner is needed
-7. NocoBase/PostgreSQL stores task state, outputs, approvals, BPR, memory candidates
-8. Executive Monitor reads task/handoff state for Founder monitoring
-9. Hermes detects stalled tasks, approval needs, deadlines, and recurring bottlenecks
-10. When all tasks of one instruction reach terminal (done/killed, ≥1 done),
-    Chief of Staff synthesizes ONE FounderDeliverable + posts it as a chat card (P1)
-```
-
-## Data Flow — Founder Console (2026-06-03 재편)
-
-> 콘솔을 "지시 → 자동 수행(가시화) → 종합 산출물 → 다음 지시" 루프로 재편. 기능 배치 원칙: 판단 로직은 `l5-core`(순수·테스트 가능), IO/배선은 플러그인, 화면은 founder-ui. 상세 `docs/specs/P1~P3-4.md`, 계획 `reports/l5-console-redesign-plan.html`.
-
-```text
-[P1 종합 산출물 — 키스톤]
-executeTask 꼬리 → maybeSynthesizeInstruction(완료 감지, 멱등)
-  → l5-core synthesizeDeliverable (Chief of Staff, contributions 코드소유 + LLM summary + 결정론 fallback)
-  → founder_deliverables + chat 'chief_of_staff/synthesis' 카드 → SynthesisCard (approve=close / delegate=신규 instruction / hold)
-
-[P2 실시간 모니터링]
-monitor:liveStatus → l5-core deriveLiveStatus (agent_tasks + delegations + consultations + blocker 조인, DB-derived)
-  → monitor 페이지: 지시별 그룹 · 상태점(조사중/대화중→누구와/대기/검토중) · 8s 폴링
-
-[P3-2 지식 자동 큐레이션]
-monitor:curate sweep → l5-core curateInsight (pii_high/too_short/dup/점수밴드)
-  → auto_save: 세컨브레인 append / auto_discard: soft-delete +30d(cron 퍼지) / needs_review
-  → 지식 페이지: 주간 저장·폐기 요약 + 복원 (raw JSON 폐기)
-
-[P3-3 Control Room]
-monitor:controlRoomTree → l5-core buildControlRoomTree (businesses ▸ projects ▸ CTO dev-tasks)
-  → ACR 실행정보는 acr-execution-transport (ACR_EXECUTION_ENABLED + ACR GET /api/l5/execution; 미연결 시 우아한 축소)
-  → control-room 페이지: 사업▸프로젝트▸개발과제 트리 + branch/phase/log strip
-
-[P3-4 CTO 자가수정 — D3+ 코드변이 게이트]
-Tool Request → monitor:sendToCTO → self-mod CTO task(source_ref=selfmod:*, raw SQL insert로 FK 우회)
-  → Hermes dispatcher → runCTOAgent → ACR(브랜치) → agent:taskCallback(pass)
-  → orchestration: status=awaiting_apply + acr_diff/branch 영속 + 승인 게이트(floor 기본 D3)
-  → approval 페이지 diff 미리보기 → applySelfMod(deny-list + needs_restart 정직성) / rollbackSelfMod(브랜치 폐기)
-  → post-apply M6 runDelegationLoop 검증
-```
-
-## Data Flow — Business / PMF Workstream
-
-```text
-CEO Agent task
-→ CPO/CMO/CRO Agent workstream
-→ BusinessIdea / Business records if needed
-→ Founder Fit / PMF rules in l5-core
-→ PMFExperiment
-→ PMFExperimentMetric
-→ PMF Score calculation
-→ Tool Candidate check only after PMF/repetition signals
-→ Memory/BPR update
-```
-
-## Data Flow — PMF Signal
-
-```text
-PMFExperiment
-→ Formbricks survey/waitlist
-→ Webhook response
-→ PMFExperimentMetric
-→ PMF Score calculation in l5-core
-→ MemoryEntry suggestion
-→ Tool Candidate check
-```
-
-## Data Flow — External Action
-
-```text
-Agent Draft
-→ risk_level assigned
-→ DecisionQueue if D3-D5
-→ Founder approval
-→ Activepieces webhook
-→ external send/action
-→ audit log
-→ Memory/BPR update
-```
-
-## Error Handling
-
-All service calls should return a common result shape.
-
-```ts
-type L5Result<T> = {
-  ok: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    retryable: boolean;
-    source: 'l5-core' | 'nocobase-plugin' | 'agent-runtime' | 'hermes-runtime' | 'external-service';
-  };
-  trace_id?: string;
-};
-```
-
-## Migration Strategy
-
-Portable:
-
-- `packages/l5-core`
-- entity schemas
-- prompts and policies
-- workflow templates
-- scoring rules
-- memory rules
-- decision authority rules
-
-Replaceable:
-
-- NocoBase UI layout
-- NocoBase-specific page blocks
-- Plugin lifecycle code
-- Internal shell
-
-Future shell options:
-
-- Next.js + Payload
-- Directus + Next.js
-- Custom Next.js + PostgreSQL
+이전에는 `docs/cmo/`, `docs/cto/` 영역별 라우터 + 전역 문서가 병존했다(`docs/README.md`, 이제 archive됨). 2026-07-15부로 전 영역(CMO 콘텐츠 파이프라인, CTO 개발 오케스트레이션 포함)을 이 7종 문서로 통합했다. 영역별로 다시 문서가 커지면 규칙 2에 따라 `docs/<name>/<영역>.md` 형태로 쪼갠다(예: `docs/task/cmo.md`).

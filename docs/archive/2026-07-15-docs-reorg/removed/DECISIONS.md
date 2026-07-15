@@ -1,5 +1,33 @@
 # DECISIONS — L5 Business OS
 
+## 2026-07-14 — 범용 YouTube 리서치 엔진 = l5-core 도메인 + services 어댑터 (CMO 비종속)
+
+**컨텍스트**: 사장님이 "주제 입력 → 한·미 유튜브 100+ 후보에서 15편 선별 → 전체 자막·타임스탬프 보존 → 주장·공통점·충돌·통합이론 합성 → Second Brain·Notion·Slack 연결"을 요구. CMO는 클라이언트 중 하나일 뿐 리서치 로직을 CMO에 종속시키지 말 것. 정본 설계 = `docs/RESEARCH_ENGINE_SPEC.md`.
+
+**결정 1 — 엔진 코어 = `packages/l5-core/src/functions/research-engine/` 순수 도메인**: 검색어확장·시장분류·후보선정·아톰추출·합성·검증·개념그래프·리포트·파이프라인을 전부 순수 함수로. 모든 I/O는 `ports.ts` 인터페이스(YouTube/Transcript/LLM/Store/Embedding/Notion/Slack/DocsVerify)로만. fs/child_process/fetch/NocoBase import 금지. 이유: ARCHITECTURE 준수(판단 로직은 l5-core), CMO/CLI/학습·개발 리서치 등 다중 클라이언트 재사용, Jest 단위테스트 가능.
+
+**결정 2 — I/O 어댑터·CLI = `services/research-engine/`**: youtube-cli(vendor 스킬 spawn)·store-fs(§6 4계층)·brain-cards·embeddings(세컨브레인 venv fastembed 브리지)·notion(raw fetch)·slack·docs-verify. 외부 실패는 전부 graceful disable(엔진은 계속). vendor 스킬 사본에서 평문 API 키 제거(레포 규칙 9).
+
+**결정 3 — Slack CMO "리서치" intent = slack-gateway 분기 + CLI detached spawn**: `classifyCmoIntent`(명시 트리거만, 과탐 금지) → `research-bridge`가 `research-engine/dist/cli.js`를 fire-and-forget. gateway는 엔진을 import하지 않음(결합 금지, CTO planning 패턴 미러).
+
+**결정 4 — 보고서 = 서적형 심층 원고(BookReport), 메타데이터 덤프 금지**: 첫 라이브 결과가 "원칙 제목+카운트+URL 나열, 60자 잘림, 영어 혼입"으로 사장님이 반려. `book-composer.ts` 3단계 LLM 집필(OUTLINE 목차 → 챕터별 WRITE: 아톰 전문+타임스탬프 주변 원문 발췌 주입 → ASSEMBLE 서문+챕터+부록). 개요→개념 심화→방법론→단계별 실행→사례→충돌 판단→실전 적용 가이드→용어집의 책 골격, outputLanguage 강제, 잘림 금지, 인라인 타임스탬프 출처. 기존 canonical 구조화 섹션은 신뢰성 부록으로 강등. `reports/<runId>.md`=북 원고(정본), canonical JSON은 `syntheses/`에 재사용용 보존.
+
+**결정 5 — 검증은 fresh-context + 기술주제 공식문서 대조**: 합성 에이전트와 다른 LLM 세션이 원문만 보고 재검증(의견→사실 승격·중복계산·타임스탬프 검사). 기술 주제는 docs-verify(claude CLI + WebSearch/WebFetch)로 공식문서 우선순위 대조, 충돌 시 공식문서 기준+보고서 표시. "많이 언급됨 ≠ 검증됨" 분리 기록.
+
+## 2026-07-12 — 비즈니스PT 매니저 = 별도 앱 · LLM 백엔드 정책 단일화 · 원고 파이프라인 LLM 주도 전환
+
+**컨텍스트**: 사장님이 로컬 HTML 툴(bizpt-content-manager)을 발전시켜 CMO 운영 콘솔로 요구 + "기능이 많아질 것"이라 founder-ui 비대화 우려. 실가동 루프 5회에서 launchd LLM 전멸·원고 껍데기 결함 발견.
+
+**결정 1 — 비즈니스PT 매니저 = 별도 앱(`apps/bizpt-manager`, 3003)**: founder-ui에 붙이지 않고 독립 Next.js 앱 + 사이드바 외부 링크만. 의존성은 pnpm `--ignore-workspace` 독립 설치(루트 워크스페이스와 격리 — nocobase-app yarn 격리와 동일 패턴). 이유: 뷰 22개+ 확장 예정, founder-ui(영상룸)와 사용자·리듬이 다름. 도메인 로직 없음(표시+cmo:* 호출만).
+
+**결정 2 — 지식베이스 12문서 = repo 반입 정본(`docs/cmo/prd/bizpt-kb/`)**: 강의 방법론 md 12종이 UI 구성·검증 기준·프롬프트 규칙의 근거. UI "근거: NN" 배지·verify-kb-standards 대조기가 이를 참조.
+
+**결정 3 — plugin LLM 백엔드 정책 = `buildLLMClient` 한 곳으로 단일화**: `ANTHROPIC_API_KEY` 있으면 SDK(sonnet), 없으면(launchd 기본 — 어떤 plist/.env에도 키 없음) claude CLI(OAuth, sonnet, 240s). `createSdkLlmClient`는 위임만. 이유: S3(6/12)의 SDK 전환이 launchd에서 인증 실패로 전 LLM 스텝이 결정론 폴백(검색어 실패→topics 0, 원고 껍데기)돼 왔음을 루프1~4 실측으로 확인. 구형 haiku 사다리는 최후 폴백으로만 유지.
+
+**결정 4 — l5-core 원고(proposeScriptDraft) = LLM 주도 생성 + 가드로 계약 변경**: 기존 "결정론 조립 + LLM 다듬기(사실 추가 금지)"는 뼈대가 빈약하면 껍데기가 남고 LLM 거절문까지 원고로 채택됨(루프3 실측 — 영상에 거절문 렌더). 변경: LLM이 KB 09 기준(도입부 200자 + 본론 2,500~3,500자, `===INTRO===/===BODY===`)으로 생성, **거절문/최소분량 가드** 미통과 시 결정론 유지. 미주입 경로·결정론 계약 불변(jest 12).
+
+**결정 5 — buildSlideDeck = brief 텍스트 빈약 시 실원고 문단 분할 폴백**: brief 논리블록이 빈 뼈대면(슬라이드 텍스트 <300자) spec 폐기 → script_draft full_script를 문단 분할 다장(≤12장)으로. "빈 화면 80초" 영상 방지.
+
 ## slack-gateway 첫 runtime dep — slackify-markdown (2026-07-09)
 slack-gateway는 "raw fetch, dep 0" 정책이었으나, LLM 응답(표준 Markdown)의 Slack mrkdwn 깨짐 해결을 위해 slackify-markdown v5(ESM-only, MIT, 356k/주)를 첫 예외로 채택. 래퍼 `formatting.ts` 뒤에 감춰 교체 가능성 확보.
 
@@ -1181,3 +1209,17 @@ l5-core tsc 0 + jest dev-workflow-spec 60/60(신규 M9.8 5군 포함) GREEN, age
 **결정 3 — acceptance criteria는 스키마 무변경으로 전달한다**: `agent_tasks`에 컬럼을 추가하지 않고 `expected_output`에 `[완료조건]` 블록으로 동반 기록, verifier가 파싱해 구조화 판정. 근거: DDL 리스크 없이 실행 프롬프트·verifier·Notion 투영이 기존 경로로 그대로 전달받음. 컬럼 승격은 원장 데이터로 필요성이 입증되면.
 
 **결정 4 — R5 이벤트 kick은 `HERMES_KICK_CMD` env 간접 실행**: plugin이 hermes를 직접 import하지 않고 fire-and-forget spawn(미설정 시 no-op). 근거: NocoBase↔hermes 결합 금지, 60초 폴링은 안전망으로 유지(kick 실패해도 동작 불변).
+
+## 2026-07-12 — 비즈니스PT 매니저: 추적성·승인 게이트·근거 서술 체계 (FR-1~9)
+
+**결정 1 — 승인 게이트는 "리포트 존재"를 상태머신 사전조건으로 강제한다**: 6개 게이트(키/풀링/훅/원고/영상/게시)마다 필수 리포트 카드 stage를 `l5-core state-machine.ts GATE_REQUIRED_REPORT_STAGES`에 정본으로 두고, `advanceStatus(presentCardStages)`와 plugin(`approveStageGate`/`decideGate`) 양쪽에서 이중 차단한다. "리포트 없는 바로 승인" UI 제거. 후보 0건이면 기획서(key_content_plan_doc) 자체를 생성하지 않아 게이트가 열리지 않는다(빈 기획서 구멍 방지). 근거: FR-4/5/6 — 승인은 검토물이 있어야 성립.
+
+**결정 2 — 승인 검토물은 자기완결 HTML 문서를 카드로 저장한다**: `gate-report-docs.ts`(l5-core)가 키 기획서(선별 이유·KB 기준 인용·벤치마킹 실물·판매 논리 필수·풀링 키워드 계획)와 풀링 리포트를 생성, plugin이 `key_content_plan_doc`/`pulling_plan_doc` 카드로 upsert, UI 승인 센터가 sandbox iframe으로 인라인 렌더. applied_sales_logic null이면 생성 단계에서 결정론 폴백으로 필수화(FR-4 §3).
+
+**결정 3 — 리서치 소싱은 "필요한 데이터"로 라우팅한다(FR-9)**: `sourcing-router.ts` 정본 — 영상 메타=YouTube API > 성과도·기여도=검색결과 뷰트랩 오버레이 > 노출확률·집계=뷰트랩 사이트. 병합 레코드는 source/fetched_at 필수. **YouTube API 429(일일 쿼터 소진) 시 CDP `ytInitialData` 파싱 폴백을 표준 경로로 채택**(렌더/확장 주입/창 상태 무관) — 제목 레퍼런스 발굴·썸네일 레퍼런스·키 리포트 발굴 3곳 배선. CDP 단일 테넌트 락은 최대 2분 대기 후 진입.
+
+**결정 4 — 정량 4요소 임계값 정본 = `quantitative-factors.ts`**: 조회 1,000 · 지속 35% · 도입부 60%/30초 · CTR 10%(KB 00·10). completion-insight 폴백 임계값(구 CTR 4%)을 이 정본으로 정합화. 미수집(null)은 unknown — FAIL 아님. `performance-ingestion`에 intro_retention_30s 필드 추가.
+
+**결정 5 — l5-core 빌드에서 테스트 파일 제외(tsconfig exclude)**: 다른 트랙의 TDD 실패 테스트 커밋이 dist 빌드를 막던 문제. 테스트는 jest(ts-jest)가 소유, tsc는 src만.
+
+**결정 6 — brief 경로 슬라이드는 문단 분할 다장 + 짧은 헤드라인**: `splitIntoSlideChunks`(110자≈낭독 20초, factory 씬 클램프와 동기, 초과분은 마지막 청크 병합 — 원고 무손실) + `shortHeadline`(첫 문장 30자). 블록 speaker_text가 전부 동일(마커 부재 폴백)이면 한 번만 분할해 비례 배분 — 동일 원고 N회 반복 낭독 방지.

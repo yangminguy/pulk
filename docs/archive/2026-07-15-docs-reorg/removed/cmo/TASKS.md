@@ -3,6 +3,27 @@
 > 라우터 = [CLAUDE.md](./CLAUDE.md) · 현재 상태 = [HANDOFF.md](./HANDOFF.md).
 > 범례: `[x]` 완료·검증 · `[~]` 부분/검증 필요 · `[ ]` 미착수.
 
+## 🆕 비즈니스PT 매니저 (별도 사이트, 2026-07-12 착수)
+
+- [x] **P1. UI 프로토타입 v4** — 지식베이스 정합 + 한국어 6단계 + 감사 루프 5회 반영.
+- [x] **P2. 앱 스캐폴딩** — `apps/bizpt-manager/`(Next.js·3003·독립 pnpm) + founder-ui 링크 + Playwright 스모크 2종 PASS. launchd plist 작성(로드는 검증 후).
+- [~] **P3. 백엔드 배선** — 라이브 11뷰(2026-07-12 오후 확장, P6 참조). 잔여: 정적 12뷰 배선.
+- [x] **P4. 라이브 E2E 루프 ×5 완료** (2026-07-12) — 실제 영상 3편 산출(루프3·4·5), 결함 6건 발견·5건 수정:
+  - 루프1: SDK 키 부재로 LLM 전멸 → CLI(OAuth) 폴백 / viewtrap 탭 부재 → 탭 확보
+  - 루프2: 초니치 검색어 → 키워드 프롬프트 일반명사화(06 §4-3) + 후보 0건 재검색
+  - 루프3: 관통+렌더 성공, 원고 껍데기 규명(buildLLMClient haiku 경로)
+  - 루프4: LLM 정책 통일(buildLLMClient 단일화) → 클러스터링 해소·풀링 3주제
+  - 루프5: l5-core 원고 LLM 생성+가드(jest 12) + 슬라이드 실원고 배선 → **도입부 185자·본론 2,249자·실내용 영상 9.8MB** · KB 대조 PASS 11/FAIL 3(휴리스틱 한계)
+  - 잔여는 HANDOFF "잔여" 참조 (brief 헤드라인 메타 노출 · sendBriefToFactory 400 · 실 낭독 TTS 등)
+- [x] **P5. 지식베이스 repo 반입** — `docs/cmo/prd/bizpt-kb/` 12문서.
+- [x] **P6. 추적성·승인 게이트·근거 서술 체계 (FR-1~9, 2026-07-12 오후)** — `prompts/bizpt_traceability_approval_spec_prompt.md` 전체 구현:
+  - 게이트 리포트 사전조건(6게이트, 상태머신+plugin 이중 강제, 라이브 400 차단 검증) + HTML 기획서/리포트 생성기 + 승인 센터/반려 사유
+  - 라이브 뷰 2→11종(승인 센터·리서치 판정·산출물 보드 8종 — 식별 헤더+콘텐츠 필터), 카드 한국어 렌더러+타임라인
+  - 제목 버전로그·원고 근거 서술(ScriptRationale)·소싱 라우터(FR-9, source/fetched_at 필수)
+  - 점검 결함 10건 수정(sendBriefToFactory 200/sent 해결 포함) + YouTube API 429 → CDP ytInitialData 폴백 표준화
+  - 재검증 루프 ×5 전부 관통+실렌더 — L4·L5 **KB 자동 대조 PASS 14/FAIL 0**. 유닛테스트 1,093 GREEN(신규 56)
+- [ ] **P7. 잔여** — 훅 정렬 insufficient_data 해소 · 정적 12뷰 배선 · 요약형 씬 헤드라인(LLM) · CTA 씬 · 테스트 프로젝트 5개 정리(사장님 결정)
+
 ## ✅ 안정성 개선 완료 (2026-06-12)
 
 - [x] **S3** Sonnet 분류 CLI → Anthropic SDK 직접 호출 전환 (4곳, launchd cold-spawn 제거)

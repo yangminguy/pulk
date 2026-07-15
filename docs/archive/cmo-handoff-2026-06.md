@@ -1,65 +1,6 @@
-# CMO — HANDOFF (현재 상태)
+# CMO HANDOFF 아카이브 — 2026-06-10 ~ 06-11 상세
 
-> 최종 업데이트: 2026-06-12 (안정성 개선 실행). 라우터 = [CLAUDE.md](./CLAUDE.md). 다음 계획 = [TASKS.md](./TASKS.md).
-> 300줄 넘으면 오래된 항목을 `docs/archive/`로 이관하고 요약만 남긴다.
-
-## 🟢 2026-06-12 — CMO 안정성·품질 개선 실행 (P0/P1/T3)
-
-CMO_STABILITY_QUALITY_PLAN.html 계획 기반 즉시 실행 완료.
-
-- **S3 Sonnet CLI → SDK 직접 호출(P0)**: `plugin.ts`에 `createSdkLlmClient()` 신규 추가. `createClaudeCLIClient` 4곳 전부 교체. launchd 환경 cold-spawn(47~125s) 제거 → classified=false 폴백 원인 해소. `@anthropic-ai/sdk` dist/node_modules 번들 포함 확인.
-- **S1 상태머신 검증(P0)**: `l5-core/video-room/state-machine.ts` 이미 완전 구현됨(advanceStatus/requiresApproval/nextStatus). plugin.ts에서 정확히 사용 중. 추가 수정 불필요.
-- **Q3 ExecutionBrief 400 폴백 강화(P1)**: `fullScript` 빈값 시 `coreMessage||topic` 최종 폴백, `title` null 시 `proj.title||'콘텐츠'` 폴백. brief 생성 보장 + 에러 시 텔레그램 즉시 알림.
-- **T3 런타임 에러 텔레그램(P2)**: `sendRuntimeErrorTelegram(action, message, project_id)` 헬퍼 추가. `generateVideoExecutionBrief` catch + `runQA` fail 지점 연결. PII 제외.
-- **Tiger 활성화**: 진행 중 프로젝트 2개 tiger_enabled=true (인스타그램 마케팅 자동화 상품 판매, E2E 라이브).
-- **빌드 완료**: `corepack yarn build @l5/plugin-orchestration` 성공(7.48s). NocoBase 재기동 HTTP 200 확인.
-- **미완료**: S2(CDP 재연결), S4(rebuild 스크립트), Q1(Viewtrap 키 내부 통합), Q4(말투 변환) — 다음 ACR Work Order 대상.
-- **산출물**: `.telegram-runs/1781243215426-275-cto/EXECUTION_REPORT.html`
-
-## 🟢 2026-06-12 — CMO 인사이트 루프 (유튜브 후킹 분석 자동화, services/cmo-insight-loop)
-
-사장님 지시("Hook Pattern Lab 방법론으로 매일 21시 영상 5개 자동 분석 → HTML 텔레그램 발송 → 피드백 반영 → 주 1회 세컨 브레인 적재") 구축·라이브.
-
-- **신규 서비스 `services/cmo-insight-loop/`**: `@l5/youtube` dist 재사용. `scripts/collect.mjs`(키워드 검색→쇼츠/비한글/중복 제외→조회수 상위 5개→메타+썸네일+자막, timedtext 빈응답 시 `youtube_transcript_api` 폴백) · `scripts/send-telegram.mjs`(토큰은 telegram-gateway plist에서 런타임 로드, sendDocument) · `scripts/sync-brain.mjs`(brain-queue.jsonl→썸끝원끝 Supabase `sc_brain_sync_queue`) · `scripts/embed-thumbs.py`(리포트에 썸네일 base64 주입).
-- **방법론 `METHOD.md`**: 중심 질문 "왜 봤는가" 1개 → 썸네일/제목/도입부30초 각각 변수 치환형 구조 공식 + 적용 루트(상품 기준 문구 초안까지). 원고 전문 분석 금지. **피드백 루프**: `data/guidelines.md`에 사장님 피드백 누적 → 매 분석 전 로드.
-- **스케줄(Cowork)**: `cmo-daily-insight`(매일 21시: 수집→Claude 분석→insights/<date>.md→reports/<date>.html→텔레그램) · `cmo-weekly-brain-sync`(일 22시: 주간 통합 claim→Supabase 적재). Claude 앱이 켜져 있어야 실행됨.
-- **E2E 실증(2026-06-12)**: 실수집 5개(스티브의 파도타기 주식비서 등) → 분석 → 978KB HTML 리포트 → 텔레그램 수신 OK. 첫 통합 인사이트: "증거 우선 — 결과물 실물 화면을 썸네일·도입부 첫 5초에".
-- **함정**: (1) 검색결과에 힌디/영어 혼입 → `requireKorean` 한글 필터 추가. (2) timedtext 자막이 전부 빈 본문 → python `youtube_transcript_api` 폴백이 사실상 주 경로. (3) Supabase 휴면(INACTIVE) 잦음 → 주간 동기화 시 restore_project 후 재시도.
-
-## 🟢 2026-06-12 — 영상 일괄 렌더(video-batch-render) + 텔레그램 알림
-
-사장님 지시("승인만 다 해두면 알아서 영상이 만들어지고 텔레그램으로 알림"). 동시 병렬 렌더는 의도적 배제 — Remotion이 잡 내부에서 CPU 병렬화하므로 잡 단위는 **순차**가 더 빠르고 번들 캐시 경합도 없음.
-
-- **l5-core `video-room/batch-render.ts`(신규)**: `planBatchRender`(status=rendering + observed=queued만 선별, failed는 자동 재시도 금지·사람 확인, slug 멱등 dedup) + `summarizeBatchRender`(텔레그램 메시지, 0건이면 null=알림 스팸 방지, QA fail은 warn). jest 13/13.
-- **hermes `tasks/video-batch-render.ts`(신규)**: 주입 deps(fetchCandidates/renderJob/reconcile/notify)로 순차 실행, 1건 실패해도 계속. jest 6/6.
-- **hermes `runner.ts` `runVideoBatchRenderLive`**: `video_room_projects(status=rendering)` 조회 → `cmo:getRenderStatus`로 slug/job_path/관찰상태 수집 → factory에서 `npx tsx scripts/render-final-v2.ts --job <path>` spawn(타임아웃 기본 30분, `VIDEO_RENDER_TIMEOUT_MS`) → 렌더 후 `cmo:getRenderStatus` 재호출(DB 반영+rendering→qa 자동 전진) → `notifier/telegram` 요약 1건. nocobase-client에 `fetchRenderingVideoProjects`/`fetchCmoRenderStatus` 추가.
-- **데몬**: `services/hermes-runtime/scripts/video-batch-render-daemon.mjs`(`--once` 지원, 기본 5분 폴링, 사이클 겹침 없음) + `launchd/com.l5.video-batch-render.plist`(시크릿은 PlistBuddy 주입, 커밋 금지).
-- **가동 방법**: ① `pnpm --filter @l5/core build && pnpm --filter @l5/hermes-runtime build` ② plist를 `~/Library/LaunchAgents`에 복사 후 NOCOBASE_TOKEN/TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID 주입 → `launchctl load`. 업로드는 기존 승인 게이트 그대로(여기서 외부 액션 없음 — 렌더는 로컬 D1).
-- 검증: l5-core/hermes 양쪽 tsc·jest·build GREEN. 실 렌더 관통은 다음 'rendering' 프로젝트에서 데몬 `--once`로 확인 권장.
-
-## 🟢 2026-06-12 — 마스터 HTML §14 전수 구현 + B1~B7 + 신규 프로젝트 라이브 E2E 업로드 직전 관통
-
-사장님 지시("HTML 정리 내용 빠짐없이 기능 + 7가지 보강 + 새 프로젝트 E2E 업로드 직전까지, 오류는 그 자리에서 수정") 완수.
-
-**구현 (4개 병렬 워크스트림)**
-- **B1~B7 (l5-core `video-room/thumbnail-develop.ts` 신규)**: 이미지 디벨롭 6기술(`developThumbnailImage`·`learnThumbnailPatternsFromReferences`=레퍼런스 자동 학습) · 채널 시청층 정합(`channel_audience_profile`+`judgeThumbnailAudienceFit`) · 문구에 제목기술 재적용(`developThumbnailTextWithTitleTechniques`) · 썸네일↔도입부 강도 연동(`scoreIntroHookStrength`+`evaluateHookIntensityAlignment`) · 디벨롭 자가 재귀 점검(`evaluateDevelopImprovement`) · 채널 우선 발굴(`buildChannelFirstDiscoveryPlan`+`selectAudienceChannels`) · 폰트 라이선스 검수. jest 신규 41 + 회귀 189 GREEN.
-- **@l5/youtube**: `uploadVideo`(videos.insert resumable, **자동 호출 금지** 주석) · `updateVideoMetadata`(제목 교체용) · `collectHotVideoCandidates`(핫비디오 프록시) · `collectThumbnailReferences` · `searchChannels`/`getChannelTopVideos`. jest 90/90.
-- **plugin 배선**: `proposeTitleDevelopment` 레퍼런스 자동 발굴+hot_videos 주입(갭#2/#3) · 신규 7액션 `learnThumbnailReferences`/`developThumbnailCandidate`/`reviewThumbnail`/`channelFirstDiscovery`/`evaluateHookAlignment`/`checkSwapSignals`(갭#10+#11, 텔레그램)/`publishUpload`(갭#9, confirm+status 가드, D3) · `proposeThumbnailMatrix`에 시청층 프로필+학습 패턴 자동 로드.
-- **founder-ui**: `HookApprovalBoard`(승인③ 제목+썸네일+도입부 통합, 갭#5) · ThumbnailMatrixBoard 검수/디벨롭/레퍼런스 학습 버튼(갭#6) · api 5함수.
-
-**라이브 E2E (신규 프로젝트 7e30e253, `apps/founder-ui/e2e/full-pipeline-live.mjs`)**
-`createProject → loadPTContext → 상품정의 → 키 보고서(실검색) → 승인① → 풀링 보고서 → 승인② → 제목 디벨롭(자동 발굴+2차 확장) → 레퍼런스 학습 → 9개 매트릭스 → 썸네일 커밋 → hook 정렬 → 승인③ → 원고 → 승인④ → 녹음(say) → 슬라이드덱 → 실 렌더(Remotion, video.mp4 548KB) → QA → 승인⑤ → 업로드 초안(private) → **upload_approval 도달**`. publishUpload 미호출(승인⑥ 대기 = 업로드 직전 정지).
-
-**E2E 중 발견·수정한 오류 (7건)**
-1. `loadPTContext` rules 미입력 400 전체 정지 → l5-core `derivePTRules`(LLM→강의 기본 규칙 폴백) + source_refs 3개 미만 보충. jest 3/3.
-2. **CDP RPC 무한 대기(30분 행 근본 원인)** — `RawCdpConnection.send` pending에 타임아웃 없음 → 60s 타임아웃 + ws close 시 전체 reject (`CDP_RPC_TIMEOUT_MS`). viewtrap jest 31/31.
-3. HTTP 5분 단절(undici/서버) 시 클라이언트만 죽음 → E2E `callOrPoll`(fetch 실패/409 → 기대 카드 폴링 회수).
-4. 제목 레퍼런스 자동 발굴 후보 1개 실패 → `discoverTitleReferences`에 **2차 의미범위 확장**(`deps.expandQueries`, plugin은 sonnet 주입). jest 15/15.
-5. 드라이버 thumbnail plan `candidate_id` 키 매핑.
-6. 동기 자식 실행 후 keep-alive 끊김 fetch failed → 1회 재시도.
-7. `createUploadDraft` brief 부재 시 title 필요 → 확정 제목 전달.
-
-**잔여(마이너)**: ① `generateVideoExecutionBrief`/`sendBriefToFactory` 400(연구팩 의존 추정 — 슬라이드덱은 script_draft 폴백 정상, 후속 확인) ② `learnThumbnailReferences` 해당 주제 적격 0건(graceful) ③ CTR은 구글 리포트 백필 대기 ④ 실 썸네일 이미지 제작·이미지 크롤러는 MVP 밖 유지 ⑤ founder-ui 신규 보드 Playwright 스모크 권장.
+> docs/cmo/HANDOFF.md 300줄 규칙에 따라 2026-07-12에 이관. 원문 그대로 보존.
 
 ## 🟢 2026-06-11 — E2E 전체 워크플로우 마스터 HTML 작성 (PRD 6종 전수 + 구현 대조, 코드 무수정)
 
@@ -322,14 +263,3 @@ Brief 전달(R6) 이후가 전부 연결됨. 도메인은 전부 `l5-core/src/fu
 
 ---
 
-## 환경/함정 메모
-
-- CDP 운전: 크롬은 같은 프로필 동시 2개 불가 → 평소 크롬 종료 후 복사 디렉토리(`~/chrome-cdp`)로 디버그 기동.
-- Viewtrap 인증 인메모리 → 로그인 탭 새로고침 금지(로그아웃됨). in-app 조작만.
-- GCP 콘솔 org policy: API 키 생성 시 API restriction 강제 선택. OAuth Testing 모드는 test user 등록 필수(firstpulk0543).
-- 새 GCP UI는 client_secret 재조회 불가 → 생성 시 즉시 저장(또는 secret 추가로 재발급).
-- Playwright `connectOverCDP`는 download 이벤트/context 관리 일부 미지원 → secret은 클립보드 복사로 우회.
-
-## 실증 스크립트 (임시, /tmp)
-
-`/tmp/cdp-*.mjs` (CDP 크롤링·OAuth 플로우), `/tmp/oauth-token.json`(토큰 원본). 정식 배선 시 `services/youtube/`로 이관 — [TASKS.md](./TASKS.md) M2.

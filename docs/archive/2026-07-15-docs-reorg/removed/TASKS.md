@@ -1,7 +1,14 @@
 # TASKS — L5 Business OS MVP
 
 > 상태 범례: `[x]` 구현+검증 완료 · `[~]` 부분 구현/검증 필요 · `[ ]` 미착수
-> 최종 업데이트: 2026-07-09 (CTO 판단·실행 하네스 R/S 트랙 구현). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+> 최종 업데이트: 2026-07-12 (비즈니스PT 매니저 앱 + NocoBase 복구 + SDK 폴백). 제품 방향은 chat-first CEO orchestration + agent execution + executive monitoring으로 고정한다.
+
+## 🖥 비즈니스PT 매니저 앱 + 인프라 복구 (2026-07-12) — 상세 = docs/cmo/TASKS.md · features/bizpt-manager.md
+
+- [x] **앱 신설·라이브** — `apps/bizpt-manager/`(Next.js·3003·launchd 상시 가동) 라이브 배선(승인 큐·파이프라인·상세) + founder-ui 링크 + Playwright 스모크 2종 PASS + KB 12문서 `docs/cmo/prd/bizpt-kb/` 반입.
+- [x] **NocoBase 복구** — node_modules(@nocobase/server 등) 소실로 죽어 있던 것 yarn 재설치로 복구. ⚠️ 루트 yarn install 금지.
+- [x] **LLM 정책 단일화** — `buildLLMClient`: ANTHROPIC_API_KEY 없으면 claude CLI(sonnet·OAuth·240s) 폴백(launchd LLM 전멸 수정). createSdkLlmClient는 위임. dist 재빌드+재기동.
+- [x] **실가동 루프 ×5 완료** — 실제 영상 3편 산출, 결함 6건 발견·5건 수정(키워드 일반명사화·원고 LLM 생성+가드 jest 12·슬라이드 실원고 폴백 등). 최종: 도입부 185자·본론 2,249자·영상 9.8MB·KB 대조 PASS 11/FAIL 3. 잔여 = docs/cmo/HANDOFF.md. **전부 미커밋.**
 
 ## 🧠 CTO 판단·실행 하네스 강화 — R/S 트랙 (2026-07-09)
 

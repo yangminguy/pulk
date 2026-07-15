@@ -1,47 +1,41 @@
-# L5 Business OS Development Docs
+# L5 Business OS
 
-이 패키지는 `L5_Business_OS_PRD_v2_OpenSource_DataGovernance.md`를 기반으로 생성한 개발 문서 세트입니다.
+Founder가 채팅으로 방향을 잡으면 CEO Agent가 임원 Agent들에게 과제를 분배해 병렬 실행하고, Founder는 진행상황과 승인만 하는 AI 회사 운영체계.
 
-## 문서 구성
+## 시작하기
 
-```text
-/project-root
-  CLAUDE.md
-  AGENTS.md
-  docs/
-    PRD.md
-    ARCHITECTURE.md
-    DATA_MODEL.md
-    API.md
-    TASKS.md
-    HANDOFF.md
-    DECISIONS.md
-    AGENT_PROTOCOL.md
-    HERMES_SPEC.md
-    WORKFLOW_FACTORY_SPEC.md
-    OPEN_SOURCE_INTEGRATION.md
-    SECURITY_DATA_GOVERNANCE.md
-    QA_CHECKLIST.md
-  schemas/
-    l5_entities.json
-  prompts/
-    implementation_prompt.md
+1. `CLAUDE.md`를 먼저 읽는다 (프로젝트 개요, 문서 체계, 개발 규칙).
+2. `docs/ARCHITECTURE.md`에서 전체 문서 구조와 저장소 폴더 트리를 확인한다.
+3. `docs/PRD.md` → `docs/TRD.md` → `docs/USER_FLOW.md` 순서로 읽는다.
+4. `docs/TASK.md`에서 지금 해야 하는 일을 확인한다.
+
+## 개발 명령
+
+```bash
+pnpm install
+pnpm dev:all        # 전체 워크스페이스 dev
+pnpm qa:static       # typecheck + lint + build
+pnpm qa:test         # 전체 유닛테스트
+pnpm qa:all          # 정적검사 + 테스트 + e2e 전체
 ```
 
-## 권장 사용법
+앱별로 개별 실행하려면 `apps/founder-ui`, `apps/bizpt-manager`, `apps/nocobase-app` 각각의 `package.json` 스크립트를 참고한다.
 
-1. Claude Code 또는 Cursor 프로젝트 루트에 이 패키지를 복사한다.
-2. `CLAUDE.md`를 먼저 읽게 한다.
-3. 구현 전 `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/TASKS.md` 순서로 읽게 한다.
-4. Phase 1부터 작은 단위로 구현한다.
+## 문서 구조
 
-## 핵심 구현 원칙
-
-- NocoBase는 MVP Shell이다.
-- L5 Core는 NocoBase와 독립되어야 한다.
-- Mastra는 Agent Runtime이다.
-- Trigger.dev는 Hermes Runtime이다.
-- Langfuse는 LLM 관측 도구다.
-- Formbricks는 PMF 신호 수집용이다.
-- Activepieces는 외부 자동화 연결용이다.
-- 고객 PII와 재사용 가능한 Business Insight는 반드시 분리한다.
+```text
+CLAUDE.md
+AGENTS.md
+docs/
+  ARCHITECTURE.md   # 문서 인덱스, 저장소 구조
+  PRD.md            # 제품 요구사항
+  TRD.md            # 기술 구조 (+ trd/)
+  USER_FLOW.md      # 사용자 동선
+  DB_DESIGN.md      # 데이터 모델 (+ db-design/)
+  SCREEN.md         # 화면 목록 (+ screen/)
+  TASK.md           # 해야 하는 일
+  CODING_CONVENTION.md
+  archive/          # 과거 문서 보관
+schemas/
+  l5_entities.json
+```
