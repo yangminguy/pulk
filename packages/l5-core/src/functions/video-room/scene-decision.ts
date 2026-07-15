@@ -28,8 +28,10 @@ export const CHARS_PER_SECOND = 5.5;
 export const SCENE_MIN_SECONDS = 3;
 /** 씬 duration 상한 — 페이싱 개선 목표(기존 20초 정적 씬 금지). */
 export const SCENE_MAX_SECONDS = 12;
-/** 페이싱 목표 하한(초). hero는 이 하한을 하드 클램프로 사용. */
+/** 페이싱 목표 하한(초). */
 export const SCENE_TARGET_MIN_SECONDS = 8;
+/** hero duration 하한 — 캡션 글자수 기반(F2). 짧은 훅 캡션(예: 15자)에 8초 고정 배정 금지. */
+export const HERO_MIN_SECONDS = 4;
 
 const TARGET_MAX_CHARS = Math.round(SCENE_MAX_SECONDS * CHARS_PER_SECOND); // 66
 const TARGET_MIN_CHARS = Math.round(SCENE_TARGET_MIN_SECONDS * CHARS_PER_SECOND); // 44
@@ -84,6 +86,13 @@ export function estimateSceneSeconds(text: string): number {
   const chars = (text ?? '').trim().length;
   const raw = Math.round(chars / CHARS_PER_SECOND);
   return Math.min(SCENE_MAX_SECONDS, Math.max(SCENE_MIN_SECONDS, raw));
+}
+
+/** hero 캡션 글자수÷5.5 초 추정, [4, 12] 클램프(F2: 8초 고정 하한이 만들던 무음 공백 제거). */
+export function estimateHeroSeconds(text: string): number {
+  const chars = (text ?? '').trim().length;
+  const raw = Math.round(chars / CHARS_PER_SECOND);
+  return Math.min(SCENE_MAX_SECONDS, Math.max(HERO_MIN_SECONDS, raw));
 }
 
 export interface PacedChunk {
@@ -152,31 +161,83 @@ export function paceSpeakerText(raw: string): PacedChunk[] {
 
 // ── 2. 헤드라인/바디 축약 ────────────────────────────────────────────────────
 
-const HEADLINE_MAX_CHARS = 36;
+/** headline 최대 길이 — 화면 두 줄 이내(F3 재검: 36 → 40). */
+const HEADLINE_MAX_CHARS = 40;
 
 const LEADING_CONJUNCTIONS =
   /^(?:그러니까|그런데|근데|그리고|하지만|그래서|사실|실제로|그럼|이제|즉|또한?|먼저)[,\s]+/;
 
-/** 흔한 종결어미를 걷어 핵심 구문으로 만든다(남는 길이가 충분할 때만). */
+/**
+ * 어미 제거 결과가 잘린 활용형인지 검사(F3).
+ * kind=verb: 동사성 어미를 뗀 자리 — 어간 꼬리(늘/짚어/않/있 …)로 끝나면 제거 포기.
+ * kind=noun: 명사 뒤 계사/존재("예요/이 있다")를 뗀 자리 — 명사의 어아여 종결("마니아")은 정상.
+ */
+function isDanglingStemResult(s: string, kind: 'noun' | 'verb'): boolean {
+  const lastToken = s.split(/\s+/).pop() ?? '';
+  if (lastToken.length < 2) return true; // "늘", "가" 같은 1글자 어간
+  if (/(?:지\s*않|지\s*못|않|못|있|없)$/.test(s)) return true; // 잘린 부정/존재 어간
+  if (kind === 'verb' && /[어아여워]$/.test(s)) return true; // 잘린 활용형("짚어", "새어")
+  return false;
+}
+
+/** 흔한 종결어미를 걷어 핵심 구문으로 만든다(남는 길이가 충분하고 잘린 어간이 아닐 때만). */
 export function stripSentenceEnding(clause: string): string {
-  let s = clause.trim().replace(/[.!…]+$/, '');
-  const patterns: RegExp[] = [
-    /(?:이|가)\s*있(?:습니다|어요|다|거든요)$/,
-    /(?:입니다|이에요|예요|인데요|이죠|이다|라는\s*거예요|인\s*거예요)$/,
-    /(?:합니다|습니다|거든요|잖아요|하겠습니다|할게요|드릴게요|해야\s*해요|해야\s*돼요)$/,
-    /(?:했어요|됐어요|였어요|았어요|었어요|해요|돼요|와요|가요|어요|아요|에요|죠)$/,
-    /(?:한다|된다|이다|는다)$/,
+  const s = clause.trim().replace(/[.!…]+$/, '');
+
+  // "-고 있어요/있습니다" 진행형은 명사형(-기)으로 변환("올리고 있어요" → "올리기").
+  const nominal = s.replace(/([가-힣]+)고\s+있(?:습니다|어요|다|거든요|네요|죠)$/, '$1기');
+  if (nominal !== s && nominal.length >= 6) return nominal;
+
+  const patterns: Array<{ re: RegExp; kind: 'noun' | 'verb' }> = [
+    { re: /(?:이|가)\s*있(?:습니다|어요|다|거든요)$/, kind: 'noun' },
+    { re: /\s+있(?:습니다|어요|다|거든요|네요|죠)$/, kind: 'noun' }, // "하나 있거든요" → "하나"
+    { re: /(?:입니다|이에요|예요|인데요|이죠|이다|라는\s*거예요|인\s*거예요)$/, kind: 'noun' },
+    { re: /(?:합니다|습니다|거든요|잖아요|하겠습니다|할게요|드릴게요|해야\s*해요|해야\s*돼요)$/, kind: 'verb' },
+    { re: /(?:했어요|됐어요|였어요|았어요|었어요|해요|돼요|와요|가요|어요|아요|에요|죠)$/, kind: 'verb' },
+    { re: /(?:한다|된다|이다|는다)$/, kind: 'verb' },
   ];
-  for (const p of patterns) {
-    const next = s.replace(p, '').trim();
-    if (next !== s && next.length >= 6) return next;
+  for (const { re, kind } of patterns) {
+    const next = s.replace(re, '').trim();
+    if (next !== s && next.length >= 6 && !isDanglingStemResult(next, kind)) return next;
   }
-  return s;
+  return s; // 자연스럽게 못 줄이면 온전한 어미 그대로 둔다("늘지 않는다", "늘었어요").
+}
+
+/**
+ * 잘린 어간/연결어미/다자 조사로 끝나 화면 headline로 부자연스러운지 검사(F3 휴리스틱).
+ * 자연 종결(명사구 마무리, 온전한 어미, 물음)은 통과한다.
+ */
+export function hasBrokenHeadlineEnding(text: string): boolean {
+  const t = (text ?? '').trim().replace(/["'“”‘’]+$/, '');
+  if (!t) return false;
+  if (/(?:지\s*않|지\s*못|않|못|있|없)$/.test(t)) return true; // 잘린 부정/존재 어간
+  if (/(?:는데|은데|다가|면서|지만|거나|려면)$/.test(t)) return true; // 연결어미
+  if (/(?:까지|부터|에서|에게|한테|처럼|보다|마다|조차|밖에)$/.test(t)) return true; // 다자 조사
+  return false;
+}
+
+/** 잘린 어미로 끝나면 어절 단위로 걷어내 자연 종결로 복구한다(복구 불가 시 어미 포함 폴백). */
+function repairDanglingEnding(s: string, naturalFallback: string): string {
+  if (!hasBrokenHeadlineEnding(s)) return s;
+  let t = s;
+  while (hasBrokenHeadlineEnding(t)) {
+    const cut = t.replace(/\s*\S+$/, '').trim();
+    if (cut.length < 6) {
+      return naturalFallback.length > 0 &&
+        naturalFallback.length <= HEADLINE_MAX_CHARS &&
+        !hasBrokenHeadlineEnding(naturalFallback)
+        ? naturalFallback
+        : s;
+    }
+    t = cut;
+  }
+  return t;
 }
 
 /**
  * 문장에서 핵심 구문 headline을 뽑는다(전문 복붙·"…" 자름 금지):
- * 접속사 제거 → 쉼표 절 중 마지막(또는 길이 적합) 절 선택 → 종결어미 제거.
+ * 접속사 제거 → 쉼표 절 중 마지막(또는 길이 적합) 절 선택 → 종결어미 제거
+ * → 잘린 어미 복구(항상 명사구 마무리 또는 온전한 어미로 종결, F3).
  */
 export function condenseHeadline(text: string): string {
   const first = splitSentences(stripScriptArtifacts(text))[0] ?? stripScriptArtifacts(text);
@@ -196,6 +257,9 @@ export function condenseHeadline(text: string): string {
     }
   }
 
+  // 어미 포함 자연 종결 폴백(복구 실패 시 사용).
+  const natural = s.replace(/[.!…]+$/, '').replace(/["'“‘”’]/g, '').trim();
+
   s = stripSentenceEnding(s);
 
   // 그래도 길면 마지막 어절 경계에서 줄인다(말줄임표 금지).
@@ -204,7 +268,22 @@ export function condenseHeadline(text: string): string {
     const boundary = cut.lastIndexOf(' ');
     s = (boundary >= 10 ? cut.slice(0, boundary) : cut).trim();
   }
-  return s.replace(/["'“‘”’]/g, '').trim() || stripScriptArtifacts(text).slice(0, HEADLINE_MAX_CHARS).trim();
+
+  s = repairDanglingEnding(s.replace(/["'“‘”’]/g, '').trim(), natural);
+  return s || stripScriptArtifacts(text).slice(0, HEADLINE_MAX_CHARS).trim();
+}
+
+/**
+ * body/subtitle이 caption(나레이션 전문)과 사실상 동일하면 비운다(F3: 화면 텍스트는 핵심만,
+ * 전문은 음성·자막). body는 caption 문장들에서 파생되므로 정규화 글자수 비 80% 이상이면
+ * 중복으로 보고 빈 문자열을 반환한다(팩토리 스키마상 optional 필드).
+ */
+export function dedupeBodyAgainstCaption(body: string, caption: string): string {
+  const nb = normalizeForDedupe(body);
+  const nc = normalizeForDedupe(caption);
+  if (nb.length === 0 || nc.length === 0) return body;
+  if (nb === nc || nb.length / nc.length >= 0.8) return '';
+  return body;
 }
 
 /** 문단 전문 금지 — 핵심 문장 최대 2개를 축약해 바디로 만든다. */
@@ -838,7 +917,8 @@ function draftToBeat(
   const { type, chunk } = draft;
   const headline = condenseHeadline(chunk.sentences[0] ?? chunk.text);
   const caption = chunk.text;
-  const body = condenseBody(chunk.sentences);
+  // F3: body가 caption(자막/나레이션)과 사실상 동일하면 비운다 — 화면 텍스트는 핵심만.
+  const body = dedupeBodyAgainstCaption(condenseBody(chunk.sentences), caption);
 
   const beat: ScriptBeat = {
     scene_id: `scene_${String(index + 1).padStart(2, '0')}`,
@@ -992,7 +1072,7 @@ function finalizeBeats(drafts: PlannedSceneDraft[], offset = 0, total?: number):
 
 /**
  * VideoExecutionBrief → factory ScriptBeat[] 전체 계획.
- *   [0] hero(제목 + 인트로 첫 구간, duration 8~12 하드 클램프)
+ *   [0] hero(제목 + 인트로 첫 구간, duration은 캡션 글자수 기반 4~12 클램프)
  *   [1..n] 논리블록 페이싱 분할 씬들(다양한 타입 + 밸런싱)
  *   [n+1] (pulling+bridge) section
  *   [last] cta 보장(마지막 chunk가 행동 촉구면 그것을 cta로, 아니면 합성)
@@ -1049,19 +1129,16 @@ export function planScenesFromBrief(
 
   const beats: ScriptBeat[] = [];
 
-  // [0] hero
+  // [0] hero — duration은 캡션 글자수 기반(F2), subtitle은 캡션 중복 시 비움(F3).
   const heroHeadline = ctx.title.trim();
   beats.push({
     scene_id: 'scene_01',
     scene_type: 'hero',
     rhythm_role: 'hook',
     headline: heroHeadline,
-    subtitle: condenseHeadline(heroCaption),
+    subtitle: dedupeBodyAgainstCaption(condenseHeadline(heroCaption), heroCaption),
     speaker_text: heroCaption,
-    duration: Math.min(
-      SCENE_MAX_SECONDS,
-      Math.max(SCENE_TARGET_MIN_SECONDS, Math.round(heroCaption.length / CHARS_PER_SECOND)),
-    ),
+    duration: estimateHeroSeconds(heroCaption),
     emphasis: extractEmphasis(heroHeadline, heroCaption),
     mood: pickMood('hero'),
     transition: pickTransition('hero', 0),
@@ -1080,7 +1157,7 @@ export function planScenesFromBrief(
       headline: '다음 영상으로',
       title: '다음 영상으로',
       number: '99',
-      body: condenseHeadline(bridge),
+      body: dedupeBodyAgainstCaption(condenseHeadline(bridge), bridge),
       speaker_text: bridge,
       duration: estimateSceneSeconds(bridge),
       emphasis: extractEmphasis('다음 영상으로', bridge),
@@ -1156,12 +1233,9 @@ export function planScenesFromSlides(slides: SlideSpec[]): ScriptBeat[] {
       scene_type: 'hero',
       rhythm_role: 'hook',
       headline: heroSlide.headline,
-      subtitle: condenseHeadline(heroCaption),
+      subtitle: dedupeBodyAgainstCaption(condenseHeadline(heroCaption), heroCaption),
       speaker_text: heroCaption,
-      duration: Math.min(
-        SCENE_MAX_SECONDS,
-        Math.max(SCENE_TARGET_MIN_SECONDS, Math.round(heroCaption.length / CHARS_PER_SECOND)),
-      ),
+      duration: estimateHeroSeconds(heroCaption),
       emphasis: extractEmphasis(heroSlide.headline, heroCaption),
       mood: pickMood('hero'),
       transition: pickTransition('hero', 0),

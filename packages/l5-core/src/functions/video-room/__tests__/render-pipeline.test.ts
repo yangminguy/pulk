@@ -180,7 +180,9 @@ describe('slideDeckSpecToScriptBeats / buildFactoryJobFromSlideDeck', () => {
     const beats = slideDeckSpecToScriptBeats(spec);
     expect(beats[0].scene_type).toBe('hero');
     expect(beats[0].rhythm_role).toBe('hook');
-    expect(beats[0].duration).toBeGreaterThanOrEqual(8); // 인트로 전문 20초 금지
+    // F2: hero duration은 캡션 글자수 기반(4~12 클램프) — 8초 고정 하한 제거, 20초 전문 금지 유지.
+    expect(beats[0].duration).toBeGreaterThanOrEqual(4);
+    expect(beats[0].duration).toBeLessThanOrEqual(12);
     expect(beats.some((b) => b.scene_type === 'comparison')).toBe(true); // 비교 차트 hint
     const last = beats[beats.length - 1];
     expect(last.scene_type).toBe('cta');

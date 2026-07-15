@@ -7,9 +7,13 @@ import {
   stripScriptArtifacts,
   splitSentences,
   estimateSceneSeconds,
+  estimateHeroSeconds,
   paceSpeakerText,
   condenseHeadline,
   condenseBody,
+  dedupeBodyAgainstCaption,
+  hasBrokenHeadlineEnding,
+  stripSentenceEnding,
   countMetricSignals,
   countComparisonSignals,
   countSequenceSignals,
@@ -38,7 +42,7 @@ import {
   planScenesFromSlides,
   noopScenePlanRefiner,
   SCENE_MAX_SECONDS,
-  SCENE_TARGET_MIN_SECONDS,
+  HERO_MIN_SECONDS,
   type ScenePlanRefiner,
 } from '../scene-decision';
 
@@ -115,6 +119,16 @@ describe('estimateSceneSeconds', () => {
   });
 });
 
+describe('estimateHeroSeconds (F2)', () => {
+  it('is caption-length based with [4, 12] clamp — no fixed 8s floor', () => {
+    // 실측 결함: 15자 훅 캡션("인스타 매일 올리고 있어요.")에 8초 배정 → 5초+ 무음 공백.
+    expect(estimateHeroSeconds('인스타 매일 올리고 있어요.')).toBe(HERO_MIN_SECONDS);
+    expect(estimateHeroSeconds('인스타 매일 올리고 있어요.')).toBeLessThanOrEqual(5);
+    expect(estimateHeroSeconds('가'.repeat(55))).toBe(10);
+    expect(estimateHeroSeconds('가'.repeat(500))).toBe(SCENE_MAX_SECONDS);
+  });
+});
+
 describe('paceSpeakerText', () => {
   const longText = Array.from({ length: 10 }, (_, i) => `문장 번호 ${i}번이고 대략 서른 글자쯤 되는 설명 문장입니다.`).join(' ');
 
@@ -151,7 +165,7 @@ describe('condenseHeadline', () => {
     const h = condenseHeadline(src);
     expect(h).not.toBe(src);
     expect(h).not.toContain('…');
-    expect(h.length).toBeLessThanOrEqual(36);
+    expect(h.length).toBeLessThanOrEqual(40); // 화면 두 줄 이내(F3 재검)
     expect(h.length).toBeGreaterThan(0);
   });
 
@@ -161,6 +175,112 @@ describe('condenseHeadline', () => {
 
   it('never contains script artifacts', () => {
     expect(condenseHeadline('--- 구획 뒤 제목입니다.')).not.toContain('---');
+  });
+
+  // ── F3: 어미 잘림 방지(실측 결함 문장 기반) ──────────────────────────────
+  describe('natural ending guarantee (F3)', () => {
+    it('keeps "늘지 않는다" intact instead of truncating to "늘지 않" (실측 결함)', () => {
+      const src =
+        '릴스도 찍고, 해시태그도 꼼꼼히 달고, 심지어 광고까지 돌려봤는데 신규 손님 예약만큼은 늘지 않는다.';
+      const h = condenseHeadline(src);
+      expect(h).not.toMatch(/않$/);
+      expect(h).toMatch(/않는다$/);
+      expect(hasBrokenHeadlineEnding(h)).toBe(false);
+    });
+
+    it('does not leave a bare "있" stem ("함정이 하나 있거든요" 계열, 실측 결함)', () => {
+      const h = condenseHeadline(
+        '사실 인스타를 열심히 올릴수록 더 깊이 빠져드는 구조적 함정이 하나 있거든요.',
+      );
+      expect(h).not.toMatch(/있$/);
+      expect(hasBrokenHeadlineEnding(h)).toBe(false);
+    });
+
+    it('does not leave a conjugated stem like "짚어" ("짚어드릴게요" 계열, 실측 결함)', () => {
+      const h = condenseHeadline(
+        '오늘은 팔로워가 왜 예약으로 이어지지 않는지, 그 메커니즘을 끝까지 정확하게 짚어드릴게요.',
+      );
+      expect(h).not.toMatch(/짚어$/);
+      expect(hasBrokenHeadlineEnding(h)).toBe(false);
+    });
+
+    it('nominalises the progressive "-고 있어요" instead of truncating to "-고 있"', () => {
+      const h = condenseHeadline('인스타 매일 올리고 있어요.');
+      expect(h).toBe('인스타 매일 올리기');
+    });
+
+    it('keeps a full ending when stripping would leave a 1-char stem ("늘었어요")', () => {
+      const h = condenseHeadline('다음 달 신규 예약이 두 배 이상 늘었어요.');
+      expect(h).toMatch(/늘었어요$/);
+      expect(hasBrokenHeadlineEnding(h)).toBe(false);
+    });
+
+    it('still strips noun-attached copulas cleanly ("마니아예요" → "마니아")', () => {
+      const h = condenseHeadline('헤어에 진심인 극소수의 마니아예요.');
+      expect(h).toMatch(/마니아$/);
+      expect(hasBrokenHeadlineEnding(h)).toBe(false);
+    });
+  });
+});
+
+describe('stripSentenceEnding (F3 dangling-stem guard)', () => {
+  it('refuses strips that would end in 않/못/있/없 stems', () => {
+    expect(stripSentenceEnding('신규 손님 예약만큼은 늘지 않는다')).toBe('신규 손님 예약만큼은 늘지 않는다');
+  });
+
+  it('refuses strips that would end in a 1-char stem', () => {
+    expect(stripSentenceEnding('다음 달 신규 예약이 두 배 이상 늘었어요')).toBe(
+      '다음 달 신규 예약이 두 배 이상 늘었어요',
+    );
+  });
+
+  it('converts "-고 있다" progressives to the nominal "-기" form', () => {
+    expect(stripSentenceEnding('인스타 매일 올리고 있어요')).toBe('인스타 매일 올리기');
+  });
+
+  it('removes noun-attached "있거든요" as a unit ("하나 있거든요" → "하나")', () => {
+    expect(stripSentenceEnding('구조적 함정이 하나 있거든요')).toBe('구조적 함정이 하나');
+  });
+
+  it('still strips noun copulas ("마니아예요" → 명사 종결 유지)', () => {
+    expect(stripSentenceEnding('극소수의 마니아예요')).toBe('극소수의 마니아');
+  });
+});
+
+describe('hasBrokenHeadlineEnding', () => {
+  it('flags truncated stems, connectives, and multi-char particles', () => {
+    expect(hasBrokenHeadlineEnding('예약만큼은 늘지 않')).toBe(true);
+    expect(hasBrokenHeadlineEnding('인스타 매일 올리고 있')).toBe(true);
+    expect(hasBrokenHeadlineEnding('심지어 광고까지 돌려봤는데')).toBe(true);
+    expect(hasBrokenHeadlineEnding('심지어 광고까지')).toBe(true);
+  });
+
+  it('passes natural endings (명사구·온전한 어미·물음)', () => {
+    expect(hasBrokenHeadlineEnding('예약만큼은 늘지 않는다')).toBe(false);
+    expect(hasBrokenHeadlineEnding('팔로워에서 예약까지 가는 다리')).toBe(false);
+    expect(hasBrokenHeadlineEnding('극소수의 마니아')).toBe(false); // 명사의 "아" 종결은 정상
+    expect(hasBrokenHeadlineEnding('이게 왜 그럴까요?')).toBe(false);
+    expect(hasBrokenHeadlineEnding('')).toBe(false);
+  });
+});
+
+describe('dedupeBodyAgainstCaption (F3)', () => {
+  const caption = '릴스도 찍고, 해시태그도 꼼꼼히 달고, 심지어 광고까지 돌려봤는데 늘지 않는다.';
+
+  it('empties a body that substantially duplicates the caption (≥80% 정규화 겹침)', () => {
+    expect(dedupeBodyAgainstCaption(caption, caption)).toBe('');
+    const nearDup = '릴스도 찍고 해시태그도 꼼꼼히 달고 심지어 광고까지 돌려봤는데 늘지 않';
+    expect(dedupeBodyAgainstCaption(nearDup, caption)).toBe('');
+  });
+
+  it('keeps a genuinely condensed body (<80%)', () => {
+    const condensed = '늘지 않는 구조적 이유';
+    expect(dedupeBodyAgainstCaption(condensed, caption)).toBe(condensed);
+  });
+
+  it('passes empty inputs through unchanged', () => {
+    expect(dedupeBodyAgainstCaption('', caption)).toBe('');
+    expect(dedupeBodyAgainstCaption('본문', '')).toBe('본문');
   });
 });
 
@@ -549,11 +669,43 @@ describe('capKineticTypoShare', () => {
 describe('planScenesFromBrief', () => {
   const beats = planScenesFromBrief(makeBrief());
 
-  it('starts with a hero clamped to 8~12s (no more 20s intro)', () => {
+  it('starts with a hero whose duration is caption-length based, 4~12s clamp (F2)', () => {
     expect(beats[0].scene_type).toBe('hero');
     expect(beats[0].rhythm_role).toBe('hook');
-    expect(beats[0].duration).toBeGreaterThanOrEqual(SCENE_TARGET_MIN_SECONDS);
+    expect(beats[0].duration).toBe(estimateHeroSeconds(beats[0].speaker_text));
+    expect(beats[0].duration).toBeGreaterThanOrEqual(HERO_MIN_SECONDS);
     expect(beats[0].duration).toBeLessThanOrEqual(SCENE_MAX_SECONDS);
+  });
+
+  it('gives a short 15-char hook caption ≤5s instead of a fixed 8s (F2 실측 결함)', () => {
+    const brief = makeBrief();
+    brief.script = {
+      ...brief.script,
+      intro_30s:
+        '인스타 매일 올리고 있어요. 릴스도 찍고 해시태그도 꼼꼼히 달고 심지어 광고까지 돌려봤는데 신규 손님 예약만큼은 늘지 않는다.',
+    };
+    const hero = planScenesFromBrief(brief)[0];
+    expect(hero.speaker_text).toBe('인스타 매일 올리고 있어요.');
+    expect(hero.duration).toBeLessThanOrEqual(5);
+    expect(hero.duration).toBeGreaterThanOrEqual(HERO_MIN_SECONDS);
+  });
+
+  it('never emits a headline/subtitle with a broken conjugation or particle ending (F3)', () => {
+    for (const b of beats) {
+      expect(hasBrokenHeadlineEnding(b.headline)).toBe(false);
+      if (b.subtitle) expect(hasBrokenHeadlineEnding(b.subtitle)).toBe(false);
+    }
+  });
+
+  it('never emits a body/subtitle that substantially duplicates the caption (F3)', () => {
+    const norm = (s: string) => (s ?? '').replace(/[\s.,!?…"'“”‘’-]/g, '');
+    for (const b of beats) {
+      const nc = norm(b.speaker_text);
+      for (const field of [b.body, b.subtitle]) {
+        if (!field || nc.length === 0) continue;
+        expect(norm(field).length / nc.length).toBeLessThan(0.8);
+      }
+    }
   });
 
   it('always ends with a cta and places pulling bridge as a section before it', () => {
@@ -696,7 +848,8 @@ describe('planScenesFromSlides (legacy spec path)', () => {
   it('keeps hero first, honours visual hints, and guarantees a trailing cta', () => {
     const beats = planScenesFromSlides(slides);
     expect(beats[0].scene_type).toBe('hero');
-    expect(beats[0].duration).toBeGreaterThanOrEqual(SCENE_TARGET_MIN_SECONDS);
+    expect(beats[0].duration).toBe(estimateHeroSeconds(beats[0].speaker_text)); // F2: 글자수 기반
+    expect(beats[0].duration).toBeGreaterThanOrEqual(HERO_MIN_SECONDS);
     expect(beats.some((b) => b.scene_type === 'comparison')).toBe(true);
     expect(beats[beats.length - 1].scene_type).toBe('cta');
     for (const b of beats) {
