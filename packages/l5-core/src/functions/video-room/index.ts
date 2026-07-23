@@ -144,3 +144,6 @@ export * from './image-sourcing';
 // 6주차 썸네일 강의·컨설팅 방법론 보강(B1~B6): 이미지 디벨롭 6기술·시청층 정합·문구 디벨롭·
 // 썸네일↔도입부 강도 연동·자가 재귀 점검·타깃 채널 우선 발굴.
 export * from './thumbnail-develop';
+
+// 비주얼 스토리보드 기획 — 오디오 EDL 타임라인 위에 구간별 비주얼(소스/이미지/HF클립) 배정. 순수.
+export * from './visual-storyboard';
