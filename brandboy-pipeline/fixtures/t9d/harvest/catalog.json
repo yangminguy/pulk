@@ -1,0 +1,32 @@
+[
+  {
+    "source_id": "src_001",
+    "title": "브랜드보이 공식 광고 공개 영상",
+    "publisher": "brandboy",
+    "original_url": "https://brand.example.com/official-reveal",
+    "published_at": "2024-05-01",
+    "kind": "official_video",
+    "rights_status": "licensed",
+    "is_official": true,
+    "has_transcript": true,
+    "has_evidence": true,
+    "visual_topics": ["광고", "매출"],
+    "width": 640,
+    "height": 360,
+    "local_path": "media/src_001.mp4"
+  },
+  {
+    "source_id": "src_002",
+    "title": "창립자 인터뷰 — 1988년 그 광고",
+    "publisher": "press-weekly",
+    "original_url": "https://press.example.com/interview-1988",
+    "published_at": "2024-06-10",
+    "kind": "interview",
+    "rights_status": "quotation_review",
+    "is_official": false,
+    "has_transcript": true,
+    "width": 640,
+    "height": 360,
+    "local_path": "media/src_002.mp4"
+  }
+]

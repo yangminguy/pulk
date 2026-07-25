@@ -1,0 +1,16 @@
+[
+  {
+    "start": 0,
+    "end": 28,
+    "role": "hook-tension",
+    "energy": 3,
+    "note": "결과 먼저"
+  },
+  {
+    "start": 28,
+    "end": 40,
+    "role": "discovery",
+    "energy": 3,
+    "note": "배경 설명"
+  }
+]

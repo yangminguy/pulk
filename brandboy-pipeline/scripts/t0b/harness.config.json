@@ -1,0 +1,9 @@
+{
+  "_note": "T0b hit@5 하네스 전용 수치. config/edit-profile.json 에 아직 없는 값이라 여기 격리한다. 오케스트레이터가 harvest.hit5.* 네임스페이스로 이전할지 결정한다 (executor는 edit-profile.json 을 수정하지 않는다). 코드에는 어떤 수치 리터럴도 두지 않고 전부 이 파일에서 읽는다.",
+  "top_n": 5,
+  "ngram_min": 2,
+  "ngram_max": 3,
+  "holdout_count": 3,
+  "path_a_min": 0.7,
+  "path_a_prime_min": 0.4
+}

@@ -1,0 +1,16 @@
+{
+  "sessions": {
+    "session-01": {
+      "mtime_ms": 1784945321487.001,
+      "hash": "ae22d18756841800927be06faac9c5ec9779bafbf9f5fece37d879ac1da83416"
+    },
+    "session-02": {
+      "mtime_ms": 1784945323886.728,
+      "hash": "e6b27e6f0228d9d72a40d7b0933b946f7471e644baa1f2e5f3205807c32ea042"
+    },
+    "session-03": {
+      "mtime_ms": 1784945326270.5884,
+      "hash": "9f5e3a878df022780746c32a7467b113c07257ff5258dff6e09e6d57aaf279e2"
+    }
+  }
+}

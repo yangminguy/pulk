@@ -1,0 +1,223 @@
+{
+  "duration": 19.349,
+  "align_rev": 1,
+  "profile_rev": 1,
+  "word_timing": "exact",
+  "sentences": [
+    {
+      "sentence_key": "s0000001",
+      "sentence_id": "sn001",
+      "segment_id": "g01",
+      "text": "브랜드보이가 새로운 광고를 공개했습니다",
+      "start": 0,
+      "end": 3.237,
+      "words": [
+        {
+          "text": "브랜드보이가",
+          "start": 0,
+          "end": 0.947
+        },
+        {
+          "text": "새로운",
+          "start": 0.947,
+          "end": 1.367
+        },
+        {
+          "text": "광고를",
+          "start": 1.367,
+          "end": 2.147
+        },
+        {
+          "text": "공개했습니다",
+          "start": 2.147,
+          "end": 3.237
+        }
+      ]
+    },
+    {
+      "sentence_key": "s0000002",
+      "sentence_id": "sn002",
+      "segment_id": "g01",
+      "text": "매출이 크게 늘었습니다",
+      "start": 3.555,
+      "end": 4.975,
+      "words": [
+        {
+          "text": "매출이",
+          "start": 3.555,
+          "end": 3.955
+        },
+        {
+          "text": "크게",
+          "start": 3.955,
+          "end": 4.215
+        },
+        {
+          "text": "늘었습니다",
+          "start": 4.215,
+          "end": 4.975
+        }
+      ]
+    },
+    {
+      "sentence_key": "s0000003",
+      "sentence_id": "sn003",
+      "segment_id": "g01",
+      "text": "매출이 크게 늘었습니다",
+      "start": 5.315,
+      "end": 6.775,
+      "words": [
+        {
+          "text": "매출이",
+          "start": 5.315,
+          "end": 5.795
+        },
+        {
+          "text": "크게",
+          "start": 5.795,
+          "end": 6.015
+        },
+        {
+          "text": "늘었습니다",
+          "start": 6.015,
+          "end": 6.775
+        }
+      ]
+    },
+    {
+      "sentence_key": "s0000004",
+      "sentence_id": "sn004",
+      "segment_id": "g02",
+      "text": "그 광고는 1988년에 처음 나왔습니다",
+      "start": 7.065,
+      "end": 11.012,
+      "words": [
+        {
+          "text": "그",
+          "start": 7.065,
+          "end": 7.413
+        },
+        {
+          "text": "광고는",
+          "start": 7.413,
+          "end": 8.113
+        },
+        {
+          "text": "1988년에",
+          "start": 8.113,
+          "end": 9.753
+        },
+        {
+          "text": "처음",
+          "start": 9.753,
+          "end": 9.953
+        },
+        {
+          "text": "나왔습니다",
+          "start": 9.953,
+          "end": 11.012
+        }
+      ]
+    },
+    {
+      "sentence_key": "s0000005",
+      "sentence_id": "sn005",
+      "segment_id": "g02",
+      "text": "많은 사람들이 아직도 그것을 기억합니다",
+      "start": 11.313,
+      "end": 13.853,
+      "words": [
+        {
+          "text": "많은",
+          "start": 11.313,
+          "end": 11.493
+        },
+        {
+          "text": "사람들이",
+          "start": 11.493,
+          "end": 11.993
+        },
+        {
+          "text": "아직도",
+          "start": 11.993,
+          "end": 12.633
+        },
+        {
+          "text": "그것을",
+          "start": 12.633,
+          "end": 13.233
+        },
+        {
+          "text": "기억합니다",
+          "start": 13.233,
+          "end": 13.853
+        }
+      ]
+    },
+    {
+      "sentence_key": "s0000006",
+      "sentence_id": "sn006",
+      "segment_id": "g03",
+      "text": "결국 그 브랜드는 크게 성장했습니다",
+      "start": 14.266,
+      "end": 16.929,
+      "words": [
+        {
+          "text": "결국",
+          "start": 14.266,
+          "end": 14.789
+        },
+        {
+          "text": "그",
+          "start": 14.789,
+          "end": 15.089
+        },
+        {
+          "text": "브랜드는",
+          "start": 15.089,
+          "end": 15.589
+        },
+        {
+          "text": "크게",
+          "start": 15.589,
+          "end": 15.969
+        },
+        {
+          "text": "성장했습니다",
+          "start": 15.969,
+          "end": 16.929
+        }
+      ]
+    },
+    {
+      "sentence_key": "s0000007",
+      "sentence_id": "sn007",
+      "segment_id": "g03",
+      "text": "그것이 우리가 배운 교훈입니다",
+      "start": 17.269,
+      "end": 19.149,
+      "words": [
+        {
+          "text": "그것이",
+          "start": 17.269,
+          "end": 17.749
+        },
+        {
+          "text": "우리가",
+          "start": 17.749,
+          "end": 18.009
+        },
+        {
+          "text": "배운",
+          "start": 18.009,
+          "end": 18.369
+        },
+        {
+          "text": "교훈입니다",
+          "start": 18.369,
+          "end": 19.149
+        }
+      ]
+    }
+  ]
+}

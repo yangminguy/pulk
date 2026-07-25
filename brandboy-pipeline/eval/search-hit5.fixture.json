@@ -1,0 +1,99 @@
+{
+  "public": [
+    {
+      "intent_id": "i01",
+      "intent": "창업자가 가격을 결정한 이유를 설명하는 장면",
+      "importance": "critical",
+      "candidates": [
+        {
+          "source_id": "src_001",
+          "start": 1260,
+          "end": 1353,
+          "score": 7,
+          "text": "저는 가격을 결정할 때 고객이 느끼는 가치를 기준으로 삼았고 그래서 이 가격을 이렇게 정하게 되었습니다",
+          "verdict": "usable"
+        },
+        {
+          "source_id": "src_001",
+          "start": 38,
+          "end": 131,
+          "score": 1,
+          "text": "여기서 잠깐 배경 설명을 덧붙이려고 합니다",
+          "verdict": "not_usable"
+        },
+        {
+          "source_id": "src_001",
+          "start": 220,
+          "end": 313,
+          "score": 1,
+          "text": "여기서 잠깐 배경 설명을 덧붙이려고 합니다",
+          "verdict": "not_usable"
+        },
+        {
+          "source_id": "src_001",
+          "start": 402,
+          "end": 495,
+          "score": 1,
+          "text": "여기서 잠깐 배경 설명을 덧붙이려고 합니다",
+          "verdict": "not_usable"
+        },
+        {
+          "source_id": "src_001",
+          "start": 584,
+          "end": 677,
+          "score": 1,
+          "text": "여기서 잠깐 배경 설명을 덧붙이려고 합니다",
+          "verdict": "not_usable"
+        }
+      ]
+    },
+    {
+      "intent_id": "i02",
+      "intent": "투자자에게 거절당한 경험을 이야기하는 장면",
+      "importance": "critical",
+      "candidates": [
+        {
+          "source_id": "src_001",
+          "start": 3210,
+          "end": 3303,
+          "score": 8,
+          "text": "초기에는 투자자들에게 여러 번 거절당했지만 저는 그 거절을 발판 삼아 포기하지 않았습니다",
+          "verdict": "usable"
+        },
+        {
+          "source_id": "src_001",
+          "start": 0,
+          "end": 66,
+          "score": 3,
+          "text": "그럼 다음 이야기로 자연스럽게 넘어가 보겠습니다",
+          "verdict": "not_usable"
+        },
+        {
+          "source_id": "src_001",
+          "start": 90,
+          "end": 183,
+          "score": 3,
+          "text": "조금 더 자세한 이야기는 뒤에서 다루겠습니다",
+          "verdict": "not_usable"
+        },
+        {
+          "source_id": "src_001",
+          "start": 272,
+          "end": 365,
+          "score": 3,
+          "text": "조금 더 자세한 이야기는 뒤에서 다루겠습니다",
+          "verdict": "not_usable"
+        },
+        {
+          "source_id": "src_001",
+          "start": 454,
+          "end": 547,
+          "score": 3,
+          "text": "조금 더 자세한 이야기는 뒤에서 다루겠습니다",
+          "verdict": "not_usable"
+        }
+      ]
+    }
+  ],
+  "holdout_sealed": "sha256:dc8c5a73e1780260ee7f6b465640c6e582db33d1f6d436d4bd876ada63a695a4"
+}

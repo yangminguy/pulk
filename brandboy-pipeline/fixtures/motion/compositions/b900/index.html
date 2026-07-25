@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      body { font-family: sans-serif; color: #FFFFFF; }
+      .line { position: absolute; height: 12px; border-radius: 6px; }
+      .label { position: absolute; font-size: 40px; font-weight: 800; width: 220px; }
+    </style>
+  </head>
+  <body>
+    <!--
+      b900 · type=comparison · visual_statement:
+      "나란히 가던 가격선과 가치선 중, 가치선만 위로 꺾이며 격차가 벌어진다"
+      움직임 자체가 논리다(spec §5). 라벨은 각 선의 자리에 고정, 격차는 선의 이동으로 보여준다.
+    -->
+    <div id="root" data-composition-id="main" data-start="0" data-duration="2" data-width="1920" data-height="1080">
+      <div id="price" class="line clip" data-start="0" data-duration="2" data-track-index="1"
+           style="left: 360px; top: 620px; width: 1180px; background: #FFD84D"></div>
+      <div id="value" class="line clip" data-start="0" data-duration="2" data-track-index="2"
+           style="left: 360px; top: 620px; width: 1180px; background: #B7F34A"></div>
+      <div id="lbl-price" class="label clip" data-start="0" data-duration="2" data-track-index="3"
+           style="left: 1560px; top: 600px; color: #FFD84D">가격</div>
+      <div id="lbl-value" class="label clip" data-start="0" data-duration="2" data-track-index="4"
+           style="left: 1560px; top: 360px; color: #B7F34A">가치</div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      // 0.4s 까지 두 선이 겹쳐 나란히 있다가, 가치선만 위로 벌어져 격차를 만든다.
+      tl.to("#value", { y: -240, duration: 1.2, ease: "power2.out" }, 0.4);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "beat_id": "b910",
+  "visual_statement": "저수지에 물이 차오르다 임계선을 넘어 살짝 흘러넘친다",
+  "type": "accumulation",
+  "duration": 2,
+  "frame_rev": 1,
+  "importance": "critical",
+  "timeout_sec": 900,
+  "composition_dir": "../compositions/b910"
+}

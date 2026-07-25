@@ -1,0 +1,42 @@
+{
+  "input_duration": 36.65,
+  "output_duration": 19.349,
+  "removed_sec": 17.571,
+  "word_timing": "exact",
+  "trimmed_gaps": [
+    {
+      "at": 3.242,
+      "removed_sec": 1.187
+    },
+    {
+      "at": 11.017,
+      "removed_sec": 1.155
+    }
+  ],
+  "low_confidence": [],
+  "unmatched": [],
+  "session_warnings": [
+    {
+      "kind": "lufs_deviation",
+      "detail": "세션 간 LUFS 편차 5.45 LU (기준 1.5)"
+    }
+  ],
+  "session_boundaries": [
+    7.065,
+    14.266
+  ],
+  "session_lufs": [
+    -18.37,
+    -17.73,
+    -23.18
+  ],
+  "session_noise_floor": [
+    -59.75,
+    -59.979,
+    -59.085
+  ],
+  "narration_padding_sec": {
+    "head": 0.15,
+    "tail": 0.25
+  }
+}

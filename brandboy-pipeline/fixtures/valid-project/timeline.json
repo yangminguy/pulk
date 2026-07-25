@@ -1,0 +1,34 @@
+{
+  "duration": 12.0,
+  "align_rev": 4,
+  "profile_rev": 1,
+  "word_timing": "exact",
+  "sentences": [
+    {
+      "sentence_key": "a1b2c3d4",
+      "sentence_id": "sn001",
+      "segment_id": "g01",
+      "text": "나이키는 1988년 광고를 공개했고 매출이 크게 늘었습니다",
+      "start": 0.0,
+      "end": 6.0,
+      "words": [
+        { "text": "나이키는", "start": 0.0, "end": 1.2 },
+        { "text": "광고를", "start": 1.2, "end": 3.4 },
+        { "text": "매출이", "start": 3.4, "end": 6.0 }
+      ]
+    },
+    {
+      "sentence_key": "b2c3d4e5",
+      "sentence_id": "sn002",
+      "segment_id": "g02",
+      "text": "그 결과 브랜드는 시장을 재정의했습니다",
+      "start": 6.0,
+      "end": 12.0,
+      "words": [
+        { "text": "그", "start": 6.0, "end": 7.0 },
+        { "text": "결과", "start": 7.0, "end": 9.0 },
+        { "text": "재정의했습니다", "start": 9.0, "end": 12.0 }
+      ]
+    }
+  ]
+}

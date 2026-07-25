@@ -1,0 +1,10 @@
+{
+  "beat_id": "b902",
+  "visual_statement": "장절 카드 (반복 패턴 — 템플릿 폴백 대상)",
+  "type": "chapter",
+  "duration": 2,
+  "frame_rev": 1,
+  "importance": "critical",
+  "template": true,
+  "composition_dir": "../compositions/b900"
+}

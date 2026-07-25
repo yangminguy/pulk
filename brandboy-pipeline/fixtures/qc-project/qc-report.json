@@ -1,0 +1,339 @@
+{
+  "project": "assemble-project",
+  "profile_rev": 1,
+  "frame_rev": 1,
+  "is_spine": false,
+  "metrics": {
+    "duration_sec": {
+      "value": 40,
+      "range": [
+        720,
+        1200
+      ],
+      "verdict": "fail"
+    },
+    "visual_change_avg_sec": {
+      "value": 2.125,
+      "range": [
+        2.1,
+        2.8
+      ],
+      "verdict": "pass"
+    },
+    "intro_30s_changes": {
+      "value": 15,
+      "min": 12,
+      "verdict": "pass"
+    },
+    "a_roll_ratio": {
+      "value": 0.125,
+      "range": [
+        0.1,
+        0.2
+      ],
+      "verdict": "pass"
+    },
+    "stock_ratio": {
+      "value": 0,
+      "max": 0.1,
+      "verdict": "pass"
+    },
+    "same_source_max_ratio": {
+      "value": 0.375,
+      "max": 0.35,
+      "verdict": "fail"
+    },
+    "impact_cards_per_15min": {
+      "value": 22.5,
+      "range": [
+        4,
+        10
+      ],
+      "verdict": "fail"
+    },
+    "program_lufs": {
+      "value": -22.05,
+      "target": -14,
+      "verdict": "fail"
+    },
+    "true_peak_dbtp": {
+      "value": -18.06,
+      "max": -1,
+      "verdict": "pass"
+    },
+    "narrative_clarity": {
+      "verdict": "human_required"
+    },
+    "rights_final_check": {
+      "verdict": "human_required"
+    }
+  },
+  "shared_checks": [
+    {
+      "id": "critical-beat-has-shot",
+      "label": "샷 없는 핵심 비트",
+      "blocking": true,
+      "status": "pass",
+      "detail": "전 critical 비트에 화면 샷 존재"
+    },
+    {
+      "id": "no-unapproved-shot",
+      "label": "승인되지 않은 샷",
+      "blocking": true,
+      "status": "pass",
+      "detail": "조립 대상 전부 approved"
+    },
+    {
+      "id": "V15-critical-anchor",
+      "label": "V15 위반(critical needs_review/orphaned)",
+      "blocking": true,
+      "status": "pass",
+      "detail": "critical 위반 0건 (normal/bridge needs_review=0건은 검수 대상)"
+    },
+    {
+      "id": "V17b-lane-overlap",
+      "label": "V17b 레인 중첩",
+      "blocking": true,
+      "status": "pass",
+      "detail": "같은 레인 중첩 0건(허용 0.5s 이내 선행 컷만)"
+    },
+    {
+      "id": "V18-still-photo-motion",
+      "label": "V18 정지 사진",
+      "blocking": true,
+      "status": "pass",
+      "detail": "정지 사진 0건(전 image 샷 photo_motion 있음)"
+    },
+    {
+      "id": "no-video-loop",
+      "label": "비디오 루프",
+      "blocking": true,
+      "status": "pass",
+      "detail": "루프 필요 샷 0건"
+    },
+    {
+      "id": "no-broken-source",
+      "label": "깨진 소스 파일",
+      "blocking": true,
+      "status": "pass",
+      "detail": "전 미디어 파일 존재"
+    },
+    {
+      "id": "total-length-vs-master",
+      "label": "총 길이 vs 내레이션 마스터",
+      "blocking": true,
+      "status": "pass",
+      "detail": "조립 길이=40s vs 마스터=40s 차=0s (허용 ±0.2s)"
+    },
+    {
+      "id": "hook-visual-changes",
+      "label": "훅 30초 시각 변화",
+      "blocking": true,
+      "status": "pass",
+      "detail": "훅 30s 시각 변화=15 (기준 ≥12)"
+    },
+    {
+      "id": "stagnant-visual",
+      "label": "8초 이상 시각 정체",
+      "blocking": false,
+      "status": "pass",
+      "detail": "정체 구간 없음(기준 8s)"
+    },
+    {
+      "id": "same-source-run",
+      "label": "동일 원본 10초 이상 연속",
+      "blocking": false,
+      "status": "pass",
+      "detail": "동일 원본 장기 연속 없음(기준 10s)"
+    },
+    {
+      "id": "same-framing-run",
+      "label": "같은 화면 크기 4샷 연속",
+      "blocking": false,
+      "status": "pass",
+      "detail": "동일 프레이밍 장기 연속 없음(기준 4샷)"
+    },
+    {
+      "id": "source-audio-narration",
+      "label": "원본음과 내레이션 충돌",
+      "blocking": false,
+      "status": "warn",
+      "detail": "충돌 구간 1건",
+      "ranges": [
+        {
+          "start": 28,
+          "end": 31,
+          "note": "원본음 sh0015 ∩ 내레이션"
+        }
+      ]
+    },
+    {
+      "id": "caption-safe-area",
+      "label": "자막 안전 영역 위반",
+      "blocking": false,
+      "status": "pass",
+      "detail": "기본자막=3 강조/카드=3 기준선 90%·박스폭 88% (한계 100%) 안전=true · 자막총 6"
+    },
+    {
+      "id": "impact-card-sync",
+      "label": "강조 카드와 발화 오차",
+      "blocking": false,
+      "status": "pass",
+      "detail": "임팩트 카드 1개 발화 오차 0.2s 이내"
+    },
+    {
+      "id": "act-boundary-music",
+      "label": "막 경계에 음악 큐 없음",
+      "blocking": false,
+      "status": "pass",
+      "detail": "막 경계 2개 음악 큐 존재"
+    },
+    {
+      "id": "capcut-visual-open",
+      "label": "CapCut 초안 육안 확인",
+      "blocking": false,
+      "status": "human_required",
+      "detail": "경로 A 초안을 CapCut 에서 열어 선택·마감 집중 가능 여부를 사람이 확인(승인 ③ 전 단계)"
+    }
+  ],
+  "render_checks": [
+    {
+      "id": "outputs-present",
+      "label": "실제 출력 파일 존재",
+      "blocking": true,
+      "status": "pass",
+      "detail": "순번 파일 18/18"
+    },
+    {
+      "id": "measured-total-length",
+      "label": "총 길이 실측",
+      "blocking": false,
+      "status": "warn",
+      "detail": "실측 40s (목표 720~1200s)"
+    },
+    {
+      "id": "program-loudness",
+      "label": "프로그램 라우드니스",
+      "blocking": false,
+      "status": "fail",
+      "detail": "실측 -22.05 LUFS (목표 -14±1.5)"
+    },
+    {
+      "id": "true-peak",
+      "label": "트루 피크",
+      "blocking": false,
+      "status": "pass",
+      "detail": "실측 -18.06 dBTP (한계 ≤-1)"
+    }
+  ],
+  "fatal": [
+    {
+      "n": 1,
+      "item": "제목·썸네일 약속을 본문이 회수",
+      "auto": false,
+      "rule": "title-promise",
+      "verdict": "human_required",
+      "detail": "사람 검수 필요(자동 판정 불가)"
+    },
+    {
+      "n": 2,
+      "item": "핵심 숫자·인용·사건에 출처 없음",
+      "auto": true,
+      "rule": "traceable",
+      "verdict": "pass",
+      "detail": "외부 샷 15개 전부 출처(source_id) 있음"
+    },
+    {
+      "n": 3,
+      "item": "내레이션과 반대되는 화면",
+      "auto": false,
+      "rule": "narration-contradiction",
+      "verdict": "human_required",
+      "detail": "사람 검수 필요(자동 판정 불가)"
+    },
+    {
+      "n": 4,
+      "item": "타 유튜버 해석을 사실처럼 사용",
+      "auto": false,
+      "rule": "third-party-as-fact",
+      "verdict": "human_required",
+      "detail": "사람 검수 필요(자동 판정 불가)"
+    },
+    {
+      "n": 5,
+      "item": "권리 상태 blocked/unknown",
+      "auto": true,
+      "rule": "V8",
+      "verdict": "pass",
+      "detail": "차단 권리 샷 0건"
+    },
+    {
+      "n": 6,
+      "item": "반복 루프가 눈에 띔",
+      "auto": true,
+      "rule": "no-video-loop",
+      "verdict": "pass",
+      "detail": "루프 없음"
+    },
+    {
+      "n": 7,
+      "item": "자막 오류/화면 밖",
+      "auto": true,
+      "rule": "caption-safe-area",
+      "verdict": "pass",
+      "detail": "자막 안전영역 이내"
+    },
+    {
+      "n": 8,
+      "item": "내레이션 절단/원본음 충돌",
+      "auto": true,
+      "rule": "total-length+source-audio",
+      "verdict": "pass",
+      "detail": "내레이션 길이 일치·원본음 충돌 없음"
+    },
+    {
+      "n": 9,
+      "item": "상품 연결이 앞 문제와 단절",
+      "auto": false,
+      "rule": "product-link",
+      "verdict": "human_required",
+      "detail": "사람 검수 필요(자동 판정 불가)"
+    },
+    {
+      "n": 10,
+      "item": "계획되지 않은 fallback_text 잔존",
+      "auto": true,
+      "rule": "V11",
+      "verdict": "pass",
+      "detail": "fallback_text 승인 0건"
+    },
+    {
+      "n": 11,
+      "item": "훅 30초 시각 변화 부족",
+      "auto": true,
+      "rule": "hook-visual-changes",
+      "verdict": "pass",
+      "detail": "훅 시각 변화 15"
+    },
+    {
+      "n": 12,
+      "item": "reveal 구간에 직접 증거 없음",
+      "auto": true,
+      "rule": "V6-reveal",
+      "verdict": "pass",
+      "detail": "reveal 막 없음(해당 없음)"
+    }
+  ],
+  "warnings": [],
+  "human_required": [
+    "narrative_clarity",
+    "rights_final_check",
+    "치명1",
+    "치명3",
+    "치명4",
+    "치명9",
+    "capcut-visual-open"
+  ],
+  "p0_count": 0,
+  "gate": "HOLD_FOR_HUMAN"
+}

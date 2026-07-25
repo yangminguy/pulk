@@ -1,0 +1,295 @@
+{
+  "project": "plan-rerun",
+  "revision": 5,
+  "profile_rev": 1,
+  "frame_rev": 1,
+  "writers": {
+    "plan_rev": 2,
+    "review_rev": 2,
+    "reanchor_rev": 2,
+    "seal": "d49aadc43b1a1b75e1ea513902cf12c56cbe21ada748b2e2193f4603b1c2aa44"
+  },
+  "coverage_gap": [
+    {
+      "beat_id": "b002a",
+      "from": 3,
+      "to": 4.5,
+      "reason": "보존 샷 미달 — 새 need 샷 생성 안 함 (Z1 사후조건)"
+    }
+  ],
+  "_level": "pass",
+  "_expect": null,
+  "_z2_snapshot": [
+    {
+      "shot_id": "sh0001",
+      "source_id": "src_001",
+      "source_in": 5,
+      "source_out": 8,
+      "locked_selection": true,
+      "rights_status": "owned"
+    },
+    {
+      "shot_id": "sh0003",
+      "source_id": "src_002",
+      "source_in": 10,
+      "source_out": 13,
+      "locked_selection": true,
+      "rights_status": "owned"
+    },
+    {
+      "shot_id": "sh0010",
+      "source_id": "src_a03",
+      "source_in": 0,
+      "source_out": 3,
+      "locked_selection": false,
+      "rights_status": "owned"
+    }
+  ],
+  "segments": [
+    {
+      "segment_id": "g01",
+      "act": "hook",
+      "purpose": "결과 먼저",
+      "energy": 3
+    },
+    {
+      "segment_id": "g02",
+      "act": "build",
+      "purpose": "배경 설명",
+      "energy": 3
+    }
+  ],
+  "beats": [
+    {
+      "beat_id": "b001",
+      "segment_id": "g01",
+      "narration": "광고 공개",
+      "start": 0,
+      "end": 3,
+      "visual_function": "evidence",
+      "importance": "critical",
+      "search_intent": "광고 원본",
+      "anchor": {
+        "sentence_key": "a1b2c3d4",
+        "offset_sec": 0
+      },
+      "timing_rev": 4,
+      "must_show": [
+        "광고"
+      ]
+    },
+    {
+      "beat_id": "b002a",
+      "segment_id": "g01",
+      "narration": "매출 상승 1",
+      "start": 3,
+      "end": 4.5,
+      "visual_function": "literal",
+      "importance": "normal",
+      "search_intent": "매출 장면 1",
+      "anchor": {
+        "sentence_key": "a1b2c3d4",
+        "offset_sec": 3
+      },
+      "timing_rev": 4
+    },
+    {
+      "beat_id": "b002b",
+      "segment_id": "g01",
+      "narration": "매출 상승 2",
+      "start": 4.5,
+      "end": 6,
+      "visual_function": "literal",
+      "importance": "normal",
+      "search_intent": "매출 장면 2",
+      "anchor": {
+        "sentence_key": "a1b2c3d4",
+        "offset_sec": 4.5
+      },
+      "timing_rev": 4
+    },
+    {
+      "beat_id": "b003",
+      "segment_id": "g02",
+      "narration": "브랜드 성장",
+      "start": 6,
+      "end": 9,
+      "visual_function": "evidence",
+      "importance": "normal",
+      "search_intent": "성장 그래프",
+      "anchor": {
+        "sentence_key": "b2c3d4e5",
+        "offset_sec": 0
+      },
+      "timing_rev": 4
+    },
+    {
+      "beat_id": "b004",
+      "segment_id": "g02",
+      "narration": "진행자 정리",
+      "start": 9,
+      "end": 12,
+      "visual_function": "reset",
+      "importance": "bridge",
+      "search_intent": "진행자",
+      "anchor": {
+        "sentence_key": "b2c3d4e5",
+        "offset_sec": 3
+      },
+      "timing_rev": 4
+    }
+  ],
+  "shots": [
+    {
+      "shot_id": "sh0001",
+      "beat_ids": [
+        "b001"
+      ],
+      "start": 0,
+      "end": 3,
+      "asset_kind": "official_video",
+      "purpose": "광고 원본 클립",
+      "selection_status": "approved",
+      "rights_status": "owned",
+      "source_id": "src_001",
+      "source_in": 5,
+      "source_out": 8,
+      "framing": "wide",
+      "anchor": {
+        "sentence_key": "a1b2c3d4",
+        "offset_sec": 0
+      },
+      "timing_rev": 4,
+      "locked_selection": true
+    },
+    {
+      "shot_id": "sh0003",
+      "beat_ids": [
+        "b003"
+      ],
+      "start": 6,
+      "end": 9,
+      "asset_kind": "official_video",
+      "purpose": "성장 그래프 증빙",
+      "selection_status": "approved",
+      "rights_status": "owned",
+      "source_id": "src_002",
+      "source_in": 10,
+      "source_out": 13,
+      "framing": "detail",
+      "anchor": {
+        "sentence_key": "b2c3d4e5",
+        "offset_sec": 0
+      },
+      "timing_rev": 4,
+      "locked_selection": true
+    },
+    {
+      "shot_id": "sh0010",
+      "beat_ids": [
+        "b004"
+      ],
+      "start": 9,
+      "end": 12,
+      "asset_kind": "a_roll",
+      "purpose": "진행자 마무리",
+      "selection_status": "approved",
+      "rights_status": "owned",
+      "source_id": "src_a03",
+      "source_in": 0,
+      "source_out": 3,
+      "framing": "person",
+      "anchor": {
+        "sentence_key": "b2c3d4e5",
+        "offset_sec": 3
+      },
+      "timing_rev": 4,
+      "locked_selection": false
+    },
+    {
+      "shot_id": "sh0006",
+      "beat_ids": [
+        "b002a"
+      ],
+      "start": 3,
+      "end": 4.5,
+      "asset_kind": "a_roll",
+      "purpose": "매출 상승 진행자 발화 1",
+      "selection_status": "need",
+      "rights_status": "unknown",
+      "anchor": {
+        "sentence_key": "a1b2c3d4",
+        "offset_sec": 3
+      },
+      "timing_rev": 4
+    },
+    {
+      "shot_id": "sh0011",
+      "beat_ids": [
+        "b002b"
+      ],
+      "start": 4.5,
+      "end": 6,
+      "asset_kind": "a_roll",
+      "purpose": "매출 상승 진행자 발화 2",
+      "selection_status": "need",
+      "rights_status": "unknown",
+      "anchor": {
+        "sentence_key": "a1b2c3d4",
+        "offset_sec": 4.5
+      },
+      "timing_rev": 4
+    },
+    {
+      "shot_id": "sh0007",
+      "beat_ids": [
+        "b003"
+      ],
+      "start": 6,
+      "end": 7,
+      "asset_kind": "motion",
+      "purpose": "성장률 수치 모션",
+      "selection_status": "need",
+      "rights_status": "unknown",
+      "anchor": {
+        "sentence_key": "b2c3d4e5",
+        "offset_sec": 0
+      },
+      "timing_rev": 4
+    },
+    {
+      "shot_id": "sh0008",
+      "beat_ids": [
+        "b003"
+      ],
+      "start": 7,
+      "end": 8,
+      "asset_kind": "motion",
+      "purpose": "비교 지표 모션",
+      "selection_status": "need",
+      "rights_status": "unknown",
+      "anchor": {
+        "sentence_key": "b2c3d4e5",
+        "offset_sec": 1
+      },
+      "timing_rev": 4
+    },
+    {
+      "shot_id": "sh0009",
+      "beat_ids": [
+        "b004"
+      ],
+      "start": 9,
+      "end": 10.5,
+      "asset_kind": "stock",
+      "purpose": "분위기 인서트",
+      "selection_status": "need",
+      "rights_status": "unknown",
+      "anchor": {
+        "sentence_key": "b2c3d4e5",
+        "offset_sec": 3
+      },
+      "timing_rev": 4
+    }
+  ]
+}

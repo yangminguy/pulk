@@ -1,0 +1,27 @@
+[
+  {
+    "intent_id": "i01",
+    "intent": "창업자가 가격을 결정한 이유를 설명하는 장면",
+    "importance": "critical"
+  },
+  {
+    "intent_id": "i02",
+    "intent": "투자자에게 거절당한 경험을 이야기하는 장면",
+    "importance": "critical"
+  },
+  {
+    "intent_id": "i03",
+    "intent": "제품의 핵심 기능을 직접 시연하는 장면",
+    "importance": "normal"
+  },
+  {
+    "intent_id": "i04",
+    "intent": "분기 매출 성장 결과를 발표하는 장면",
+    "importance": "normal"
+  },
+  {
+    "intent_id": "i05",
+    "intent": "창업 초기 작은 사무실에서 일하던 모습",
+    "importance": "bridge"
+  }
+]
