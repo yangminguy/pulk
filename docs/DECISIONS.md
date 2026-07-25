@@ -1120,3 +1120,7 @@ l5-core tsc 0 + jest dev-workflow-spec 60/60(신규 M9.8 5군 포함) GREEN, age
 **사업별 모니터 = 신규 테이블**: 기존 `agent_tasks`(ACR 경로) 재사용 대신 `native_phase_runs` 전용 테이블 + `monitor:nativeRuns` 조회 액션 + founder-ui 전용 뷰. 근거: phase 단위 세밀도(풀·상태·전체 output·타이밍)는 task 단위 모델로 표현 불가. 오케스트레이터는 `PhaseRunSink` 콜백(NocoBase 비의존, 테스트 가능)으로만 영속화하고, 데몬이 표준 REST(:create/:update)로 기록 — 커스텀 쓰기 액션 불필요. 결과 본문 회수: phase 프롬프트에 "마지막 출력에 전체 보고서 본문" 지시 + spawn stdout 전체를 `output`에 보존.
 
 **ESM 디렉토리 임포트 수정**: dist `native-orchestrator.js`가 `@l5/core/dist/functions/cto-native`(디렉토리)를 value 임포트해 ESM 런타임에서 `ERR_UNSUPPORTED_DIR_IMPORT`로 데몬 기동 실패(jest는 CJS라 통과). `/index.js` 명시로 수정. 데몬 드라이런(빈 큐 기동→모듈 로드→폴링)이 잡은 잠복 버그 — 데몬이 실제 기동된 적이 없어 미발견이었다.
+
+## 브랜드 다큐 편집 = 신규 독립 `pipeline` CLI, factory는 모션 공급기로 강등 (2026-07-25)
+
+**결정**: 브랜드보이 수준 롱폼 다큐 편집(외부 원본 자막 검색 → 검수 → CapCut 조립)은 `~/ai-slide-video-factory`(슬라이드 렌더 엔진) 확장이 아니라 **신규 독립 `pipeline` CLI(`~/brandboy-pipeline`)로 신규 구축**한다(최소 단위 씬 3~20초 vs 의미 비트 1.5~5초, `VideoJob` vs `Beat`/`Shot` 1:1 대응 불가). factory는 **모션그래픽 공급 서브시스템으로 강등**(hyperframes 러너만 이식·사용). **`packages/l5-core/src/functions/video-room/render-pipeline.ts` 소비자(슬라이드덱 렌더 경로)는 무영향** — 그대로 살아 있고, 다큐 파이프라인은 별도 CLI다. rev5 계약(필드 구역 Z1/Z2/Z3 + writeScoped + V14 봉인 + sentence_key 재고정 + 화질 2단 + 스토리보드 게이트) 확정. 2026-07-25 기준 T0a~T8 + T1~T7·plan --apply 코드 완료(5,800줄+), verify 게이트 14종 그린. 상세: `docs/cmo/video-pipeline/HANDOFF.md`.

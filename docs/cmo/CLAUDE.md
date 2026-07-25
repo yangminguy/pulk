@@ -15,6 +15,7 @@ Founder의 상품·타깃을 받아 **키 콘텐츠 → 풀링 콘텐츠 → 콘
 | [TASKS](./TASKS.md) | 개발 계획 M1~M8 + 우선순위 | "다음 뭐 할까" |
 | [features/youtube-viewtrap-discovery](./features/youtube-viewtrap-discovery.md) | YouTube API + Viewtrap CDP 발굴 자동화 | 발굴/지표/크롤링 작업 시 |
 | [features/title-development-workflow](./features/title-development-workflow.md) | 제목 디벨롭 8단계(레퍼런스2개→교차조합→평가→승인3·4) | 제목/썸네일 기획 작업 시 |
+| [video-pipeline/](./video-pipeline/CLAUDE.md) | **브랜드 다큐 롱폼 편집 파이프라인**(신규 `pipeline` CLI, **구현 완료** `~/brandboy-pipeline`). 외부 원본 자막 검색 → 검수 → CapCut 조립 | 다큐 편집 파이프라인 작업 시 |
 
 ## 기획서 / 스펙 (이 디렉토리에 함께 있음)
 
