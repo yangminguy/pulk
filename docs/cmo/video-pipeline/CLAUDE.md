@@ -11,7 +11,7 @@
 
 ## 지금 어디에 있나
 
-- **코드 구현 완료 (2026-07-25).** 레포 **`~/brandboy-pipeline` 생성됨** — `pipeline` CLI 전 명령(`validate`·`ingest`·`align`·`reanchor`·`plan --apply`·`harvest`·`review --apply`·`assemble`·`qc`) + 모션 브릿지 구현. `src/` 8,825줄 + `scripts/`·`fixtures/` 3,480줄. **verify 14종 전부 그린 · `tsc --noEmit` clean · no-magic-numbers 위반 0.**
+- **코드 구현 완료 (2026-07-25).** 레포 **`~/brandboy-pipeline`** — GitHub: **[yangminguy/brandboy-pipeline](https://github.com/yangminguy/brandboy-pipeline)** (private, 독립 npm 레포. pnpm 워크스페이스와 별개 — ARCHITECTURE.md 결정). `pipeline` CLI 전 명령(`validate`·`ingest`·`align`·`reanchor`·`plan --apply`·`harvest`·`review --apply`·`assemble`·`qc`) + 모션 브릿지 + **Resolve OTIO 이미터(경로 R, 미디어 자동 스테이징)**. `src/` 8,800줄+ · `scripts/`·`fixtures/` 3,900줄+. **verify 16종 전부 그린 · `tsc --noEmit` clean · no-magic-numbers 위반 0 · architect APPROVED · ultraqa 2사이클.**
 - 현재 상태·검증 게이트·**사람 판정 대기 항목**·다음 액션: [HANDOFF](./HANDOFF.md).
 - 원본 문서(`~/Downloads/brandboy-pipeline/` 시작점)의 rev5 개정 추적: `~/brandboy-pipeline/docs/DIVERGENCE.md`.
 - (참고) 합의 실행 계획 `.omc/plans/brandboy-editing-pipeline-consensus-plan.md`(**rev5**) · 요구사항 명세 `.omc/specs/deep-interview-brandboy-editing-workflow.md`(ambiguity 17.1%).
