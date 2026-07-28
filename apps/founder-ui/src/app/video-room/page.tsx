@@ -110,7 +110,8 @@ function VideoRoomContent() {
   }
 
   const { project, cards, gates, messages } = detail
-  const pendingGates = gates.filter(g => g.status === 'pending')
+  const CUSTOM_PRODUCTION_GATES = ['storyboard_approval', 'pilot_approval']
+  const pendingGates = gates.filter(g => g.status === 'pending' && !CUSTOM_PRODUCTION_GATES.includes(g.gate_type))
   // 승인 게이트 상태(GATE_BY_STATUS) — 새 보드 흐름은 여기서 pending gate가 없으므로
   // approveStageGate 버튼으로 통과한다.
   const APPROVAL_GATE_STATES = ['key_content_approval', 'pulling_content_set_approval', 'hook_draft_approval', 'script_approval', 'video_qa_approval', 'upload_approval']

@@ -930,6 +930,41 @@ export const api = {
       body: JSON.stringify({ project_id, ...(opts ?? {}) }),
     }).then(r => unwrap(r)),
 
+  cmoStartVideoPlanning: (project_id: string, source_media_ref?: string) =>
+    request<{ data: { ok: boolean; data: { run_id: string; status: string; queued?: boolean; storyboard_version?: number; scene_count?: number; coverage?: number } } }>('/api/cmo:startVideoPlanning', {
+      method: 'POST', body: JSON.stringify({ project_id, source_media_ref }),
+    }).then(r => unwrap(r)),
+
+  cmoGetVideoProductionStatus: (project_id: string, run_id?: string) =>
+    request<{ data: { ok: boolean; data: { run: unknown; artifacts: unknown[] } } }>('/api/cmo:getVideoProductionStatus', {
+      method: 'POST', body: JSON.stringify({ project_id, run_id }),
+    }).then(r => unwrap(r)),
+
+  cmoGetStoryboard: (project_id: string, run_id?: string) =>
+    request<{ data: { ok: boolean; data: { artifact: unknown; manifest: unknown; html: string } } }>('/api/cmo:getStoryboard', {
+      method: 'POST', body: JSON.stringify({ project_id, run_id }),
+    }).then(r => unwrap(r)),
+
+  cmoDecideStoryboard: (input: { project_id: string; run_id: string; decision: 'approved' | 'needs_revision' | 'hold'; note?: string; scene_decisions?: unknown[] }) =>
+    request<{ data: { ok: boolean; data: { run_id: string; decision: string; status?: string; routed_skills?: string[] } } }>('/api/cmo:decideStoryboard', {
+      method: 'POST', body: JSON.stringify(input),
+    }).then(r => unwrap(r)),
+
+  cmoSubmitPilot: (project_id: string, run_id: string) =>
+    request<{ data: { ok: boolean; data: { run_id: string; factory_slug: string | null; stub: boolean; status: string } } }>('/api/cmo:submitPilot', {
+      method: 'POST', body: JSON.stringify({ project_id, run_id }),
+    }).then(r => unwrap(r)),
+
+  cmoGetPilotStatus: (project_id: string, run_id: string) =>
+    request<{ data: { ok: boolean; data: { status: string; qa: unknown } } }>('/api/cmo:getPilotStatus', {
+      method: 'POST', body: JSON.stringify({ project_id, run_id }),
+    }).then(r => unwrap(r)),
+
+  cmoDecidePilot: (project_id: string, run_id: string, decision: 'approved' | 'needs_revision', note?: string) =>
+    request<{ data: { ok: boolean; data: { run_id: string; decision: string; status: string } } }>('/api/cmo:decidePilot', {
+      method: 'POST', body: JSON.stringify({ project_id, run_id, decision, note }),
+    }).then(r => unwrap(r)),
+
   cmoSubmitRender: (project_id: string, slide_deck_spec_id: string) =>
     request<{ data: { ok: boolean; data: { render_job_id: string; job: unknown } } }>('/api/cmo:submitRender', {
       method: 'POST',

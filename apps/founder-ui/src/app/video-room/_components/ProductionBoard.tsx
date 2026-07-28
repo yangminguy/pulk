@@ -8,6 +8,7 @@ import ScriptBeatEditor from './ScriptBeatEditor'
 import ScriptDraftPanel from './ScriptDraftPanel'
 import DecisionPanel from './DecisionPanel'
 import StageGate from './StageGate'
+import VideoProductionUpgradePanel from './VideoProductionUpgradePanel'
 
 // ── Production Board ─────────────────────────────────────────────────────────
 export default function ProductionBoard({
@@ -54,6 +55,7 @@ export default function ProductionBoard({
 
   // Factory job card
   const factoryJobCard = cards.find(c => c.stage === 'factory_job')
+  const storyboardCard = cards.find(c => c.stage === 'storyboard')
 
   const sendToFactory = async () => {
     setSendingFactory(true)
@@ -142,6 +144,10 @@ export default function ProductionBoard({
       </div>
       </StageGate>
 
+      <StageGate title="영상 제작 계획 · Storyboard · Pilot" state={blockState({ from: 'slide_deck', to: 'pilot_approval' }, currentStatus)}>
+        <VideoProductionUpgradePanel projectId={projectId} currentStatus={currentStatus} cards={cards} onRefresh={onRefresh} />
+      </StageGate>
+
       {productionCards.length === 0 && (
         <p style={{ fontSize: 13, color: 'var(--ink-4)' }}>
           Strategy 단계가 완료되면 프로덕션 카드가 표시됩니다.
@@ -178,8 +184,8 @@ export default function ProductionBoard({
         return <CardShell key={card.id} card={card} />
       })}
 
-      {/* P1: Voice attach UI — 음성 녹음 단계 */}
-      <StageGate title="음성 파일 첨부" state={blockState({ from: 'voice_recording', to: 'voice_recording' }, currentStatus)}>
+      {/* Internal status stays voice_recording for legacy compatibility. */}
+      <StageGate title="원본 영상 등록" state={blockState({ from: 'voice_recording', to: 'voice_recording' }, currentStatus)}>
       <div style={{
         border: '1px solid var(--silver-2)',
         borderRadius: 8,
@@ -187,12 +193,12 @@ export default function ProductionBoard({
         overflow: 'hidden',
       }}>
         <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--silver-1)' }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)' }}>음성 파일 첨부</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)' }}>원본 영상 파일 등록</span>
         </div>
         <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <input
             className="j-input"
-            placeholder="파일 URL (예: https://...)"
+            placeholder="가로 원본 영상 URL 또는 등록된 파일 경로"
             value={voiceUrl}
             onChange={e => setVoiceUrl(e.target.value)}
           />
@@ -210,7 +216,7 @@ export default function ProductionBoard({
           )}
           {voiceOk && (
             <div style={{ fontSize: 12, color: 'var(--green)', padding: '4px 8px', background: 'var(--p-green)', borderRadius: 4 }}>
-              음성 첨부 완료
+              원본 영상 등록 완료
             </div>
           )}
           <button
@@ -236,12 +242,14 @@ export default function ProductionBoard({
               }
             }}
           >
-            {attachingVoice ? '첨부 중...' : '음성 첨부'}
+            {attachingVoice ? '등록 중...' : '원본 영상 등록'}
           </button>
         </div>
       </div>
       </StageGate>
 
+      {/* Legacy 프로젝트 또는 Pilot 승인 완료 후 기존 전체 렌더 파이프라인 사용. */}
+      {(!storyboardCard || currentStatus === 'rendering') && <>
       {/* P0-1: Slide deck + Render pipeline buttons — 슬라이드덱/렌더 단계 */}
       <StageGate title="프로덕션 파이프라인 (슬라이드덱 · 렌더)" state={blockState({ from: 'slide_deck', to: 'rendering' }, currentStatus)}>
       <div style={{
@@ -333,6 +341,7 @@ export default function ProductionBoard({
         </div>
       </div>
       </StageGate>
+      </>}
     </div>
   )
 }
@@ -347,7 +356,7 @@ export function ProductionActionPanel({
   onDecide: (gateId: string, decision: 'approved' | 'needs_revision' | 'rejected') => void
   deciding: string | null
 }) {
-  const productionGates = gates.filter(g => g.page === 'production' || g.gate_type === 'script_approval')
+  const productionGates = gates.filter(g => (g.page === 'production' || g.gate_type === 'script_approval') && !['storyboard_approval', 'pilot_approval'].includes(g.gate_type))
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
