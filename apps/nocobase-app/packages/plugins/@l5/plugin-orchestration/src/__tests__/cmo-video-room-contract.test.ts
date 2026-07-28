@@ -33,6 +33,7 @@ describe('CMO Video Room plugin contract — source checks', () => {
     expect(pluginSource).toContain('CREATE TABLE IF NOT EXISTS video_room_projects');
     expect(pluginSource).toContain('CREATE TABLE IF NOT EXISTS video_room_cards');
     expect(pluginSource).toContain('CREATE TABLE IF NOT EXISTS video_room_gates');
+    expect(pluginSource).toContain('CREATE TABLE IF NOT EXISTS video_production_runs');
   });
 
   it('grants loggedIn ACL on cmo resource actions including production pipeline', () => {
@@ -78,6 +79,19 @@ describe('CMO Video Room plugin contract — source checks', () => {
     expect(pluginSource).toContain('submitRender: async');
     expect(pluginSource).toContain('runQA: async');
     expect(pluginSource).toContain('createUploadDraft: async');
+  });
+
+  it('wires the storyboard and pilot approval flow without bypassing receipts', () => {
+    expect(pluginSource).toContain('startVideoPlanning: async');
+    expect(pluginSource).toContain('getVideoProductionStatus: async');
+    expect(pluginSource).toContain('getStoryboard: async');
+    expect(pluginSource).toContain('decideStoryboard: async');
+    expect(pluginSource).toContain('submitPilot: async');
+    expect(pluginSource).toContain('getPilotStatus: async');
+    expect(pluginSource).toContain('decidePilot: async');
+    expect(pluginSource).toContain('assertCanSubmitFinalRender');
+    expect(pluginSource).toContain("stage='09_factory_job'");
+    expect(pluginSource).toContain('must be decided through its dedicated review endpoint');
   });
 });
 

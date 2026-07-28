@@ -207,6 +207,13 @@ const {
   parseVideoAnalyticsRecords,
   mapAnalyticsToPerformanceInput,
   evaluateThumbnailSwapSignal,
+  createVideoProductionRun,
+  buildStoryboardManifest,
+  composeStoryboardHtml,
+  makeProductionArtifact,
+  approvalReceipt,
+  assertCanSubmitFinalRender,
+  routeStoryboardFeedback,
 } = require(path.resolve(__dirname, '../../../../../../../packages/l5-core/dist/functions/video-room'));
 
 const {
@@ -279,7 +286,7 @@ export default class PluginOrchestrationServer extends Plugin {
     this.app.acl.allow('founder_deliverables', '*', 'loggedIn');
     this.app.acl.allow('cto', ['planMessage', 'approvePlan', 'roadmapProgress'], 'loggedIn');
     this.app.acl.allow('cto_planning_messages', '*', 'loggedIn');
-    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'rejectStageGate', 'listArtifacts', 'decideResearchCandidate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'proposeProductDefinition', 'proposeKeyContentReport', 'selectKeyContentCandidate', 'proposePullingCandidates', 'proposePullingReport', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeThumbnailMatrix', 'recordImageSources', 'proposeTitleDevelopment', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights', 'learnThumbnailReferences', 'developThumbnailCandidate', 'reviewThumbnail', 'channelFirstDiscovery', 'evaluateHookAlignment', 'checkSwapSignals', 'publishUpload', 'setTigerEnabled', 'runTigerRetro'], 'loggedIn');
+    this.app.acl.allow('cmo', ['createProject', 'listProjects', 'getProject', 'chatMessage', 'advanceStatus', 'decideGate', 'approveStageGate', 'rejectStageGate', 'listArtifacts', 'decideResearchCandidate', 'approvePlan', 'saveCard', 'buildSlideDeck', 'startVideoPlanning', 'getVideoProductionStatus', 'getStoryboard', 'decideStoryboard', 'submitPilot', 'getPilotStatus', 'decidePilot', 'submitRender', 'getRenderStatus', 'runQA', 'createUploadDraft', 'loadPTContext', 'attachVoice', 'commitStrategyArtifact', 'saveScript', 'sendToFactory', 'generateVideoExecutionBrief', 'sendBriefToFactory', 'runContentStrategy', 'proposeKeyContentDraft', 'proposeProductDefinition', 'proposeKeyContentReport', 'selectKeyContentCandidate', 'proposePullingCandidates', 'proposePullingReport', 'commitPullingPlan', 'proposeThumbnailPlanDraft', 'commitThumbnailPlan', 'proposeThumbnailMatrix', 'recordImageSources', 'proposeTitleDevelopment', 'proposeScriptDraft', 'commitScriptDraft', 'saveKeyContentStep', 'submitViewtrapValidation', 'runDiscovery', 'commitKeyContentPlan', 'getStageGuides', 'recordVideoPerformance', 'getCompletedVideoInsights', 'learnThumbnailReferences', 'developThumbnailCandidate', 'reviewThumbnail', 'channelFirstDiscovery', 'evaluateHookAlignment', 'checkSwapSignals', 'publishUpload', 'setTigerEnabled', 'runTigerRetro', 'runContentPlanningSkillPreview'], 'loggedIn');
     this.app.acl.allow('cmo_planning_messages', '*', 'loggedIn');
     this.app.acl.allow('roadmap_items', '*', 'loggedIn');
     this.app.acl.allow('video-project', ['list', 'create', 'advance', 'complete', 'fail'], 'loggedIn');
@@ -540,6 +547,33 @@ async function ensureOrchestrationColumns(db: any) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     db.logger?.warn?.(`Could not ensure video_room_cards table: ${message}`);
+  }
+
+  try {
+    await db.sequelize.query(`
+      CREATE TABLE IF NOT EXISTS video_production_runs (
+        id text PRIMARY KEY,
+        project_id text NOT NULL,
+        slug text NOT NULL,
+        source_media_ref text NOT NULL,
+        status text NOT NULL DEFAULT 'planning',
+        current_skill text,
+        progress integer NOT NULL DEFAULT 0,
+        blocker text,
+        active_versions jsonb NOT NULL DEFAULT '{}'::jsonb,
+        skill_states jsonb NOT NULL DEFAULT '{}'::jsonb,
+        approval_receipts jsonb NOT NULL DEFAULT '{}'::jsonb,
+        factory_slug text,
+        "createdAt" timestamptz NOT NULL DEFAULT now(),
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS video_production_runs_project_idx
+        ON video_production_runs(project_id, "createdAt" DESC);
+      ALTER TABLE video_production_runs ADD COLUMN IF NOT EXISTS skill_states jsonb NOT NULL DEFAULT '{}'::jsonb;
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.logger?.warn?.(`Could not ensure video_production_runs table: ${message}`);
   }
 
   // R7: 완료 영상 성과 지표(수동 입력) 보관. 인사이트는 video_room_cards('completion_insights')에 저장.
@@ -2910,6 +2944,19 @@ function registerCmoResource(app: any, db: any) {
     return { yt: _ytModule, client: new _ytModule.YouTubeClient(creds), creds };
   }
 
+  // Shared helper: @l5/agent-runtime은 ESM이라 require 불가 — dynamic import(loadYoutube 컨벤션).
+  // 콘텐츠 기획 스킬 체인(runContentPlanning) + 브릿지(createDefaultSkillExecutor)를 제공한다.
+  // 스위치(CONTENT_PLANNING_SKILLS)가 켜졌을 때만 로드된다(비파괴 프리뷰 경로 전용).
+  let _agentRuntimeModule: any = null;
+  async function loadAgentRuntime(): Promise<any> {
+    if (!_agentRuntimeModule) {
+      _agentRuntimeModule = await import(
+        path.resolve(__dirname, '../../../../../../../services/agent-runtime/dist/index.js')
+      );
+    }
+    return _agentRuntimeModule;
+  }
+
   // Shared helper: YouTube API 429(일일 쿼터 소진) 시 CDP ytInitialData 검색 폴백 (FR-9).
   // 검색 결과 전체가 담긴 페이지 내 JSON을 파싱 — 확장 주입/lazy render/창 상태와 무관.
   // 반환: { id, title, ch, views(숫자|null) }[]. 세션은 매 호출 열고 닫는다(single-tenant).
@@ -3267,6 +3314,9 @@ function registerCmoResource(app: any, db: any) {
         const gateRows = await q(`SELECT * FROM video_room_gates WHERE id = $1`, [gate_id]);
         if (!gateRows[0]) ctx.throw(404, `gate ${gate_id} not found`);
         const gateRow = gateRows[0];
+        if (['storyboard_approval', 'pilot_approval'].includes(String(gateRow.gate_type))) {
+          ctx.throw(409, `${gateRow.gate_type} must be decided through its dedicated review endpoint`);
+        }
         // FR-6: 승인 결정 시 게이트 리포트 사전조건 강제 (반려/수정요청은 리포트 불필요).
         if (decision === 'approved') {
           const projStatusRows = await q(`SELECT status FROM video_room_projects WHERE id = $1`, [gateRow.video_project_id]);
@@ -3316,6 +3366,9 @@ function registerCmoResource(app: any, db: any) {
         const status = projRows[0].status;
         if (!videoRoomRequiresApproval(status)) {
           ctx.throw(400, `status ${status} is not an approval gate`);
+        }
+        if (['storyboard_approval', 'pilot_approval'].includes(String(status))) {
+          ctx.throw(409, `${status} must be decided through its dedicated review endpoint`);
         }
         // FR-6: 리포트 없는 "바로 승인" 차단 — 게이트별 검토 리포트 카드가 있어야 승인 가능.
         {
@@ -3511,6 +3564,359 @@ function registerCmoResource(app: any, db: any) {
         await next();
       },
 
+      // POST /api/cmo:startVideoPlanning { project_id, source_media_ref? }
+      // 기존 slide_deck 단계 안에서 01~08 + animated storyboard를 한 번에 생성한다.
+      startVideoPlanning: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const projects = await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projects[0]) ctx.throw(404, `project ${project_id} not found`);
+        if (!['slide_deck', 'storyboard_approval'].includes(String(projects[0].status))) {
+          ctx.throw(409, `video planning requires slide_deck status (current: ${projects[0].status})`);
+        }
+        const brief = await loadLatestBriefForProject(q, project_id);
+        if (!brief?.script?.logic_blocks?.length) {
+          ctx.throw(400, 'approved VideoExecutionBrief with logic_blocks is required');
+        }
+        const voiceRows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'voice' ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        const voiceData = voiceRows[0]?.data
+          ? (typeof voiceRows[0].data === 'string' ? JSON.parse(voiceRows[0].data) : voiceRows[0].data)
+          : null;
+        const source_media_ref = String(v.source_media_ref ?? voiceData?.file_ref ?? '').trim();
+        if (!source_media_ref) ctx.throw(400, 'source media is required; attach the source video first');
+
+        const run_id = randomUUID();
+        const now = new Date().toISOString();
+        const slug = `${String(projects[0].title ?? 'video').toLowerCase().replace(/[^a-z0-9가-힣]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'video'}-${run_id.slice(0, 8)}`;
+        const run = createVideoProductionRun({ id: run_id, project_id, slug, source_media_ref, now });
+        const planningSkills = ['video-content-brief', 'video-scene-planner', 'video-slide-worker', 'video-media-prep', 'video-rough-cut-planner', 'video-asset-director', 'video-motion-graphics', 'video-sound-designer', 'video-caption-designer', 'storyboard-composer'];
+        const initialSkillStates = Object.fromEntries(planningSkills.map((skill) => [skill, 'queued']));
+        await db.sequelize.query(
+          `INSERT INTO video_production_runs (id, project_id, slug, source_media_ref, status, current_skill, progress, blocker, active_versions, skill_states, approval_receipts, "createdAt", "updatedAt")
+           VALUES ($1,$2,$3,$4,'planning','video-content-brief',0,NULL,'{}'::jsonb,$5::jsonb,'{}'::jsonb,now(),now())`,
+          { bind: [run_id, project_id, slug, source_media_ref, JSON.stringify(initialSkillStates)] },
+        );
+
+        const executePlanning = async () => {
+        try {
+          const manifest = buildStoryboardManifest({ run, brief });
+          if (manifest.coverage !== 1) throw new Error(`script coverage must be 100% (actual ${manifest.coverage})`);
+          if (manifest.blockers.length) throw new Error(`storyboard blockers: ${manifest.blockers.join(', ')}`);
+          const html = composeStoryboardHtml(manifest);
+          const version = 1;
+          const definitions: Array<{ stage: string; generated_by: string; data: any }> = [
+            { stage: '01_content_brief', generated_by: 'video-content-brief', data: { brief, production: brief.constraints?.production ?? null } },
+            { stage: '02_scene_plan', generated_by: 'video-scene-planner', data: { master_duration_sec: manifest.duration_sec, coverage: manifest.coverage, scenes: manifest.scenes } },
+            { stage: '02_slide_fragments', generated_by: 'video-slide-worker', data: { fragments: manifest.scenes.map((s: any) => ({ scene_id: s.scene_id, assertion: s.assertion, evidence: s.evidence, composition: s.composition, factory_template_candidates: [s.preferred_scene_type], preview_spec: { visual_mode: s.visual_mode }, issues: s.qa_risks })) } },
+            { stage: '03_media_manifest', generated_by: 'video-media-prep', data: { master_media: source_media_ref, assets: [{ asset_id: 'source-media', path: source_media_ref, provenance: 'user_supplied' }], transcript_cues: manifest.scenes.map((s: any) => ({ scene_id: s.scene_id, start: s.start_sec, end: s.end_sec, text: s.spoken_text })), technical_issues: [] } },
+            { stage: '04_rough_cut_plan', generated_by: 'video-rough-cut-planner', data: { source_asset_id: 'source-media', operations: [], review_required: false, preserve_notes: ['approved meaning and natural pauses'] } },
+            { stage: '05_asset_manifest', generated_by: 'video-asset-director', data: { assets: [], scene_assignments: manifest.scenes.map((s: any) => ({ scene_id: s.scene_id, status: s.asset_status, provenance: s.asset_provenance })), missing_assets: manifest.scenes.filter((s: any) => s.asset_status === 'review').map((s: any) => s.scene_id), fallbacks: 'Factory graphic', approval_required: manifest.scenes.some((s: any) => s.asset_status === 'review') } },
+            { stage: '06_motion_plan', generated_by: 'video-motion-graphics', data: { defaults: { restrained: true, caption_safe_area: 'lower_center' }, scenes: manifest.scenes.map((s: any) => ({ scene_id: s.scene_id, component_type: s.preferred_scene_type, timing: s.motion, transition: s.transition })) } },
+            { stage: '07_sound_plan', generated_by: 'video-sound-designer', data: { master_audio: source_media_ref, music_tracks: [], effects: [], ducking: { narration_priority: true }, fallback: 'silence' } },
+            { stage: '08_caption_plan', generated_by: 'video-caption-designer', data: { source_of_truth: 'approved_narration', display_text_policy: 'static_sentence', layout: 'lower_center', cues: manifest.scenes.map((s: any) => ({ cue_id: `cue-${s.scene_id}`, scene_id: s.scene_id, start: s.start_sec, end: s.end_sec, text: s.caption })) } },
+            { stage: 'storyboard_manifest', generated_by: 'storyboard-composer', data: manifest },
+            { stage: 'storyboard', generated_by: 'storyboard-composer', data: { manifest, html } },
+          ];
+          const active_versions: Record<string, number> = {};
+          let storyboardArtifact: any = null;
+          for (const [index, definition] of definitions.entries()) {
+            const progress = Math.round((index / definitions.length) * 100);
+            await db.sequelize.query(
+              `UPDATE video_production_runs SET current_skill=$1, progress=$2, skill_states=jsonb_set(skill_states,ARRAY[$1],'"running"'::jsonb,true), "updatedAt"=now() WHERE id=$3`,
+              { bind: [definition.generated_by, progress, run_id] },
+            );
+            const artifact = makeProductionArtifact({ artifact_type: definition.stage, project_id, run_id, version, source_versions: active_versions, status: 'draft', issues: [], generated_by: definition.generated_by, data: definition.data });
+            active_versions[definition.stage] = version;
+            const card_id = randomUUID();
+            await db.sequelize.query(
+              `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,now(),now())`,
+              { bind: [card_id, project_id, definition.stage, `${definition.stage} v${version}`, JSON.stringify(artifact)] },
+            );
+            await db.sequelize.query(
+              `UPDATE video_production_runs SET skill_states=jsonb_set(skill_states,ARRAY[$1],'"completed"'::jsonb,true), "updatedAt"=now() WHERE id=$2`,
+              { bind: [definition.generated_by, run_id] },
+            );
+            if (definition.stage === 'storyboard') storyboardArtifact = artifact;
+          }
+          await db.sequelize.query(
+            `UPDATE video_production_runs SET status='storyboard_review', current_skill=NULL, progress=100, active_versions=$1, "updatedAt"=now() WHERE id=$2`,
+            { bind: [JSON.stringify(active_versions), run_id] },
+          );
+          await db.sequelize.query(
+            `INSERT INTO video_room_gates (id, video_project_id, gate_type, page, title, context, options, recommended_option, status, "createdAt", "updatedAt")
+             VALUES ($1,$2,'storyboard_approval','production','애니메이션 스토리보드 승인','장면별 화면·모션·자막·자산을 확인합니다.',$3,'approved','pending',now(),now())`,
+            { bind: [randomUUID(), project_id, JSON.stringify(['approved', 'needs_revision', 'hold'])] },
+          );
+          await db.sequelize.query(
+            `UPDATE video_room_projects SET status='storyboard_approval', current_page='production', "updatedAt"=now() WHERE id=$1`,
+            { bind: [project_id] },
+          );
+        } catch (error: any) {
+          await db.sequelize.query(
+            `UPDATE video_production_runs SET status='blocked', current_skill=NULL, blocker=$1, "updatedAt"=now() WHERE id=$2`,
+            { bind: [error?.message ?? String(error), run_id] },
+          );
+          db.logger?.warn?.(`video planning run ${run_id} failed: ${error?.message ?? String(error)}`);
+        }
+        };
+        setImmediate(() => { void executePlanning(); });
+        ctx.body = { ok: true, data: { run_id, status: 'planning', queued: true } };
+        await next();
+      },
+
+      // POST /api/cmo:getVideoProductionStatus { project_id, run_id? }
+      getVideoProductionStatus: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const rows = await q(
+          `SELECT * FROM video_production_runs WHERE project_id=$1 ${v.run_id ? 'AND id=$2' : ''} ORDER BY "createdAt" DESC LIMIT 1`,
+          v.run_id ? [project_id, String(v.run_id)] : [project_id],
+        );
+        const run = rows[0] ?? null;
+        const artifacts = run ? await q(`SELECT id, stage, summary, data, "createdAt" FROM video_room_cards WHERE video_project_id=$1 AND (data->>'run_id')=$2 ORDER BY "createdAt" ASC`, [project_id, run.id]) : [];
+        ctx.body = { ok: true, data: { run, artifacts } };
+        await next();
+      },
+
+      // POST /api/cmo:getStoryboard { project_id, run_id? }
+      getStoryboard: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const rows = await q(
+          `SELECT data FROM video_room_cards WHERE video_project_id=$1 AND stage='storyboard' ${v.run_id ? "AND (data->>'run_id')=$2" : ''} ORDER BY "createdAt" DESC LIMIT 1`,
+          v.run_id ? [project_id, String(v.run_id)] : [project_id],
+        );
+        if (!rows[0]) ctx.throw(404, 'storyboard not found');
+        const artifact = typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data;
+        ctx.body = { ok: true, data: { artifact, manifest: artifact.data?.manifest, html: artifact.data?.html } };
+        await next();
+      },
+
+      // POST /api/cmo:decideStoryboard { project_id, run_id, decision, scene_decisions? }
+      decideStoryboard: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const run_id = String(v.run_id ?? '').trim();
+        const decision = String(v.decision ?? '').trim();
+        if (!project_id || !run_id) ctx.throw(400, 'project_id and run_id are required');
+        if (!['approved', 'needs_revision', 'hold'].includes(decision)) ctx.throw(400, 'invalid storyboard decision');
+        const storyboardRows = await q(`SELECT data FROM video_room_cards WHERE video_project_id=$1 AND stage='storyboard' AND (data->>'run_id')=$2 ORDER BY "createdAt" DESC LIMIT 1`, [project_id, run_id]);
+        if (!storyboardRows[0]) ctx.throw(404, 'storyboard not found');
+        const artifact = typeof storyboardRows[0].data === 'string' ? JSON.parse(storyboardRows[0].data) : storyboardRows[0].data;
+        const scene_decisions = Array.isArray(v.scene_decisions) ? v.scene_decisions : [];
+        if (decision === 'approved' && scene_decisions.some((item: any) => item.decision && item.decision !== 'approved')) {
+          ctx.throw(400, 'all decided scenes must be approved before overall approval');
+        }
+        const feedbackInput = scene_decisions.length > 0
+          ? scene_decisions
+          : [{ scene_id: 'all', decision, note: String(v.note ?? ''), scope: 'project' }];
+        const feedback = feedbackInput.map((item: any) => ({ ...item, routed_skills: routeStoryboardFeedback(item) }));
+        await db.sequelize.query(
+          `INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt") VALUES ($1,$2,'storyboard_feedback',$3,$4,now(),now())`,
+          { bind: [randomUUID(), project_id, `${decision}: ${feedback.length} scene(s)`, JSON.stringify({ run_id, storyboard_version: artifact.version, decision, feedback, note: String(v.note ?? '') })] },
+        );
+        if (decision !== 'approved') {
+          const routedSkills = [...new Set(feedback.flatMap((item: any) => item.routed_skills))] as string[];
+          const stageBySkill: Record<string, string[]> = {
+            'video-scene-planner': ['02_scene_plan'],
+            'video-slide-worker': ['02_slide_fragments'],
+            'video-asset-director': ['05_asset_manifest'],
+            'video-motion-graphics': ['06_motion_plan'],
+            'video-sound-designer': ['07_sound_plan'],
+            'video-caption-designer': ['08_caption_plan'],
+            'storyboard-composer': ['storyboard_manifest', 'storyboard'],
+          };
+          const stages = [...new Set(routedSkills.flatMap((skill) => stageBySkill[skill] ?? []))];
+          const runRows = await q(`SELECT active_versions, skill_states FROM video_production_runs WHERE id=$1`, [run_id]);
+          const activeVersions = typeof runRows[0]?.active_versions === 'string' ? JSON.parse(runRows[0].active_versions) : (runRows[0]?.active_versions ?? {});
+          const targetedSceneIds = new Set(feedback.filter((item: any) => item.decision !== 'approved').map((item: any) => String(item.scene_id)));
+          const revisionNote = String(v.note ?? 'storyboard revision requested');
+          let revisedManifest: any = null;
+          const manifestRows = await q(`SELECT data FROM video_room_cards WHERE video_project_id=$1 AND stage='storyboard_manifest' AND (data->>'run_id')=$2 ORDER BY "createdAt" DESC LIMIT 1`, [project_id, run_id]);
+          if (manifestRows[0]?.data) {
+            const manifestEnvelope = typeof manifestRows[0].data === 'string' ? JSON.parse(manifestRows[0].data) : manifestRows[0].data;
+            revisedManifest = structuredClone(manifestEnvelope.data);
+            revisedManifest.scenes = revisedManifest.scenes.map((scene: any) => {
+              if (!targetedSceneIds.has('all') && !targetedSceneIds.has(String(scene.scene_id))) return scene;
+              return { ...scene, composition: `${scene.composition} · 수정 지시: ${revisionNote}`, qa_risks: [...new Set([...(scene.qa_risks ?? []), `revision: ${revisionNote}`])] };
+            });
+          }
+          for (const stage of stages) {
+            const rows = await q(`SELECT data FROM video_room_cards WHERE video_project_id=$1 AND stage=$2 AND (data->>'run_id')=$3 ORDER BY "createdAt" DESC LIMIT 1`, [project_id, stage, run_id]);
+            if (!rows[0]?.data) continue;
+            const previous = typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data;
+            const nextVersion = Number(previous.version ?? 1) + 1;
+            let nextData = { ...previous.data, revision: { note: revisionNote, feedback, previous_version: previous.version } };
+            if (stage === 'storyboard_manifest' && revisedManifest) nextData = revisedManifest;
+            if (stage === 'storyboard' && revisedManifest) nextData = { manifest: revisedManifest, html: composeStoryboardHtml(revisedManifest), revision: { note: revisionNote, feedback, previous_version: previous.version } };
+            const revised = makeProductionArtifact({ artifact_type: stage, project_id, run_id, version: nextVersion, source_versions: activeVersions, status: 'draft', issues: [], generated_by: previous.generated_by, data: nextData });
+            activeVersions[stage] = nextVersion;
+            await db.sequelize.query(`INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,now(),now())`, { bind: [randomUUID(), project_id, stage, `${stage} v${nextVersion} revision`, JSON.stringify(revised)] });
+          }
+          const nextSkillStates = { ...(typeof runRows[0]?.skill_states === 'string' ? JSON.parse(runRows[0].skill_states) : (runRows[0]?.skill_states ?? {})) };
+          routedSkills.forEach((skill) => { nextSkillStates[skill] = 'completed'; });
+          await db.sequelize.query(`UPDATE video_production_runs SET status='storyboard_review', current_skill=NULL, progress=100, blocker=NULL, active_versions=$1::jsonb, skill_states=$2::jsonb, "updatedAt"=now() WHERE id=$3`, { bind: [JSON.stringify(activeVersions), JSON.stringify(nextSkillStates), run_id] });
+          ctx.body = { ok: true, data: { run_id, decision, routed_skills: routedSkills, regenerated_stages: stages, active_versions: activeVersions } };
+          await next();
+          return;
+        }
+        const receipt = approvalReceipt({ run_id, artifact_type: 'storyboard', version: artifact.version, checksum: artifact.checksum, approved_at: new Date().toISOString() });
+        await db.sequelize.query(
+          `UPDATE video_production_runs SET status='pilot_rendering', blocker=NULL, approval_receipts=jsonb_set(approval_receipts,'{storyboard}',$1::jsonb,true), "updatedAt"=now() WHERE id=$2`,
+          { bind: [JSON.stringify(receipt), run_id] },
+        );
+        await db.sequelize.query(`UPDATE video_room_gates SET status='approved', decided_by='founder', decided_at=now(), "updatedAt"=now() WHERE video_project_id=$1 AND gate_type='storyboard_approval' AND status='pending'`, { bind: [project_id] });
+        await db.sequelize.query(`UPDATE video_room_projects SET status='pilot_rendering', current_page='production', "updatedAt"=now() WHERE id=$1`, { bind: [project_id] });
+        ctx.body = { ok: true, data: { run_id, decision, receipt, status: 'pilot_rendering' } };
+        await next();
+      },
+
+      // POST /api/cmo:submitPilot { project_id, run_id }
+      submitPilot: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const run_id = String(v.run_id ?? '').trim();
+        if (!project_id || !run_id) ctx.throw(400, 'project_id and run_id are required');
+        const runRows = await q(`SELECT * FROM video_production_runs WHERE id=$1 AND project_id=$2`, [run_id, project_id]);
+        if (!runRows[0]) ctx.throw(404, 'production run not found');
+        const receipts = typeof runRows[0].approval_receipts === 'string' ? JSON.parse(runRows[0].approval_receipts) : (runRows[0].approval_receipts ?? {});
+        if (!receipts.storyboard) ctx.throw(409, 'storyboard approval is required before pilot');
+        const brief = await loadLatestBriefForProject(q, project_id);
+        if (!brief) ctx.throw(400, 'VideoExecutionBrief not found');
+        const spec = buildSlideDeckSpecFromBrief(brief, { id: randomUUID(), video_project_id: project_id, script_draft_id: randomUUID(), voice_recording_id: randomUUID(), design_theme: 'Pulk Black Warm Cream' });
+        const fullJob = buildFactoryJobFromSlideDeck(spec, { slug: `${runRows[0].slug}-final`, title: brief.title });
+        // The approved source recording is part of the final data-driven job,
+        // so the pilot proves footage framing/lip-sync instead of only slides.
+        if (fullJob.scenes.length > 0) {
+          const original = fullJob.scenes[0];
+          const duration = Math.max(3, Math.min(20, Number(original.duration ?? 8)));
+          fullJob.scenes[0] = {
+            scene_id: original.scene_id,
+            type: 'talking_head',
+            duration,
+            src: String(runRows[0].source_media_ref),
+            source_range: { from_sec: 0, to_sec: duration },
+            auto_edit: { silence_cut: true, silence_db: -35, min_silence_sec: 0.6 },
+            punch_in: true,
+            layout: 'full',
+            own_audio: true,
+            caption: original.caption,
+            visual_intent: original.visual_intent,
+            rhythm_role: original.rhythm_role,
+            transition: original.transition ?? 'cut',
+          };
+        }
+        const representative = [
+          fullJob.scenes.findIndex((scene: any) => scene.type === 'talking_head'),
+          fullJob.scenes.findIndex((scene: any) => !['talking_head', 'recorded_ui', 'external_clip', 'broll', 'gallery'].includes(scene.type)),
+          fullJob.scenes.findIndex((scene: any) => scene.transition && scene.transition !== 'cut'),
+        ].filter((index: number) => index >= 0);
+        const selected = new Set<number>();
+        let total = 0;
+        for (const index of representative) {
+          const duration = Number(fullJob.scenes[index].duration ?? 0);
+          if (!selected.has(index) && total + duration <= 60) {
+            selected.add(index);
+            total += duration;
+          }
+        }
+        for (const [index, scene] of fullJob.scenes.entries()) {
+          const duration = Number((scene as any).duration ?? 0);
+          if (!selected.has(index) && total + duration <= 60) {
+            selected.add(index);
+            total += duration;
+          }
+        }
+        const pilotScenes = [...selected].sort((a, b) => a - b).map((index) => fullJob.scenes[index]);
+        const pilotJob = { ...fullJob, id: `pilot-${run_id}`, slug: `${runRows[0].slug}-pilot`, scenes: pilotScenes };
+        const jobArtifact = makeProductionArtifact({ artifact_type: '09_factory_job', project_id, run_id, version: 1, source_versions: { storyboard: receipts.storyboard.version }, status: 'approved', issues: [], generated_by: 'video-timeline-assembler', data: { full_job: fullJob, pilot_job: pilotJob, storyboard_approval: receipts.storyboard } });
+        await db.sequelize.query(`INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt") VALUES ($1,$2,'09_factory_job','approved factory job v1',$3,now(),now())`, { bind: [randomUUID(), project_id, JSON.stringify(jobArtifact)] });
+        let factory_slug: string | null = null;
+        if (_videoFactoryTransport && typeof (_videoFactoryTransport as any).submitJob === 'function') {
+          const result = await (_videoFactoryTransport as any).submitJob(pilotJob);
+          if (!result.ok) ctx.throw(400, `pilot submit failed: ${result.error ?? 'unknown'}`);
+          factory_slug = pilotJob.slug;
+          await db.sequelize.query(`INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt") VALUES ($1,$2,'pilot_rendering',$3,$4,now(),now())`, { bind: [randomUUID(), project_id, `pilot ${factory_slug}`, JSON.stringify({ run_id, factory_slug, pilot_job: pilotJob, job_path: result.job_path })] });
+          await db.sequelize.query(`UPDATE video_production_runs SET factory_slug=$1, "updatedAt"=now() WHERE id=$2`, { bind: [factory_slug, run_id] });
+        } else {
+          await db.sequelize.query(`UPDATE video_production_runs SET status='blocked', blocker='Factory transport is not configured', "updatedAt"=now() WHERE id=$1`, { bind: [run_id] });
+          ctx.throw(503, 'Factory transport is not configured; a real pilot render is required');
+        }
+        ctx.body = { ok: true, data: { run_id, factory_slug, stub: false, status: 'pilot_rendering' } };
+        await next();
+      },
+
+      // POST /api/cmo:getPilotStatus { project_id, run_id }
+      getPilotStatus: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const run_id = String(v.run_id ?? '').trim();
+        if (!project_id || !run_id) ctx.throw(400, 'project_id and run_id are required');
+        const qaRows = await q(`SELECT data FROM video_room_cards WHERE video_project_id=$1 AND stage='pilot_qa' AND (data->>'run_id')=$2 ORDER BY "createdAt" DESC LIMIT 1`, [project_id, run_id]);
+        if (qaRows[0]) {
+          const qa = typeof qaRows[0].data === 'string' ? JSON.parse(qaRows[0].data) : qaRows[0].data;
+          ctx.body = { ok: true, data: { status: 'completed', qa } };
+          await next();
+          return;
+        }
+        const runs = await q(`SELECT * FROM video_production_runs WHERE id=$1`, [run_id]);
+        const slug = String(runs[0]?.factory_slug ?? '');
+        if (!slug || !_videoFactoryTransport || typeof (_videoFactoryTransport as any).getRenderJobStatus !== 'function') {
+          ctx.body = { ok: true, data: { status: 'queued', qa: null } };
+          await next();
+          return;
+        }
+        const result = await (_videoFactoryTransport as any).getRenderJobStatus(slug);
+        if (!result.ok) ctx.throw(400, result.error ?? 'pilot status failed');
+        const status = deriveRenderJobStatus(result.observation);
+        if (status === 'completed') {
+          const renderQa = evaluateRenderArtifacts(result.observation, { format: 'youtube_16_9' });
+          const qa = makeProductionArtifact({ artifact_type: 'pilot_qa', project_id, run_id, version: 1, source_versions: {}, status: renderQa.result === 'pass' ? 'draft' : 'blocked', issues: renderQa.issues ?? [], generated_by: 'video-production-qa', data: { verdict: renderQa.result === 'pass' ? 'PASS' : 'NEEDS_REVISION', render_qa: renderQa, paths: result.observation.paths } });
+          await db.sequelize.query(`INSERT INTO video_room_cards (id, video_project_id, stage, summary, data, "createdAt", "updatedAt") VALUES ($1,$2,'pilot_qa',$3,$4,now(),now())`, { bind: [randomUUID(), project_id, `pilot QA ${qa.data.verdict}`, JSON.stringify(qa)] });
+          if (qa.data.verdict === 'PASS') {
+            await db.sequelize.query(`INSERT INTO video_room_gates (id, video_project_id, gate_type, page, title, context, options, recommended_option, status, "createdAt", "updatedAt") VALUES ($1,$2,'pilot_approval','production','파일럿 렌더 승인','프레이밍·립싱크·자막·슬라이드·전환을 확인합니다.',$3,'approved','pending',now(),now())`, { bind: [randomUUID(), project_id, JSON.stringify(['approved', 'needs_revision'])] });
+            await db.sequelize.query(`UPDATE video_production_runs SET status='pilot_review', "updatedAt"=now() WHERE id=$1`, { bind: [run_id] });
+            await db.sequelize.query(`UPDATE video_room_projects SET status='pilot_approval', "updatedAt"=now() WHERE id=$1`, { bind: [project_id] });
+          }
+          ctx.body = { ok: true, data: { status, qa } };
+        } else {
+          ctx.body = { ok: true, data: { status, qa: null } };
+        }
+        await next();
+      },
+
+      // POST /api/cmo:decidePilot { project_id, run_id, decision, note? }
+      decidePilot: async (ctx: ActionContext, next: () => Promise<void>) => {
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        const run_id = String(v.run_id ?? '').trim();
+        const decision = String(v.decision ?? '').trim();
+        if (!project_id || !run_id) ctx.throw(400, 'project_id and run_id are required');
+        if (!['approved', 'needs_revision'].includes(decision)) ctx.throw(400, 'invalid pilot decision');
+        if (decision === 'needs_revision') {
+          await db.sequelize.query(`UPDATE video_production_runs SET status='blocked', blocker=$1, "updatedAt"=now() WHERE id=$2`, { bind: [String(v.note ?? 'pilot revision requested'), run_id] });
+          ctx.body = { ok: true, data: { run_id, decision, status: 'blocked' } };
+          await next();
+          return;
+        }
+        const qaRows = await q(`SELECT data FROM video_room_cards WHERE video_project_id=$1 AND stage='pilot_qa' AND (data->>'run_id')=$2 ORDER BY "createdAt" DESC LIMIT 1`, [project_id, run_id]);
+        if (!qaRows[0]) ctx.throw(409, 'pilot QA is required before approval');
+        const qa = typeof qaRows[0].data === 'string' ? JSON.parse(qaRows[0].data) : qaRows[0].data;
+        if (qa.data?.verdict !== 'PASS') ctx.throw(409, 'pilot QA must pass before approval');
+        const receipt = approvalReceipt({ run_id, artifact_type: 'pilot_qa', version: qa.version, checksum: qa.checksum, approved_at: new Date().toISOString() });
+        await db.sequelize.query(`UPDATE video_production_runs SET status='final_rendering', blocker=NULL, approval_receipts=jsonb_set(approval_receipts,'{pilot}',$1::jsonb,true), "updatedAt"=now() WHERE id=$2`, { bind: [JSON.stringify(receipt), run_id] });
+        await db.sequelize.query(`UPDATE video_room_gates SET status='approved', decided_by='founder', decided_at=now(), "updatedAt"=now() WHERE video_project_id=$1 AND gate_type='pilot_approval' AND status='pending'`, { bind: [project_id] });
+        await db.sequelize.query(`UPDATE video_room_projects SET status='rendering', current_page='production', "updatedAt"=now() WHERE id=$1`, { bind: [project_id] });
+        ctx.body = { ok: true, data: { run_id, decision, receipt, status: 'rendering' } };
+        await next();
+      },
+
       // POST /api/cmo:buildSlideDeck  { project_id, design_theme?, slides? }
       buildSlideDeck: async (ctx: ActionContext, next: () => Promise<void>) => {
         const v = getValues(ctx);
@@ -3626,6 +4032,23 @@ function registerCmoResource(app: any, db: any) {
         if (!project_id) ctx.throw(400, 'project_id is required');
         if (!slide_deck_spec_id) ctx.throw(400, 'slide_deck_spec_id is required');
 
+        // 신규 production run은 Storyboard와 Pilot 승인 receipt가 모두 있어야 한다.
+        // run이 없는 기존 프로젝트는 legacy 경로를 그대로 유지한다.
+        const productionRunRows = await q(
+          `SELECT id, approval_receipts FROM video_production_runs WHERE project_id=$1 ORDER BY "createdAt" DESC LIMIT 1`,
+          [project_id],
+        );
+        if (productionRunRows[0]) {
+          const receipts = typeof productionRunRows[0].approval_receipts === 'string'
+            ? JSON.parse(productionRunRows[0].approval_receipts)
+            : (productionRunRows[0].approval_receipts ?? {});
+          try {
+            assertCanSubmitFinalRender({ run_id: productionRunRows[0].id, storyboard: receipts.storyboard, pilot: receipts.pilot });
+          } catch (error: any) {
+            ctx.throw(409, error?.message ?? String(error));
+          }
+        }
+
         // Retrieve spec from latest slide_deck card (or accept the spec inline).
         const specCardRows = await q(
           `SELECT data FROM video_room_cards WHERE video_project_id = $1 AND stage = 'slide_deck' ORDER BY "createdAt" DESC LIMIT 1`,
@@ -3634,6 +4057,17 @@ function registerCmoResource(app: any, db: any) {
         const rawSpec = specCardRows[0]?.data;
         const spec = rawSpec ? (typeof rawSpec === 'string' ? JSON.parse(rawSpec) : rawSpec) : null;
         const payload = spec ? slideDeckToVideoJob(spec) : null;
+        let approvedFactoryJob: any = null;
+        if (productionRunRows[0]) {
+          const approvedJobRows = await q(
+            `SELECT data FROM video_room_cards WHERE video_project_id=$1 AND stage='09_factory_job' ORDER BY "createdAt" DESC LIMIT 1`,
+            [project_id],
+          );
+          const envelope = approvedJobRows[0]?.data
+            ? (typeof approvedJobRows[0].data === 'string' ? JSON.parse(approvedJobRows[0].data) : approvedJobRows[0].data)
+            : null;
+          approvedFactoryJob = envelope?.data?.full_job ?? null;
+        }
 
         const render_job_id = randomUUID();
         let job = createRenderJob({
@@ -3648,14 +4082,16 @@ function registerCmoResource(app: any, db: any) {
         // factory 쪽에서 실행되고, 이후 진행은 cmo:getRenderStatus 폴링으로 본다.
         let factory_slug: string | undefined;
         let job_path: string | undefined;
-        if (spec && _videoFactoryTransport && typeof (_videoFactoryTransport as any).submitJob === 'function') {
+        if ((approvedFactoryJob || spec) && _videoFactoryTransport && typeof (_videoFactoryTransport as any).submitJob === 'function') {
           const projRows = await q(`SELECT title FROM video_room_projects WHERE id = $1`, [project_id]);
           const title = String(projRows[0]?.title ?? spec.slides?.[0]?.headline ?? '영상');
-          let factoryJob: any;
-          try {
-            factoryJob = buildFactoryJobFromSlideDeck(spec, { slug: slide_deck_spec_id, title });
-          } catch (err: any) {
-            ctx.throw(400, `buildFactoryJobFromSlideDeck 실패: ${err?.message ?? String(err)}`);
+          let factoryJob: any = approvedFactoryJob;
+          if (!factoryJob) {
+            try {
+              factoryJob = buildFactoryJobFromSlideDeck(spec, { slug: slide_deck_spec_id, title });
+            } catch (err: any) {
+              ctx.throw(400, `buildFactoryJobFromSlideDeck 실패: ${err?.message ?? String(err)}`);
+            }
           }
           const result = await (_videoFactoryTransport as any).submitJob(factoryJob);
           if (!result.ok) {
@@ -4782,6 +5218,56 @@ function registerCmoResource(app: any, db: any) {
         if ((report.candidates ?? []).length === 0) {
           sendRuntimeErrorTelegram('keyContentPlanDoc', '후보 0건 — 기획서 미생성(게이트 차단 유지). 발굴 재시도 필요', project_id).catch(() => {});
         } else try {
+          // Phase 3(스킬 라우팅): CONTENT_PLANNING_SKILLS=1이면 "생각하는 층"만 스킬로 교체한다.
+          // OLD 데이터층(발굴·시장 계산기 = report.market/candidates)은 그대로 두고, 추론 산출물
+          // (판매 논리·추천 사유·풀링 키워드·후보별 정체성)만 스킬 결과로 덮어쓴다. 스킬 실패/블록 시
+          // OLD 리포트를 그대로 사용(자동 폴백). 스위치 off면 이 블록 전체 skip → 현행 100% 동일.
+          let skillKeywordPlan: any[] | null = null;
+          if (process.env.CONTENT_PLANNING_SKILLS === '1') {
+            try {
+              const rt = await loadAgentRuntime();
+              const skillsRoot = path.resolve(__dirname, '../../../../../../../services/agent-runtime/skills/content-planning');
+              const runsRoot = path.join(require('os').tmpdir(), 'l5-content-planning-runs');
+              const executeSkill = rt.createDefaultSkillExecutor({ skillsRoot, runsRoot, contract: 'content_planning_v1' });
+              const skillRun = {
+                id: `keyplan-${project_id}-${Date.now()}`, project_id, slug: String(proj.slug ?? project_id),
+                source_media_ref: 'content-planning', status: 'planning', current_skill: null, progress: 0,
+                blocker: null, active_versions: {}, storyboard_approved_at: null, pilot_approved_at: null,
+                factory_slug: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+              };
+              const skRes = await rt.runContentPlanning({
+                run: skillRun,
+                context: {
+                  product: reportProduct,
+                  customer_problem: proj.customer_problem ? String(proj.customer_problem).trim() : '',
+                  keywords,
+                  market: report.market,
+                  candidates: report.candidates,
+                },
+                skill_ids: ['content-key-plan'],
+              }, { executeSkill });
+              const skd = (skRes.artifacts[skRes.artifacts.length - 1]?.data ?? {}) as any;
+              if (skRes.blocked.length === 0 && skd) {
+                if (skd.applied_sales_logic) report.applied_sales_logic = skd.applied_sales_logic;
+                if (skd.recommendation_reason) report.recommendation_reason = skd.recommendation_reason;
+                if (skd.recommended_video_id) report.recommended_video_id = skd.recommended_video_id;
+                // 후보별 추론(정체성/퍼널/수익화)만 videoId로 매칭 오버레이 — 데이터(조회수 등)는 유지.
+                if (Array.isArray(skd.candidates)) {
+                  const byId = new Map<string, any>(skd.candidates.map((c: any) => [c.videoId, c]));
+                  report.candidates = (report.candidates ?? []).map((c: any) => {
+                    const s = byId.get(c.videoId);
+                    return s ? { ...c, viewer_identity: s.viewer_identity ?? c.viewer_identity, identity_match: s.identity_match ?? c.identity_match, identity_reason: s.identity_reason ?? c.identity_reason, funnel: s.funnel ?? c.funnel, monetization: s.monetization ?? c.monetization } : c;
+                  });
+                }
+                if (Array.isArray(skd.pulling_keyword_plan) && skd.pulling_keyword_plan.length > 0) {
+                  skillKeywordPlan = skd.pulling_keyword_plan;
+                }
+              }
+            } catch (skErr: any) {
+              // 스킬 실패 → OLD 리포트 그대로(폴백). 사유만 표면화.
+              sendRuntimeErrorTelegram('keyContentPlanDoc:skill', skErr?.message ?? String(skErr), project_id).catch(() => {});
+            }
+          }
           // 판매 논리 필수화 — 리포트가 null이면 topPick 퍼널 기반 결정론 폴백으로 채운다.
           let salesLogic = report.applied_sales_logic ?? null;
           if (!salesLogic) {
@@ -4807,6 +5293,8 @@ function registerCmoResource(app: any, db: any) {
           if (keywordPlan.length === 0) {
             keywordPlan = keywords.map((k: string) => ({ keyword: k, reason: '상품정의 승인 키워드' }));
           }
+          // 스킬이 풀링 키워드 계획을 낸 경우 우선 사용(더 풍부한 배치 전략 포함).
+          if (skillKeywordPlan && skillKeywordPlan.length > 0) keywordPlan = skillKeywordPlan;
           const doc = buildKeyContentPlanDoc({
             project: { id: project_id, title: String(proj.title ?? '') },
             report: { ...report, applied_sales_logic: salesLogic },
@@ -5864,6 +6352,98 @@ function registerCmoResource(app: any, db: any) {
         const newStatus = await advanceProjectUntilGate(project_id, ['script_planning', 'script_draft']);
 
         ctx.body = { ok: true, data: { status: newStatus } };
+        await next();
+      },
+
+      // POST /api/cmo:runContentPlanningSkillPreview  { project_id, skill_ids? }
+      // 콘텐츠 기획 스킬 전환의 비파괴 프리뷰(스위치 방식 1단계). CONTENT_PLANNING_SKILLS=1일 때만
+      // 동작하며, 기존 라이브 기획 핸들러(proposeKeyContentReport/proposeScriptDraft 등)를 전혀
+      // 건드리지 않는다. 스킬 체인(content-planning/*)을 별도 실행해 'content_planning_skill_preview'
+      // 카드에 저장 → 사장님이 기존 산출물과 나란히 비교(라이브 회귀). 실데이터(product/customer_problem/
+      // second_brain_insights)는 라이브 핸들러와 동일 소스에서 로드한다.
+      runContentPlanningSkillPreview: async (ctx: ActionContext, next: () => Promise<void>) => {
+        if (process.env.CONTENT_PLANNING_SKILLS !== '1') {
+          ctx.throw(403, 'CONTENT_PLANNING_SKILLS 스위치가 꺼져 있습니다(기본 off). 켜야 기획 스킬 프리뷰가 동작합니다.');
+        }
+        const v = getValues(ctx);
+        const project_id = String(v.project_id ?? '').trim();
+        if (!project_id) ctx.throw(400, 'project_id is required');
+        const skill_ids = Array.isArray(v.skill_ids)
+          ? (v.skill_ids as unknown[]).map((s) => String(s))
+          : undefined;
+
+        // 라이브 핸들러(proposeKeyContentDraft)와 동일한 컨텍스트 로딩.
+        const projRows = await q(`SELECT * FROM video_room_projects WHERE id = $1`, [project_id]);
+        if (!projRows[0]) ctx.throw(404, `project ${project_id} not found`);
+        const proj = projRows[0];
+        const productStr = String(proj.product ?? '').trim();
+        const product = {
+          product_name: productStr || String(proj.title ?? '').trim(),
+          category: String((proj as any).category ?? '').trim() || productStr || '제품/서비스',
+          target_audience: String(proj.target_audience ?? '').trim(),
+          core_offer: (proj.core_offer ? String(proj.core_offer).trim() : '') || productStr,
+          business_goal: String(proj.business_goal ?? 'brand_growth').trim(),
+        };
+        const customer_problem = proj.customer_problem ? String(proj.customer_problem).trim() : '';
+        let second_brain_insights: string[] = [];
+        if (_secondBrainTransport) {
+          try {
+            const sbHits = await _secondBrainTransport.query({ role: '키 콘텐츠 기획' as any, limit: 5 });
+            second_brain_insights = (sbHits ?? [])
+              .map((h: any) => String(h.content ?? h.text ?? h.insight ?? '').trim())
+              .filter((s: string) => s.length > 0);
+          } catch {
+            // graceful: leave empty
+          }
+        }
+
+        const rt = await loadAgentRuntime();
+        const skillsRoot = path.resolve(
+          __dirname,
+          '../../../../../../../services/agent-runtime/skills/content-planning',
+        );
+        const runsRoot = path.join(require('os').tmpdir(), 'l5-content-planning-runs');
+        const executeSkill = rt.createDefaultSkillExecutor({
+          skillsRoot,
+          runsRoot,
+          contract: 'content_planning_v1',
+        });
+        const run = {
+          id: `preview-${project_id}-${Date.now()}`,
+          project_id,
+          slug: String(proj.slug ?? project_id),
+          source_media_ref: 'content-planning-preview',
+          status: 'planning',
+          current_skill: null,
+          progress: 0,
+          blocker: null,
+          active_versions: {},
+          storyboard_approved_at: null,
+          pilot_approved_at: null,
+          factory_slug: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        let result: any;
+        try {
+          result = await rt.runContentPlanning(
+            { run, context: { product, customer_problem, second_brain_insights }, skill_ids },
+            { executeSkill },
+          );
+        } catch (err: any) {
+          ctx.throw(400, `content-planning skill preview failed: ${err?.message ?? String(err)}`);
+        }
+
+        await upsertVideoRoomCard(
+          db,
+          project_id,
+          'content_planning_skill_preview',
+          `content_planning_skill_preview (${result.presentCardStages.length} stages / ${result.blocked.length} blocked)`,
+          result,
+        );
+
+        ctx.body = { ok: true, data: result };
         await next();
       },
 
