@@ -34,6 +34,9 @@ const QUERY_BY_STATUS: Record<VideoRoomStatus, string | null> = {
   // ── 제작 (production) ──
   voice_recording:               '나레이션 보이스 톤 전달력 페이싱',
   slide_deck:                    '슬라이드 비주얼 메시지 전달 디자인',
+  storyboard_approval:           '영상 스토리보드 장면 구성 모션 자막',
+  pilot_rendering:               '파일럿 영상 프레이밍 립싱크 자막 전환',
+  pilot_approval:                '파일럿 영상 프레이밍 립싱크 자막 전환',
   rendering:                     '영상 편집 리듬 페이싱 자막',
   // ── 검수·발행 (review / publish) ──
   qa:                            '영상 QA 품질 검수 체크리스트',

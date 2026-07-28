@@ -39,8 +39,11 @@ export * from './script-room-pipeline';
 export * from './factory-handoff';
 // M4 영상 제작 파이프라인 잔여 — brief 직접참조 슬라이드덱 → 렌더 잡 → 상태 폴링 → QA → 업로드 초안
 export * from './render-pipeline';
+export * from './video-production-workflow';
 // 승인 완료분 일괄 렌더 — 대상 선별 + 텔레그램 요약(실행은 hermes-runtime이 주입)
 export * from './batch-render';
+// 나레이션 리테이크 자동 편집 — 전사+원고 → EDL 초안(실패테이크/중복/침묵/필러 감지). 실행은 스크립트 주입.
+export * from './narration-retake-edit';
 // v3 CMO Key Content Planning (Phase 1)
 export * from './key-content-planning.schemas';
 export * from './key-content-planning';

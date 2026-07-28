@@ -17,6 +17,8 @@ const GATE_PAGE_MAP: Record<VideoRoomGateType, VideoRoomPage> = {
   pulling_content_set_approval: 'strategy',
   hook_draft_approval: 'strategy',
   script_approval: 'production',
+  storyboard_approval: 'production',
+  pilot_approval: 'production',
   video_qa_approval: 'review_publish',
   upload_approval: 'review_publish',
 };

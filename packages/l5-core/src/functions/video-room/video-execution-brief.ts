@@ -75,6 +75,7 @@ export interface BuildVideoExecutionBriefInput {
     tone?: string;
     avoid?: string[];
     format?: 'youtube_16_9' | 'shorts_9_16';
+    production?: VideoExecutionBrief['constraints']['production'];
   };
 }
 
@@ -203,6 +204,23 @@ export function buildVideoExecutionBrief(
       tone: input.constraints?.tone ?? strategy_brief.script_tone_direction,
       ...(input.constraints?.avoid && { avoid: input.constraints.avoid }),
       format: input.constraints?.format ?? 'youtube_16_9',
+      production: input.constraints?.production ?? {
+        source_orientation: 'review_required',
+        edit_unit: 'meaning_block',
+        talking_head_policy: 'selective',
+        caption_style: 'static_sentence',
+        script_validation: 'already_approved',
+        storyboard_approval_required: true,
+        required_processes: [
+          'lip_sync',
+          'mistake_removal',
+          'silence_trim',
+          'color_management',
+          'media_sourcing',
+          'music_and_sfx',
+          'editorial_qa',
+        ],
+      },
     },
   };
 

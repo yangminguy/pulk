@@ -141,6 +141,21 @@ export function validateVideoExecutionBrief(brief: unknown): BriefValidationResu
     if (fmt !== 'youtube_16_9' && fmt !== 'shorts_9_16') {
       errors.push("format must be 'youtube_16_9' or 'shorts_9_16'");
     }
+    const production = constraints['production'];
+    if (production !== undefined && !isRecord(production)) {
+      errors.push('constraints.production must be an object');
+    } else if (isRecord(production)) {
+      if (production['edit_unit'] !== 'meaning_block') {
+        errors.push("constraints.production.edit_unit must be 'meaning_block'");
+      }
+      if (production['storyboard_approval_required'] !== true) {
+        errors.push('constraints.production.storyboard_approval_required must be true');
+      }
+      const requiredProcesses = production['required_processes'];
+      if (!Array.isArray(requiredProcesses) || !requiredProcesses.includes('lip_sync')) {
+        errors.push('constraints.production.required_processes must include lip_sync');
+      }
+    }
   }
 
   // Rule 4: forbidden fields at brief top level

@@ -20,6 +20,8 @@ const GATES: VideoRoomStatus[] = [
   'pulling_content_set_approval',
   'hook_draft_approval',
   'script_approval',
+  'storyboard_approval',
+  'pilot_approval',
   'video_qa_approval',
   'upload_approval',
 ];
@@ -49,7 +51,7 @@ describe('state-machine 게이트 리포트 사전조건 (FR-6)', () => {
     ]);
   });
 
-  it('6개 게이트 전부 요구 stage 매핑 존재', () => {
+  it('모든 게이트에 요구 stage 매핑이 존재한다', () => {
     expect(Object.keys(GATE_REQUIRED_REPORT_STAGES).sort()).toEqual([...GATES].sort());
   });
 

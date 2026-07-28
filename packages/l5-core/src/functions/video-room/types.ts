@@ -34,6 +34,9 @@ export type VideoRoomStatus =
   | 'script_approval'
   | 'voice_recording'
   | 'slide_deck'
+  | 'storyboard_approval'
+  | 'pilot_rendering'
+  | 'pilot_approval'
   | 'rendering'
   | 'qa'
   | 'video_qa_approval'
@@ -295,6 +298,8 @@ export type VideoRoomGateType =
   | 'pulling_content_set_approval'
   | 'hook_draft_approval'
   | 'script_approval'
+  | 'storyboard_approval'
+  | 'pilot_approval'
   | 'video_qa_approval'
   | 'upload_approval';
 
@@ -887,6 +892,23 @@ export interface VideoExecutionBrief {
     tone: string;
     avoid?: string[];
     format: 'youtube_16_9' | 'shorts_9_16';
+    production?: {
+      source_orientation: 'landscape' | 'portrait' | 'review_required';
+      edit_unit: 'meaning_block';
+      talking_head_policy: 'selective' | 'primary' | 'minimal';
+      caption_style: 'static_sentence' | 'word_emphasis';
+      script_validation: 'already_approved' | 'factory_review';
+      storyboard_approval_required: boolean;
+      required_processes: Array<
+        | 'lip_sync'
+        | 'mistake_removal'
+        | 'silence_trim'
+        | 'color_management'
+        | 'media_sourcing'
+        | 'music_and_sfx'
+        | 'editorial_qa'
+      >;
+    };
   };
 }
 

@@ -9,10 +9,10 @@ import {
 } from '../state-machine';
 
 describe('Video Room state machine', () => {
-  it('flow covers all 23 happy-path statuses ending at completed', () => {
+  it('flow covers the storyboard and pilot approval statuses ending at completed', () => {
     expect(VIDEO_ROOM_FLOW[0]).toBe('strategy_chat');
     expect(VIDEO_ROOM_FLOW[VIDEO_ROOM_FLOW.length - 1]).toBe('completed');
-    expect(VIDEO_ROOM_FLOW).toHaveLength(23);
+    expect(VIDEO_ROOM_FLOW).toHaveLength(26);
     expect(new Set(VIDEO_ROOM_FLOW).size).toBe(VIDEO_ROOM_FLOW.length);
   });
 
@@ -46,11 +46,13 @@ describe('Video Room state machine', () => {
     expect(pageForStatus('completed')).toBe('review_publish');
   });
 
-  it('flags the six approval gates', () => {
+  it('flags the eight approval gates', () => {
     const gates = Object.keys(GATE_BY_STATUS);
-    expect(gates).toHaveLength(6);
+    expect(gates).toHaveLength(8);
     expect(requiresApproval('key_content_approval')).toBe(true);
     expect(requiresApproval('upload_approval')).toBe(true);
+    expect(requiresApproval('storyboard_approval')).toBe(true);
+    expect(requiresApproval('pilot_approval')).toBe(true);
     expect(requiresApproval('strategy_chat')).toBe(false);
   });
 

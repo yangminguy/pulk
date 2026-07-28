@@ -24,6 +24,9 @@ export const VIDEO_ROOM_FLOW: VideoRoomStatus[] = [
   'script_approval',
   'voice_recording',
   'slide_deck',
+  'storyboard_approval',
+  'pilot_rendering',
+  'pilot_approval',
   'rendering',
   'qa',
   'video_qa_approval',
@@ -54,6 +57,9 @@ const PRODUCTION_STATES: VideoRoomStatus[] = [
   'script_approval',
   'voice_recording',
   'slide_deck',
+  'storyboard_approval',
+  'pilot_rendering',
+  'pilot_approval',
   'rendering',
 ];
 
@@ -77,6 +83,8 @@ export const GATE_BY_STATUS: Partial<Record<VideoRoomStatus, VideoRoomGateType>>
   pulling_content_set_approval: 'pulling_content_set_approval',
   hook_draft_approval: 'hook_draft_approval',
   script_approval: 'script_approval',
+  storyboard_approval: 'storyboard_approval',
+  pilot_approval: 'pilot_approval',
   video_qa_approval: 'video_qa_approval',
   upload_approval: 'upload_approval',
 };
@@ -100,6 +108,8 @@ export const GATE_REQUIRED_REPORT_STAGES: Record<VideoRoomGateType, string[]> = 
   hook_draft_approval: ['title_development', 'thumbnail_plan'],
   /** ④ 원고 승인 — 원고 전문(근거 서술 포함). */
   script_approval: ['script_draft'],
+  storyboard_approval: ['storyboard'],
+  pilot_approval: ['pilot_qa'],
   /** ⑤ 영상 승인 — 렌더 QA 결과. */
   video_qa_approval: ['qa'],
   /** ⑥ 게시 승인 — 업로드 초안. */
@@ -182,8 +192,10 @@ const ROADMAP_NODES: { key: string; label: string; status: VideoRoomStatus }[] =
   { key: 'intro', label: '원고 도입부', status: 'intro_30s_analysis' },
   { key: 'hook_approval', label: '훅 승인', status: 'hook_draft_approval' },
   { key: 'script', label: '원고', status: 'script_planning' },
-  { key: 'recording', label: '녹음', status: 'voice_recording' },
-  { key: 'render', label: '렌더', status: 'rendering' },
+  { key: 'recording', label: '원본 영상 등록', status: 'voice_recording' },
+  { key: 'storyboard', label: '스토리보드', status: 'storyboard_approval' },
+  { key: 'pilot', label: '파일럿', status: 'pilot_rendering' },
+  { key: 'render', label: '전체 렌더', status: 'rendering' },
   { key: 'qa', label: 'QA', status: 'qa' },
   { key: 'upload', label: '업로드', status: 'upload_draft' },
 ];
