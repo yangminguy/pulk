@@ -93,14 +93,29 @@ export const STAGE_SCRIPT: Record<VideoRoomStatus, StageGuidance> = {
     prompt: '작성된 원고를 검토하고 승인해 주세요.',
   },
   voice_recording: {
-    label: '녹음',
-    focus: '읽기용 원고를 만들고 Founder 녹음 파일을 업로드받는다.',
-    prompt: '읽기 좋은 원고로 변환했습니다. 녹음 후 음성 파일을 업로드해 주세요.',
+    label: '원본 영상 등록',
+    focus: '승인 원고와 대조할 Founder 원본 영상 파일을 등록받는다.',
+    prompt: '승인된 원고를 촬영한 원본 영상을 등록해 주세요.',
   },
   slide_deck: {
-    label: '슬라이드 스펙 생성',
-    focus: '원고+녹음으로 SlideDeckSpec을 만든다.',
-    prompt: '원고와 녹음으로 SlideDeckSpec을 생성하겠습니다.',
+    label: '영상 제작 계획',
+    focus: '승인 원고와 원본 영상으로 제작 스킬 체인과 스토리보드를 생성한다.',
+    prompt: '영상 제작 계획을 시작해 애니메이션 스토리보드를 만들겠습니다.',
+  },
+  storyboard_approval: {
+    label: '스토리보드 승인',
+    focus: '실제 애니메이션 스토리보드의 장면별 구성과 수정 범위를 검토한다.',
+    prompt: '애니메이션 스토리보드를 장면별로 검토하고 승인 또는 수정해 주세요.',
+  },
+  pilot_rendering: {
+    label: '파일럿 렌더링',
+    focus: '원본 영상, 립싱크, 자막, 그래픽, 전환을 포함한 대표 장면을 렌더링한다.',
+    prompt: '대표 장면 파일럿을 렌더링하고 기술 QA를 진행하겠습니다.',
+  },
+  pilot_approval: {
+    label: '파일럿 승인',
+    focus: '가로 프레이밍, 립싱크, 자막, 그래픽, 전환 QA를 검토한다.',
+    prompt: '파일럿 QA를 확인하고 전체 렌더 진행 여부를 결정해 주세요.',
   },
   rendering: {
     label: '렌더링',
