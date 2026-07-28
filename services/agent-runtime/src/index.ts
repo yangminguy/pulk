@@ -21,3 +21,14 @@ export type {
   GroupStatus,
   BatchRunnerOverrides,
 } from "./orchestrator/index.js";
+export { runVideoProductionPlanning, VIDEO_PLANNING_SKILLS } from './video-production/runner.js';
+export type { VideoProductionRunnerDeps, VideoPlanningSkillId, VideoSkillExecutionInput, ProductionArtifactEnvelope, VideoProductionRun } from './video-production/runner.js';
+// Phase 0 스킬 실행 브릿지 — deps.executeSkill 구현체(2026-07-17).
+export { createSkillExecutor, buildSkillPrompt } from './video-production/skill-executor.js';
+export type { SkillExecutorIO, SkillClaudeResult } from './video-production/skill-executor.js';
+export { createDefaultSkillExecutor } from './video-production/skill-executor-node.js';
+export type { DefaultSkillExecutorOptions } from './video-production/skill-executor-node.js';
+export type { BridgeSkillInput, SkillContract, CreateSkillExecutorOptions } from './video-production/skill-executor.js';
+// Phase 3 콘텐츠 기획 스킬 체인 러너(2026-07-17).
+export { runContentPlanning, CONTENT_PLANNING_CHAIN } from './video-production/content-planning-runner.js';
+export type { ContentPlanningDeps, ContentPlanningResult, ContentPlanningSkillId } from './video-production/content-planning-runner.js';

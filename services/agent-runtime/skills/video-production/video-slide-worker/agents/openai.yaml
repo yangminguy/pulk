@@ -1,0 +1,4 @@
+interface:
+  display_name: "Video Slide Worker"
+  short_description: "Choose evidence-led, varied video scene forms"
+  default_prompt: "Use $video-slide-worker to select a truthful visual form, concrete render mode, and one Factory-compatible scene type for each approved meaning block."

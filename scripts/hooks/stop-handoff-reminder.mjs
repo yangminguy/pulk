@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // stop-handoff-reminder.mjs — Claude Code Stop hook.
-// src 변경이 있는데 docs/HANDOFF.md·docs/TASKS.md가 미변경이면 리마인드 텍스트를
-// additionalContext로 출력한다. 세션을 절대 막지 않는다(실패 시 조용히 exit 0).
+// src 변경이 있는데 docs/TASK.md가 미변경이면 리마인드 텍스트를 additionalContext로
+// 출력한다. 세션을 절대 막지 않는다(실패 시 조용히 exit 0).
+// 2026-07-17: 문서 재정리(2026-07-15)로 HANDOFF.md/TASKS.md는 아카이브됨 →
+// 정본 docs/TASK.md(단수) 하나만 검사하도록 갱신.
 
 import { execSync } from 'node:child_process';
 
@@ -38,27 +40,18 @@ async function main() {
       return arrow >= 0 ? p.slice(arrow + 4) : p;
     });
 
-    const isDoc = (p) => p === 'docs/HANDOFF.md' || p === 'docs/TASKS.md';
     // src 변경 = 코드/구현 산출물. docs·lockfile 자체는 제외.
     const isSrc = (p) =>
       /\.(ts|tsx|js|mjs|cjs|jsx|py|sql|json)$/.test(p) &&
-      !isDoc(p) &&
       !p.startsWith('docs/');
 
     const hasSrc = paths.some(isSrc);
-    const handoffTouched = paths.includes('docs/HANDOFF.md');
-    const tasksTouched = paths.includes('docs/TASKS.md');
+    const taskTouched = paths.includes('docs/TASK.md');
 
-    if (hasSrc && !(handoffTouched && tasksTouched)) {
-      const missing = [
-        !handoffTouched ? 'docs/HANDOFF.md' : null,
-        !tasksTouched ? 'docs/TASKS.md' : null,
-      ]
-        .filter(Boolean)
-        .join(', ');
+    if (hasSrc && !taskTouched) {
       const msg =
-        `소스 변경이 있는데 ${missing}가 아직 갱신되지 않았습니다. ` +
-        `CLAUDE.md "Done When" 규칙에 따라 작업 완료 전 ${missing}를 갱신하세요.`;
+        `소스 변경이 있는데 docs/TASK.md가 아직 갱신되지 않았습니다. ` +
+        `CLAUDE.md "Done When" 규칙에 따라 작업 완료 전 docs/TASK.md를 갱신하세요.`;
       process.stdout.write(
         JSON.stringify({
           hookSpecificOutput: {
