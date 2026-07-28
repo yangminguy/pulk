@@ -1,0 +1,186 @@
+<title>키 콘텐츠 승인 보고서 — 코드 vs 스킬 실측 비교</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --panel:#ffffff; --ink:#18212f; --muted:#5b6675; --line:#e2e7ee;
+    --old:#b45309; --old-bg:#fdf4e7; --old-line:#f0d9b0;
+    --new:#0d9488; --new-bg:#e9f6f4; --new-line:#b7e2dc;
+    --accent:#3457d5; --accent-bg:#eef3ff;
+    --code:#0f172a; --code-bg:#eef1f6;
+    --radius:14px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0e131b; --panel:#161d28; --ink:#e7ecf3; --muted:#93a0b2; --line:#26303e;
+      --old:#f0b46b; --old-bg:#2a1f10; --old-line:#5a3f1a;
+      --new:#4fd1c2; --new-bg:#0e2422; --new-line:#1d4b45;
+      --accent:#8aa5ff; --accent-bg:#182034;
+      --code:#dbe4f0; --code-bg:#1b2432;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e131b; --panel:#161d28; --ink:#e7ecf3; --muted:#93a0b2; --line:#26303e;
+    --old:#f0b46b; --old-bg:#2a1f10; --old-line:#5a3f1a;
+    --new:#4fd1c2; --new-bg:#0e2422; --new-line:#1d4b45;
+    --accent:#8aa5ff; --accent-bg:#182034; --code:#dbe4f0; --code-bg:#1b2432;
+  }
+  :root[data-theme="light"]{
+    --bg:#f4f6f9; --panel:#ffffff; --ink:#18212f; --muted:#5b6675; --line:#e2e7ee;
+    --old:#b45309; --old-bg:#fdf4e7; --old-line:#f0d9b0;
+    --new:#0d9488; --new-bg:#e9f6f4; --new-line:#b7e2dc;
+    --accent:#3457d5; --accent-bg:#eef3ff; --code:#0f172a; --code-bg:#eef1f6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,'Apple SD Gothic Neo',BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    line-height:1.65;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:940px;margin:0 auto;padding:40px 22px 80px;}
+  header.top{margin-bottom:8px}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+  h1{font-size:27px;line-height:1.25;margin:8px 0 6px;text-wrap:balance;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:14.5px;max-width:70ch}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin:20px 0}
+  h2{font-size:17px;margin:30px 0 12px;letter-spacing:-.01em}
+  h2 .n{display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;
+    background:var(--accent-bg);color:var(--accent);border-radius:7px;font-size:12px;font-weight:800;margin-right:8px;vertical-align:2px}
+  p{margin:8px 0}
+  .setup{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .chip{font-size:12.5px;background:var(--accent-bg);color:var(--accent);border-radius:999px;padding:3px 11px;font-weight:600}
+  .chip.k{background:var(--code-bg);color:var(--ink)}
+  .callout{border-radius:12px;padding:15px 17px;margin:14px 0;border:1px solid}
+  .callout.warn{background:var(--old-bg);border-color:var(--old-line)}
+  .callout.good{background:var(--new-bg);border-color:var(--new-line)}
+  .callout b{color:inherit}
+  .tag{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.03em;padding:2px 8px;border-radius:6px;vertical-align:1px}
+  .tag.old{background:var(--old-bg);color:var(--old);border:1px solid var(--old-line)}
+  .tag.new{background:var(--new-bg);color:var(--new);border:1px solid var(--new-line)}
+  code{background:var(--code-bg);color:var(--code);border-radius:5px;padding:1px 6px;font-size:12.5px;
+    font-family:'SF Mono',ui-monospace,Menlo,monospace}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:680px){.cols{grid-template-columns:1fr}}
+  .col{border-radius:12px;border:1px solid var(--line);overflow:hidden}
+  .col .h{padding:10px 14px;font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:8px}
+  .col.old .h{background:var(--old-bg);color:var(--old);border-bottom:1px solid var(--old-line)}
+  .col.new .h{background:var(--new-bg);color:var(--new);border-bottom:1px solid var(--new-line)}
+  .col .b{padding:12px 14px;font-size:13px;color:var(--ink)}
+  .col .b .muted{color:var(--muted)}
+  table.diff{width:100%;border-collapse:collapse;margin:6px 0;font-size:13px}
+  table.diff th,table.diff td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.diff th{color:var(--muted);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+  table.diff td.dim{color:var(--muted);white-space:nowrap;font-weight:600}
+  .verdict{font-weight:800}
+  .verdict.old{color:var(--old)} .verdict.new{color:var(--new)}
+  .btns{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px}
+  a.rep{flex:1 1 260px;text-decoration:none;border-radius:12px;padding:15px 17px;border:1px solid;display:block;transition:transform .08s ease}
+  a.rep:hover{transform:translateY(-2px)}
+  a.rep.old{background:var(--old-bg);border-color:var(--old-line)}
+  a.rep.new{background:var(--new-bg);border-color:var(--new-line)}
+  a.rep .t{font-weight:800;font-size:14.5px}
+  a.rep.old .t{color:var(--old)} a.rep.new .t{color:var(--new)}
+  a.rep .d{color:var(--muted);font-size:12.5px;margin-top:3px}
+  a.rep .go{font-size:12.5px;font-weight:700;margin-top:8px;display:inline-block}
+  a.rep.old .go{color:var(--old)} a.rep.new .go{color:var(--new)}
+  .arch{display:grid;grid-template-columns:1fr;gap:0}
+  .layer{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px dashed var(--line)}
+  .layer:last-child{border-bottom:0}
+  .layer .s{flex:0 0 92px;font-size:11.5px;font-weight:800;text-align:center;padding:5px 4px;border-radius:7px}
+  .keep{background:var(--code-bg);color:var(--muted)}
+  .swap{background:var(--new-bg);color:var(--new);border:1px solid var(--new-line)}
+  .layer .lx{font-size:13px}
+  .foot{color:var(--muted);font-size:12.5px;margin-top:26px;border-top:1px solid var(--line);padding-top:16px}
+  ul{margin:8px 0;padding-left:20px} li{margin:4px 0}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">CMO 콘텐츠 기획 · 실측 비교 · 2026-07-17</div>
+    <h1>같은 재료로 만든 승인 보고서 — 코드 방식 vs 스킬 방식</h1>
+    <p class="sub">동일한 상품·동일한 실제 YouTube 데이터·동일한 보고서 양식으로 <b>기존 코드</b>와 <b>새 스킬</b>이 각각 키 콘텐츠 승인 보고서를 생성했습니다. 바뀐 건 "생각하는 층(추론)" 하나뿐입니다. 아래는 두 결과물의 실제 차이입니다.</p>
+  </header>
+
+  <div class="card">
+    <div style="font-weight:700;font-size:13.5px;margin-bottom:4px">실험 조건 (양쪽 동일)</div>
+    <div class="setup">
+      <span class="chip">상품: 가게 손님 늘리기 컨설팅</span>
+      <span class="chip">타깃: 손님 없는 소상공인 사장님</span>
+      <span class="chip k">키워드: 소상공인 마케팅 · 가게 손님 늘리는 법 · 장사 잘되는 비결</span>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-top:12px;margin-bottom:0">
+      실제 YouTube 발굴 3키워드 → 시장표 3행·벤치마크 영상 3편(조회수 실측). 자막 스크랩(CDP)은 이번 실행에서 꺼져 있어 <b>양쪽 모두</b> 메타데이터 기반이라 조건은 공정합니다.
+    </p>
+  </div>
+
+  <h2><span class="n">1</span>한눈에 보는 결론</h2>
+
+  <div class="callout warn">
+    <span class="tag old">코드 방식</span>
+    &nbsp;보고서 생성 도중 <b>중간 AI 단계가 60초 제한에 걸려 실패</b>했습니다 — <code>final select 실패: claude-cli failed: timeout after 60000ms</code>. 시스템이 조용히 "조회수 상위 3개"로 폴백해, <b>벤치마크 영상별 '시청자 정체성 분석'이 통째로 빠진</b> 보고서가 나왔습니다. 바로 사장님이 겪으신 "코딩으로 하면 오류가 많다"의 실제 장면입니다.
+  </div>
+  <div class="callout good">
+    <span class="tag new">스킬 방식</span>
+    &nbsp;같은 데이터로 <b>오류 0건(status: draft, issues 없음)</b>으로 완주했고, 영상마다 정체성 분석(<code>match/partial</code> + 사유)을 붙이고, 풀링 키워드도 2개→3개로 전략 배치까지 제시했습니다.
+  </div>
+
+  <h2><span class="n">2</span>보고서 섹션별 실제 차이</h2>
+  <table class="diff">
+    <tr><th>섹션</th><th>코드 방식</th><th>스킬 방식</th></tr>
+    <tr>
+      <td class="dim">2. 벤치마킹 영상<br>정체성 분석</td>
+      <td><span class="verdict old">없음</span> — 제목·채널·조회수만. (선별 AI 타임아웃 → 조회수 순 폴백)</td>
+      <td><span class="verdict new">영상 3편 모두 포함</span> — 누구를 끌어오는 영상인지, 우리 타깃과 일치하는지(<code>match</code>/<code>partial</code>)와 그 근거.</td>
+    </tr>
+    <tr>
+      <td class="dim">4. 풀링 키워드</td>
+      <td>2개 — 한 줄 사유("상위 조회수·타깃 적합 높음").</td>
+      <td>3개 — 키워드별 <b>배치 전략</b>(메인 유입 vs 보조/해시태그)까지.</td>
+    </tr>
+    <tr>
+      <td class="dim">3. 판매 논리<br>(상품 연결 행동)</td>
+      <td>"혼자 막히면 컨설팅 문의·신청" — 일반적.</td>
+      <td>"무료 손님 유입 진단 신청 → 카카오 상담 → 컨설팅 등록" — <b>구체 퍼널</b>.</td>
+    </tr>
+    <tr>
+      <td class="dim">1. 추천 이유</td>
+      <td>수요·타깃·경쟁우위·판매연결 4단 근거(양호).</td>
+      <td>동일 4단 + 경쟁 영상 실명·<code>identity_match</code> 명시 + '카카오 상담 허브' 전술 합성.</td>
+    </tr>
+    <tr>
+      <td class="dim">시장 검증표 / 영상 데이터</td>
+      <td colspan="2" style="text-align:center;color:var(--muted)"><b>완전 동일</b> — 표본·평균/최고 조회수·판정 모두 같은 값(유지되는 "계산기"가 산출).</td>
+    </tr>
+  </table>
+
+  <div class="btns">
+    <a class="rep old" href="https://claude.ai/code/artifact/73fef032-a4b7-4900-9723-27b6d8d51996" target="_blank" rel="noreferrer">
+      <div class="t">📄 코드 방식 보고서 열기</div>
+      <div class="d">기존 committed TS가 생성 — 정체성 분석 누락본</div>
+      <div class="go">전체 보고서 보기 →</div>
+    </a>
+    <a class="rep new" href="https://claude.ai/code/artifact/a33b363a-463a-4b4c-a0c7-53871bd10f8c" target="_blank" rel="noreferrer">
+      <div class="t">✨ 스킬 방식 보고서 열기</div>
+      <div class="d">새 스킬이 생성 — 클린 완주·정체성 분석 포함</div>
+      <div class="go">전체 보고서 보기 →</div>
+    </a>
+  </div>
+  <p style="font-size:12.5px;color:var(--muted)">두 링크를 나란히 열어 <b>2번(벤치마킹 영상)</b> 섹션을 비교하시면 차이가 가장 선명합니다.</p>
+
+  <h2><span class="n">3</span>무엇이 바뀌었나 — 속을 보면</h2>
+  <p style="font-size:13.5px">보고서는 여러 층이 조립됩니다. 스킬이 대체하는 건 <b>"생각하는 층" 하나</b>뿐이고, 데이터·계산·양식은 그대로 재사용합니다.</p>
+  <div class="card arch" style="padding:6px 22px">
+    <div class="layer"><span class="s keep">유지</span><div class="lx"><b>① 유튜브 발굴</b> — 실제 조회수·영상 수집(라이브 도구). 스킬은 검색을 안 함.</div></div>
+    <div class="layer"><span class="s keep">유지</span><div class="lx"><b>② 시장 계산기</b> — 표본·평균/최고 조회수·판정(제외/추천)을 <b>정확히 계산</b>하는 결정론 코드. AI 아님 → 숫자가 절대 틀리지 않음.</div></div>
+    <div class="layer"><span class="s swap">교체</span><div class="lx"><b>③ 생각하는 층</b> — 어떤 영상이 우리 타깃인지, 판매 논리·추천·키워드 전략. <b>여기만</b> 거대 하드코딩 프롬프트 → 스킬 카드로 교체.</div></div>
+    <div class="layer"><span class="s keep">유지</span><div class="lx"><b>④ 보고서 양식</b> — 지금 보시는 HTML 레이아웃(결정론 렌더러). 양쪽 100% 동일.</div></div>
+  </div>
+  <p style="font-size:13px;color:var(--muted)">즉 3단계(정리)에서 창고로 옮기는 건 <b>③의 낡은 프롬프트 텍스트</b>뿐입니다. ①②④(도구·계산기·양식)와 테스트는 그대로 남아 화면·게이트가 계속 소비합니다.</p>
+
+  <h2><span class="n">4</span>정직한 단서</h2>
+  <ul style="font-size:13px">
+    <li>이번 스킬 실행은 ①②(발굴·계산)의 산출을 <b>컨텍스트로 주입</b>받아 ③(추론)만 수행했습니다 — 실제 운영 배선과 동일한 구조(계산기가 스킬을 먹여줌)라 공정합니다.</li>
+    <li>자막(CDP)이 꺼져 있어 판매 로직·퍼널은 <b>양쪽 모두</b> 메타데이터 추정입니다. 스킬은 이 점을 provenance에 스스로 명시했습니다(지어내지 않음).</li>
+    <li>코드 방식의 60초 타임아웃은 상시가 아니라 <b>간헐적</b>입니다. 그러나 이 간헐성이 "될 때/안 될 때"를 만드는 불안정성의 정체입니다.</li>
+  </ul>
+
+  <div class="foot">
+    원본 산출물: <code>docs/reports/content-planning-skill-vs-ts-2026-07-17/</code> (old/new-approval-report.html · raw-data.json) · 스위치 <code>CONTENT_PLANNING_SKILLS</code>(기본 off) 상태에서 비파괴 배선 완료.
+  </div>
+</div>

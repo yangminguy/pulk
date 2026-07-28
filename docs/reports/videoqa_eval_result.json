@@ -1,0 +1,44 @@
+{
+  "overall_score": 85.71,
+  "passed": true,
+  "checks": [
+    {
+      "check": "format_schema",
+      "passed": true,
+      "score": 100
+    },
+    {
+      "check": "temporal_grounding",
+      "passed": true,
+      "score": 100
+    },
+    {
+      "check": "contextual_relevance",
+      "passed": true,
+      "score": 100
+    },
+    {
+      "check": "factual_consistency",
+      "passed": true,
+      "score": 100
+    },
+    {
+      "check": "completeness",
+      "passed": false,
+      "score": 0,
+      "reason": "0/1 answers fully complete"
+    },
+    {
+      "check": "robustness",
+      "passed": true,
+      "score": 100
+    },
+    {
+      "check": "guardrail_safety",
+      "passed": true,
+      "score": 100
+    }
+  ],
+  "evaluated_at": "2026-07-16T08:53:56.023Z",
+  "sample_count": 1
+}

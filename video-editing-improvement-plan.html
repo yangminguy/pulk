@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>펄크 영상 제작 자동화 최종 보고서</title>
+<style>
+:root{--ink:#17212b;--muted:#627181;--paper:#f5f7fa;--card:#fff;--line:#dce4eb;--blue:#2563eb;--teal:#087f73;--orange:#c2410c;--purple:#6d28d9;--red:#b91c1c;--green:#047857}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}.wrap{max-width:1180px;margin:auto;padding:34px 22px 70px}.hero{background:linear-gradient(135deg,#111827,#1d4ed8 65%,#087f73);color:#fff;border-radius:24px;padding:40px;box-shadow:0 15px 40px #15223818}.eyebrow{font-size:12px;letter-spacing:.12em;opacity:.76}.hero h1{font-size:clamp(30px,5vw,56px);line-height:1.08;margin:15px 0}.hero p{max-width:840px;color:#dbeafe;font-size:17px}.pill{display:inline-block;border:1px solid #fff5;border-radius:999px;padding:4px 11px;margin:4px 4px 0 0;font-size:12px}section{margin-top:34px}.title{border-bottom:1px solid var(--line);padding-bottom:9px;margin-bottom:16px}.title h2{margin:0;font-size:25px}.title p{margin:2px 0 0;color:var(--muted);font-size:13px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.grid.two{grid-template-columns:repeat(2,1fr)}.card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:18px;box-shadow:0 5px 16px #15223808}.card h3{margin:0 0 6px;font-size:17px}.card p{margin:7px 0;color:#455464}.tag{display:inline-block;background:var(--blue);color:#fff;border-radius:999px;padding:2px 8px;font-size:11px}.tag.teal{background:var(--teal)}.tag.orange{background:var(--orange)}.tag.purple{background:var(--purple)}.tag.green{background:var(--green)}.tag.red{background:var(--red)}.note{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;border-radius:13px;padding:14px 17px}.warning{background:#fff7ed;border-color:#fed7aa;color:#9a3412}.flow{display:flex;overflow:auto;padding:10px 0 18px}.node{min-width:145px;background:#fff;border:1px solid var(--line);border-top:4px solid var(--blue);border-radius:13px;padding:13px;position:relative}.node:not(:last-child){margin-right:28px}.node:not(:last-child):after{content:'→';position:absolute;right:-24px;top:26px;color:var(--blue);font-size:22px}.node b{display:block;font-size:13px}.node small{display:block;color:var(--muted);margin-top:4px}.node.ai{border-top-color:var(--purple)}.node.exec{border-top-color:var(--teal)}.node.human{border-top-color:var(--orange)}.node.gate{border-top-color:var(--green)}table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);overflow:hidden}th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line);vertical-align:top}th{background:#eef2f7;color:#465466;font-size:12px}td{font-size:14px}tr:last-child td{border-bottom:0}.free{color:var(--green);font-weight:700}.code{background:#111827;color:#d1fae5;border-radius:13px;padding:16px;overflow:auto;font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}.timeline{padding-left:27px;position:relative}.timeline:before{content:'';position:absolute;left:8px;top:4px;bottom:4px;width:2px;background:#bfdbfe}.phase{position:relative;margin:17px 0}.phase:before{content:'';position:absolute;left:-25px;top:7px;width:12px;height:12px;border-radius:50%;background:var(--blue);box-shadow:0 0 0 4px #dbeafe}.phase h3{margin:0 0 2px}.phase p{margin:0;color:var(--muted)}.sources{columns:2}.sources li{margin:6px 0}.sources a{color:#1d4ed8;text-decoration:none}.footer{color:var(--muted);font-size:12px;margin-top:32px}@media(max-width:800px){.grid,.grid.two{grid-template-columns:1fr}.sources{columns:1}.hero{padding:27px}.wrap{padding:22px 15px 50px}}
+</style>
+</head>
+<body><main class="wrap">
+<header class="hero">
+  <div class="eyebrow">PULK · FINAL VIDEO PRODUCTION AUTOMATION REPORT · 2026.07</div>
+  <h1>영상과 원고를 올리면,<br>전문적인 스토리보드부터 만든다.</h1>
+  <p>사용자가 제공하는 것은 원고를 읽은 영상 1개와 원고입니다. 저장된 영상 제작 스킬들이 순서대로 계획을 만들고, 그 계획을 하나의 HTML 스토리보드로 보여줍니다. 사용자가 장면별로 승인하거나 수정한 뒤에만 영상 제작이 시작됩니다.</p>
+  <span class="pill">ElevenLabs 제외</span><span class="pill">10개 제작 스킬</span><span class="pill">스토리보드 선승인</span><span class="pill">Factory 후렌더</span>
+</header>
+
+<section><div class="title"><h2>최종 결정 요약</h2><p>이 보고서의 단일 기준 workflow</p></div>
+  <div class="grid two">
+    <div class="card"><span class="tag">Control</span><h3>Pulk가 결정하는 것</h3><p>전략·제목·썸네일 약속·승인 원고·의미 단위·슬라이드 묶음·사용자 승인·수정 라우팅·기억 축적을 소유합니다.</p></div>
+    <div class="card"><span class="tag teal">Execution</span><h3>Factory가 실행하는 것</h3><p>승인된 장면 계획을 기존 scene schema와 Remotion 컴포넌트로 변환하고 자막·오디오·타임라인·프리뷰·최종 영상을 렌더링합니다.</p></div>
+    <div class="card"><span class="tag purple">Quality</span><h3>새로 분리하는 것</h3><p>메인 오케스트레이터의 의미 설계, 의미 단위별 Slide Worker, 전문 Motion Director, 결과를 검증하는 Slide QA를 분리합니다.</p></div>
+    <div class="card"><span class="tag orange">Gate</span><h3>절대 지키는 경계</h3><p>HTML 스토리보드가 승인되기 전에는 Factory Job·타임라인·최종 렌더를 실행하지 않습니다. 수정은 담당 skill부터 부분 재실행합니다.</p></div>
+  </div>
+  <p class="note"><b>한 문장으로:</b> Pulk의 메인 오케스트레이터가 원고를 이해 가능한 의미 단위와 전문적인 슬라이드 구조로 바꾸고, 전문 서브 에이전트들이 각 장면의 화면·자산·모션을 설계한 뒤, 사용자가 HTML 스토리보드를 승인하면 Factory가 영상을 실행합니다.</p>
+</section>
+
+<section><div class="title"><h2>정확한 전체 워크플로우</h2><p>렌더링은 마지막에만 실행</p></div>
+  <div class="flow">
+    <div class="node human"><b>① Upload</b><small>reading_video.mp4 + approved script</small></div>
+    <div class="node ai"><b>② Orchestrator</b><small>10개 스킬 체인 호출</small></div>
+    <div class="node ai"><b>③ Planning</b><small>10개 계획 artifact 생성</small></div>
+    <div class="node gate"><b>④ Storyboard HTML</b><small>장면별 화면 설계 확인</small></div>
+    <div class="node human"><b>⑤ Founder Approval</b><small>승인·수정·보류</small></div>
+    <div class="node exec"><b>⑥ Factory Preview</b><small>승인된 계획만 렌더</small></div>
+    <div class="node ai"><b>⑦ QA / Revision</b><small>문제 skill로만 재실행</small></div>
+  </div>
+  <p class="note"><b>핵심 변경:</b> 스토리보드는 영상 제작의 부산물이 아니라 승인 게이트입니다. 승인 전에는 `09_factory_job.json`, 타임라인 조립, Factory 렌더를 실행하지 않습니다.</p>
+</section>
+
+<section><div class="title"><h2>입력과 전제조건</h2><p>사용자가 주는 것과 Pulk가 이미 가지고 있어야 하는 것</p></div>
+  <table><thead><tr><th>입력</th><th>출처</th><th>처리</th></tr></thead><tbody>
+    <tr><td>원고를 읽은 영상 1개</td><td>사용자 업로드</td><td>master narration clock으로 사용. 원본은 절대 덮어쓰지 않음.</td></tr>
+    <tr><td>승인된 원고</td><td>Pulk Script/CMO 흐름</td><td>말한 내용과 비교. 스킬이 승인된 메시지를 임의로 다시 쓰지 않음.</td></tr>
+    <tr><td>제목·썸네일 맥락·클릭 이유·타깃·CTA</td><td>기존 Pulk VideoExecutionBrief 또는 전략 승인</td><td>없으면 Content Brief 단계에서 blocker로 표시. 영상 제작으로 우회하지 않음.</td></tr>
+    <tr><td>스타일 메모리·이전 승인·수정 기록</td><td>Pulk Memory Engine</td><td>이번 storyboard와 motion·caption·asset 판단에 참고.</td></tr>
+  </tbody></table>
+</section>
+
+<section><div class="title"><h2>발동되는 저장 스킬 10개</h2><p>오케스트레이터가 아래 순서를 관리하며 각 산출물을 버전으로 저장</p></div>
+  <table><thead><tr><th>순서</th><th>스킬</th><th>하는 일</th><th>산출물</th></tr></thead><tbody>
+    <tr><td>1</td><td><b>video-content-brief</b></td><td>제목·썸네일 약속·타깃·CTA·논리 블록·근거를 정리</td><td>01_content_brief.json</td></tr>
+    <tr><td>2</td><td><b>video-scene-planner</b></td><td>승인 원고를 의미 단위로 나누고 각 문장에 화면 모드·시각 의도·자산·모션을 배정</td><td>02_scene_plan.json</td></tr>
+    <tr><td>3</td><td><b>video-media-prep</b></td><td>영상 메타데이터·코덱·길이·음성·단어/문장 타임코드·후보 범위를 분석</td><td>03_media_manifest.json</td></tr>
+    <tr><td>4</td><td><b>video-rough-cut-planner</b></td><td>침묵·실수·반복·약한 테이크를 keep/remove/tighten/review로 표시. 아직 원본을 자르지 않음.</td><td>04_rough_cut_plan.json</td></tr>
+    <tr><td>5</td><td><b>video-asset-director</b></td><td>문장을 가장 빨리 설명하는 기존 영상·이미지·화면녹화·인물 구간을 매칭하고 라이선스·fallback을 기록</td><td>05_asset_manifest.json</td></tr>
+    <tr><td>6</td><td><b>video-motion-graphics</b></td><td>기존 Factory 컴포넌트 중 카드·비교·숫자·흐름·강조 모션을 선택하고 타이밍·safe area를 설계</td><td>06_motion_plan.json</td></tr>
+    <tr><td>7</td><td><b>video-sound-designer</b></td><td>음악·SFX·ducking·fade·loudness를 설계. 효과음은 문장이 아니라 의미 있는 전환에만 사용</td><td>07_sound_plan.json</td></tr>
+    <tr><td>8</td><td><b>video-caption-designer</b></td><td>내레이션 타임코드 기준으로 읽기 쉬운 자막·강조·위치·스타일 토큰을 생성</td><td>08_caption_plan.json + SRT</td></tr>
+    <tr><td>—</td><td><b>Storyboard Composer</b></td><td>새 판단 스킬이 아니라 위 1~8 산출물을 HTML 승인 화면으로 합성</td><td>storyboard.html</td></tr>
+    <tr><td>9</td><td><b>video-timeline-assembler</b></td><td>스토리보드가 승인된 뒤에만 계획을 Factory Job·레이어 타임라인으로 조립하고 저해상도 프리뷰를 요청</td><td>09_factory_job.json + timeline.json</td></tr>
+    <tr><td>10</td><td><b>video-production-qa</b></td><td>프리뷰를 약속·원고·편집·화면·오디오·자막·기술 기준으로 검사하고 수정 담당 skill을 지정</td><td>10_qa_report.json/md</td></tr>
+  </tbody></table>
+</section>
+
+<section><div class="title"><h2>스토리보드 HTML은 무엇을 보여주는가</h2><p>사용자가 영상이 만들어지기 전에 확인하는 화면</p></div>
+  <div class="grid two">
+    <div class="card"><span class="tag">장면 타임라인</span><h3>Scene 01 — Hook</h3><p>00:00–00:08 · 낭독 영상 얼굴 유지 · 핵심 문장 강조 · 카메라 punch-in</p><p><b>읽히는 원고:</b> “...”</p><p><b>나올 화면:</b> 얼굴 + 키워드 2개 + 따뜻한 배경</p></div>
+    <div class="card"><span class="tag teal">증거 장면</span><h3>Scene 04 — Example</h3><p>00:31–00:49 · 무료 이미지 후보 3개 · 60/40 split · 문장 시작 후 0.5초 진입</p><p><b>읽히는 원고:</b> “...”</p><p><b>나올 화면:</b> 사례 이미지 + 짧은 설명 카드</p></div>
+    <div class="card"><span class="tag purple">모션 장면</span><h3>Scene 07 — Process</h3><p>01:20–01:41 · process_steps · 단계별 등장 · 자막 safe area 하단 유지</p><p><b>읽히는 원고:</b> “첫 번째는…, 두 번째는…”</p><p><b>나올 화면:</b> 1→2→3 진행선, 현재 단계만 강조</p></div>
+    <div class="card"><span class="tag orange">검토 필요</span><h3>Scene 09 — Asset Missing</h3><p>02:05–02:16 · 실제 사례 이미지 부족 · Factory graphic fallback 제안</p><p><b>결정:</b> 무료 소스 사용 / 그래픽 대체 / 얼굴 유지 중 선택</p></div>
+  </div>
+  <p class="note"><b>스토리보드의 승인 단위:</b> 전체 영상 한 번에 승인할 수도 있고, 장면별로 `승인 / 수정 / 보류`할 수 있습니다. 수정 지시는 scene_id와 연결되어 다음 렌더에 반영됩니다.</p>
+</section>
+
+<section><div class="title"><h2>TransNetV2·PySceneDetect의 정확한 위치</h2><p>이번 입력에서는 주력 엔진이 아닌 조건부 분석기</p></div>
+  <table><thead><tr><th>상황</th><th>사용 여부</th><th>결과</th></tr></thead><tbody>
+    <tr><td>원고를 읽는 단일 토킹헤드</td><td>기본적으로 사용하지 않음</td><td>WhisperX/faster-whisper + 원고 의미 분할이 scene 경계를 결정</td></tr>
+    <tr><td>한 파일 안에 여러 테이크가 이어짐</td><td>PySceneDetect 보조 사용</td><td>시각 변화·컷 후보를 media manifest에 기록. rough-cut이 음성 기준으로 확정</td></tr>
+    <tr><td>화면 녹화·B-roll·카메라 전환이 섞임</td><td>TransNetV2 보조 사용</td><td>shot boundary 후보를 제공. 주제 판단은 transcript/원고가 담당</td></tr>
+    <tr><td>씬의 “테마가 바뀌는 경계”</td><td>두 도구만으로 판단하지 않음</td><td>논리 블록·문장 임베딩·전환 표현·호흡 타임코드를 결합</td></tr>
+  </tbody></table>
+  <div class="code">scene_boundary =
+  semantic_boundary(script_block, transcript, breath)  // 주력
+  + visual_boundary(PySceneDetect | TransNetV2)          // 조건부 보조
+  + approved_rough_cut_ranges                            // 최종 허용 범위</div>
+</section>
+
+<section><div class="title"><h2>승인 게이트와 이후 렌더</h2><p>어디서 멈추고, 무엇을 승인해야 하는가</p></div>
+  <div class="flow">
+    <div class="node gate"><b>Gate A</b><small>Content Brief 승인</small></div>
+    <div class="node gate"><b>Gate B</b><small>Scene Plan 승인</small></div>
+    <div class="node gate"><b>Gate S</b><small>Storyboard HTML 승인</small></div>
+    <div class="node exec"><b>Factory Job</b><small>승인된 계획 조립</small></div>
+    <div class="node exec"><b>Preview Render</b><small>저해상도 확인본</small></div>
+    <div class="node gate"><b>Gate D</b><small>QA + 최종 승인</small></div>
+    <div class="node exec"><b>Final Export</b><small>최종 렌더·완료 기록</small></div>
+  </div>
+  <p class="note warning"><b>렌더 차단 조건:</b> 원고 미승인, storyboard 미승인, 자산 출처 미확인, 필수 장면 미커버, 자막·오디오·기술 QA 실패. 실패하면 전체를 처음부터 돌리지 않고 QA가 지정한 owning skill부터 재실행합니다.</p>
+</section>
+
+<section><div class="title"><h2>수정 지시가 남는 방식</h2><p>스토리보드에서 한 지시가 다음 영상의 편집 품질을 높임</p></div>
+  <div class="grid">
+    <div class="card"><span class="tag purple">장면 수정</span><h3>이번 영상에만 적용</h3><p>“scene_04 이미지가 설명과 맞지 않음” → asset-director와 storyboard만 재실행.</p></div>
+    <div class="card"><span class="tag orange">프로젝트 규칙</span><h3>시리즈에 적용</h3><p>“이 시리즈는 얼굴을 오래 유지하고 그래픽을 적게 사용” → motion·asset 계획에 자동 반영.</p></div>
+    <div class="card"><span class="tag teal">전역 스타일</span><h3>Founder 승인 후 축적</h3><p>“주장마다 애니메이션을 넣지 않는다” → 다음 content/scene/motion 계획의 기본 규칙으로 저장.</p></div>
+  </div>
+  <div class="code">storyboard_feedback = {
+  scene_id: "scene_04", action: "replace_asset", reason: "visual_mismatch",
+  scope: "one_off | project | global", status: "pending_approval"
+}
+→ approved correction log → Memory Engine → next orchestrator run</div>
+</section>
+
+<section><div class="title"><h2>video-scene-planner를 재설계하는 방식</h2><p>한 스킬에 모든 창작 판단을 몰아넣지 않되, 실행은 병렬화</p></div>
+  <div class="flow">
+    <div class="node ai"><b>Scene Architect</b><small>메인 오케스트레이터가 의미 단위·슬라이드 묶음 결정</small></div>
+    <div class="node ai"><b>Slide Worker × N</b><small>각 의미 묶음의 주장·증거·레이아웃 설계</small></div>
+    <div class="node ai"><b>Asset Director</b><small>이미지·영상·스크린캡처 후보와 출처 매칭</small></div>
+    <div class="node ai"><b>Motion Director</b><small>Scene Plan을 읽고 모션만 전문 설계</small></div>
+    <div class="node gate"><b>Slide QA</b><small>이해 가능성·전문성·과잉 연출 검사</small></div>
+  </div>
+  <div class="grid two">
+    <div class="card"><span class="tag purple">분리하는 것이 좋은 판단</span><p>의미 분할, 슬라이드 주장, 증거 선택, 레이아웃, 모션, 자막, 사운드는 서로 다른 전문 판단입니다. 분리하면 각 결과를 독립적으로 검토할 수 있습니다.</p></div>
+    <div class="card"><span class="tag orange">분리하면 안 되는 실행</span><p>각 에이전트가 제멋대로 원고를 재해석하거나 새 컴포넌트를 만들면 품질과 속도가 모두 떨어집니다. 공통 scene contract, 기존 Factory 컴포넌트, 승인된 원고를 공유해야 합니다.</p></div>
+  </div>
+  <p class="note"><b>추천 결론:</b> 스킬을 더 쪼개되, 모든 단계를 직렬로 돌리지 않습니다. `Scene Architect`가 먼저 구조를 확정한 뒤, `Slide Worker`·`Asset Director`·`Motion Director`를 의미 단위별로 병렬 실행하고 마지막에 Slide QA가 합칩니다.</p>
+</section>
+
+<section><div class="title"><h2>메인 오케스트레이터의 의미 분할 알고리즘</h2><p>문장 단위가 아니라 “하나의 이해 단위”를 만든다</p></div>
+  <div class="timeline">
+    <div class="phase"><h3>① 원고와 transcript 정렬</h3><p>승인 원고를 낭독 영상의 실제 말한 구간과 맞춥니다. 빠진 문장·추가 발화·반복·호흡을 표시합니다.</p></div>
+    <div class="phase"><h3>② 의미 역할 부여</h3><p>각 블록을 Hook, Problem, Claim, Mechanism, Example, Proof, Contrast, Process, Objection, CTA 중 하나로 분류합니다.</p></div>
+    <div class="phase"><h3>③ 시각화 가능성 판정</h3><p>구체적 장면·숫자·비교·과정·관계·감정 중 무엇으로 보여줄 수 있는지 결정합니다. 보여줄 수 없으면 얼굴+키네틱 타이포를 기본값으로 둡니다.</p></div>
+    <div class="phase"><h3>④ 슬라이드 단위 묶기</h3><p>한 블록이 너무 짧거나 화면 주장이 약하면 앞뒤 의미와 합칩니다. 반대로 한 블록에 주장과 증거가 충돌하면 두 장면으로 나눕니다.</p></div>
+    <div class="phase"><h3>⑤ Slideability 평가 후 재분할</h3><p>주장 한 문장, 시각 증거 하나, 한 가지 초점이 성립하지 않으면 자동으로 merge/split 후보를 만들고, 최종 묶음을 확정합니다.</p></div>
+  </div>
+  <div class="code">semantic_unit = {
+  id, source_script_range, transcript_range,
+  narrative_role, assertion, evidence_needed,
+  visual_question, candidate_visual_modes,
+  merge_candidates, split_candidates,
+  slideability_score, confidence
+}</div>
+</section>
+
+<section><div class="title"><h2>의미 단위별 Slide Worker가 만드는 것</h2><p>원고를 화면에 복사하지 않고, 발표용 주장과 증거로 변환</p></div>
+  <table><thead><tr><th>입력</th><th>Slide Worker의 결정</th><th>결과</th></tr></thead><tbody>
+    <tr><td>“광고비 없이 판매하려면 고객이 반복해서 묻는 문제를 콘텐츠로 만들어야 한다”</td><td>Assertion: 광고비보다 반복되는 고객 문제를 먼저 포착해야 한다<br>Evidence: 질문→콘텐츠→신뢰→판매 흐름</td><td>4단계 흐름 슬라이드. 문장 전체를 자막으로 복사하지 않음.</td></tr>
+    <tr><td>숫자·전후 결과</td><td>핵심 숫자를 하나만 남기고 비교축 선택</td><td>전후 카드·카운터·막대 그래프</td></tr>
+    <tr><td>구체적인 사례</td><td>실제 이미지·무료 영상·스크린캡처 중 설명력이 가장 높은 매체 선택</td><td>사례 화면 + 짧은 주석. 출처·라이선스 포함.</td></tr>
+    <tr><td>추상적인 원칙</td><td>메타포 또는 관계 다이어그램으로 번역</td><td>도형·화살표·레이어 구조. 장식용 스톡 영상은 배제.</td></tr>
+  </tbody></table>
+  <p class="note"><b>전문 PT 규칙:</b> 각 슬라이드는 제목이 주제가 아니라 주장이어야 합니다. “콘텐츠 기획법”이 아니라 “광고비를 줄이는 콘텐츠는 고객의 반복 질문에서 시작된다”처럼 말해야 할 내용을 제목으로 올립니다. Assertion–Evidence 구조는 전통적인 주제–목록형 슬라이드보다 인지 부담을 낮추는 방향으로 연구되어 왔습니다. <a href="https://www.sciencedirect.com/science/article/pii/S2307187725001701">관련 연구</a></p>
+</section>
+
+<section><div class="title"><h2>Motion Director를 별도 배정하는 이유</h2><p>모션을 더 많이 넣는 것이 아니라, 모션이 의미를 강화하게 만들기 위해</p></div>
+  <div class="grid">
+    <div class="card"><span class="tag purple">Reveal</span><h3>순차 등장</h3><p>과정·논리·순서를 말할 때 다음 단계가 말하는 타이밍에 나타납니다.</p></div>
+    <div class="card"><span class="tag teal">Emphasis</span><h3>강조·포커스</h3><p>핵심 단어가 등장할 때 주변을 약화시키고 한 요소만 확대합니다.</p></div>
+    <div class="card"><span class="tag orange">Transition</span><h3>전환</h3><p>주제가 바뀔 때만 화면 구조를 바꿉니다. 모든 문장에 줌·바운스를 넣지 않습니다.</p></div>
+  </div>
+  <div class="code">motion_request = {
+  scene_id, semantic_role, visual_assertion,
+  entrance, emphasis, hold, exit,
+  focal_element, duration, easing,
+  caption_safe_area, component_type,
+  reason, fallback, code_change_required
+}</div>
+  <p class="note warning"><b>효율성 판단:</b> 별도 Motion Director는 전문성을 높입니다. 다만 장면마다 새 에이전트를 호출하지 않고, 의미 단위 묶음 3~5개를 한 작업으로 병렬 처리하며, 단순 장면은 motion=`none` 또는 기존 preset으로 종료해야 합니다. 장식용 애니메이션은 기억을 돕지 못하고 오히려 불필요한 인지 부담을 만들 수 있습니다. <a href="https://journals.physiology.org/doi/full/10.1152/advan.00102.2019">관련 연구</a></p>
+</section>
+
+<section><div class="title"><h2>스토리보드에 남겨야 하는 “작동 증거”</h2><p>결과 화면만 보여주지 않고, 어떤 스킬이 왜 그렇게 결정했는지 기록</p></div>
+  <table><thead><tr><th>스토리보드 영역</th><th>표시할 증거</th><th>출처 artifact</th></tr></thead><tbody>
+    <tr><td>원고 패널</td><td>승인 원고 원문, 실제 낭독 타임코드, script block ID</td><td>01_content_brief / 03_media_manifest</td></tr>
+    <tr><td>의미 패널</td><td>narrative role, assertion, evidence, 왜 합치거나 나눴는지</td><td>02_scene_plan + Scene Architect decision log</td></tr>
+    <tr><td>화면 패널</td><td>visual mode, 슬라이드 와이어프레임, 선택한 이미지·영상·캡처와 fallback</td><td>05_asset_manifest + Slide Worker output</td></tr>
+    <tr><td>모션 패널</td><td>component, entrance/emphasis/exit, focal element, 타이밍, 모션을 넣은 이유</td><td>06_motion_plan + Motion Director log</td></tr>
+    <tr><td>자막·사운드 패널</td><td>강조 단어, 위치, SFX·음악·ducking·loudness 계획</td><td>07_sound_plan / 08_caption_plan</td></tr>
+    <tr><td>검수 패널</td><td>slideability score, script coverage, asset provenance, QA risk, 승인 상태</td><td>Storyboard manifest + 10_qa_report</td></tr>
+  </tbody></table>
+  <div class="code">storyboard_scene = {
+  scene_id, spoken_text, timestamp,
+  semantic_unit: { role, assertion, evidence, merge_reason },
+  slide: { headline, layout, visual_mode, asset_refs, fallback },
+  motion: { component, timing, focal_element, reason },
+  caption: { cues, emphasis, safe_area },
+  sound: { cue, ducking, reason },
+  provenance: { skills, artifact_versions },
+  review: { score, risks, status, feedback }
+}</div>
+</section>
+
+<section><div class="title"><h2>품질 기준: “전문적인 PT 슬라이드” 판정</h2><p>멋있어 보이는지보다 이해와 설득이 되는지 검사</p></div>
+  <div class="grid two">
+    <div class="card"><h3>Assertion</h3><p>슬라이드가 말하고 싶은 한 문장이 있는가? 제목만 읽어도 주장이 이해되는가?</p></div>
+    <div class="card"><h3>Evidence</h3><p>그 주장을 실제로 이해시키는 그림·비교·과정·사례가 있는가? 장식용 이미지가 아닌가?</p></div>
+    <div class="card"><h3>Coherence</h3><p>말과 무관한 이미지·텍스트·효과가 제거됐는가? 시각 자료가 설명보다 앞서 나가지 않는가?</p></div>
+    <div class="card"><h3>Contiguity</h3><p>설명하는 그래픽과 관련 텍스트가 같은 위치와 타이밍에 있는가? 자막과 그래픽이 싸우지 않는가?</p></div>
+    <div class="card"><h3>Rhythm</h3><p>모든 장면이 같은 레이아웃이 아닌가? 의미 전환에 맞춰 얼굴·그래픽·이미지·화면 캡처가 바뀌는가?</p></div>
+    <div class="card"><h3>Relevance</h3><p>시청자가 이 화면을 봐야 하는 이유가 있는가? 없다면 talking-head 유지가 더 나은가?</p></div>
+  </div>
+  <p class="note">이 기준은 멀티미디어 학습 연구의 coherence·signaling·contiguity·segmenting 원칙과 연결됩니다. 말과 그림을 단순히 많이 넣는 것이 아니라, 관련 정보만 같은 타이밍과 위치에 배치해야 합니다. <a href="https://asmepublications.onlinelibrary.wiley.com/doi/10.1111/j.1365-2923.2010.03624.x">Mayer 연구 요약</a></p>
+</section>
+
+<section><div class="title"><h2>새 pulk 디자인 시스템 적용 계약</h2><p>앞으로 Storyboard와 Factory 덱은 이 시스템을 기본값으로 사용</p></div>
+  <div class="grid two">
+    <div class="card"><span class="tag">Canvas</span><h3>Black + Warm Cream</h3><p>캔버스는 <code>#000000</code>, 기본 잉크는 <code>#DCDBCE</code>. 계층은 새 색을 추가하지 않고 cream alpha 100/64/40/16으로 만듭니다.</p></div>
+    <div class="card"><span class="tag orange">Point Color</span><h3>Orange는 도형에만</h3><p><code>#E5511F</code>는 solid fill의 AccentBlock, 타임라인 노드, 작은 eyebrow square에만 사용합니다. 주황색 텍스트와 얇은 주황색 선은 금지합니다.</p></div>
+    <div class="card"><span class="tag purple">Typography</span><h3>Three-font hierarchy</h3><p>영문 디스플레이는 Work Sans 600 uppercase, 메타데이터는 Cutive Mono uppercase, 한국어와 본문은 Pretendard Variable을 사용합니다.</p></div>
+    <div class="card"><span class="tag teal">Mark</span><h3>8-ray Asterisk</h3><p>슬라이드마다 한 개의 크림색 asterisk mark를 사용할 수 있습니다. 로고·아이콘 세트를 새로 만들지 않고 제공된 mark를 재사용합니다.</p></div>
+  </div>
+  <table><thead><tr><th>디자인 규칙</th><th>적용 방식</th><th>금지</th></tr></thead><tbody>
+    <tr><td>16:9 frame</td><td>1280×720 기준, edge margin 약 2.1%, corner-anchored metadata</td><td>임의 비율·중앙 정렬만 반복</td></tr>
+    <tr><td>Display stack</td><td>큰 영문 제목은 uppercase, -0.03em tracking, 0.81 line-height의 중첩 스택</td><td>일반적인 둥근 카드형 제목</td></tr>
+    <tr><td>Hairline</td><td>cream 또는 cream-16의 1.5px 규칙</td><td>두꺼운 테두리·그림자·그라디언트</td></tr>
+    <tr><td>Shape language</td><td>기본은 hard corner. 오렌지·사진 block만 예외적으로 12.64px radius</td><td>모든 요소를 rounded card로 만들기</td></tr>
+    <tr><td>Motion</td><td>조용한 fade, line reveal, restrained slide; 의미 변화에만 전환</td><td>bounce·과도한 zoom·장식용 GIF·효과음 남발</td></tr>
+  </tbody></table>
+  <p class="note"><b>중요한 분리:</b> 이 HTML 보고서는 운영·승인 문서이므로 현재의 읽기 쉬운 UI 스타일을 유지합니다. 실제 Storyboard scene과 최종 Factory deck은 압축파일의 pulk 디자인 시스템을 따라 검정 캔버스와 cream 잉크로 렌더링해야 합니다.</p>
+</section>
+
+<section><div class="title"><h2>장면 유형을 pulk 덱 템플릿으로 매핑</h2><p>Slide Worker가 임의의 화면을 만들지 않도록 승인된 템플릿부터 선택</p></div>
+  <table><thead><tr><th>의미 역할</th><th>기본 덱 템플릿</th><th>화면 구성</th><th>모션 허용 범위</th></tr></thead><tbody>
+    <tr><td>Hook / Section change</td><td>title.html / section.html</td><td>corner metadata + 큰 display stack + asterisk</td><td>quiet fade·mark reveal</td></tr>
+    <tr><td>Claim / Method</td><td>content.html</td><td>eyebrow + assertion headline + 2-column evidence</td><td>한 번에 한 column 또는 핵심 문장만 reveal</td></tr>
+    <tr><td>Proof / Case</td><td>profile.html 또는 AccentBlock 확장</td><td>주요 이미지·스크린캡처 block + skill/timeline 정보</td><td>이미지 진입·timeline node 순차 등장</td></tr>
+    <tr><td>Verbatim / Customer voice</td><td>quote.html</td><td>큰 인용문 + 출처 메타데이터 + asterisk</td><td>문장 단위 fade, 타이포 강조 최소화</td></tr>
+    <tr><td>Process / Comparison / Data</td><td>content.html 확장</td><td>assertion-evidence와 hairline diagram</td><td>단계·관계선·숫자 reveal만 허용</td></tr>
+  </tbody></table>
+  <p class="note"><b>시각 자산 예외:</b> 이미지·무료 영상·스크린캡처는 원고를 이해시키는 증거일 때만 추가합니다. 시스템의 기본 분위기는 type-and-line이며, 이미지가 들어가더라도 monochrome/cool하게 처리해 black/cream 구조를 깨지 않게 합니다.</p>
+</section>
+
+<section><div class="title"><h2>덱 출력물과 스토리보드 증거의 차이</h2><p>사용자가 보는 승인 화면과 실제 렌더 결과를 분리</p></div>
+  <div class="compare">
+    <div class="card"><strong>Storyboard HTML</strong><p>원고 구간, 의미 단위, assertion, evidence, asset 출처, 모션 이유, 스킬·artifact 버전, QA 위험, 승인 버튼을 보여주는 검토용 화면입니다.</p><p>읽기 쉬운 운영 UI를 사용할 수 있습니다.</p></div>
+    <div style="display:grid;place-items:center;font-size:26px;color:var(--blue)">→</div>
+    <div class="card"><strong>Final Deck / Video Frames</strong><p>pulk 디자인 시스템을 적용한 1280×720 장면입니다. 검정 캔버스, cream 잉크, 제한된 orange shape, 승인된 템플릿과 restrained motion만 남습니다.</p><p>메타데이터와 증거는 덱의 여백과 hairline 구조 안에 배치합니다.</p></div>
+  </div>
+  <div class="code">DesignContract = {
+  viewport: "1280x720", ratio: "16:9",
+  canvas: "#000000", ink: "#DCDBCE", accent: "#E5511F",
+  fonts: ["Work Sans", "Cutive Mono", "Pretendard Variable"],
+  mark: "asterisk.svg", radius: "hard-corner by default",
+  approved_templates: ["title", "section", "content", "quote", "profile"],
+  motion: ["quiet_fade", "line_reveal", "restrained_slide"]
+}</div>
+</section>
+
+<section><div class="title"><h2>산출물과 저장 위치</h2><p>모든 계획은 버전이 있는 파일로 남고, 승인된 것은 immutable</p></div>
+  <table><thead><tr><th>단계</th><th>산출물</th><th>승인/재실행 규칙</th></tr></thead><tbody>
+    <tr><td>Planning</td><td>01~08 JSON + SRT</td><td>각 파일에 schema_version, source_versions, status, issues 포함</td></tr>
+    <tr><td>Storyboard</td><td>storyboard.html + storyboard_manifest.json</td><td>장면별 승인 상태와 사용자 지시 저장</td></tr>
+    <tr><td>Assembly</td><td>09_factory_job.json, timeline.json, assembly_report.json</td><td>Storyboard 승인 후 생성. 기존 Factory 스키마로 검증</td></tr>
+    <tr><td>QA</td><td>10_qa_report.json/md</td><td>PASS / NEEDS_REVISION / BLOCKED + owning_skill + rerun_from</td></tr>
+    <tr><td>Revision</td><td>artifact v2, v3…</td><td>기존 승인 artifact는 보존하고 새 버전만 생성</td></tr>
+  </tbody></table>
+</section>
+
+<section><div class="title"><h2>다시 정의한 실행 순서</h2><p>이것이 앞으로의 기준 workflow</p></div>
+  <div class="timeline">
+    <div class="phase"><h3>1. Pulk에서 영상·원고 업로드</h3><p>원본 영상과 승인 원고를 등록하고, 기존 title/thumbnail/click reason/CTA 컨텍스트를 불러옵니다.</p></div>
+    <div class="phase"><h3>2. video-production-orchestrator 발동</h3><p>스크립트 승인 여부를 확인하고 10개 스킬을 정해진 의존성 순서로 실행합니다. 실패한 단계 아래만 멈춥니다.</p></div>
+    <div class="phase"><h3>3. 10개 planning skill 실행</h3><p>Content Brief부터 Caption Plan까지 만들며, 원고는 master meaning, 낭독 타임코드는 master clock으로 유지합니다.</p></div>
+    <div class="phase"><h3>4. Storyboard Composer가 HTML 생성</h3><p>각 장면의 읽히는 원고, 시간, 화면 모드, 무료 자산 후보, 애니메이션, 자막, 사운드, fallback, 위험을 시각화합니다.</p></div>
+    <div class="phase"><h3>5. Founder가 storyboard 승인·수정</h3><p>수정 지시는 scene_id에 연결합니다. 승인 전에는 Factory가 아무것도 최종 제작하지 않습니다.</p></div>
+    <div class="phase"><h3>6. Timeline Assembler → Factory 프리뷰</h3><p>승인된 계획을 기존 Factory Job으로 변환하고, talking-head·B-roll·graphics·captions·sound를 레이어로 조립합니다.</p></div>
+    <div class="phase"><h3>7. QA → 담당 skill만 재실행</h3><p>자막 문제는 caption skill, 자산 문제는 asset skill, 장면 의미 문제는 scene skill로 돌아갑니다. 전체 재생성하지 않습니다.</p></div>
+    <div class="phase"><h3>8. 최종 승인 → Final Render → Memory 기록</h3><p>최종 승인 뒤 고해상도 렌더·완료 기록을 남기고, 명시적으로 승인된 수정만 다음 영상의 스타일 메모리에 반영합니다.</p></div>
+  </div>
+</section>
+
+<section><div class="title"><h2>현재 Pulk와 Factory의 역할 분리</h2><p>기존 구조를 지키면서 새 흐름을 넣는 원칙</p></div>
+  <div class="grid two">
+    <div class="card"><span class="tag">Pulk = Control Plane</span><p>전략·제목·썸네일·원고 승인·사용자 게이트·AgentSkill 오케스트레이션·스토리보드 HTML·수정 라우팅·렌더 상태 추적을 소유합니다.</p></div>
+    <div class="card"><span class="tag teal">Factory = Execution Plane</span><p>최종 scene type·medium·duration 선택, scene schema 검증, Remotion 그래픽·자막·오디오·타임라인·렌더·export QA를 소유합니다.</p></div>
+  </div>
+  <p class="note"><b>금지:</b> Pulk에 렌더 로직을 복제하지 않습니다. Factory가 승인된 전략을 다시 쓰지 않습니다. 새 mixed-media 필드는 기존 slide-only 작업을 깨지 않는 optional versioned extension으로 추가합니다.</p>
+</section>
+
+<section><div class="title"><h2>참고한 저장 스킬과 문서</h2><p>이번 재정의에 실제로 확인한 자료</p></div>
+  <ul class="sources">
+    <li><a href="file:///Users/wonminyang/Documents/Codex/2026-07-15/new-chat-2/outputs/codex-video-production-skill-pack/video-production-orchestrator/SKILL.md">video-production-orchestrator</a> — 전체 실행 순서와 Gate A/B/C/D</li>
+    <li><a href="file:///Users/wonminyang/Documents/Codex/2026-07-15/new-chat-2/outputs/codex-video-production-skill-pack/video-content-brief/SKILL.md">video-content-brief</a> — 전략 약속·논리 블록·근거</li>
+    <li><a href="file:///Users/wonminyang/Documents/Codex/2026-07-15/new-chat-2/outputs/codex-video-production-skill-pack/video-scene-planner/SKILL.md">video-scene-planner</a> — 의미 단위 scene과 visual mode</li>
+    <li><a href="file:///Users/wonminyang/Documents/Codex/2026-07-15/new-chat-2/outputs/codex-video-production-skill-pack/video-media-prep/SKILL.md">video-media-prep</a> — master clock·타임코드·미디어 manifest</li>
+    <li><a href="file:///Users/wonminyang/Documents/Codex/2026-07-15/new-chat-2/outputs/codex-video-production-skill-pack/video-rough-cut-planner/SKILL.md">video-rough-cut-planner</a> — 비파괴 컷 계획</li>
+    <li><a href="file:///Users/wonminyang/Documents/Codex/2026-07-15/new-chat-2/outputs/codex-video-production-skill-pack/video-asset-director/SKILL.md">video-asset-director</a> — 자산 매칭·라이선스·fallback</li>
+    <li><a href="file:///Users/wonminyang/Documents/Codex/2026-07-15/new-chat-2/outputs/codex-video-production-skill-pack/video-motion-graphics/SKILL.md">video-motion-graphics</a> — 기존 Factory 컴포넌트 재사용</li>
+    <li><a href="file:///Users/wonminyang/Documents/Codex/2026-07-15/new-chat-2/outputs/codex-video-production-skill-pack/video-sound-designer/SKILL.md">video-sound-designer</a> — 선택적 SFX·ducking·loudness</li>
+    <li><a href="file:///Users/wonminyang/Documents/Codex/2026-07-15/new-chat-2/outputs/codex-video-production-skill-pack/video-caption-designer/SKILL.md">video-caption-designer</a> — narration 기준 자막·safe area</li>
+    <li><a href="file:///Users/wonminyang/Documents/Codex/2026-07-15/new-chat-2/outputs/codex-video-production-skill-pack/video-timeline-assembler/SKILL.md">video-timeline-assembler</a> / <a href="file:///Users/wonminyang/Documents/Codex/2026-07-15/new-chat-2/outputs/codex-video-production-skill-pack/video-production-qa/SKILL.md">video-production-qa</a> — Factory job·QA·수정 경계</li>
+    <li><a href="file:///Users/wonminyang/Documents/Codex/2026-07-15/new-chat-2/outputs/codex-video-production-skill-pack/video-production-orchestrator/references/repository-integration.md">repository-integration.md</a> — Pulk Control Plane / Factory Execution Plane</li>
+    <li><a href="https://github.com/m-bain/whisperX">WhisperX</a> · <a href="https://github.com/soCzech/TransNetV2">TransNetV2</a> · <a href="https://www.scenedetect.com/docs/latest/">PySceneDetect</a> — 조건부 미디어 분석</li>
+  </ul>
+</section>
+<p class="footer">기준일: 2026년 7월 16일. 저장된 10개 영상 제작 스킬, video-production-orchestrator의 실행 규칙, Pulk–AI Slide Video Factory repository integration 문서, 현재 펄크의 Video Room/Brief/Factory 연결 지점을 확인해 작성했습니다.</p>
+</main></body></html>
